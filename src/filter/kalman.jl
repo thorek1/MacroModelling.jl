@@ -35,7 +35,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.timings
+    T = constants.model
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
@@ -51,7 +51,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 on_failure_loglikelihood::U = -Inf,
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.timings
+    T = constants.model
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
@@ -68,7 +68,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.timings
+    T = constants.model
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -597,7 +597,7 @@ function filter_and_smooth(𝓂::ℳ,
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-    @assert length(observables) <= 𝓂.constants.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert length(observables) <= 𝓂.constants.model.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     sort!(observables)
 
@@ -605,7 +605,7 @@ function filter_and_smooth(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     cc = constants.computational_constants
-    T = constants.timings
+    T = constants.model
 
     parameters = 𝓂.parameter_values
 
@@ -626,7 +626,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
+    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.constants.model.aux,𝓂.constants.model.var,𝓂.constants.model.exo_present)))),:]
 
     𝐁 = B * B'
 

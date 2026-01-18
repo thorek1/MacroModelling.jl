@@ -59,7 +59,7 @@
 # using ForwardDiff
 
 
-struct timings
+struct model
     present_only::Vector{Symbol}
     future_not_past::Vector{Symbol}
     past_not_future::Vector{Symbol}
@@ -435,8 +435,8 @@ struct first_order_index_cache
 end
 
 mutable struct constants#{F <: Real, G <: AbstractFloat}
-    # Timings information (model structure - constant for a given model)
-    timings::timings
+    # Model structure information (constant for a given model after @model macro)
+    model::model
     
     # Cache structures
     auxiliary_indices::auxiliary_indices
@@ -484,12 +484,11 @@ end
 mutable struct ℳ
     model_name::Any
     # SS_optimizer
-    exo::Vector{Symbol}
     parameters_in_equations::Vector{Symbol}
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Float64}
-    
+
     missing_parameters::Vector{Symbol}
     precompile::Bool
     simplify::Bool
@@ -502,17 +501,7 @@ mutable struct ℳ
     # dyn_ss_present::Vector{Symbol}
     # dyn_ss_future::Vector{Symbol}
 
-    aux::Vector{Symbol}
-    aux_present::Vector{Symbol}
-    aux_future::Vector{Symbol}
-    aux_past::Vector{Symbol}
-
-    exo_future::Vector{Symbol}
-    exo_present::Vector{Symbol}
-    exo_past::Vector{Symbol}
-
     vars_in_ss_equations::Vector{Symbol}
-    var::Vector{Symbol}
     # var_present::Vector{Symbol}
     # var_future::Vector{Symbol}
     # var_past::Vector{Symbol}
@@ -651,5 +640,5 @@ mutable struct ℳ
     solution::solution
     # symbolics::symbolics
 
-    estimation_helper::Dict{Vector{Symbol}, timings}
+    # estimation_helper::Dict{Vector{Symbol}, timings}
 end

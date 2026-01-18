@@ -162,7 +162,7 @@ function plot_model_estimates(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -213,13 +213,13 @@ function plot_model_estimates(𝓂::ℳ,
     shock_idx   = shocks == :none ? Int64[] : parse_shocks_input_to_index(shocks, 𝓂.constants)
 
     # Create display names and sort alphabetically
-    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.var[v], rename_dictionary)) for v in var_idx]
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.var[v], rename_dictionary)) for v in var_idx]
     @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
 
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
     @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
     if length(shock_idx) > 1
         shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
@@ -227,7 +227,7 @@ function plot_model_estimates(𝓂::ℳ,
         shock_names_display = shock_names_display[shock_sort_perm]
     end
     
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -563,7 +563,7 @@ function plot_model_estimates(𝓂::ℳ,
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
                 
-                if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.timings.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
+                if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.model.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                     other_shocks = ["Other shocks (net)"]
                 else
                     other_shocks = []
@@ -634,7 +634,7 @@ function plot_model_estimates(𝓂::ℳ,
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-            if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.timings.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
+            if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.model.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                 other_shocks = ["Other shocks (net)"]
             else
                 other_shocks = []
@@ -815,7 +815,7 @@ function plot_model_estimates!(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -866,13 +866,13 @@ function plot_model_estimates!(𝓂::ℳ,
     shock_idx   = shocks == :none ? Int64[] : parse_shocks_input_to_index(shocks, 𝓂.constants)
 
     # Create display names and sort alphabetically
-    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.var[v], rename_dictionary)) for v in var_idx]
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.var[v], rename_dictionary)) for v in var_idx]
     @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
     @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
     if length(shock_idx) > 1
         shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
@@ -880,7 +880,7 @@ function plot_model_estimates!(𝓂::ℳ,
         shock_names_display = shock_names_display[shock_sort_perm]
     end
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -1771,7 +1771,7 @@ function plot_irf(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -1813,20 +1813,20 @@ function plot_irf(𝓂::ℳ;
 
     if unspecified_initial_state
         if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars) - SSS_delta]
+            initial_state = [zeros(𝓂.constants.model.nVars), zeros(𝓂.constants.model.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars) - SSS_delta, zeros(𝓂.constants.timings.nVars)]
+            initial_state = [zeros(𝓂.constants.model.nVars), zeros(𝓂.constants.model.nVars) - SSS_delta, zeros(𝓂.constants.model.nVars)]
         else
-            initial_state = zeros(𝓂.constants.timings.nVars) - SSS_delta
+            initial_state = zeros(𝓂.constants.model.nVars) - SSS_delta
         end
     else
         if initial_state isa Vector{Float64}
             if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.timings.nVars], zeros(𝓂.constants.timings.nVars) - SSS_delta]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.model.nVars], zeros(𝓂.constants.model.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.timings.nVars], zeros(𝓂.constants.timings.nVars) - SSS_delta, zeros(𝓂.constants.timings.nVars)]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.model.nVars], zeros(𝓂.constants.model.nVars) - SSS_delta, zeros(𝓂.constants.model.nVars)]
             else
-                initial_state = initial_state - reference_steady_state[1:𝓂.constants.timings.nVars]
+                initial_state = initial_state - reference_steady_state[1:𝓂.constants.model.nVars]
             end
         else
             if algorithm ∉ [:pruned_second_order, :pruned_third_order]
@@ -1846,7 +1846,7 @@ function plot_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
-    level = zeros(𝓂.constants.timings.nVars)
+    level = zeros(𝓂.constants.model.nVars)
 
     Y = compute_irf_responses(𝓂,
                                 state_update,
@@ -1884,7 +1884,7 @@ function plot_irf(𝓂::ℳ;
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.exo[s], rename_dictionary)) for s in shock_idx]
+        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.exo[s], rename_dictionary)) for s in shock_idx]
         @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
         # Sort shocks alphabetically by display name
         if length(shock_idx) > 1
@@ -1897,13 +1897,13 @@ function plot_irf(𝓂::ℳ;
     end
     
     # Create display names and sort alphabetically
-    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.var[v], rename_dictionary)) for v in var_idx]
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.var[v], rename_dictionary)) for v in var_idx]
     @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
     Y = Y[var_sort_perm, :, :]
 
     processed_rename_dictionary = Any[]
@@ -2465,7 +2465,7 @@ function plot_irf!(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -2515,20 +2515,20 @@ function plot_irf!(𝓂::ℳ;
 
     if unspecified_initial_state
         if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars) - SSS_delta]
+            initial_state = [zeros(𝓂.constants.model.nVars), zeros(𝓂.constants.model.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars) - SSS_delta, zeros(𝓂.constants.timings.nVars)]
+            initial_state = [zeros(𝓂.constants.model.nVars), zeros(𝓂.constants.model.nVars) - SSS_delta, zeros(𝓂.constants.model.nVars)]
         else
-            initial_state = zeros(𝓂.constants.timings.nVars) - SSS_delta
+            initial_state = zeros(𝓂.constants.model.nVars) - SSS_delta
         end
     else
         if initial_state isa Vector{Float64}
             if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.timings.nVars], zeros(𝓂.constants.timings.nVars) - SSS_delta]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.model.nVars], zeros(𝓂.constants.model.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.timings.nVars], zeros(𝓂.constants.timings.nVars) - SSS_delta, zeros(𝓂.constants.timings.nVars)]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.model.nVars], zeros(𝓂.constants.model.nVars) - SSS_delta, zeros(𝓂.constants.model.nVars)]
             else
-                initial_state = initial_state - reference_steady_state[1:𝓂.constants.timings.nVars]
+                initial_state = initial_state - reference_steady_state[1:𝓂.constants.model.nVars]
             end
         else
             if algorithm ∉ [:pruned_second_order, :pruned_third_order]
@@ -2548,7 +2548,7 @@ function plot_irf!(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
-    level = zeros(𝓂.constants.timings.nVars)
+    level = zeros(𝓂.constants.model.nVars)
 
     Y = compute_irf_responses(𝓂,
                                 state_update,
@@ -2574,7 +2574,7 @@ function plot_irf!(𝓂::ℳ;
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.exo[s], rename_dictionary)) for s in shock_idx]
+        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.exo[s], rename_dictionary)) for s in shock_idx]
         # Sort shocks alphabetically by display name
         if length(shock_idx) > 1
             shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
@@ -2586,14 +2586,14 @@ function plot_irf!(𝓂::ℳ;
     end
     
     # Create display names and sort alphabetically
-    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.timings.var[v], rename_dictionary)) for v in var_idx]
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.constants.model.var[v], rename_dictionary)) for v in var_idx]
     @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     Y = Y[var_sort_perm, :, :]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -3537,7 +3537,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     fevds = fevds isa KeyedArray ? axiskeys(fevds,2) isa Vector{String} ? rekey(fevds, 2 => axiskeys(fevds,2) .|> Meta.parse .|> replace_indices_special) : fevds : fevds
 
-    vars_to_plot = intersect(axiskeys(fevds)[1], 𝓂.constants.timings.var[var_idx])
+    vars_to_plot = intersect(axiskeys(fevds)[1], 𝓂.constants.model.var[var_idx])
     
     # Sort variables alphabetically by display name
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
@@ -3778,7 +3778,7 @@ function plot_solution(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3797,7 +3797,7 @@ function plot_solution(𝓂::ℳ,
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
-    @assert state ∈ 𝓂.constants.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.constants.timings.past_not_future_and_mixed))
+    @assert state ∈ 𝓂.constants.model.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.constants.model.past_not_future_and_mixed))
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
@@ -3820,24 +3820,24 @@ function plot_solution(𝓂::ℳ,
     
     SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS = sort(union(𝓂.constants.model.var,𝓂.constants.model.aux,𝓂.constants.model.exo_present))
 
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    full_NSSS[indexin(𝓂.constants.model.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.constants) |> unique |> sort
 
-    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.constants.timings.var[var_idx])
+    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.constants.model.var[var_idx])
 
     # Sort variables alphabetically by display name
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
     vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -3847,7 +3847,7 @@ function plot_solution(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    state_selector = state .== 𝓂.var
+    state_selector = state .== 𝓂.constants.model.var
 
     # Clear container for new plot
     while length(solution_active_plot_container) > 0
@@ -3866,7 +3866,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -3875,7 +3875,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -3900,7 +3900,7 @@ function plot_solution(𝓂::ℳ,
     has_impact = []
 
     for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
+        idx = indexin([k], 𝓂.constants.model.var)
 
         push!(variable_output,  k => var_state_range[idx,:]) 
         
@@ -3927,7 +3927,7 @@ function plot_solution(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.constants.model.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -4506,7 +4506,7 @@ function plot_solution!(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.timings.nPast_not_future_and_mixed + 1 + 𝓂.constants.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.model.nPast_not_future_and_mixed + 1 + 𝓂.constants.model.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -4525,7 +4525,7 @@ function plot_solution!(𝓂::ℳ,
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
-    @assert state ∈ 𝓂.constants.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.constants.timings.past_not_future_and_mixed))
+    @assert state ∈ 𝓂.constants.model.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.constants.model.past_not_future_and_mixed))
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
@@ -4548,24 +4548,24 @@ function plot_solution!(𝓂::ℳ,
     
     SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS = sort(union(𝓂.constants.model.var,𝓂.constants.model.aux,𝓂.constants.model.exo_present))
 
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    full_NSSS[indexin(𝓂.constants.model.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.constants) |> unique |> sort
 
-    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.constants.timings.var[var_idx])
+    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.constants.model.var[var_idx])
 
     # Sort variables alphabetically by display name
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
     vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -4575,7 +4575,7 @@ function plot_solution!(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    state_selector = state .== 𝓂.var
+    state_selector = state .== 𝓂.constants.model.var
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
         full_NSSS_decomposed = decompose_name.(full_NSSS)
@@ -4589,7 +4589,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -4598,7 +4598,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.model.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -4623,7 +4623,7 @@ function plot_solution!(𝓂::ℳ,
     has_impact = []
 
     for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
+        idx = indexin([k], 𝓂.constants.model.var)
 
         push!(variable_output,  k => var_state_range[idx,:]) 
         
@@ -4650,7 +4650,7 @@ function plot_solution!(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.constants.model.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -4827,7 +4827,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
-    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
+    full_SS = vcat(sort(union(𝓂.constants.model.var,𝓂.constants.model.aux,𝓂.constants.model.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo))
 
     full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
@@ -4837,14 +4837,14 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    # if length(intersect(𝓂.aux,var_names)) > 0
-    #     for v in 𝓂.aux
+    # if length(intersect(𝓂.constants.model.aux,var_names)) > 0
+    #     for v in 𝓂.constants.model.aux
     #         idx = indexin([v],var_names)
     #         if !isnothing(idx[1])
     #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
     #         end
     #     end
-    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    #     # var_names[indexin(𝓂.constants.model.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
     # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
@@ -4857,19 +4857,19 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_var_SS_copy = deepcopy(full_var_SS)
 
-    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
-        for v in 𝓂.aux
+    if length(intersect(𝓂.constants.model.aux,full_var_SS_copy)) > 0
+        for v in 𝓂.constants.model.aux
             idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
                 full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        # var_names[indexin(𝓂.constants.model.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.model.exo), 𝓂.constants.model.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
-    var_length = length(full_SS) - 𝓂.constants.timings.nExo
+    var_length = length(full_SS) - 𝓂.constants.model.nExo
     
     if conditions isa SparseMatrixCSC{Float64}
         @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(full_var_SS)
@@ -4895,28 +4895,28 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
     
     if shocks isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.model.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.model.exo)) * " shocks: " * repr(𝓂.constants.model.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.model.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.model.exo)) * " shocks: " * repr(𝓂.constants.model.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.constants.model.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.constants.model.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.constants.model.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
     end
 
     while length(conditional_forecast_active_plot_container) > 0
@@ -4924,14 +4924,14 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
-    full_variable_names_display = [(apply_custom_name(replace_indices_in_symbol(v), rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
-    full_shock_names_display = [(apply_custom_name(replace_indices_in_symbol(s), rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
+    full_variable_names_display = [(apply_custom_name(replace_indices_in_symbol(v), rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
+    full_shock_names_display = [(apply_custom_name(replace_indices_in_symbol(s), rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
 
-    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
-    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
-    variable_names_display = [apply_custom_name(replace_indices_in_symbol(v), rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
-    shock_names_display = [String(apply_custom_name(Symbol(replace(string(replace_indices_in_symbol(s)), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
+    variable_names_display = [apply_custom_name(replace_indices_in_symbol(v), rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
+    shock_names_display = [String(apply_custom_name(Symbol(replace(string(replace_indices_in_symbol(s)), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
     
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -4942,7 +4942,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
     # Process rename dictionary to only include relevant keys in sorted order
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 
@@ -5290,7 +5290,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
-    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
+    full_SS = vcat(sort(union(𝓂.constants.model.var,𝓂.constants.model.aux,𝓂.constants.model.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo))
 
     full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
@@ -5300,14 +5300,14 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    # if length(intersect(𝓂.aux,var_names)) > 0
-    #     for v in 𝓂.aux
+    # if length(intersect(𝓂.constants.model.aux,var_names)) > 0
+    #     for v in 𝓂.constants.model.aux
     #         idx = indexin([v],var_names)
     #         if !isnothing(idx[1])
     #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
     #         end
     #     end
-    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    #     # var_names[indexin(𝓂.constants.model.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
     # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
@@ -5320,19 +5320,19 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     full_var_SS_copy = deepcopy(full_var_SS)
 
-    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
-        for v in 𝓂.aux
+    if length(intersect(𝓂.constants.model.aux,full_var_SS_copy)) > 0
+        for v in 𝓂.constants.model.aux
             idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
                 full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        # var_names[indexin(𝓂.constants.model.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.model.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.model.exo), 𝓂.constants.model.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
-    var_length = length(full_SS) - 𝓂.constants.timings.nExo
+    var_length = length(full_SS) - 𝓂.constants.model.nExo
     
     if conditions isa SparseMatrixCSC{Float64}
         @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
@@ -5358,39 +5358,39 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     if shocks isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.model.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.model.exo)) * " shocks: " * repr(𝓂.constants.model.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.model.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.model.exo)) * " shocks: " * repr(𝓂.constants.model.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.constants.model.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.constants.model.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.constants.model.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.model.exo),periods)
     end
 
     # Create display names for variables and shocks
-    full_variable_names_display = [(apply_custom_name(replace_indices_in_symbol(v), rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
-    full_shock_names_display = [(apply_custom_name(replace_indices_in_symbol(s), rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
+    full_variable_names_display = [(apply_custom_name(replace_indices_in_symbol(v), rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
+    full_shock_names_display = [(apply_custom_name(replace_indices_in_symbol(s), rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
 
-    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
-    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
-    variable_names_display = [apply_custom_name(replace_indices_in_symbol(v), rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
-    shock_names_display = [String(apply_custom_name(Symbol(replace(string(replace_indices_in_symbol(s)), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
+    variable_names_display = [apply_custom_name(replace_indices_in_symbol(v), rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
+    shock_names_display = [String(apply_custom_name(Symbol(replace(string(replace_indices_in_symbol(s)), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.model.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -5401,7 +5401,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
     # Process rename dictionary to only include relevant keys in sorted order
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.timings.var, 𝓂.constants.timings.exo)] |> sort
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.model.var, 𝓂.constants.model.exo)] |> sort
 
     processed_rename_dictionary = Any[]
 

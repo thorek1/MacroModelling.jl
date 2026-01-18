@@ -354,7 +354,7 @@ get_calibrated_parameters(RBC)
 """
 function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
-        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.constants.timings.nVars + 1:end]
+        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.constants.model.nVars + 1:end]
     else
         return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")# |> sort
     end
@@ -778,7 +778,7 @@ get_dynamic_auxiliary_variables(RBC)
 ```
 """
 function get_dynamic_auxiliary_variables(𝓂::ℳ)::Vector{String}
-    𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.model.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -830,7 +830,7 @@ get_shocks(RBC)
 ```
 """
 function get_shocks(𝓂::ℳ)::Vector{String}
-    𝓂.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.model.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -889,7 +889,7 @@ get_state_variables(RBC)
 ```
 """
 function get_state_variables(𝓂::ℳ)::Vector{String}
-    𝓂.constants.timings.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.model.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -940,7 +940,7 @@ get_jump_variables(RBC)
 ```
 """
 function get_jump_variables(𝓂::ℳ)::Vector{String}
-    𝓂.constants.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.model.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 end # dispatch_doctor
