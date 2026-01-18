@@ -144,7 +144,7 @@ The recommended workflow is to use this function to write a .mod-file, and then 
 - $MODEL®
 """
 function write_mod_file(𝓂::ℳ)
-    NSSS = get_SS(m, derivatives = false)
+    NSSS = get_SS(𝓂, derivatives = false)
 
     index_in_name = NSSS.keys isa Base.RefValue{Vector{String}}
 
