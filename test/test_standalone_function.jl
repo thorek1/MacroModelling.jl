@@ -275,14 +275,14 @@ end
 
 
 
-    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
 
 
     Random.seed!(3)
-    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
@@ -293,12 +293,12 @@ end
     initial_state = zeros(RBC_CME.constants.timings.nVars) - SSS_delta
 
     Random.seed!(3)
-    ggiirrff2 = girf(second_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
+    ggiirrff2 = girf(second_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants, draws = 1000, warmup_periods = 100)
     
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
-    iirrff2 = irf(second_order_state_update, initial_state + SSS_delta, zeros(T.nVars), T)
+    iirrff2 = irf(second_order_state_update, initial_state + SSS_delta, zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrff2[4,1,:],[-0.0004547347878067665, 0.0020831426377533636],rtol = 1e-6)
 
@@ -309,12 +309,12 @@ end
     initial_state = zeros(RBC_CME.constants.timings.nVars) - SSS_delta
 
     Random.seed!(3)
-    ggiirrff3 = girf(third_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
+    ggiirrff3 = girf(third_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants, draws = 1000, warmup_periods = 100)
     
     @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
     0.002171120660323429],rtol = 1e-3)
 
-    iirrff3 = irf(third_order_state_update, initial_state + SSS_delta, zeros(T.nVars), T)
+    iirrff3 = irf(third_order_state_update, initial_state + SSS_delta, zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrff3[4,1,:],[-0.00045473149068020854, 0.002083198241302615], rtol = 1e-6)
 
@@ -325,12 +325,12 @@ end
     initial_state = [zeros(RBC_CME.constants.timings.nVars), zeros(RBC_CME.constants.timings.nVars) ]
     
     Random.seed!(3)
-    ggiirrffp2 = girf(pruned_second_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
+    ggiirrffp2 = girf(pruned_second_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants, draws = 1000, warmup_periods = 100)
 
     @test isapprox(ggiirrffp2[4,1,:],[-0.00036669521972558375
     0.0021710991908610883],rtol = 1e-3)
 
-    iirrffp2 = irf(pruned_second_order_state_update, initial_state, zeros(T.nVars), T)
+    iirrffp2 = irf(pruned_second_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrffp2[4,1,:],[-0.00045473478780675195, 0.002083142637753389],rtol = 1e-6)
 
@@ -341,12 +341,12 @@ end
     initial_state = [zeros(RBC_CME.constants.timings.nVars), zeros(RBC_CME.constants.timings.nVars), zeros(RBC_CME.constants.timings.nVars)]
 
     Random.seed!(3)
-    ggiirrffp3 = girf(pruned_third_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
+    ggiirrffp3 = girf(pruned_third_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants, draws = 1000, warmup_periods = 100)
 
     @test isapprox(ggiirrffp3[4,1,:],[-0.00036669114944274343
     0.0021716050738841944],rtol = 1e-3)
 
-    iirrffp3 = irf(pruned_third_order_state_update, initial_state, zeros(T.nVars), T)
+    iirrffp3 = irf(pruned_third_order_state_update, initial_state, zeros(T.nVars), RBC_CME.constants)
 
     @test isapprox(iirrffp3[4,1,:],[-0.0004547315171573783, 0.0020831990353127696], rtol = 1e-6)
 end
