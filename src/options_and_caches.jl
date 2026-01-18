@@ -38,42 +38,6 @@ function Conditional_forecast_index_cache()
                                             empty_int_vec)
 end
 
-function Empty_timings()
-    empty_symbols = Symbol[]
-    empty_ints = Int[]
-    return timings(empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    empty_symbols,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints,
-                    empty_ints)
-end
-
 function Moments_cache()
     empty_sparse = spzeros(Float64, 0, 0)
     return moments_cache(BitVector(),
