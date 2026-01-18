@@ -2241,7 +2241,7 @@ if test_set == "basic"
         
         @test RBC_CME.guess == Dict(:alpha => .2, :beta => .99)
 
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.timings.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
 
         RBC_CME = nothing
     end
@@ -3314,7 +3314,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.timings.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
         # irf(RBC_CME)
         
@@ -3382,7 +3382,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME,symbolic_SS = true)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.timings.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
 
         RBC_CME = nothing
@@ -3454,7 +3454,7 @@ if test_set == "basic"
         # solve!(RBC_CME, verbose = true)
         # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
         # get_steady_state(RBC_CME)
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.timings.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
         # get_moments(RBC_CME)[1]
 
         # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -3523,7 +3523,7 @@ if test_set == "basic"
         # # using NLopt
         # # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # # get_steady_state(RBC_CME)
-        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
+        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.timings.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
         # get_moments(RBC_CME)[1]
         
         RBC_CME = nothing

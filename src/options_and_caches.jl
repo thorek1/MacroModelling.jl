@@ -516,18 +516,18 @@ function ensure_model_structure_cache!(𝓂)
     msc = constants.model_structure_cache
     if isempty(msc.SS_and_pars_names)
         SS_and_pars_names = vcat(
-            Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))),
+            Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
             𝓂.calibration_equations_parameters,
         )
 
-        all_variables = Symbol.(sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present)))
+        all_variables = Symbol.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.aux, 𝓂.constants.timings.exo_present)))
 
-        NSSS_labels = Symbol.(vcat(sort(union(𝓂.exo_present, 𝓂.var)), 𝓂.calibration_equations_parameters))
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.timings.exo_present, 𝓂.constants.timings.var)), 𝓂.calibration_equations_parameters))
 
-        aux_indices = Int.(indexin(𝓂.aux, all_variables))
+        aux_indices = Int.(indexin(𝓂.constants.timings.aux, all_variables))
         processed_all_variables = copy(all_variables)
-        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.aux)
+        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.timings.aux)
 
         full_NSSS = copy(processed_all_variables)
         if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -540,15 +540,15 @@ function ensure_model_structure_cache!(𝓂)
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 
         vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
-        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.var), 𝓂.calibration_equations_parameters)
+        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.timings.var), 𝓂.calibration_equations_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
 
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future)))), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
         SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
 
-        vars_non_obc = 𝓂.var[.!contains.(string.(𝓂.var), "ᵒᵇᶜ")]
-        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
+        vars_non_obc = 𝓂.constants.timings.var[.!contains.(string.(𝓂.constants.timings.var), "ᵒᵇᶜ")]
+        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.constants.timings.aux, 𝓂.constants.timings.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
         constants.model_structure_cache = model_structure_cache(

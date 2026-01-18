@@ -778,7 +778,7 @@ get_dynamic_auxiliary_variables(RBC)
 ```
 """
 function get_dynamic_auxiliary_variables(𝓂::ℳ)::Vector{String}
-    𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.timings.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -830,7 +830,7 @@ get_shocks(RBC)
 ```
 """
 function get_shocks(𝓂::ℳ)::Vector{String}
-    𝓂.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.timings.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 

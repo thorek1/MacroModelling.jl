@@ -3820,11 +3820,11 @@ function plot_solution(𝓂::ℳ,
     
     SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS = sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present))
 
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    full_NSSS[indexin(𝓂.constants.timings.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -3847,7 +3847,7 @@ function plot_solution(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    state_selector = state .== 𝓂.var
+    state_selector = state .== 𝓂.constants.timings.var
 
     # Clear container for new plot
     while length(solution_active_plot_container) > 0
@@ -3866,7 +3866,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -3875,7 +3875,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -3900,7 +3900,7 @@ function plot_solution(𝓂::ℳ,
     has_impact = []
 
     for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
+        idx = indexin([k], 𝓂.constants.timings.var)
 
         push!(variable_output,  k => var_state_range[idx,:]) 
         
@@ -3927,7 +3927,7 @@ function plot_solution(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.constants.timings.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -4548,11 +4548,11 @@ function plot_solution!(𝓂::ℳ,
     
     SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS = sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present))
 
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    full_NSSS[indexin(𝓂.constants.timings.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -4575,7 +4575,7 @@ function plot_solution!(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    state_selector = state .== 𝓂.var
+    state_selector = state .== 𝓂.constants.timings.var
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
         full_NSSS_decomposed = decompose_name.(full_NSSS)
@@ -4589,7 +4589,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -4598,7 +4598,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -4623,7 +4623,7 @@ function plot_solution!(𝓂::ℳ,
     has_impact = []
 
     for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
+        idx = indexin([k], 𝓂.constants.timings.var)
 
         push!(variable_output,  k => var_state_range[idx,:]) 
         
@@ -4650,7 +4650,7 @@ function plot_solution!(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.constants.timings.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -4827,7 +4827,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
-    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
+    full_SS = vcat(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
 
     full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
@@ -4837,14 +4837,14 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    # if length(intersect(𝓂.aux,var_names)) > 0
-    #     for v in 𝓂.aux
+    # if length(intersect(𝓂.constants.timings.aux,var_names)) > 0
+    #     for v in 𝓂.constants.timings.aux
     #         idx = indexin([v],var_names)
     #         if !isnothing(idx[1])
     #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
     #         end
     #     end
-    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    #     # var_names[indexin(𝓂.constants.timings.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
@@ -4857,17 +4857,17 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_var_SS_copy = deepcopy(full_var_SS)
 
-    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
-        for v in 𝓂.aux
+    if length(intersect(𝓂.constants.timings.aux,full_var_SS_copy)) > 0
+        for v in 𝓂.constants.timings.aux
             idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
                 full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        # var_names[indexin(𝓂.constants.timings.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.constants.timings.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
     var_length = length(full_SS) - 𝓂.constants.timings.nExo
     
@@ -4895,28 +4895,28 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
     
     if shocks isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.constants.timings.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.constants.timings.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.constants.timings.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
     end
 
     while length(conditional_forecast_active_plot_container) > 0
@@ -5290,7 +5290,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
-    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
+    full_SS = vcat(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo))
 
     full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
@@ -5300,14 +5300,14 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    # if length(intersect(𝓂.aux,var_names)) > 0
-    #     for v in 𝓂.aux
+    # if length(intersect(𝓂.constants.timings.aux,var_names)) > 0
+    #     for v in 𝓂.constants.timings.aux
     #         idx = indexin([v],var_names)
     #         if !isnothing(idx[1])
     #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
     #         end
     #     end
-    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    #     # var_names[indexin(𝓂.constants.timings.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
@@ -5320,17 +5320,17 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     full_var_SS_copy = deepcopy(full_var_SS)
 
-    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
-        for v in 𝓂.aux
+    if length(intersect(𝓂.constants.timings.aux,full_var_SS_copy)) > 0
+        for v in 𝓂.constants.timings.aux
             idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
                 full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        # var_names[indexin(𝓂.constants.timings.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.timings.exo), 𝓂.constants.timings.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
     var_length = length(full_SS) - 𝓂.constants.timings.nExo
     
@@ -5358,28 +5358,28 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     if shocks isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.constants.timings.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.constants.timings.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.constants.timings.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.exo),periods)
     end
 
     # Create display names for variables and shocks

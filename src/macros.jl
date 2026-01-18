@@ -838,31 +838,20 @@ macro model(𝓂,ex...)
         global $𝓂 =  ℳ(
                         $model_name,
                         # $default_optimizer,
-                        sort(collect($exo)), 
-                        sort(collect($parameters_in_equations)), 
+                        sort(collect($parameters_in_equations)),
 
                         $parameters,
                         $parameters,
                         $parameter_values,
-                        
+
                         Symbol[], # missing_parameters - to be filled by @parameters
                         false, # precompile - to be set by @parameters
                         true, # simplify - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
-                        sort($aux),
-                        sort(collect($aux_present)), 
-                        sort(collect($aux_future)), 
-                        sort(collect($aux_past)), 
-
-                        sort(collect($exo_future)), 
-                        sort(collect($exo_present)), 
-                        sort(collect($exo_past)), 
-
                         sort(collect($vars_in_ss_equations)),
-                        sort($var), 
-                        
+
                         $ss_calib_list,
                         $par_calib_list,
 
@@ -1485,14 +1474,14 @@ macro parameters(𝓂,ex...)
     return quote
         mod = @__MODULE__
 
-        if any(contains.(string.(mod.$𝓂.var), "ᵒᵇᶜ"))
+        if any(contains.(string.(mod.$𝓂.constants.timings.var), "ᵒᵇᶜ"))
             push!($calib_parameters, :activeᵒᵇᶜshocks)
             push!($calib_values, 0)
         end
 
-        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.timings.var])
+        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.timings.var])
+        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.timings.var])
         
         # Calculate missing parameters instead of asserting
         # Include parameters from:

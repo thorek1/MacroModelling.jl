@@ -626,7 +626,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
+    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.constants.timings.aux,𝓂.constants.timings.var,𝓂.constants.timings.exo_present)))),:]
 
     𝐁 = B * B'
 

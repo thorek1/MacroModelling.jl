@@ -384,7 +384,7 @@ function get_estimated_variables(𝓂::ℳ,
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
 
-    return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
+    return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.timings.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
 
 
@@ -744,18 +744,18 @@ function get_conditional_forecast(𝓂::ℳ,
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
     if conditions isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxiliary variables): " * repr(𝓂.var)
+        @assert length(𝓂.constants.timings.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.var)) * " variables (including auxiliary variables): " * repr(𝓂.constants.timings.var)
 
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.var),periods)
         nzs = findnz(conditions)
         for i in 1:length(nzs[1])
             cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxiliary variables): " * repr(𝓂.var)
+        @assert length(𝓂.constants.timings.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.var)) * " variables (including auxiliary variables): " * repr(𝓂.constants.timings.var)
 
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.var),periods)
         cond_tmp[:,axes(conditions,2)] = conditions
         conditions = cond_tmp
     elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
@@ -763,26 +763,26 @@ function get_conditional_forecast(𝓂::ℳ,
 
         conditions_symbols = conditions_axis isa String_input ? conditions_axis .|> Meta.parse .|> replace_indices : conditions_axis
 
-        @assert length(setdiff(conditions_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(conditions_symbols,𝓂.var))
+        @assert length(setdiff(conditions_symbols, 𝓂.constants.timings.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(conditions_symbols,𝓂.constants.timings.var))
         
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
-        cond_tmp[indexin(sort(conditions_symbols),𝓂.var),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.constants.timings.var),periods)
+        cond_tmp[indexin(sort(conditions_symbols),𝓂.constants.timings.var),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
     
     if shocks isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.constants.timings.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+        @assert length(𝓂.constants.timings.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.constants.timings.exo)) * " shocks: " * repr(𝓂.constants.timings.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.constants.timings.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
@@ -790,13 +790,13 @@ function get_conditional_forecast(𝓂::ℳ,
 
         shocks_symbols = shocks_axis isa String_input ? shocks_axis .|> Meta.parse .|> replace_indices : shocks_axis
 
-        @assert length(setdiff(shocks_symbols,𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(shocks_symbols, 𝓂.exo))
+        @assert length(setdiff(shocks_symbols,𝓂.constants.timings.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(shocks_symbols, 𝓂.constants.timings.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(shocks_symbols), 𝓂.exo), axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.constants.timings.exo),periods)
+        shocks_tmp[indexin(sort(shocks_symbols), 𝓂.constants.timings.exo), axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.constants.timings.exo),periods)
     end
 
     solve!(𝓂, 
@@ -1102,7 +1102,7 @@ function get_irf(𝓂::ℳ,
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.constants.timings.past_not_future_and_mixed_idx]; shock] end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.constants.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
+    initial_state = initial_state == [0.0] ? zeros(𝓂.constants.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.constants.timings.var)]
 
     # Y = zeros(𝓂.constants.timings.nVars,periods,𝓂.constants.timings.nExo)
     Ŷ = []
@@ -1503,19 +1503,19 @@ function get_steady_state(𝓂::ℳ;
                 obc = length(𝓂.obc_violation_equations) > 0)
 
         if  algorithm == :third_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.timings.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         elseif  algorithm == :pruned_third_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.timings.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         elseif  algorithm == :pruned_second_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.timings.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         else
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+            SS[1:length(𝓂.constants.timings.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_present)),sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present)))]
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.timings.var...,𝓂.calibration_equations_parameters...])
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+    calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.constants.timings.var...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -1593,19 +1593,19 @@ function get_steady_state(𝓂::ℳ;
             dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
-            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
+            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.constants.timings.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
             # else
-            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
-            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
+            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.constants.timings.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.constants.timings.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
             return KeyedArray(hcat(SS[[var_idx...,calib_idx...]],dSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
             # end
         end
     else
-        # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
-        # return NamedArray(collect(NSSS), [sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
+        # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.constants.timings.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+        # return NamedArray(collect(NSSS), [sort(union(𝓂.constants.timings.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
         return KeyedArray(SS[[var_idx...,calib_idx...]];  Variables_and_calibrated_parameters = axis1)
     end
-    # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var)))),
+    # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.constants.timings.exo_present,var)))),
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
@@ -1754,7 +1754,7 @@ function get_solution(𝓂::ℳ;
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
     end
 
-    axis1 = [𝓂.constants.timings.past_not_future_and_mixed; :Volatility; 𝓂.exo]
+    axis1 = [𝓂.constants.timings.past_not_future_and_mixed; :Volatility; 𝓂.constants.timings.exo]
 
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
@@ -1762,10 +1762,10 @@ function get_solution(𝓂::ℳ;
         axis1[end-length(𝓂.constants.timings.exo)+1:end] = axis1[end-length(𝓂.constants.timings.exo)+1:end] .* "₍ₓ₎"
         axis1[1:length(𝓂.constants.timings.past_not_future_and_mixed)] = axis1[1:length(𝓂.constants.timings.past_not_future_and_mixed)] .* "₍₋₁₎"
     else
-        axis1 = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
+        axis1 = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
     end
 
-    axis2 = 𝓂.var
+    axis2 = 𝓂.constants.timings.var
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
@@ -1813,7 +1813,7 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     else
-        axis1 = [:Steady_state; 𝓂.constants.timings.past_not_future_and_mixed; 𝓂.exo]
+        axis1 = [:Steady_state; 𝓂.constants.timings.past_not_future_and_mixed; 𝓂.constants.timings.exo]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -1821,10 +1821,10 @@ function get_solution(𝓂::ℳ;
             axis1[end-length(𝓂.constants.timings.exo)+1:end] = axis1[end-length(𝓂.constants.timings.exo)+1:end] .* "₍ₓ₎"
             axis1[2:length(𝓂.constants.timings.past_not_future_and_mixed)+1] = axis1[2:length(𝓂.constants.timings.past_not_future_and_mixed)+1] .* "₍₋₁₎"
         else
-            axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
+            axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.timings.exo)]
         end
 
-        return KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] solution_matrix]';
+        return KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.constants.timings.var)] solution_matrix]';
                             Steady_state__States__Shocks = axis1,
                             Variables = axis2)
     end
@@ -1938,11 +1938,11 @@ function get_solution(𝓂::ℳ,
 
     if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
         if algorithm == :second_order
-            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], zeros(length(𝓂.constants.timings.var),2), spzeros(length(𝓂.constants.timings.var),2), false
         elseif algorithm == :third_order
-            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], zeros(length(𝓂.constants.timings.var),2), spzeros(length(𝓂.constants.timings.var),2), spzeros(length(𝓂.constants.timings.var),2), false
         else
-            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], zeros(length(𝓂.constants.timings.var),2), false
         end
     end
 
@@ -1957,11 +1957,11 @@ function get_solution(𝓂::ℳ,
 
     if !solved
         if algorithm == :second_order
-            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(length(𝓂.var),2), false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, spzeros(length(𝓂.constants.timings.var),2), false
         elseif algorithm == :third_order
-            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, spzeros(length(𝓂.constants.timings.var),2), spzeros(length(𝓂.constants.timings.var),2), false
         else
-            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, false
+            return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, false
         end
     end
 
@@ -1980,7 +1980,7 @@ function get_solution(𝓂::ℳ,
             𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
         end
 
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
+        return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
     
@@ -2013,9 +2013,9 @@ function get_solution(𝓂::ℳ,
             𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
         end
 
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
+        return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, true
+        return SS_and_pars[1:length(𝓂.constants.timings.var)], 𝐒₁, true
     end
 end
 
@@ -2175,7 +2175,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
     cond_var_decomp = var_container ./ sum_var_container
 
-    axis1 = 𝓂.var
+    axis1 = 𝓂.constants.timings.var
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
@@ -2322,7 +2322,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     var_decomp = variances_by_shock ./ sum_variances_by_shock
     
-    axis1 = 𝓂.var
+    axis1 = 𝓂.constants.timings.var
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
@@ -2435,7 +2435,7 @@ function get_correlation(𝓂::ℳ;
     
     corr = covar_dcmp ./ (std * std')
     
-    axis1 = 𝓂.var
+    axis1 = 𝓂.constants.timings.var
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
@@ -2571,7 +2571,7 @@ function get_autocorrelation(𝓂::ℳ;
     end
 
     
-    axis1 = 𝓂.var
+    axis1 = 𝓂.constants.timings.var
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
@@ -2752,7 +2752,7 @@ function get_moments(𝓂::ℳ;
     end
 
 
-    axis1 = 𝓂.var
+    axis1 = 𝓂.constants.timings.var
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.constants.name_display_cache.var_axis
@@ -2761,7 +2761,7 @@ function get_moments(𝓂::ℳ;
 
     if derivatives
         if non_stochastic_steady_state
-            axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.timings.var[var_idx]...,𝓂.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
@@ -2788,7 +2788,7 @@ function get_moments(𝓂::ℳ;
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
-        axis1 = 𝓂.var[var_idx]
+        axis1 = 𝓂.constants.timings.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -2934,7 +2934,7 @@ function get_moments(𝓂::ℳ;
         end
     else
         if non_stochastic_steady_state
-            axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.timings.var[var_idx]...,𝓂.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
@@ -2948,13 +2948,13 @@ function get_moments(𝓂::ℳ;
             end
 
             if mean && algorithm == :first_order
-                var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.timings.var[var_idx])
             end
 
             SS =  KeyedArray(collect(NSSS)[var_idx_ext];  Variables = axis1)
         end
 
-        axis1 = 𝓂.var[var_idx]
+        axis1 = 𝓂.constants.timings.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -2986,7 +2986,7 @@ function get_moments(𝓂::ℳ;
                 @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.timings.var[var_idx])
                 end
             end
 
@@ -3016,7 +3016,7 @@ function get_moments(𝓂::ℳ;
                 @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.timings.var[var_idx])
                 end
             end
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
@@ -3039,7 +3039,7 @@ function get_moments(𝓂::ℳ;
                 @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.timings.var[var_idx])
                 end
             end
         end
@@ -3064,7 +3064,7 @@ function get_moments(𝓂::ℳ;
         ret[:variance] = varrs
     end
     if covariance
-        axis1 = 𝓂.var[var_idx]
+        axis1 = 𝓂.constants.timings.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -3342,11 +3342,11 @@ function get_statistics(𝓂,
         if !(autocorrelation == Symbol[])
             second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
 
-            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, covariance = 𝓂.var[covar_var_idx], opts = opts, autocorrelation_periods = autocorrelation_periods)
+            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.constants.timings.var[second_mom_third_order], 𝓂, covariance = 𝓂.constants.timings.var[covar_var_idx], opts = opts, autocorrelation_periods = autocorrelation_periods)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx)], 𝓂, covariance = 𝓂.var[covar_var_idx], opts = opts)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.constants.timings.var[union(std_var_idx, var_var_idx)], 𝓂, covariance = 𝓂.constants.timings.var[covar_var_idx], opts = opts)
 
         end
 
@@ -3577,7 +3577,7 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.timings.exo_present, 𝓂.constants.timings.var))..., 𝓂.calibration_equations_parameters...]
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
@@ -3691,7 +3691,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
+    axis1 = vcat(𝓂.constants.timings.var, 𝓂.calibration_equations_parameters)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.parameters_in_equations))))
 

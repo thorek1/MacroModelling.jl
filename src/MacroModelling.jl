@@ -347,11 +347,11 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
                 "\n Total:       ", 𝓂.constants.timings.nVars,
-                "\n  Auxiliary:  ", length(𝓂.exo_present) + length(𝓂.aux),
+                "\n  Auxiliary:  ", length(𝓂.constants.timings.exo_present) + length(𝓂.constants.timings.aux),
                 "\n States:      ", 𝓂.constants.timings.nPast_not_future_and_mixed,
-                "\n  Auxiliary:  ",  length(intersect(𝓂.constants.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n  Auxiliary:  ",  length(intersect(𝓂.constants.timings.past_not_future_and_mixed, 𝓂.constants.timings.aux_present)),
                 "\n Jumpers:     ", 𝓂.constants.timings.nFuture_not_past_and_mixed, # 𝓂.constants.timings.mixed, 
-                "\n  Auxiliary:  ", length(intersect(𝓂.constants.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
+                "\n  Auxiliary:  ", length(intersect(𝓂.constants.timings.future_not_past_and_mixed, union(𝓂.constants.timings.aux_present, 𝓂.constants.timings.aux_future))),
                 "\nShocks:       ", 𝓂.constants.timings.nExo,
                 "\nParameters:   ", length(𝓂.parameters_in_equations),
                 if isempty(𝓂.missing_parameters)
@@ -1071,7 +1071,7 @@ When both signatures are applicable, the in-place signature is used.
 
 Where:
 - Input: Parameter values in the declaration order (as defined in `@parameters`). Parameter order is available from `get_parameters(𝓂)`.
-- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any). For in-place functions, `out` is filled in this order.
+- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any). For in-place functions, `out` is filled in this order.
 
 # Examples
 ```julia
@@ -2824,7 +2824,7 @@ function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector
 
     observables_symbols = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
-    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
+    @assert length(setdiff(observables_symbols, 𝓂.constants.timings.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.constants.timings.var))
 
     sort!(observables_symbols)
     
@@ -3102,7 +3102,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    reference_steady_state = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -3113,7 +3113,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.timings.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -3848,11 +3848,11 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations_parameters),
                 # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
 
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_present...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_past...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_future...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.timings.var_present...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.timings.var_past...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.timings.var_future...)]))),
                 Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.var...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.timings.var...)]))),
                 Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
 
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_calib_list),
@@ -4030,7 +4030,7 @@ function write_block_solution!(𝓂,
 
     # other_vars = Expr[]
     other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+    other_vrs = intersect( setdiff( union(𝓂.constants.timings.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                         sort(𝓂.solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
@@ -5103,7 +5103,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.constants.timings.var, 𝓂.parameters)))
     end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
@@ -5113,7 +5113,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past, 𝓂.exo_future)
+    for dex in union(𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -5136,11 +5136,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
     
-    # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
+    # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
 
     # push!(SS_solve_func,:(𝓂.SS_init_guess = typeof(SS_init_guess) == Vector{Float64} ? SS_init_guess : ℱ.value.(SS_init_guess)))
 
-    # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
+    # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.timings.exo_present,𝓂.constants.timings.var))...,𝓂.calibration_equations_parameters...]))))
 
 
     # fix parameter bounds
@@ -5251,10 +5251,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # return ComponentVector([$(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.timings.exo_present,𝓂.constants.timings.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                     # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
                                 end
@@ -5270,11 +5270,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             #     scale  = (scale + solved_scale) / 2
                             #     println("scale $scale")
                             # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                             end
                     #     end
                     end
-                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
+                    return zeros($(length(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
 
 
@@ -5527,12 +5527,12 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # other_vars = []
         other_vars_input = []
         # other_vars_inverse = []
-        other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+        other_vrs = intersect( setdiff( union(𝓂.constants.timings.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                             sort(𝓂.solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
         for var in other_vrs
-            # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+            # var_idx = findfirst(x -> x == var, union(𝓂.constants.timings.var,𝓂.calibration_equations_parameters))
             # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
             push!(other_vars_input,:($(var)))
             iii += 1
@@ -5807,7 +5807,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.constants.timings.var, 𝓂.parameters)))
     end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
@@ -5816,7 +5816,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past,𝓂.exo_future)
+    for dex in union(𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -5933,10 +5933,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # return ComponentVector([$(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.timings.exo_present,𝓂.constants.timings.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                     # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
                                 end
@@ -5952,11 +5952,11 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             #     scale  = (scale + solved_scale) / 2
                             #     println("scale $scale")
                             # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                             end
                     #     end
                     end
-                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
+                    return zeros($(length(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -6490,11 +6490,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # end # timeit_debug
 
-    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    # all_variables = sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present))
 
-    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables[indexin(𝓂.constants.timings.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     
-    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.constants.timings.exo_present,𝓂.constants.timings.var))...,𝓂.calibration_equations_parameters...]
     
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
@@ -6847,11 +6847,11 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         # state, converged = third_order_stochastic_steady_state_iterative_solution_forward([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
     end
 
-    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    # all_variables = sort(union(𝓂.constants.timings.var,𝓂.constants.timings.aux,𝓂.constants.timings.exo_present))
 
-    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables[indexin(𝓂.constants.timings.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.timings.aux)
     
-    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.constants.timings.exo_present,𝓂.constants.timings.var))...,𝓂.calibration_equations_parameters...]
     
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
@@ -8379,7 +8379,7 @@ function write_auxiliary_indices!(𝓂::ℳ)
     dyn_exo         = Symbol.(string.(sort(collect(reduce(union,dyn_exo_list)))))
     dyn_ss          = Symbol.(string.(sort(collect(reduce(union,dyn_ss_list)))))
 
-    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.constants.timings.var,𝓂.constants.timings.exo_past,𝓂.constants.timings.exo_future)))), 𝓂.calibration_equations_parameters)
 
     dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
@@ -8605,152 +8605,152 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 end
 
 
-function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
-    dyn_equations = 𝓂.dyn_equations
+# function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
+#     dyn_equations = 𝓂.dyn_equations
 
-    vars_to_exclude = setdiff(𝓂.constants.timings.present_only, observables)
+#     vars_to_exclude = setdiff(𝓂.constants.timings.present_only, observables)
 
-    # Mapping variables to their equation index
-    variable_to_equation = Dict{Symbol, Vector{Int}}()
-    for var in vars_to_exclude
-        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
-        # for var in vars_set
-            if var in vars_set
-                if haskey(variable_to_equation, var)
-                    push!(variable_to_equation[var],eq_idx)
-                else
-                    variable_to_equation[var] = [eq_idx]
-                end
-            end
-        end
-    end
+#     # Mapping variables to their equation index
+#     variable_to_equation = Dict{Symbol, Vector{Int}}()
+#     for var in vars_to_exclude
+#         for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+#         # for var in vars_set
+#             if var in vars_set
+#                 if haskey(variable_to_equation, var)
+#                     push!(variable_to_equation[var],eq_idx)
+#                 else
+#                     variable_to_equation[var] = [eq_idx]
+#                 end
+#             end
+#         end
+#     end
 
-    # cols_to_exclude = indexin(𝓂.constants.timings.var, setdiff(𝓂.constants.timings.present_only, observables))
-    cols_to_exclude = indexin(setdiff(𝓂.constants.timings.present_only, observables), 𝓂.constants.timings.var)
+#     # cols_to_exclude = indexin(𝓂.constants.timings.var, setdiff(𝓂.constants.timings.present_only, observables))
+#     cols_to_exclude = indexin(setdiff(𝓂.constants.timings.present_only, observables), 𝓂.constants.timings.var)
 
-    present_idx = 𝓂.constants.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.constants.timings.nVars), cols_to_exclude))
+#     present_idx = 𝓂.constants.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.constants.timings.nVars), cols_to_exclude))
 
-    dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
-    dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
-    dyn_var_past_list    = deepcopy(𝓂.dyn_var_past_list)
-    dyn_exo_list         = deepcopy(𝓂.dyn_exo_list)
-    dyn_ss_list          = deepcopy(𝓂.dyn_ss_list)
+#     dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
+#     dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
+#     dyn_var_past_list    = deepcopy(𝓂.dyn_var_past_list)
+#     dyn_exo_list         = deepcopy(𝓂.dyn_exo_list)
+#     dyn_ss_list          = deepcopy(𝓂.dyn_ss_list)
 
-    rows_to_exclude = Int[]
+#     rows_to_exclude = Int[]
 
-    for vidx in values(variable_to_equation)
-        for v in vidx
-            if v ∉ rows_to_exclude
-                push!(rows_to_exclude, v)
+#     for vidx in values(variable_to_equation)
+#         for v in vidx
+#             if v ∉ rows_to_exclude
+#                 push!(rows_to_exclude, v)
 
-                for vv in vidx
-                    dyn_var_future_list[vv] = union(dyn_var_future_list[vv], dyn_var_future_list[v])
-                    dyn_var_present_list[vv] = union(dyn_var_present_list[vv], dyn_var_present_list[v])
-                    dyn_var_past_list[vv] = union(dyn_var_past_list[vv], dyn_var_past_list[v])
-                    dyn_exo_list[vv] = union(dyn_exo_list[vv], dyn_exo_list[v])
-                    dyn_ss_list[vv] = union(dyn_ss_list[vv], dyn_ss_list[v])
-                end
+#                 for vv in vidx
+#                     dyn_var_future_list[vv] = union(dyn_var_future_list[vv], dyn_var_future_list[v])
+#                     dyn_var_present_list[vv] = union(dyn_var_present_list[vv], dyn_var_present_list[v])
+#                     dyn_var_past_list[vv] = union(dyn_var_past_list[vv], dyn_var_past_list[v])
+#                     dyn_exo_list[vv] = union(dyn_exo_list[vv], dyn_exo_list[v])
+#                     dyn_ss_list[vv] = union(dyn_ss_list[vv], dyn_ss_list[v])
+#                 end
 
-                break
-            end
-        end
-    end
+#                 break
+#             end
+#         end
+#     end
 
-    rows_to_include = setdiff(1:𝓂.constants.timings.nVars, rows_to_exclude)
+#     rows_to_include = setdiff(1:𝓂.constants.timings.nVars, rows_to_exclude)
 
-    all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
-    parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
+#     all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
+#     parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
     
-    dyn_var_future  =  sort(setdiff(collect(reduce(union,dyn_var_future_list[rows_to_include])), vars_to_exclude))
-    dyn_var_present =  sort(setdiff(collect(reduce(union,dyn_var_present_list[rows_to_include])), vars_to_exclude))
-    dyn_var_past    =  sort(setdiff(collect(reduce(union,dyn_var_past_list[rows_to_include])), vars_to_exclude))
-    dyn_var_ss      =  sort(setdiff(collect(reduce(union,dyn_ss_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_future  =  sort(setdiff(collect(reduce(union,dyn_var_future_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_present =  sort(setdiff(collect(reduce(union,dyn_var_present_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_past    =  sort(setdiff(collect(reduce(union,dyn_var_past_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_ss      =  sort(setdiff(collect(reduce(union,dyn_ss_list[rows_to_include])), vars_to_exclude))
 
-    all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
+#     all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
 
-    @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
+#     @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
 
-    all_vars = union(all_dyn_vars, dyn_var_ss)
+#     all_vars = union(all_dyn_vars, dyn_var_ss)
 
-    present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
-    future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
-    past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
-    mixed                     = sort(setdiff(dyn_var_present, union(present_only, future_not_past, past_not_future)))
-    future_not_past_and_mixed = sort(union(future_not_past,mixed))
-    past_not_future_and_mixed = sort(union(past_not_future,mixed))
-    present_but_not_only      = sort(setdiff(dyn_var_present,present_only))
-    mixed_in_past             = sort(intersect(dyn_var_past, mixed))
-    not_mixed_in_past         = sort(setdiff(dyn_var_past,mixed_in_past))
-    mixed_in_future           = sort(intersect(dyn_var_future, mixed))
-    exo                       = sort(collect(reduce(union,dyn_exo_list)))
-    var                       = sort(dyn_var_present)
-    aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
-    exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
-    exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
-    exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
+#     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
+#     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
+#     past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
+#     mixed                     = sort(setdiff(dyn_var_present, union(present_only, future_not_past, past_not_future)))
+#     future_not_past_and_mixed = sort(union(future_not_past,mixed))
+#     past_not_future_and_mixed = sort(union(past_not_future,mixed))
+#     present_but_not_only      = sort(setdiff(dyn_var_present,present_only))
+#     mixed_in_past             = sort(intersect(dyn_var_past, mixed))
+#     not_mixed_in_past         = sort(setdiff(dyn_var_past,mixed_in_past))
+#     mixed_in_future           = sort(intersect(dyn_var_future, mixed))
+#     exo                       = sort(collect(reduce(union,dyn_exo_list)))
+#     var                       = sort(dyn_var_present)
+#     aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
+#     aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
+#     exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
+#     exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
+#     exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
 
-    nPresent_only              = length(present_only)
-    nMixed                     = length(mixed)
-    nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
-    nPast_not_future_and_mixed = length(past_not_future_and_mixed)
-    nPresent_but_not_only      = length(present_but_not_only)
-    nVars                      = length(all_vars)
-    nExo                       = length(collect(exo))
+#     nPresent_only              = length(present_only)
+#     nMixed                     = length(mixed)
+#     nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
+#     nPast_not_future_and_mixed = length(past_not_future_and_mixed)
+#     nPresent_but_not_only      = length(present_but_not_only)
+#     nVars                      = length(all_vars)
+#     nExo                       = length(collect(exo))
 
-    present_only_idx              = indexin(present_only,var)
-    present_but_not_only_idx      = indexin(present_but_not_only,var)
-    future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
-    past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
-    mixed_in_future_idx           = indexin(mixed_in_future,dyn_var_future)
-    mixed_in_past_idx             = indexin(mixed_in_past,dyn_var_past)
-    not_mixed_in_past_idx         = indexin(not_mixed_in_past,dyn_var_past)
-    past_not_future_idx           = indexin(past_not_future,var)
+#     present_only_idx              = indexin(present_only,var)
+#     present_but_not_only_idx      = indexin(present_but_not_only,var)
+#     future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
+#     past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
+#     mixed_in_future_idx           = indexin(mixed_in_future,dyn_var_future)
+#     mixed_in_past_idx             = indexin(mixed_in_past,dyn_var_past)
+#     not_mixed_in_past_idx         = indexin(not_mixed_in_past,dyn_var_past)
+#     past_not_future_idx           = indexin(past_not_future,var)
 
-    reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
-    dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
+#     reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
+#     dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
 
-    @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
+#     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
-    T = timings(present_only,
-                future_not_past,
-                past_not_future,
-                mixed,
-                future_not_past_and_mixed,
-                past_not_future_and_mixed,
-                present_but_not_only,
-                mixed_in_past,
-                not_mixed_in_past,
-                mixed_in_future,
-                exo,
-                var,
-                aux,
-                exo_present,
+#     T = timings(present_only,
+#                 future_not_past,
+#                 past_not_future,
+#                 mixed,
+#                 future_not_past_and_mixed,
+#                 past_not_future_and_mixed,
+#                 present_but_not_only,
+#                 mixed_in_past,
+#                 not_mixed_in_past,
+#                 mixed_in_future,
+#                 exo,
+#                 var,
+#                 aux,
+#                 exo_present,
 
-                nPresent_only,
-                nMixed,
-                nFuture_not_past_and_mixed,
-                nPast_not_future_and_mixed,
-                nPresent_but_not_only,
-                nVars,
-                nExo,
+#                 nPresent_only,
+#                 nMixed,
+#                 nFuture_not_past_and_mixed,
+#                 nPast_not_future_and_mixed,
+#                 nPresent_but_not_only,
+#                 nVars,
+#                 nExo,
 
-                present_only_idx,
-                present_but_not_only_idx,
-                future_not_past_and_mixed_idx,
-                not_mixed_in_past_idx,
-                past_not_future_and_mixed_idx,
-                mixed_in_past_idx,
-                mixed_in_future_idx,
-                past_not_future_idx,
+#                 present_only_idx,
+#                 present_but_not_only_idx,
+#                 future_not_past_and_mixed_idx,
+#                 not_mixed_in_past_idx,
+#                 past_not_future_and_mixed_idx,
+#                 mixed_in_past_idx,
+#                 mixed_in_future_idx,
+#                 past_not_future_idx,
 
-                reorder,
-                dynamic_order)
+#                 reorder,
+#                 dynamic_order)
 
-    push!(𝓂.estimation_helper, observables => T)
+#     push!(𝓂.estimation_helper, observables => T)
 
-    return nothing
-end
+#     return nothing
+# end
 
 
 

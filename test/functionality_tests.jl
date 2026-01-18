@@ -38,7 +38,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     string.(Tuple(m.parameters[1:3])), 
                     string.(reshape(m.parameters[1:3],3,1))]
 
-    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.constants.timings.var), reshape(m.constants.timings.var,1,length(m.constants.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.constants.timings.var)), reshape(string.(m.constants.timings.var),1,length(m.constants.timings.var))]
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.constants.timings.var[1], m.constants.timings.var[1:2], Tuple(m.constants.timings.var), reshape(m.constants.timings.var,1,length(m.constants.timings.var)), string(m.constants.timings.var[1]), string.(m.constants.timings.var[1:2]), Tuple(string.(m.constants.timings.var)), reshape(string.(m.constants.timings.var),1,length(m.constants.timings.var))]
 
     rename_dicts = [
         Dict((m.constants.timings.var) .=> (replace.(String.(m.constants.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
@@ -75,7 +75,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             simulation = simulation[:,1:last_stable_col,:]
 
-            data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
+            data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.constants.timings.var[var_idxs]) : m2.constants.timings.var[var_idxs],:,:simulate)
             data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
 
 
@@ -102,7 +102,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             simulation = simulation[:,1:last_stable_col,:]
 
-            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.timings.var[var_idxs]) : m.constants.timings.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
             
@@ -1444,7 +1444,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         if length(m.exo) > 3
             n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
-        elseif length(m.var) == 17
+        elseif length(m.constants.timings.var) == 17
             var_idxs = [5]
         else
             var_idxs = [1]
@@ -1463,7 +1463,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         simulation = simulation[:,1:last_stable_col,:]
 
-        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.timings.var[var_idxs]) : m.constants.timings.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
 
@@ -2675,7 +2675,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # Test with 2 groups
             stats_grouped = get_statistics(m, old_params, 
                                           algorithm = algorithm,
-                                          covariance = [m.var[2:3], m.var[4:5]])
+                                          covariance = [m.constants.timings.var[2:3], m.constants.timings.var[4:5]])
             
             @test haskey(stats_grouped, :covariance)
             @test stats_grouped[:covariance] isa Matrix
@@ -2684,11 +2684,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # Compare with non-grouped version for validation
             stats_non_grouped_1 = get_statistics(m, old_params,
                                                 algorithm = algorithm,
-                                                covariance = m.var[2:3])
+                                                covariance = m.constants.timings.var[2:3])
             
             stats_non_grouped_2 = get_statistics(m, old_params,
                                                 algorithm = algorithm,
-                                                covariance = m.var[4:5])
+                                                covariance = m.constants.timings.var[4:5])
             
             # Check that within-group covariances match
             @test isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-10)
@@ -2701,7 +2701,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # Test with different group sizes
             stats_varied = get_statistics(m, old_params,
                                          algorithm = algorithm,
-                                         covariance = [[m.var[2]], m.var[3:5]])
+                                         covariance = [[m.constants.timings.var[2]], m.constants.timings.var[3:5]])
             
             @test stats_varied[:covariance] isa Matrix
             @test size(stats_varied[:covariance]) == (4, 4)
