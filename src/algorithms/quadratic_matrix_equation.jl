@@ -17,7 +17,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where R <: Real
-    T = constants.timings
+    T = constants.model
     
 
     if length(initial_guess) > 0
@@ -88,7 +88,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    T = constants.timings
+    T = constants.model
     # @timeit_debug timer "Prepare indice" begin
    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
@@ -219,7 +219,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    T = constants.timings
+    T = constants.model
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
@@ -519,7 +519,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
-    T = constants.timings
+    T = constants.model
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)

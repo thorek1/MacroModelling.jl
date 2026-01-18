@@ -59,7 +59,7 @@
 # using ForwardDiff
 
 
-struct timings
+struct model
     present_only::Vector{Symbol}
     future_not_past::Vector{Symbol}
     past_not_future::Vector{Symbol}
@@ -435,8 +435,8 @@ struct first_order_index_cache
 end
 
 mutable struct constants#{F <: Real, G <: AbstractFloat}
-    # Timings information (model structure - constant for a given model)
-    timings::timings
+    # Model structure information (constant for a given model after @model macro)
+    model::model
     
     # Cache structures
     auxiliary_indices::auxiliary_indices
@@ -640,5 +640,5 @@ mutable struct ℳ
     solution::solution
     # symbolics::symbolics
 
-    estimation_helper::Dict{Vector{Symbol}, timings}
+    # estimation_helper::Dict{Vector{Symbol}, timings}
 end

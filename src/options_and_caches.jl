@@ -139,8 +139,8 @@ function Auxiliary_indices_cache()
     auxiliary_indices(Int[], Int[], Int[], Int[], Int[])
 end
 
-function Constants(timings; T::Type = Float64, S::Type = Float64)
-    constants( timings,
+function Constants(model_struct; T::Type = Float64, S::Type = Float64)
+    constants( model_struct,
             Auxiliary_indices_cache(),
             Second_order_auxiliary_matrices_cache(),
             Third_order_auxiliary_matrices_cache(),
@@ -170,8 +170,8 @@ end
 function ensure_name_display_cache!(𝓂)
     constants = 𝓂.constants
     ndc = constants.name_display_cache
-    # Use timings from constants if available, otherwise from model
-    T = constants.timings
+    # Use model from constants
+    T = constants.model
     
     if isempty(ndc.var_axis)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
@@ -212,7 +212,7 @@ function ensure_name_display_cache!(𝓂)
 end
 
 
-function set_up_name_display_cache(T::timings, calibration_equations_parameters)    
+function set_up_name_display_cache(T::model, calibration_equations_parameters)    
     var_has_curly = any(x -> contains(string(x), "◖"), T.var)
     if var_has_curly
         var_decomposed = decompose_name.(T.var)
@@ -253,7 +253,7 @@ function ensure_computational_constants_cache!(𝓂)
     cc = constants.computational_constants
     if isempty(cc.s_in_s⁺)
         # Use timings from constants if available, otherwise from model
-        T = constants.timings
+        T = constants.model
         nᵉ = T.nExo
         nˢ = T.nPast_not_future_and_mixed
 
@@ -310,7 +310,7 @@ function ensure_computational_constants_cache!(constants::constants)
     cc = constants.computational_constants
     if isempty(cc.s_in_s⁺)
         # Use timings from constants
-        T = constants.timings
+        T = constants.model
         nᵉ = T.nExo
         nˢ = T.nPast_not_future_and_mixed
 
@@ -494,7 +494,7 @@ function ensure_first_order_index_cache!(𝓂)
     if !constants.first_order_index_cache.initialized
         cc = ensure_computational_constants_cache!(𝓂)
         # Use timings from constants if available, otherwise from model
-        T = constants.timings
+        T = constants.model
         constants.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
     end
     return constants.first_order_index_cache
@@ -516,18 +516,18 @@ function ensure_model_structure_cache!(𝓂)
     msc = constants.model_structure_cache
     if isempty(msc.SS_and_pars_names)
         SS_and_pars_names = vcat(
-            Symbol.(replace.(string.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future))),
+            Symbol.(replace.(string.(sort(union(𝓂.constants.model.var, 𝓂.constants.model.exo_past, 𝓂.constants.model.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
             𝓂.calibration_equations_parameters,
         )
 
-        all_variables = Symbol.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.aux, 𝓂.constants.timings.exo_present)))
+        all_variables = Symbol.(sort(union(𝓂.constants.model.var, 𝓂.constants.model.aux, 𝓂.constants.model.exo_present)))
 
-        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.timings.exo_present, 𝓂.constants.timings.var)), 𝓂.calibration_equations_parameters))
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.model.exo_present, 𝓂.constants.model.var)), 𝓂.calibration_equations_parameters))
 
-        aux_indices = Int.(indexin(𝓂.constants.timings.aux, all_variables))
+        aux_indices = Int.(indexin(𝓂.constants.model.aux, all_variables))
         processed_all_variables = copy(all_variables)
-        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.timings.aux)
+        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.model.aux)
 
         full_NSSS = copy(processed_all_variables)
         if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -540,15 +540,15 @@ function ensure_model_structure_cache!(𝓂)
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 
         vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
-        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.timings.var), 𝓂.calibration_equations_parameters)
+        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.model.var), 𝓂.calibration_equations_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
 
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future)))), 𝓂.calibration_equations_parameters)
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.timings.var, 𝓂.constants.timings.exo_past, 𝓂.constants.timings.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.model.var, 𝓂.constants.model.exo_past, 𝓂.constants.model.exo_future)))), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.model.var, 𝓂.constants.model.exo_past, 𝓂.constants.model.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
         SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
 
-        vars_non_obc = 𝓂.constants.timings.var[.!contains.(string.(𝓂.constants.timings.var), "ᵒᵇᶜ")]
-        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.constants.timings.aux, 𝓂.constants.timings.exo_present)), all_variables))
+        vars_non_obc = 𝓂.constants.model.var[.!contains.(string.(𝓂.constants.model.var), "ᵒᵇᶜ")]
+        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.constants.model.aux, 𝓂.constants.model.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
         constants.model_structure_cache = model_structure_cache(
@@ -605,7 +605,7 @@ function ensure_moments_cache!(𝓂)
     mc = constants.moments_cache
     cc = ensure_computational_constants_cache!(𝓂)
     # Use timings from constants if available, otherwise from model
-    T = constants.timings
+    T = constants.model
     
     if isempty(mc.kron_states)
         mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
@@ -634,7 +634,7 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
     mc = constants.moments_cache
     if !haskey(mc.substate_cache, nˢ)
         # Use timings from constants if available, otherwise from model
-        T = constants.timings
+        T = constants.model
         nᵉ = T.nExo
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
         e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))
