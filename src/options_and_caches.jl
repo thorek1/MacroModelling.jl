@@ -144,7 +144,7 @@ function Caches(timings; T::Type = Float64, S::Type = Float64)
             Auxiliary_indices_cache(),
             Second_order_auxiliary_matrices_cache(),
             Third_order_auxiliary_matrices_cache(),
-            set_up_name_display_cache(timings),
+            name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
@@ -212,7 +212,7 @@ function ensure_name_display_cache!(𝓂)
 end
 
 
-function set_up_name_display_cache(T::timings)    
+function set_up_name_display_cache(T::timings, calibration_equations_parameters)    
     var_has_curly = any(x -> contains(string(x), "◖"), T.var)
     if var_has_curly
         var_decomposed = decompose_name.(T.var)
@@ -222,9 +222,9 @@ function set_up_name_display_cache(T::timings)
     end
 
     if var_has_curly
-        calib_axis = replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")
+        calib_axis = replace.(string.(calibration_equations_parameters), "◖" => "{", "◗" => "}")
     else
-        calib_axis = 𝓂.calibration_equations_parameters
+        calib_axis = calibration_equations_parameters
     end
 
     exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
