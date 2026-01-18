@@ -55,8 +55,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         @testset "plot_model_estimates" begin
             sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
             
-            if length(m2.exo) > 3
-                n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+            if length(m2.constants.post_model_macro.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
                 var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
             else
                 var_idxs = [1]
@@ -82,8 +82,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             sol = get_solution(m)
             
-            if length(m.constants.post_model_macro) > 3
-                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro)+1:end,:]) .> eps(),dims = 1))
+            if length(m.constants.post_model_macro.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
                 var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
             else
                 var_idxs = [1]
@@ -282,7 +282,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                   
             i = 1
 
-            for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2])]
+            for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2])]
                 if i % 4 == 0
                     plot_model_estimates(m, data_in_levels, 
                                             algorithm = algorithm, 
@@ -298,7 +298,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                         data_in_levels = false)
             end
 
-            for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2])]
+            for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2])]
                 plot_model_estimates(m, data, 
                                         shocks = shocks,
                                         algorithm = algorithm, 
@@ -825,7 +825,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
@@ -835,7 +835,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             
             i = 1
 
-            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 if i % 4 == 0
                     plot_irf(m, algorithm = algorithm)
                 end
@@ -973,7 +973,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             shocknames = axiskeys(new_sub_irfs_all,3)
             sol = get_solution(m2)
             # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m2.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
 
 
@@ -1027,7 +1027,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             shocknames = axiskeys(new_sub_irfs_all,3)
             sol = get_solution(m)
             # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro)+1:end,:]) .> eps(),dims = 1))
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
 
 
@@ -1441,8 +1441,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     @testset "filter, smooth, loglikelihood" begin
         sol = get_solution(m)
         
-        if length(m.constants.post_model_macro) > 3
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro)+1:end,:]) .> eps(),dims = 1))
+        if length(m.constants.post_model_macro.exo) > 3
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
         elseif length(m.constants.post_model_macro.var) == 17
             var_idxs = [5]
@@ -1787,7 +1787,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         shocknames = axiskeys(new_sub_irfs_all,3)
         sol = get_solution(m)
         # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro)+1:end,:]) .> eps(),dims = 1))
+        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
         var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
 
 
@@ -2302,7 +2302,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         end
                     end
                     for variables in vars
-                        for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                        for shocks in [:all, :all_excluding_obc, :none, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                             clear_solution_caches!(m, algorithm)
                                         
                             get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
@@ -2927,7 +2927,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             initial_state = initial_state)
                 end
 
-                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro,1,length(m.constants.post_model_macro)), Tuple(m.constants.post_model_macro), Tuple(string.(m.constants.post_model_macro)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro),1,length(m.constants.post_model_macro)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.post_model_macro.exo[1], m.constants.post_model_macro.exo[1:2], reshape(m.constants.post_model_macro.exo,1,length(m.constants.post_model_macro.exo)), Tuple(m.constants.post_model_macro.exo), Tuple(string.(m.constants.post_model_macro.exo)), string(m.constants.post_model_macro.exo[1]), reshape(string.(m.constants.post_model_macro.exo),1,length(m.constants.post_model_macro.exo)), string.(m.constants.post_model_macro.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                     clear_solution_caches!(m, algorithm)
                                 
                     get_irf(m, algorithm = algorithm, 
