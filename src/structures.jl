@@ -59,7 +59,7 @@
 # using ForwardDiff
 
 
-struct model
+struct post_model_macro
     present_only::Vector{Symbol}
     future_not_past::Vector{Symbol}
     past_not_future::Vector{Symbol}
@@ -436,7 +436,7 @@ end
 
 mutable struct constants#{F <: Real, G <: AbstractFloat}
     # Model structure information (constant for a given model after @model macro)
-    model::model
+    post_model_macro::post_model_macro
     
     # Cache structures
     auxiliary_indices::auxiliary_indices

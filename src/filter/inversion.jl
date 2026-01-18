@@ -49,7 +49,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
@@ -175,7 +175,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter - forward" begin    
             
     # first order
@@ -348,7 +348,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
              
@@ -585,7 +585,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
                     
@@ -1057,7 +1057,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1286,7 +1286,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
     # @timeit_debug timer "Preallocation" begin
@@ -1728,7 +1728,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter" begin
 
     precision_factor = 1.0
@@ -2153,7 +2153,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
@@ -2706,7 +2706,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -3031,7 +3031,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -3486,7 +3486,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    T = constants.model
+    T = constants.post_model_macro
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3623,7 +3623,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    T = constants.model
+    T = constants.post_model_macro
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3839,7 +3839,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    T = constants.model
+    T = constants.post_model_macro
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3858,7 +3858,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.constants.model.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
      
     precision_factor = 1.0
 
@@ -4052,12 +4052,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.constants.model.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.constants.model.nExo
-        sck = zeros(𝓂.constants.model.nExo)
+    for i in 1:𝓂.constants.post_model_macro.nExo
+        sck = zeros(𝓂.constants.post_model_macro.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4076,8 +4076,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.constants.model.nExo
-            sck = zeros(𝓂.constants.model.nExo)
+        for ii in 1:𝓂.constants.post_model_macro.nExo
+            sck = zeros(𝓂.constants.post_model_macro.nExo)
             sck[ii] = shocks[ii, i]
             
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4109,7 +4109,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    T = constants.model
+    T = constants.post_model_macro
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4421,7 +4421,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    T = constants.model
+    T = constants.post_model_macro
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4440,7 +4440,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.constants.model.nVars), collect(sss) - all_SS, zeros(𝓂.constants.model.nVars)]
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
 
     precision_factor = 1.0
 
@@ -4758,12 +4758,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.constants.model.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.constants.model.nExo
-        sck = zeros(𝓂.constants.model.nExo)
+    for i in 1:𝓂.constants.post_model_macro.nExo
+        sck = zeros(𝓂.constants.post_model_macro.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4791,8 +4791,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.constants.model.nExo
-            sck = zeros(𝓂.constants.model.nExo)
+        for ii in 1:𝓂.constants.post_model_macro.nExo
+            sck = zeros(𝓂.constants.post_model_macro.nExo)
             sck[ii] = shocks[ii, i]
 
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]

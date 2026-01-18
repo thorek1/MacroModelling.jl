@@ -20,7 +20,7 @@ function timings_for_bench(𝓂::ℳ)
     if hasproperty(𝓂, :timings)
         out = 𝓂.timings
     else
-        out = 𝓂.constants.model
+        out = 𝓂.constants.post_model_macro
     end
     return out
 end

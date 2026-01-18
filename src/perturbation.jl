@@ -7,7 +7,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    T = constants.model
+    T = constants.post_model_macro
     idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
@@ -125,7 +125,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    T = constants.model
+    T = constants.post_model_macro
     idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
@@ -279,7 +279,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
-    T = constants.model
+    T = constants.post_model_macro
     idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
@@ -381,7 +381,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order_auxiliary_matrices
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -510,7 +510,7 @@ function rrule(::typeof(calculate_second_order_solution),
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order_auxiliary_matrices
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -783,7 +783,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     ℂ = workspaces.third_order
     M₂ = constants.second_order_auxiliary_matrices
     M₃ = constants.third_order_auxiliary_matrices
-    T = constants.model
+    T = constants.post_model_macro
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
 
@@ -1030,7 +1030,7 @@ function rrule(::typeof(calculate_third_order_solution),
     ℂ = workspaces.third_order
     M₂ = constants.second_order_auxiliary_matrices
     M₃ = constants.third_order_auxiliary_matrices
-    T = constants.model
+    T = constants.post_model_macro
 
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal

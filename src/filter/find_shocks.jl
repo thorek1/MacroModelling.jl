@@ -34,7 +34,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # directly using perturbation matrices.
     pruning = initial_state isa Vector{Vector{Float64}}
 
-    T = constants.model
+    T = constants.post_model_macro
     cf_cache = constants.conditional_forecast_index_cache
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
