@@ -6776,12 +6776,12 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.constants.third_order_auxiliary_matrices.𝐔∇₃
             
-	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.constants,
-                                                    𝓂.workspaces;
-	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
-	                                                # timer = timer, 
-	                                                opts = opts)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+                                                𝓂.constants,
+                                                𝓂.workspaces;
+                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                # timer = timer, 
+                                                opts = opts)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -6798,7 +6798,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     Ŝ = 𝓂.workspaces.third_order.Ŝ
 
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
     
     # 𝐒₃ *= 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
     # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.workspaces.third_order)
