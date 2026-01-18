@@ -6383,9 +6383,9 @@ end
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}} where M 
+                                                        pruning::Bool = false) where M 
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+                                                        # tol::AbstractFloat = 1e-12)
     # @timeit_debug timer "Calculate NSSS" begin
     # Initialize caches at entry point
     caches = initialize_caches!(𝓂)
@@ -6421,7 +6421,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     # @timeit_debug timer "Calculate Hessian" begin
@@ -6439,17 +6439,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
-
-    if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
-    end
+    𝐒₂ = sparse(𝐒₂ * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
 
     # end # timeit_debug
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     # @timeit_debug timer "Calculate SSS" begin
@@ -6464,7 +6460,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.caches.timings.past_not_future_and_mixed_idx])
@@ -6485,7 +6481,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         
         if !converged
             if opts.verbose println("SSS not found") end
-            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
         end
 
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
@@ -6503,7 +6499,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    # Ensure state is a Vector{M} for type stability
+    state_vec = Vector{M}(state)
+    
+    return all_SS + state_vec, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
@@ -6729,9 +6728,9 @@ end
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
+                                                        pruning::Bool = false) where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+                                                        # tol::AbstractFloat = 1e-12)
     # Initialize caches at entry point
     caches = initialize_caches!(𝓂)
     T = caches.timings
@@ -6740,7 +6739,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("NSSS not found") end
-        return zeros(T.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6756,7 +6755,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
@@ -6768,16 +6767,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
+    𝐒₂ = sparse(𝐒₂ * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
-    end
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
             
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -6789,7 +6785,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
@@ -6819,7 +6815,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.caches.timings.past_not_future_and_mixed_idx])
@@ -6843,7 +6839,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         
         if !converged
             if opts.verbose println("SSS not found") end
-            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
         end
 
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1),  ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
@@ -6860,7 +6856,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    # Ensure state is a Vector{M} for type stability
+    state_vec = Vector{M}(state)
+
+    return all_SS + state_vec, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
