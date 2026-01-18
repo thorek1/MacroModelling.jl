@@ -38,12 +38,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     string.(Tuple(m.parameters[1:3])), 
                     string.(reshape(m.parameters[1:3],3,1))]
 
-    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.caches.timings.var), reshape(m.caches.timings.var,1,length(m.caches.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.caches.timings.var)), reshape(string.(m.caches.timings.var),1,length(m.caches.timings.var))]
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.constants.timings.var), reshape(m.constants.timings.var,1,length(m.constants.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.constants.timings.var)), reshape(string.(m.constants.timings.var),1,length(m.constants.timings.var))]
 
     rename_dicts = [
-        Dict((m.caches.timings.var) .=> (replace.(String.(m.caches.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
-        Dict((m.caches.timings.var) .=> Symbol.(replace.(String.(m.caches.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
-        Dict(String.(m.caches.timings.var) .=> (replace.(String.(m.caches.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.constants.timings.var) .=> (replace.(String.(m.constants.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.constants.timings.var) .=> Symbol.(replace.(String.(m.constants.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict(String.(m.constants.timings.var) .=> (replace.(String.(m.constants.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
         Dict{Symbol,String}()
     ]
 
@@ -282,7 +282,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                   
             i = 1
 
-            for shocks in [:all, :all_excluding_obc, :none, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2])]
+            for shocks in [:all, :all_excluding_obc, :none, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2])]
                 if i % 4 == 0
                     plot_model_estimates(m, data_in_levels, 
                                             algorithm = algorithm, 
@@ -298,7 +298,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                         data_in_levels = false)
             end
 
-            for shocks in [:all, :all_excluding_obc, :none, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2])]
+            for shocks in [:all, :all_excluding_obc, :none, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2])]
                 plot_model_estimates(m, data, 
                                         shocks = shocks,
                                         algorithm = algorithm, 
@@ -455,8 +455,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         end
 
         @testset "plot_solution" begin
-            states  = vcat(get_state_variables(m), m.caches.timings.past_not_future_and_mixed)
-            states2 = vcat(get_state_variables(m2), m2.caches.timings.past_not_future_and_mixed)
+            states  = vcat(get_state_variables(m), m.constants.timings.past_not_future_and_mixed)
+            states2 = vcat(get_state_variables(m2), m2.constants.timings.past_not_future_and_mixed)
 
             if algorithm == :first_order
                 algos = [:first_order]
@@ -716,11 +716,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            shock_mat = randn(m.caches.timings.nExo,3)
+            shock_mat = randn(m.constants.timings.nExo,3)
 
-            shock_mat2 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = m.caches.timings.exo, Periods = 1:10)
+            shock_mat2 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = m.constants.timings.exo, Periods = 1:10)
 
-            shock_mat3 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = string.(m.caches.timings.exo), Periods = 1:10)
+            shock_mat3 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = string.(m.constants.timings.exo), Periods = 1:10)
 
             for parameters in params
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
@@ -825,7 +825,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
@@ -835,7 +835,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             
             i = 1
 
-            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 if i % 4 == 0
                     plot_irf(m, algorithm = algorithm)
                 end
@@ -2256,11 +2256,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     end
                 end
 
-                shock_mat = randn(m.caches.timings.nExo,3)
+                shock_mat = randn(m.constants.timings.nExo,3)
 
-                shock_mat2 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = m.caches.timings.exo, Periods = 1:10)
+                shock_mat2 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = m.constants.timings.exo, Periods = 1:10)
 
-                shock_mat3 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = string.(m.caches.timings.exo), Periods = 1:10)
+                shock_mat3 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = string.(m.constants.timings.exo), Periods = 1:10)
 
                 for initial_state in init_states
                     clear_solution_caches!(m, algorithm)
@@ -2302,7 +2302,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         end
                     end
                     for variables in vars
-                        for shocks in [:all, :all_excluding_obc, :none, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                        for shocks in [:all, :all_excluding_obc, :none, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                             clear_solution_caches!(m, algorithm)
                                         
                             get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
@@ -2880,11 +2880,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
         end
 
-        shock_mat = randn(m.caches.timings.nExo,3)
+        shock_mat = randn(m.constants.timings.nExo,3)
 
-        shock_mat2 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = m.caches.timings.exo, Periods = 1:10)
+        shock_mat2 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = m.constants.timings.exo, Periods = 1:10)
 
-        shock_mat3 = KeyedArray(randn(m.caches.timings.nExo,10),Shocks = string.(m.caches.timings.exo), Periods = 1:10)
+        shock_mat3 = KeyedArray(randn(m.constants.timings.nExo,10),Shocks = string.(m.constants.timings.exo), Periods = 1:10)
 
         for parameters in params
             for initial_state in init_states
@@ -2927,7 +2927,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             initial_state = initial_state)
                 end
 
-                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.caches.timings.exo[1], m.caches.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.caches.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.caches.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.constants.timings.exo[1], m.constants.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.constants.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.constants.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                     clear_solution_caches!(m, algorithm)
                                 
                     get_irf(m, algorithm = algorithm, 

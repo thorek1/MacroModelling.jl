@@ -6,7 +6,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                 observables, 
                                 𝐒, 
                                 data_in_deviations, 
-                                caches_obj::caches, 
+                                constants_obj::constants, 
                                 presample_periods, 
                                 initial_covariance, 
                                 state, 
@@ -18,7 +18,7 @@ function calculate_loglikelihood(::Val{:kalman},
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
-                                                caches_obj, 
+                                                constants_obj, 
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
@@ -29,46 +29,46 @@ end
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                caches::caches; 
+                                                constants::constants; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = caches.timings
+    T = constants.timings
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, caches, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                caches::caches; 
+                                                constants::constants; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = caches.timings
+    T = constants.timings
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, caches, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                caches::caches; 
+                                                constants::constants; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = caches.timings
+    T = constants.timings
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -597,15 +597,15 @@ function filter_and_smooth(𝓂::ℳ,
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-    @assert length(observables) <= 𝓂.caches.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert length(observables) <= 𝓂.constants.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     sort!(observables)
 
     solve!(𝓂, opts = opts)
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    cc = caches.computational_constants
-    T = caches.timings
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    cc = constants.computational_constants
+    T = constants.timings
 
     parameters = 𝓂.parameter_values
 
@@ -616,12 +616,12 @@ function filter_and_smooth(𝓂::ℳ,
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            caches; 
+                                                            constants; 
                                                             opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    # Direct caches access
+    # Direct constants access
     A = @views sol[:,1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]

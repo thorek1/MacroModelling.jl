@@ -256,21 +256,21 @@ mutable struct solution
     # valid_steady_state_solution
 end
 
-mutable struct krylov_caches{G <: AbstractFloat}
+mutable struct krylov_workspace{G <: AbstractFloat}
     gmres::GmresWorkspace{G,G,Vector{G}}
     dqgmres::DqgmresWorkspace{G,G,Vector{G}}
     bicgstab::BicgstabWorkspace{G,G,Vector{G}}
 end
 
-mutable struct sylvester_caches{G <: AbstractFloat}
+mutable struct sylvester_workspace{G <: AbstractFloat}
     tmp::Matrix{G}
     𝐗::Matrix{G}
     𝐂::Matrix{G}
-    krylov_caches::krylov_caches{G}
+    krylov_workspace::krylov_workspace{G}
 end
 
 
-mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
+mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
     tmpkron11::SparseMatrixCSC{F, Int}
@@ -284,12 +284,12 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
-    sylvester_caches::sylvester_caches{G}
+    sylvester_workspace::sylvester_workspace{G}
 end
 
 mutable struct workspaces
-    second_order::higher_order_caches
-    third_order::higher_order_caches
+    second_order::higher_order_workspace
+    third_order::higher_order_workspace
 end
 
 # Cache for model-constant display names
@@ -434,7 +434,7 @@ struct first_order_index_cache
     expand_past::Matrix{Bool}
 end
 
-mutable struct caches#{F <: Real, G <: AbstractFloat}
+mutable struct constants#{F <: Real, G <: AbstractFloat}
     # Timings information (model structure - constant for a given model)
     timings::timings
     
@@ -638,7 +638,7 @@ mutable struct ℳ
     # model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     # model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
-    caches::caches
+    constants::constants
     workspaces::workspaces
 
     obc_violation_equations::Vector{Expr}

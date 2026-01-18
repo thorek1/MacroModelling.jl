@@ -20,7 +20,7 @@ function timings_for_bench(𝓂::ℳ)
     if hasproperty(𝓂, :timings)
         out = 𝓂.timings
     else
-        out = 𝓂.caches.timings
+        out = 𝓂.constants.timings
     end
     return out
 end
@@ -29,7 +29,7 @@ function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts 
     if hasproperty(𝓂, :timings)
         out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
     else
-        out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
+        out = calculate_first_order_solution(∇₁, 𝓂.constants; opts = opts)
     end
     return out
 end

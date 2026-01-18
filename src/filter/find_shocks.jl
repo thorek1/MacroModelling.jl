@@ -24,7 +24,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          𝐒₁::AbstractMatrix{Float64},
                                          𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
-                                         caches::caches;
+                                         constants::constants;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13,
                                          verbose::Bool = false)
@@ -34,8 +34,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # directly using perturbation matrices.
     pruning = initial_state isa Vector{Vector{Float64}}
 
-    T = caches.timings
-    cf_cache = caches.conditional_forecast_index_cache
+    T = constants.timings
+    cf_cache = constants.conditional_forecast_index_cache
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
 

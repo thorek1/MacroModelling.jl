@@ -25,7 +25,7 @@ end
                                     cond_var_idx::Vector{Int},
                                     free_shock_idx::Vector{Int},
                                     state_update::Function,
-                                    S₁, S₂, S₃, caches; verbose::Bool = false)
+                                    S₁, S₂, S₃, constants; verbose::Bool = false)
 
 Find shocks that satisfy conditional forecast constraints using LBFGS optimizer.
 
@@ -40,7 +40,7 @@ Note: This is the Optim-based implementation. It requires the Optim.jl extension
 - `state_update`: State update function for the selected algorithm
 - `S₁`: First-order solution matrix
 - `S₂`, `S₃`: Higher-order perturbation matrices (not used in LBFGS, for compatibility only)
-- `caches`: Model caches (unused for LBFGS)
+- `constants`: Model constants (unused for LBFGS)
 
 # Returns
 - `x`: Vector of optimal shock values
@@ -55,7 +55,7 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
                                         #  pruning::Bool,
-                                         S₁, S₂, S₃, caches; verbose::Bool = false)
+                                         S₁, S₂, S₃, constants; verbose::Bool = false)
                                          
     pruning = typeof(initial_state) <: Vector{Vector{Float64}}
     precision_factor = 1.0

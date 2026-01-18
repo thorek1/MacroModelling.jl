@@ -1,14 +1,14 @@
 @stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{R},
-                                        caches::caches;
+                                        constants::constants;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    T = caches.timings
-    idx_cache = caches.first_order_index_cache
+    T = constants.timings
+    idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
     dynIndex = idx_cache_built.dyn_index
@@ -42,7 +42,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, caches, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -118,15 +118,15 @@ end # dispatch_doctor
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
-                caches::caches;
+                constants::constants;
                 opts::CalculationOptions = merge_calculation_options(),
                 initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    T = caches.timings
-    idx_cache = caches.first_order_index_cache
+    T = constants.timings
+    idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
     dynIndex = idx_cache_built.dyn_index
@@ -160,7 +160,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, caches, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -275,12 +275,12 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
-                                        caches::caches;
+                                        constants::constants;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
-    T = caches.timings
-    idx_cache = caches.first_order_index_cache
+    T = constants.timings
+    idx_cache = constants.first_order_index_cache
     idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
 
     expand_future = idx_cache_built.expand_future
@@ -289,7 +289,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_cache_built.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, caches; opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants; opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -372,16 +372,16 @@ end
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
-                                            caches::caches,
+                                            constants::constants,
                                             workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_caches(T = S)
+        workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
-    M₂ = caches.second_order_auxiliary_matrices
-    T = caches.timings
+    M₂ = constants.second_order_auxiliary_matrices
+    T = constants.timings
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -464,7 +464,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_caches,
+                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
@@ -501,16 +501,16 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
-                    caches::caches,
+                    constants::constants,
                     workspaces::workspaces;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_caches(T = S)
+        workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
-    M₂ = caches.second_order_auxiliary_matrices
-    T = caches.timings
+    M₂ = constants.second_order_auxiliary_matrices
+    T = constants.timings
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -587,7 +587,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_caches,
+                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
@@ -640,7 +640,7 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
-                                                𝕊ℂ = ℂ.sylvester_caches,
+                                                𝕊ℂ = ℂ.sylvester_workspace,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
@@ -773,17 +773,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
-                                            caches::caches,
+                                            constants::constants,
                                             workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_caches(T = S)
+        workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
-    M₂ = caches.second_order_auxiliary_matrices
-    M₃ = caches.third_order_auxiliary_matrices
-    T = caches.timings
+    M₂ = constants.second_order_auxiliary_matrices
+    M₃ = constants.third_order_auxiliary_matrices
+    T = constants.timings
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
 
@@ -979,7 +979,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_caches,
+                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
@@ -1020,17 +1020,17 @@ function rrule(::typeof(calculate_third_order_solution),
                 ∇₃::SparseMatrixCSC{S}, #third order derivatives
                 𝑺₁::AbstractMatrix{S}, #first order solution
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
-                caches::caches,
+                constants::constants,
                 workspaces::workspaces;
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_caches(T = S)
+        workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
-    M₂ = caches.second_order_auxiliary_matrices
-    M₃ = caches.third_order_auxiliary_matrices
-    T = caches.timings
+    M₂ = constants.second_order_auxiliary_matrices
+    M₃ = constants.third_order_auxiliary_matrices
+    T = constants.timings
 
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
@@ -1239,7 +1239,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_caches,
+                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
@@ -1350,7 +1350,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
                                                 sylvester_algorithm = opts.sylvester_algorithm³,
                                                 tol = opts.tol.sylvester_tol,
-                                                𝕊ℂ = ℂ.sylvester_caches,
+                                                𝕊ℂ = ℂ.sylvester_workspace,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 

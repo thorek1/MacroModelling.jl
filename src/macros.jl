@@ -788,7 +788,7 @@ macro model(𝓂,ex...)
     # vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), union(parameters_in_equations, ➕_vars))))
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
 
-    ℂ = Caches(T)
+    ℂ = Constants(T)
 
     𝓦 = Workspaces()
 

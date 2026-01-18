@@ -346,13 +346,13 @@ end
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
-                "\n Total:       ", 𝓂.caches.timings.nVars,
+                "\n Total:       ", 𝓂.constants.timings.nVars,
                 "\n  Auxiliary:  ", length(𝓂.exo_present) + length(𝓂.aux),
-                "\n States:      ", 𝓂.caches.timings.nPast_not_future_and_mixed,
-                "\n  Auxiliary:  ",  length(intersect(𝓂.caches.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:     ", 𝓂.caches.timings.nFuture_not_past_and_mixed, # 𝓂.caches.timings.mixed, 
-                "\n  Auxiliary:  ", length(intersect(𝓂.caches.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
-                "\nShocks:       ", 𝓂.caches.timings.nExo,
+                "\n States:      ", 𝓂.constants.timings.nPast_not_future_and_mixed,
+                "\n  Auxiliary:  ",  length(intersect(𝓂.constants.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n Jumpers:     ", 𝓂.constants.timings.nFuture_not_past_and_mixed, # 𝓂.constants.timings.mixed, 
+                "\n  Auxiliary:  ", length(intersect(𝓂.constants.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
+                "\nShocks:       ", 𝓂.constants.timings.nExo,
                 "\nParameters:   ", length(𝓂.parameters_in_equations),
                 if isempty(𝓂.missing_parameters)
                     ""
@@ -619,14 +619,14 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
     
-    shocks = 𝓂.caches.timings.nExo == 0 ? :none : shocks
+    shocks = 𝓂.constants.timings.nExo == 0 ? :none : shocks
 
     if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.caches.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+        @assert size(shocks)[1] == 𝓂.constants.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
         periods_extended = periods + size(shocks)[2]
         
-        shock_history = zeros(𝓂.caches.timings.nExo, periods_extended)
+        shock_history = zeros(𝓂.constants.timings.nExo, periods_extended)
 
         shock_history[:,1:size(shocks)[2]] = shocks
         
@@ -638,23 +638,23 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
         shock_input = map(x->Symbol(replace(string(x), "₍ₓ₎" => "")), shocks_symbols)
 
-        @assert length(setdiff(shock_input, 𝓂.caches.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
+        @assert length(setdiff(shock_input, 𝓂.constants.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
 
         periods_extended = periods + size(shocks)[2]
         
-        shock_history = zeros(𝓂.caches.timings.nExo, periods_extended)
+        shock_history = zeros(𝓂.constants.timings.nExo, periods_extended)
         
-        shock_history[indexin(shock_input,𝓂.caches.timings.exo), 1:size(shocks)[2]] = shocks
+        shock_history[indexin(shock_input,𝓂.constants.timings.exo), 1:size(shocks)[2]] = shocks
 
         shock_idx = 1
     elseif shocks isa Expr
         error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
     elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
-        shock_history = zeros(𝓂.caches.timings.nExo, periods)
+        shock_history = zeros(𝓂.constants.timings.nExo, periods)
 
         periods_extended = periods
         
-        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.caches)
+        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.constants)
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64} || shocks == :none
@@ -680,14 +680,14 @@ function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
                                  𝓂::ℳ; 
                                  maxlog::Int = DEFAULT_MAXLOG)
-    stochastic_model = length(𝓂.caches.timings.exo) > 0
+    stochastic_model = length(𝓂.constants.timings.exo) > 0
     obc_model = length(𝓂.obc_violation_equations) > 0
 
     obc_shocks_included = false
 
     if stochastic_model && obc_model
         if shocks isa Matrix{Float64}
-            obc_indices = contains.(string.(𝓂.caches.timings.exo), "ᵒᵇᶜ")
+            obc_indices = contains.(string.(𝓂.constants.timings.exo), "ᵒᵇᶜ")
             if any(obc_indices)
                 obc_shocks_included = sum(abs2, shocks[obc_indices, :]) > 1e-10
             end
@@ -695,22 +695,22 @@ function process_ignore_obc_flag(shocks,
             shock_axis = collect(axiskeys(shocks, 1))
             shock_axis = shock_axis isa Vector{String} ? shock_axis .|> Meta.parse .|> replace_indices : shock_axis
 
-            obc_shocks = 𝓂.caches.timings.exo[contains.(string.(𝓂.caches.timings.exo), "ᵒᵇᶜ")]
+            obc_shocks = 𝓂.constants.timings.exo[contains.(string.(𝓂.constants.timings.exo), "ᵒᵇᶜ")]
             relevant_shocks = intersect(obc_shocks, shock_axis)
 
             if !isempty(relevant_shocks)
                 obc_shocks_included = sum(abs2, shocks(relevant_shocks, :)) > 1e-10
             end
         else
-            shock_idx = parse_shocks_input_to_index(shocks, 𝓂.caches)
+            shock_idx = parse_shocks_input_to_index(shocks, 𝓂.constants)
 
             selected_shocks = if (shock_idx isa Vector) || (shock_idx isa UnitRange)
-                length(shock_idx) > 0 ? 𝓂.caches.timings.exo[shock_idx] : Symbol[]
+                length(shock_idx) > 0 ? 𝓂.constants.timings.exo[shock_idx] : Symbol[]
             else
-                [𝓂.caches.timings.exo[shock_idx]]
+                [𝓂.constants.timings.exo[shock_idx]]
             end
 
-            obc_shocks = 𝓂.caches.timings.exo[contains.(string.(𝓂.caches.timings.exo), "ᵒᵇᶜ")]
+            obc_shocks = 𝓂.constants.timings.exo[contains.(string.(𝓂.constants.timings.exo), "ᵒᵇᶜ")]
             obc_shocks_included = !isempty(intersect(selected_shocks, obc_shocks))
         end
     end
@@ -845,7 +845,7 @@ end
 
 function set_up_obc_violation_function!(𝓂)
     ensure_model_structure_cache!(𝓂)
-    ms = 𝓂.caches.model_structure_cache
+    ms = 𝓂.constants.model_structure_cache
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -869,7 +869,7 @@ function set_up_obc_violation_function!(𝓂)
     calc_obc_violation = :(function calculate_obc_violation(x, p)
         state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
 
-        T = 𝓂.caches.timings
+        T = 𝓂.constants.timings
 
         Y = zeros(typeof(x[1]), T.nVars, periods+1)
 
@@ -1868,9 +1868,9 @@ function mat_mult_kron(A::DenseMatrix{R},
     # end
 end
 
-function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_ordworkspacehes()) where {T <: Real, F <: AbstractFloat}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
-        ℂ.tmp_sparse_prealloc6 = Higher_order_caches(T = T, S = F)
+        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T = T, S = F)
     end
 
     I           = ℂ.tmp_sparse_prealloc6[1]
@@ -1923,7 +1923,7 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_ordworkspacehes()) where {T <: Real, F <: AbstractFloat}
     project_Ŝ = ProjectTo(Ŝ)
 
     function sparse_preallocated_pullback(Ω̄)
@@ -1937,7 +1937,7 @@ end
 
 @stable default_mode = "disable" begin
 
-function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
+function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_workspace{T,F} = Higher_ordworkspacehes()) where {Z,S,N,T <: Real, F <: AbstractFloat}
     sparse(Ŝ)
 end
 
@@ -2366,12 +2366,12 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
 end
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
-                                    caches::caches,
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
-    T = caches.timings
+    T = constants.timings
     
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2381,7 +2381,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, caches) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2409,7 +2409,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, caches) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2465,12 +2465,12 @@ end
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
-                                    caches::caches,
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
-    T = caches.timings
+    T = constants.timings
     
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2481,7 +2481,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, caches) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2545,7 +2545,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, caches) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2622,12 +2622,12 @@ end
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
                                     𝐒₃::AbstractMatrix{<: Real},
-                                    caches::caches,
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
-    T = caches.timings
+    T = constants.timings
     
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2638,7 +2638,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, caches) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2720,7 +2720,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, caches) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2816,7 +2816,7 @@ end
 
 
 function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
-    @assert size(data,1) <= 𝓂.caches.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert size(data,1) <= 𝓂.constants.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))
 
@@ -3636,12 +3636,12 @@ Return cached computational constants (BitVectors and identity matrices).
 """
 function get_computational_constants(𝓂::ℳ)
     ensure_computational_constants_cache!(𝓂)
-    return 𝓂.caches.computational_constants
+    return 𝓂.constants.computational_constants
 end
 
-function get_computational_constants(caches::caches)
-    ensure_computational_constants_cache!(caches)
-    return caches.computational_constants
+function get_computational_constants(constants::constants)
+    ensure_computational_constants_cache!(constants)
+    return constants.computational_constants
 end
 
 """
@@ -3650,7 +3650,7 @@ end
 Return cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
 """
 function get_model_structure(𝓂::ℳ)
-    return 𝓂.caches.model_structure_cache
+    return 𝓂.constants.model_structure_cache
 end
 
 
@@ -5293,7 +5293,7 @@ function solve_steady_state!(𝓂::ℳ,
                             ss_solver_parameters_maxtime::Real;
                             silent::Bool = false)::Tuple{Vector{Float64}, Float64, Bool}
     """
-    Internal function to solve and caches the steady state.
+    Internal function to solve and constants the steady state.
     Returns: (SS_and_pars, solution_error, found_solution)
     """
     start_time = time()
@@ -6387,9 +6387,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
     # @timeit_debug timer "Calculate NSSS" begin
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    T = constants.timings
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
 
@@ -6411,7 +6411,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # @timeit_debug timer "Calculate first order solution" begin
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
+                                                        constants;
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
 
@@ -6426,20 +6426,20 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
     
     # end # timeit_debug
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
 
     # end # timeit_debug
 
@@ -6450,11 +6450,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate SSS" begin
 
-    𝐒₁ = [𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) 𝐒₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+    𝐒₁ = [𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) 𝐒₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(𝓂.caches.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.caches.timings.nExo)])
+    aug_state₁ = sparse([zeros(𝓂.constants.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.timings.nExo)])
 
-    tmp = (ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -6463,18 +6463,18 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.caches.timings.past_not_future_and_mixed_idx])
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.constants.timings.past_not_future_and_mixed_idx])
 
     if pruning
-        state = 𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        state = 𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
         # Get cached computational constants
-        cc = 𝓂.caches.computational_constants
+        cc = 𝓂.constants.computational_constants
         s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
-        A = 𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed]
+        A = 𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     
         SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, collect(SSSstates), 𝓂) # , timer = timer)
@@ -6517,9 +6517,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     # @timeit_debug timer "Setup matrices" begin
 
     # Get cached computational constants
-    caches = initialize_caches!(𝓂)
-    cc = caches.computational_constants
-    T = caches.timings
+    constants = initialise_constants!(𝓂)
+    cc = constants.computational_constants
+    T = constants.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6581,9 +6581,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-    caches = initialize_caches!(𝓂)
-    cc = caches.computational_constants
-    T = caches.timings
+    constants = initialise_constants!(𝓂)
+    cc = constants.computational_constants
+    T = constants.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6626,8 +6626,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
             ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
 
-            ∂A = ∂𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+            ∂A = ∂𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed]
+            ∂B̂ = ∂𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
 
             tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
 
@@ -6656,9 +6656,9 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     # @timeit_debug timer "Setup indices" begin
 
     # Get cached computational constants
-    caches = initialize_caches!(𝓂)
-    cc = caches.computational_constants
-    T = caches.timings
+    constants = initialise_constants!(𝓂)
+    cc = constants.computational_constants
+    T = constants.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6668,8 +6668,8 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     kron_s⁺_s = cc.kron_s⁺_s
     
     A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    B = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
     
     # end # timeit_debug
       
@@ -6709,11 +6709,11 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
 
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed))
 
-        ∂𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed] = S' * x'
+        ∂𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed] = S' * x'
         
-        ∂𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+        ∂𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
 
         # end # timeit_debug
 
@@ -6731,9 +6731,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         pruning::Bool = false) where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    T = constants.timings
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
     
@@ -6747,7 +6747,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
+                                                        constants;
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -6758,9 +6758,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
@@ -6772,12 +6772,12 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.constants.third_order_auxiliary_matrices.𝐔∇₃
             
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.caches,
+	                                                𝓂.constants,
                                                     𝓂.workspaces;
 	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                # timer = timer, 
@@ -6791,25 +6791,25 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
     if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
-        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
     else
-        mul_reverse_AD!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
+        mul_reverse_AD!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
     end
 
     Ŝ = 𝓂.workspaces.third_order.Ŝ
 
     𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)
     
-    # 𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+    # 𝐒₃ *= 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
     # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.workspaces.third_order)
     
-    # 𝐒₃ = sparse(Ŝ) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
+    # 𝐒₃ = sparse(Ŝ) # * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
 
-    𝐒₁ = [𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) 𝐒₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+    𝐒₁ = [𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) 𝐒₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(𝓂.caches.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.caches.timings.nExo)])
+    aug_state₁ = sparse([zeros(𝓂.constants.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.timings.nExo)])
     
-    tmp = (ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx, 1:𝓂.caches.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx, 1:𝓂.constants.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -6818,20 +6818,20 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.caches.timings.past_not_future_and_mixed_idx])
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.constants.timings.past_not_future_and_mixed_idx])
 
     if pruning
-        state = 𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        state = 𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
         # Get cached computational constants
-        cc = 𝓂.caches.computational_constants
+        cc = 𝓂.constants.computational_constants
         s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
         kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
         
-        A = 𝐒₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed]
+        A = 𝐒₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
         Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
     
@@ -6873,7 +6873,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
     ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cc = 𝓂.constants.computational_constants
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6886,11 +6886,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
     
-    A = 𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+    A = 𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -6931,7 +6931,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     # Get cached computational constants
     ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cc = 𝓂.constants.computational_constants
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6944,11 +6944,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
     
-    A = 𝐒₁̂[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃̂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+    A = 𝐒₁̂[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂̂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂̂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃̂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃̂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
     ∂x̄  = zeros(S, length(x̂), N)
     
@@ -6981,9 +6981,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
             ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
 
-            ∂A = ∂𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-            ∂Ĉ = ∂𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+            ∂A = ∂𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed]
+            ∂B̂ = ∂𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+            ∂Ĉ = ∂𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
             tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
 
@@ -7010,7 +7010,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
     ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cc = 𝓂.constants.computational_constants
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -7023,11 +7023,11 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     
     kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
     
-    A = 𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+    A = 𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -7057,13 +7057,13 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.caches.timings.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.constants.timings.nPast_not_future_and_mixed))
 
-        ∂𝐒₁[𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nPast_not_future_and_mixed] = S' * x'
+        ∂𝐒₁[𝓂.constants.timings.past_not_future_and_mixed_idx,1:𝓂.constants.timings.nPast_not_future_and_mixed] = S' * x'
         
-        ∂𝐒₂[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+        ∂𝐒₂[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
 
-        ∂𝐒₃[𝓂.caches.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
+        ∂𝐒₃[𝓂.constants.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
     end
@@ -7128,8 +7128,8 @@ function solve!(𝓂::ℳ;
 
     @assert algorithm ∈ all_available_algorithms
     
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
     
     # Handle steady_state_function argument
     set_custom_steady_state_function!(𝓂, steady_state_function)
@@ -7166,13 +7166,13 @@ function solve!(𝓂::ℳ;
 
     # end # timeit_debug
 
-    if 𝓂.caches.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
+    if 𝓂.constants.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to second order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 2)
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
-    elseif 𝓂.caches.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
+    elseif 𝓂.constants.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to third order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 3)
@@ -7180,7 +7180,7 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc(zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nExo)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc(zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nExo)))
         if  ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
@@ -7204,7 +7204,7 @@ function solve!(𝓂::ℳ;
             # @timeit_debug timer "Calculate first order solution" begin
 
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                                caches;
+                                                                constants;
                                                                 opts = opts,
                                                                 initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -7215,7 +7215,7 @@ function solve!(𝓂::ℳ;
             @assert solved "Could not find stable first order solution."
 
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                             shock]
                 return S₁ * aug_state # return statement needed for forwarddiff to work
             end
@@ -7226,7 +7226,7 @@ function solve!(𝓂::ℳ;
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
-                                                                    caches;
+                                                                    constants;
                                                                     opts = opts,
                                                                     initial_guess = 𝓂.solution.perturbation.qme_solution)
 
@@ -7235,7 +7235,7 @@ function solve!(𝓂::ℳ;
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
                 state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                    aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                                 shock]
                     return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
                 end
@@ -7250,7 +7250,7 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
         end
 
-        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nExo)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nExo)))
         if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
@@ -7260,17 +7260,17 @@ function solve!(𝓂::ℳ;
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                             1
                             shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) Ŝ₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) Ŝ₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
             
                 state_update₂̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
@@ -7284,7 +7284,7 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
         
-        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_second_order.state_update_obc([zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], zeros(𝓂.caches.timings.nExo)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_second_order.state_update_obc([zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars)], zeros(𝓂.constants.timings.nExo)))
         if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
@@ -7293,18 +7293,18 @@ function solve!(𝓂::ℳ;
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₁ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₂ = [pruned_states[2][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) Ŝ₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) Ŝ₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
             
                 state_update₂̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₁ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
                     return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
                 end
@@ -7317,24 +7317,24 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
         end
         
-        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc(zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nExo)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc(zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nExo)))
         if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) Ŝ₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) Ŝ₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
             
                 state_update₃̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.caches.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.timings.past_not_future_and_mixed_idx]
                                     1
                                     shock]
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -7348,7 +7348,7 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
         end
 
-        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc([zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], zeros(𝓂.caches.timings.nExo)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc([zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars)], zeros(𝓂.constants.timings.nExo)))
         if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts, pruning = true)
@@ -7356,10 +7356,10 @@ function solve!(𝓂::ℳ;
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₁ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; shock]
+                aug_state₂ = [pruned_states[2][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
@@ -7367,13 +7367,13 @@ function solve!(𝓂::ℳ;
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) Ŝ₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.timings.nPast_not_future_and_mixed] zeros(𝓂.constants.timings.nVars) Ŝ₁[:,𝓂.constants.timings.nPast_not_future_and_mixed+1:end]]
             
                 state_update₃̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₁̂ = [pruned_states[1][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                    aug_state₃ = [pruned_states[3][𝓂.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₁ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₁̂ = [pruned_states[1][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₃ = [pruned_states[3][𝓂.constants.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
                     kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                     
@@ -7395,8 +7395,8 @@ end
 
 
 
-function create_second_order_auxiliary_matrices(caches::caches)
-    T = caches.timings
+function create_second_order_auxiliary_matrices(constants::constants)
+    T = constants.timings
     
 
     # Indices and number of variables
@@ -7433,8 +7433,8 @@ function add_sparse_entries!(P, perm)
 end
 
 
-function create_third_order_auxiliary_matrices(caches::caches, ∇₃_col_indices::Vector{Int})
-    T = caches.timings
+function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_indices::Vector{Int})
+    T = constants.timings
     
 
     # Indices and number of variables
@@ -7916,10 +7916,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                     dyn_past_list[indexin(sort(past),past)],
                     dyn_exo_list[indexin(sort(exo),exo)])
 
-    dyn_var_future_idx = 𝓂.caches.auxiliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.caches.auxiliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.caches.auxiliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.caches.auxiliary_indices.dyn_ss_idx
+    dyn_var_future_idx = 𝓂.constants.auxiliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.constants.auxiliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.constants.auxiliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.constants.auxiliary_indices.dyn_ss_idx
 
     dyn_var_idxs = vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)
 
@@ -8169,8 +8169,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # second order
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
 
-        if 𝓂.caches.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.caches.second_order_auxiliary_matrices = create_second_order_auxiliary_matrices(𝓂.caches)
+        if 𝓂.constants.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.constants.second_order_auxiliary_matrices = create_second_order_auxiliary_matrices(𝓂.constants)
 
             ∇₂_dyn = derivatives[2][1]
 
@@ -8266,9 +8266,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     if max_perturbation_order == 3
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
-        if 𝓂.caches.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        if 𝓂.constants.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
-            𝓂.caches.third_order_auxiliary_matrices = create_third_order_auxiliary_matrices(𝓂.caches, unique(J))
+            𝓂.constants.third_order_auxiliary_matrices = create_third_order_auxiliary_matrices(𝓂.constants, unique(J))
         
             ∇₃_dyn = derivatives[3][1]
 
@@ -8388,7 +8388,7 @@ function write_auxiliary_indices!(𝓂::ℳ)
 
     shocks_ss = zeros(length(dyn_exo))
 
-    𝓂.caches.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
+    𝓂.constants.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
 
     return nothing
 end
@@ -8608,7 +8608,7 @@ end
 function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
     dyn_equations = 𝓂.dyn_equations
 
-    vars_to_exclude = setdiff(𝓂.caches.timings.present_only, observables)
+    vars_to_exclude = setdiff(𝓂.constants.timings.present_only, observables)
 
     # Mapping variables to their equation index
     variable_to_equation = Dict{Symbol, Vector{Int}}()
@@ -8625,10 +8625,10 @@ function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
         end
     end
 
-    # cols_to_exclude = indexin(𝓂.caches.timings.var, setdiff(𝓂.caches.timings.present_only, observables))
-    cols_to_exclude = indexin(setdiff(𝓂.caches.timings.present_only, observables), 𝓂.caches.timings.var)
+    # cols_to_exclude = indexin(𝓂.constants.timings.var, setdiff(𝓂.constants.timings.present_only, observables))
+    cols_to_exclude = indexin(setdiff(𝓂.constants.timings.present_only, observables), 𝓂.constants.timings.var)
 
-    present_idx = 𝓂.caches.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.caches.timings.nVars), cols_to_exclude))
+    present_idx = 𝓂.constants.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.constants.timings.nVars), cols_to_exclude))
 
     dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
     dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
@@ -8656,7 +8656,7 @@ function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
         end
     end
 
-    rows_to_include = setdiff(1:𝓂.caches.timings.nVars, rows_to_exclude)
+    rows_to_include = setdiff(1:𝓂.constants.timings.nVars, rows_to_exclude)
 
     all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
     parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
@@ -8940,7 +8940,7 @@ function compute_irf_responses(𝓂::ℳ,
 
             reference_ss = 𝓂.solution.non_stochastic_steady_state
 
-            obc_shock_idx = contains.(string.(𝓂.caches.timings.exo),"ᵒᵇᶜ")
+            obc_shock_idx = contains.(string.(𝓂.constants.timings.exo),"ᵒᵇᶜ")
 
             periods_per_shock = 𝓂.max_obc_horizon + 1
 
@@ -8965,7 +8965,7 @@ function compute_irf_responses(𝓂::ℳ,
 
                 (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
 
-                present_shocks[contains.(string.(𝓂.caches.timings.exo),"ᵒᵇᶜ")] .= x
+                present_shocks[contains.(string.(𝓂.constants.timings.exo),"ᵒᵇᶜ")] .= x
 
                 constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
@@ -8984,7 +8984,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.caches;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -8997,7 +8997,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.caches;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9009,7 +9009,7 @@ function compute_irf_responses(𝓂::ℳ,
             return girf(state_update,
                         initial_state,
                         level,
-                        𝓂.caches;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9021,7 +9021,7 @@ function compute_irf_responses(𝓂::ℳ,
             return irf(state_update,
                         initial_state,
                         level,
-                        𝓂.caches;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9036,13 +9036,13 @@ function irf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    caches::caches; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
-    T = caches.timings
+    T = constants.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9073,10 +9073,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,caches)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, caches) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -9178,13 +9178,13 @@ end
 function irf(state_update::Function, 
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    caches::caches; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
-    T = caches.timings
+    T = constants.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9215,10 +9215,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,caches)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, caches) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -9303,7 +9303,7 @@ end
 function girf(state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    caches::caches; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9311,7 +9311,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
-    T = caches.timings
+    T = constants.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9346,10 +9346,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,caches)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, caches) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9485,7 +9485,7 @@ function girf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    caches::caches; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9493,7 +9493,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
-    T = caches.timings
+    T = constants.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9530,10 +9530,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,caches)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, caches) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9678,11 +9678,11 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
         return ms.vars_idx_excluding_obc
     end
 
-    return parse_variables_input_to_index(variables, 𝓂.caches)
+    return parse_variables_input_to_index(variables, 𝓂.constants)
 end
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, caches::caches)::Union{UnitRange{Int}, Vector{Int}}
-    T = caches.timings
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
+    T = constants.timings
     
 
     # Handle nested vector conversion separately
@@ -9765,8 +9765,8 @@ function is_grouped_covariance_input(variables::Union{Symbol_input,String_input,
 end
 
 # Function to parse grouped covariance input into groups of indices
-function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, caches::caches)::Vector{Vector{Int}}
-    T = caches.timings
+function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Vector{Vector{Int}}
+    T = constants.timings
     
 
     # Convert String_input to Symbol_input for nested structures
@@ -9780,7 +9780,7 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
     
     if !is_grouped_covariance_input(variables)
         # Not grouped, return single group
-        idx = parse_variables_input_to_index(variables, caches)
+        idx = parse_variables_input_to_index(variables, constants)
         return [collect(idx)]
     end
     
@@ -9802,17 +9802,17 @@ end
 
 
 
-function parse_shocks_input_to_index(shocks::Expr, caches::caches)
+function parse_shocks_input_to_index(shocks::Expr, constants::constants)
     parsed = replace_indices(shocks)
     if parsed isa Symbol
-        return parse_shocks_input_to_index(parsed, caches)
+        return parse_shocks_input_to_index(parsed, constants)
     end
     @warn "Invalid `shocks` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
     return Int[]
 end
 
-function parse_shocks_input_to_index(shocks::BitVector, caches::caches)
-    T = caches.timings
+function parse_shocks_input_to_index(shocks::BitVector, constants::constants)
+    T = constants.timings
     if length(shocks) != T.nExo
         @warn "Invalid `shocks` argument. BitVector length does not match number of shocks."
         return Int[]
@@ -9820,8 +9820,8 @@ function parse_shocks_input_to_index(shocks::BitVector, caches::caches)
     return getindex(1:T.nExo, shocks)
 end
 
-function parse_shocks_input_to_index(shocks::BitMatrix, caches::caches)
-    T = caches.timings
+function parse_shocks_input_to_index(shocks::BitMatrix, constants::constants)
+    T = constants.timings
     if size(shocks, 1) != T.nExo
         @warn "Invalid `shocks` argument. BitMatrix row count does not match number of shocks."
         return Int[]
@@ -9829,8 +9829,8 @@ function parse_shocks_input_to_index(shocks::BitMatrix, caches::caches)
     return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
 end
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, caches::caches)
-    T = caches.timings
+function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
+    T = constants.timings
     
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
@@ -9991,11 +9991,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
 end
 
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
-    buffer = 𝓂.caches.custom_steady_state_buffer
+    buffer = 𝓂.constants.custom_steady_state_buffer
 
     if length(buffer) != expected_length
         buffer = Vector{Float64}(undef, expected_length)
-        𝓂.caches.custom_steady_state_buffer = buffer
+        𝓂.constants.custom_steady_state_buffer = buffer
     end
 
     return buffer
@@ -10046,7 +10046,7 @@ end
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
-    vars_to_exclude = setdiff(𝓂.caches.timings.present_only, observables)
+    vars_to_exclude = setdiff(𝓂.constants.timings.present_only, observables)
 
     # Mapping variables to their equation index
     variable_to_equation = Dict{Symbol, Vector{Int}}()
@@ -10385,14 +10385,14 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
     
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
 
-    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10400,20 +10400,20 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars)], converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.constants.timings.nVars), collect(sss) - all_SS]
 
-    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10421,20 +10421,20 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer,  
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
 
-    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
@@ -10442,44 +10442,44 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars), zeros(𝓂.constants.timings.nVars)], converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS, zeros(𝓂.caches.timings.nVars)]
+    state = [zeros(𝓂.constants.timings.nVars), collect(sss) - all_SS, zeros(𝓂.constants.timings.nVars)]
 
-    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
 function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
-    # Initialize caches at entry point
-    caches_obj = initialize_caches!(𝓂)
+    # Initialize constants at entry point
+    constants_obj = initialise_constants!(𝓂)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts) # timer = timer, 
 
-    state = zeros(𝓂.caches.timings.nVars)
+    state = zeros(𝓂.constants.timings.nVars)
 
     if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
         # println("NSSS not found")
-        return 𝓂.caches, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches_obj;
+                                                        constants_obj;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                         opts = opts)
@@ -10488,10 +10488,10 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     if !solved
         # println("NSSS not found")
-        return 𝓂.caches, SS_and_pars, zeros(S, 0, 0), [state], solved
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solved
     end
 
-    return 𝓂.caches, SS_and_pars, 𝐒₁, [state], solved
+    return 𝓂.constants, SS_and_pars, 𝐒₁, [state], solved
 end
 
 end # dispatch_doctor
