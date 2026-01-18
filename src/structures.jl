@@ -101,6 +101,7 @@ struct post_model_macro
     reorder::Vector{Int}
     dynamic_order::Vector{Int}
     vars_in_ss_equations::Vector{Symbol}
+    vars_in_ss_equations_no_aux::Vector{Symbol}
 
     dyn_var_future_list::Vector{Set{Symbol}}
     dyn_var_present_list::Vector{Set{Symbol}}
@@ -339,8 +340,10 @@ struct model_structure_cache
     steady_state_expand_matrix::SparseMatrixCSC{Float64, Int}
     # Selector from custom steady-state order to var + calibrated parameters
     custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
-    # vars_in_ss_equations: cached for custom steady state mapping
+    # vars_in_ss_equations: cached for custom steady state mapping (excluding ➕ auxiliaries)
     vars_in_ss_equations::Vector{Symbol}
+    # vars_in_ss_equations_with_aux: includes ➕ auxiliaries
+    vars_in_ss_equations_with_aux::Vector{Symbol}
     # SS_and_pars_names in lead/lag form
     SS_and_pars_names_lead_lag::Vector{Symbol}
     # SS_and_pars_names without exo and lead/lag markers

@@ -743,6 +743,7 @@ macro model(𝓂,ex...)
     aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
+    vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
 
     dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
     dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
@@ -792,6 +793,7 @@ macro model(𝓂,ex...)
                 reorder,
                 dynamic_order,
                 vars_in_ss_equations,
+                vars_in_ss_equations_no_aux,
 
                 dyn_var_future_list,
                 dyn_var_present_list,

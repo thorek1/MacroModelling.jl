@@ -1467,7 +1467,7 @@ function get_steady_state(𝓂::ℳ;
             steady_state_function = steady_state_function, 
             opts = opts)
 
-    vars_in_ss_equations = setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.➕_vars)
+    vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations_no_aux
     
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 

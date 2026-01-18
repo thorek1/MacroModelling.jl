@@ -111,7 +111,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
-                                Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
+                                Symbol[], Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.I(0),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
@@ -503,7 +503,8 @@ function ensure_model_structure_cache!(𝓂)
 
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 
-        vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations
+        vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations_no_aux
+        vars_in_ss_equations_with_aux = 𝓂.constants.post_model_macro.vars_in_ss_equations
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.calibration_equations_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
 
@@ -525,6 +526,7 @@ function ensure_model_structure_cache!(𝓂)
             steady_state_expand_matrix,
             custom_ss_expand_matrix,
             vars_in_ss_equations,
+            vars_in_ss_equations_with_aux,
             SS_and_pars_names_lead_lag,
             SS_and_pars_names_no_exo,
             SS_and_pars_no_exo_idx,
