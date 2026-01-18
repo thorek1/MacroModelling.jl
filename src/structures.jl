@@ -70,10 +70,19 @@ struct timings
     mixed_in_past::Vector{Symbol}
     not_mixed_in_past::Vector{Symbol}
     mixed_in_future::Vector{Symbol}
-    exo::Vector{Symbol}
+
     var::Vector{Symbol}
-    aux::Vector{Symbol}
+
+    exo::Vector{Symbol}
+    exo_past::Vector{Symbol}
     exo_present::Vector{Symbol}
+    exo_future::Vector{Symbol}
+
+    aux::Vector{Symbol}
+    aux_present::Vector{Symbol}
+    aux_future::Vector{Symbol}
+    aux_past::Vector{Symbol}
+
     nPresent_only::Int
     nMixed::Int
     nFuture_not_past_and_mixed::Int

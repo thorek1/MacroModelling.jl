@@ -667,7 +667,7 @@ macro model(𝓂,ex...)
     dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
 
     all_symbols = reduce(union,collect.(get_symbols.(dyn_equations)))
-    parameters_in_equations = sort(setdiff(all_symbols,match_pattern(all_symbols,r"₎$")))
+    parameters_in_equations = sort(collect(setdiff(all_symbols,match_pattern(all_symbols,r"₎$"))))
     
     dyn_var_future  =  sort(collect(reduce(union,dyn_var_future_list)))
     dyn_var_present =  sort(collect(reduce(union,dyn_var_present_list)))
@@ -693,7 +693,7 @@ macro model(𝓂,ex...)
     exo                       = sort(collect(reduce(union,dyn_exo_list)))
     var                       = sort(dyn_var_present)
     aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
+    aux                       = sort(aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)])
     exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
     exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
     exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
@@ -733,9 +733,6 @@ macro model(𝓂,ex...)
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
-    ℂ = Caches()
-    𝓦 = Workspaces()
-
     T = timings(present_only,
                 future_not_past,
                 past_not_future,
@@ -746,10 +743,18 @@ macro model(𝓂,ex...)
                 mixed_in_past,
                 not_mixed_in_past,
                 mixed_in_future,
-                exo,
+
                 var,
-                aux,
+
+                exo,
+                exo_past,
                 exo_present,
+                exo_future,
+
+                aux,
+                aux_past,
+                aux_present,
+                aux_future,
 
                 nPresent_only,
                 nMixed,
@@ -771,8 +776,11 @@ macro model(𝓂,ex...)
                 reorder,
                 dynamic_order)
 
-    # Set timings in the caches for unified access
-    ℂ.timings = T
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), union(parameters_in_equations, ➕_vars))))
+
+    ℂ = Caches(T)
+
+    𝓦 = Workspaces()
 
     aux_future_tmp  = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_future))
     aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_future_tmp)]
@@ -783,7 +791,6 @@ macro model(𝓂,ex...)
     aux_present_tmp = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
     aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
 
-    vars_in_ss_equations  = setdiff(reduce(union,get_symbols.(ss_aux_equations)),parameters_in_equations)
 
 
     dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")

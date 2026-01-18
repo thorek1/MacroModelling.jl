@@ -139,12 +139,12 @@ function Auxiliary_indices_cache()
     auxiliary_indices(Int[], Int[], Int[], Int[], Int[])
 end
 
-function Caches(;T::Type = Float64, S::Type = Float64)
-    caches( Empty_timings(),
+function Caches(timings; T::Type = Float64, S::Type = Float64)
+    caches( timings,
             Auxiliary_indices_cache(),
             Second_order_auxiliary_matrices_cache(),
             Third_order_auxiliary_matrices_cache(),
-            name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
+            set_up_name_display_cache(timings),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
@@ -210,6 +210,43 @@ function ensure_name_display_cache!(𝓂)
 
     return caches.name_display_cache
 end
+
+
+function set_up_name_display_cache(T::timings)    
+    var_has_curly = any(x -> contains(string(x), "◖"), T.var)
+    if var_has_curly
+        var_decomposed = decompose_name.(T.var)
+        var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
+    else
+        var_axis = T.var
+    end
+
+    if var_has_curly
+        calib_axis = replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")
+    else
+        calib_axis = 𝓂.calibration_equations_parameters
+    end
+
+    exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
+    if exo_has_curly
+        exo_decomposed = decompose_name.(T.exo)
+        exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
+        exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), exo_axis_plain)
+    else
+        exo_axis_plain = T.exo
+        exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)
+    end
+
+    return name_display_cache(
+        var_axis,
+        calib_axis,
+        exo_axis_plain,
+        exo_axis_with_subscript,
+        var_has_curly,
+        exo_has_curly,
+    )
+end
+
 
 function ensure_computational_constants_cache!(𝓂)
     caches = 𝓂.caches
