@@ -1,53 +1,68 @@
 
-function First_order_index_cache()
-    empty_range = 1:0
-    empty_int_vec = Int[]
-    empty_matrix = zeros(Bool, 0, 0)
-    return first_order_index_cache(false,
-                                    empty_range,
-                                    empty_int_vec,
-                                    empty_int_vec,
-                                    empty_int_vec,
-                                    empty_int_vec,
-                                    ℒ.I(0),
-                                    empty_range,
-                                    empty_range,
-                                    1,
-                                    empty_matrix,
-                                    empty_matrix)
+function Second_order_cache()
+    empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_sparse_float = spzeros(Float64, 0, 0)
+    return second_order(
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        BitVector(),
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        BitVector(),
+        empty_sparse_float,
+        Float64[],
+    )
 end
 
-function Conditional_forecast_index_cache()
-    empty_int_vec = Int[]
-    return conditional_forecast_index_cache(false,
-                                            false,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec,
-                                            empty_int_vec)
-end
-
-function Moments_cache()
-    empty_sparse = spzeros(Float64, 0, 0)
-    return moments_cache(BitVector(),
-                        BitVector(),
-                        empty_sparse,
-                        Float64[],
-                        Float64[],
-                        BitVector(),
-                        Dict{Int, moments_substate_cache}(),
-                        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}())
+function Third_order_cache()
+    empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    return third_order(
+        empty_sparse_int,
+        empty_sparse_int,
+        Dict{Vector{Int}, Int}(),
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Int[],
+        Float64[],
+        BitVector(),
+        Dict{Int, moments_substate_cache}(),
+        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}(),
+    )
 end
 
 
@@ -86,40 +101,118 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Higher_order_workspace(T = T, S = S))
 end
 
-function Second_order_auxiliary_matrices_cache()
-    empty_sparse = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
-    return second_order_auxiliary_matrices(empty_sparse, empty_sparse, empty_sparse, empty_sparse)
-end
-
-function Third_order_auxiliary_matrices_cache()
-    empty_sparse = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
-    return third_order_auxiliary_matrices(empty_sparse, empty_sparse, Dict{Vector{Int}, Int}(),
-                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse,
-                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse,
-                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse)
-end
-
-function Auxiliary_indices_cache()
-    auxiliary_indices(Int[], Int[], Int[], Int[], Int[])
-end
-
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
     constants( model_struct,
-            Auxiliary_indices_cache(),
-            Second_order_auxiliary_matrices_cache(),
-            Third_order_auxiliary_matrices_cache(),
-            name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
-            model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
-                                Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
-                                Symbol[], Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
-            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
-                                         BitVector(), BitVector(), ℒ.I(0),
-                                         BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
-                                         Int[], Int[], Int[], Int[], Int[]),
-            Conditional_forecast_index_cache(),
-            Moments_cache(),
-            First_order_index_cache(),
-            Float64[])
+            post_parameters_macro(
+                Symbol[],
+                false,
+                true,
+                Dict{Symbol, Float64}(),
+                Set{Symbol}[],
+                Set{Symbol}[],
+                Set{Symbol}[],
+                Set{Symbol}[],
+                Expr[],
+                Expr[],
+                Symbol[],
+                Dict{Symbol,Tuple{Float64,Float64}}()),
+            post_complete_parameters{Union{Symbol, String}}(
+                Symbol[],
+                Symbol[],
+                Int[],
+                Int[],
+                Int[],
+                Int[],
+                Int[],
+                ℒ.I(0),
+                Union{Symbol,String}[],
+                Union{Symbol,String}[],
+                Union{Symbol,String}[],
+                Union{Symbol,String}[],
+                false,
+                false,
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                Int[],
+                Symbol[],
+                Union{Symbol,String}[],
+                spzeros(Float64, 0, 0),
+                spzeros(Float64, 0, 0),
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                Int[],
+                Int[],
+                Int[],
+                false,
+                1:0,
+                Int[],
+                Int[],
+                Int[],
+                Int[],
+                ℒ.I(0),
+                1:0,
+                1:0,
+                1,
+                zeros(Bool, 0, 0),
+                zeros(Bool, 0, 0),
+                Float64[]),
+            Second_order_cache(),
+            Third_order_cache())
+end
+
+function update_post_complete_parameters(p::post_complete_parameters{S}; kwargs...) where {S <: Union{Symbol, String}}
+    var_axis = convert(Vector{S}, get(kwargs, :var_axis, p.var_axis))
+    calib_axis = convert(Vector{S}, get(kwargs, :calib_axis, p.calib_axis))
+    exo_axis_plain = convert(Vector{S}, get(kwargs, :exo_axis_plain, p.exo_axis_plain))
+    exo_axis_with_subscript = convert(Vector{S}, get(kwargs, :exo_axis_with_subscript, p.exo_axis_with_subscript))
+    full_NSSS_display = convert(Vector{S}, get(kwargs, :full_NSSS_display, p.full_NSSS_display))
+    return post_complete_parameters{S}(
+        get(kwargs, :parameters, p.parameters),
+        get(kwargs, :missing_parameters, p.missing_parameters),
+        get(kwargs, :dyn_var_future_idx, p.dyn_var_future_idx),
+        get(kwargs, :dyn_var_present_idx, p.dyn_var_present_idx),
+        get(kwargs, :dyn_var_past_idx, p.dyn_var_past_idx),
+        get(kwargs, :dyn_ss_idx, p.dyn_ss_idx),
+        get(kwargs, :shocks_ss, p.shocks_ss),
+        get(kwargs, :diag_nVars, p.diag_nVars),
+        var_axis,
+        calib_axis,
+        exo_axis_plain,
+        exo_axis_with_subscript,
+        get(kwargs, :var_has_curly, p.var_has_curly),
+        get(kwargs, :exo_has_curly, p.exo_has_curly),
+        get(kwargs, :SS_and_pars_names, p.SS_and_pars_names),
+        get(kwargs, :all_variables, p.all_variables),
+        get(kwargs, :NSSS_labels, p.NSSS_labels),
+        get(kwargs, :aux_indices, p.aux_indices),
+        get(kwargs, :processed_all_variables, p.processed_all_variables),
+        full_NSSS_display,
+        get(kwargs, :steady_state_expand_matrix, p.steady_state_expand_matrix),
+        get(kwargs, :custom_ss_expand_matrix, p.custom_ss_expand_matrix),
+        get(kwargs, :vars_in_ss_equations, p.vars_in_ss_equations),
+        get(kwargs, :vars_in_ss_equations_with_aux, p.vars_in_ss_equations_with_aux),
+        get(kwargs, :SS_and_pars_names_lead_lag, p.SS_and_pars_names_lead_lag),
+        get(kwargs, :SS_and_pars_names_no_exo, p.SS_and_pars_names_no_exo),
+        get(kwargs, :SS_and_pars_no_exo_idx, p.SS_and_pars_no_exo_idx),
+        get(kwargs, :vars_idx_excluding_aux_obc, p.vars_idx_excluding_aux_obc),
+        get(kwargs, :vars_idx_excluding_obc, p.vars_idx_excluding_obc),
+        get(kwargs, :initialized, p.initialized),
+        get(kwargs, :dyn_index, p.dyn_index),
+        get(kwargs, :reverse_dynamic_order, p.reverse_dynamic_order),
+        get(kwargs, :comb, p.comb),
+        get(kwargs, :future_not_past_and_mixed_in_comb, p.future_not_past_and_mixed_in_comb),
+        get(kwargs, :past_not_future_and_mixed_in_comb, p.past_not_future_and_mixed_in_comb),
+        get(kwargs, :Ir, p.Ir),
+        get(kwargs, :nabla_zero_cols, p.nabla_zero_cols),
+        get(kwargs, :nabla_minus_cols, p.nabla_minus_cols),
+        get(kwargs, :nabla_e_start, p.nabla_e_start),
+        get(kwargs, :expand_future, p.expand_future),
+        get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :custom_steady_state_buffer, p.custom_steady_state_buffer),
+    )
 end
 
 # Initialize all commonly used constants at once (call at entry points)
@@ -133,11 +226,10 @@ end
 
 function ensure_name_display_cache!(𝓂)
     constants = 𝓂.constants
-    ndc = constants.name_display_cache
     # Use model from constants
     T = constants.post_model_macro
     
-    if isempty(ndc.var_axis)
+    if isempty(constants.post_complete_parameters.var_axis)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
         if var_has_curly
             var_decomposed = decompose_name.(T.var)
@@ -147,9 +239,9 @@ function ensure_name_display_cache!(𝓂)
         end
 
         if var_has_curly
-            calib_axis = replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")
+            calib_axis = replace.(string.(𝓂.constants.post_parameters_macro.calibration_equations_parameters), "◖" => "{", "◗" => "}")
         else
-            calib_axis = 𝓂.calibration_equations_parameters
+            calib_axis = 𝓂.constants.post_parameters_macro.calibration_equations_parameters
         end
 
         exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
@@ -162,21 +254,22 @@ function ensure_name_display_cache!(𝓂)
             exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)
         end
 
-        constants.name_display_cache = name_display_cache(
-            var_axis,
-            calib_axis,
-            exo_axis_plain,
-            exo_axis_with_subscript,
-            var_has_curly,
-            exo_has_curly,
+        constants.post_complete_parameters = update_post_complete_parameters(
+            constants.post_complete_parameters;
+            var_axis = var_axis,
+            calib_axis = calib_axis,
+            exo_axis_plain = exo_axis_plain,
+            exo_axis_with_subscript = exo_axis_with_subscript,
+            var_has_curly = var_has_curly,
+            exo_has_curly = exo_has_curly,
         )
     end
 
-    return constants.name_display_cache
+    return constants.post_complete_parameters
 end
 
 
-function set_up_name_display_cache(T::post_model_macro, calibration_equations_parameters)    
+function set_up_name_display_cache(T::post_model_macro, calibration_equations_parameters)
     var_has_curly = any(x -> contains(string(x), "◖"), T.var)
     if var_has_curly
         var_decomposed = decompose_name.(T.var)
@@ -201,21 +294,21 @@ function set_up_name_display_cache(T::post_model_macro, calibration_equations_pa
         exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)
     end
 
-    return name_display_cache(
-        var_axis,
-        calib_axis,
-        exo_axis_plain,
-        exo_axis_with_subscript,
-        var_has_curly,
-        exo_has_curly,
+    return (
+        var_axis = var_axis,
+        calib_axis = calib_axis,
+        exo_axis_plain = exo_axis_plain,
+        exo_axis_with_subscript = exo_axis_with_subscript,
+        var_has_curly = var_has_curly,
+        exo_has_curly = exo_has_curly,
     )
 end
 
 
 function ensure_computational_constants_cache!(𝓂)
     constants = 𝓂.constants
-    cc = constants.computational_constants
-    if isempty(cc.s_in_s⁺)
+    so = constants.second_order
+    if isempty(so.s_in_s⁺)
         # Use timings from constants if available, otherwise from model
         T = constants.post_model_macro
         nᵉ = T.nExo
@@ -230,12 +323,9 @@ function ensure_computational_constants_cache!(𝓂)
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
-        diag_nVars = ℒ.I(T.nVars)
-
         kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
         kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
         kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
 
         # Compute sparse index patterns for filter operations
@@ -245,34 +335,29 @@ function ensure_computational_constants_cache!(𝓂)
         shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
         var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
 
-        constants.computational_constants = computational_constants_cache(
-            s_in_s⁺,
-            s_in_s,
-            kron_s⁺_s⁺,
-            kron_s⁺_s,
-            nˢ,
-            e_in_s⁺,
-            v_in_s⁺,
-            diag_nVars,
-            kron_s_s,
-            kron_e_e,
-            kron_v_v,
-            kron_s_e,
-            kron_e_s,
-            shockvar_idxs,
-            shock_idxs,
-            shock_idxs2,
-            shock²_idxs,
-            var_vol²_idxs,
-        )
+        so.s_in_s⁺ = s_in_s⁺
+        so.s_in_s = s_in_s
+        so.kron_s⁺_s⁺ = kron_s⁺_s⁺
+        so.kron_s⁺_s = kron_s⁺_s
+        so.e_in_s⁺ = e_in_s⁺
+        so.v_in_s⁺ = v_in_s⁺
+        so.kron_s_s = kron_s_s
+        so.kron_e_e = kron_e_e
+        so.kron_v_v = kron_v_v
+        so.kron_e_s = kron_e_s
+        so.shockvar_idxs = shockvar_idxs
+        so.shock_idxs = shock_idxs
+        so.shock_idxs2 = shock_idxs2
+        so.shock²_idxs = shock²_idxs
+        so.var_vol²_idxs = var_vol²_idxs
     end
 
-    return constants.computational_constants
+    return constants.second_order
 end
 
 function ensure_computational_constants_cache!(constants::constants)
-    cc = constants.computational_constants
-    if isempty(cc.s_in_s⁺)
+    so = constants.second_order
+    if isempty(so.s_in_s⁺)
         # Use timings from constants
         T = constants.post_model_macro
         nᵉ = T.nExo
@@ -287,12 +372,9 @@ function ensure_computational_constants_cache!(constants::constants)
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
-        diag_nVars = ℒ.I(T.nVars)
-
         kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
         kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
         kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
 
         # Compute sparse index patterns for filter operations
@@ -302,102 +384,123 @@ function ensure_computational_constants_cache!(constants::constants)
         shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
         var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
 
-        constants.computational_constants = computational_constants_cache(
-            s_in_s⁺,
-            s_in_s,
-            kron_s⁺_s⁺,
-            kron_s⁺_s,
-            nˢ,
-            e_in_s⁺,
-            v_in_s⁺,
-            diag_nVars,
-            kron_s_s,
-            kron_e_e,
-            kron_v_v,
-            kron_s_e,
-            kron_e_s,
-            shockvar_idxs,
-            shock_idxs,
-            shock_idxs2,
-            shock²_idxs,
-            var_vol²_idxs,
-        )
+        so.s_in_s⁺ = s_in_s⁺
+        so.s_in_s = s_in_s
+        so.kron_s⁺_s⁺ = kron_s⁺_s⁺
+        so.kron_s⁺_s = kron_s⁺_s
+        so.e_in_s⁺ = e_in_s⁺
+        so.v_in_s⁺ = v_in_s⁺
+        so.kron_s_s = kron_s_s
+        so.kron_e_e = kron_e_e
+        so.kron_v_v = kron_v_v
+        so.kron_e_s = kron_e_s
+        so.shockvar_idxs = shockvar_idxs
+        so.shock_idxs = shock_idxs
+        so.shock_idxs2 = shock_idxs2
+        so.shock²_idxs = shock²_idxs
+        so.var_vol²_idxs = var_vol²_idxs
     end
 
-    return constants.computational_constants
+    return constants.second_order
 end
 
 function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = false)
     constants = 𝓂.constants
-    cf = constants.conditional_forecast_index_cache
-    cc = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants_cache!(𝓂)
 
-    if !cf.initialized
-        s_in_s⁺ = cc.s_in_s
-        e_in_s⁺ = cc.e_in_s⁺
+    if isempty(so.var²_idxs)
+        s_in_s⁺ = so.s_in_s
+        e_in_s⁺ = so.e_in_s⁺
 
-        shock_idxs = cc.shock_idxs
-        shock²_idxs = cc.shock²_idxs
+        shock_idxs = so.shock_idxs
+        shock²_idxs = so.shock²_idxs
         shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-        var_vol²_idxs = cc.var_vol²_idxs
+        var_vol²_idxs = so.var_vol²_idxs
         var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
-
-        cf = conditional_forecast_index_cache(true,
-                                                false,
-                                                shock_idxs,
-                                                shock²_idxs,
-                                                shockvar²_idxs,
-                                                var_vol²_idxs,
-                                                var²_idxs,
-                                                shockvar_idxs,
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[],
-                                                Int[])
+        so.var²_idxs = var²_idxs
+        so.shockvar²_idxs = shockvar²_idxs
+        so.var_vol²_idxs = var_vol²_idxs
     end
 
-    if third_order && !cf.third_order_initialized
-        sv_in_s⁺ = cc.s_in_s⁺
-        e_in_s⁺ = cc.e_in_s⁺
-        ones_e = zero(e_in_s⁺) .+ 1
+    if third_order
+        to = constants.third_order
+        if isempty(to.var_vol³_idxs)
+            sv_in_s⁺ = so.s_in_s⁺
+            e_in_s⁺ = so.e_in_s⁺
+            ones_e = zero(e_in_s⁺) .+ 1
 
-        var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
-        shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
-        shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
-        shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-        shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-        shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
-        shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
-        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+            var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
+            shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
+            shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
+            shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+            shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+            shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
+            shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
+            shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+            shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
 
-        cf = conditional_forecast_index_cache(true,
-                                                true,
-                                                cf.shock_idxs,
-                                                cf.shock²_idxs,
-                                                cf.shockvar²_idxs,
-                                                cf.var_vol²_idxs,
-                                                cf.var²_idxs,
-                                                cf.shockvar_idxs,
-                                                var_vol³_idxs,
-                                                shock_idxs2,
-                                                shock_idxs3,
-                                                shock³_idxs,
-                                                shockvar1_idxs,
-                                                shockvar2_idxs,
-                                                shockvar3_idxs,
-                                                shockvar³2_idxs,
-                                                shockvar³_idxs)
+            to.var_vol³_idxs = var_vol³_idxs
+            to.shock_idxs2 = shock_idxs2
+            to.shock_idxs3 = shock_idxs3
+            to.shock³_idxs = shock³_idxs
+            to.shockvar1_idxs = shockvar1_idxs
+            to.shockvar2_idxs = shockvar2_idxs
+            to.shockvar3_idxs = shockvar3_idxs
+            to.shockvar³2_idxs = shockvar³2_idxs
+            to.shockvar³_idxs = shockvar³_idxs
+        end
     end
 
-    constants.conditional_forecast_index_cache = cf
-    return cf
+    return so
+end
+
+function ensure_conditional_forecast_index_cache!(constants::constants; third_order::Bool = false)
+    so = ensure_computational_constants_cache!(constants)
+
+    if isempty(so.var²_idxs)
+        s_in_s⁺ = so.s_in_s
+        e_in_s⁺ = so.e_in_s⁺
+
+        shock_idxs = so.shock_idxs
+        shock²_idxs = so.shock²_idxs
+        shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+        var_vol²_idxs = so.var_vol²_idxs
+        var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+        so.var²_idxs = var²_idxs
+        so.shockvar²_idxs = shockvar²_idxs
+        so.var_vol²_idxs = var_vol²_idxs
+    end
+
+    if third_order
+        to = constants.third_order
+        if isempty(to.var_vol³_idxs)
+            sv_in_s⁺ = so.s_in_s⁺
+            e_in_s⁺ = so.e_in_s⁺
+            ones_e = zero(e_in_s⁺) .+ 1
+
+            var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
+            shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
+            shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
+            shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+            shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+            shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
+            shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
+            shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+            shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+
+            to.var_vol³_idxs = var_vol³_idxs
+            to.shock_idxs2 = shock_idxs2
+            to.shock_idxs3 = shock_idxs3
+            to.shock³_idxs = shock³_idxs
+            to.shockvar1_idxs = shockvar1_idxs
+            to.shockvar2_idxs = shockvar2_idxs
+            to.shockvar3_idxs = shockvar3_idxs
+            to.shockvar³2_idxs = shockvar³2_idxs
+            to.shockvar³_idxs = shockvar³_idxs
+        end
+    end
+
+    return so
 end
 
 function build_first_order_index_cache(T, I_nVars)
@@ -439,29 +542,79 @@ function build_first_order_index_cache(T, I_nVars)
     expand_future = I_nVars[T.future_not_past_and_mixed_idx,:]
     expand_past = I_nVars[T.past_not_future_and_mixed_idx,:]
 
-    return first_order_index_cache(true,
-                                    dyn_index,
-                                    reverse_dynamic_order,
-                                    comb,
-                                    future_not_past_and_mixed_in_comb,
-                                    past_not_future_and_mixed_in_comb,
-                                    Ir,
-                                    nabla_zero_cols,
-                                    nabla_minus_cols,
-                                    nabla_e_start,
-                                    expand_future,
-                                    expand_past)
+    return (
+        initialized = true,
+        dyn_index = dyn_index,
+        reverse_dynamic_order = reverse_dynamic_order,
+        comb = comb,
+        future_not_past_and_mixed_in_comb = future_not_past_and_mixed_in_comb,
+        past_not_future_and_mixed_in_comb = past_not_future_and_mixed_in_comb,
+        Ir = Ir,
+        nabla_zero_cols = nabla_zero_cols,
+        nabla_minus_cols = nabla_minus_cols,
+        nabla_e_start = nabla_e_start,
+        expand_future = expand_future,
+        expand_past = expand_past,
+    )
 end
 
 function ensure_first_order_index_cache!(𝓂)
     constants = 𝓂.constants
-    if !constants.first_order_index_cache.initialized
-        cc = ensure_computational_constants_cache!(𝓂)
+    if !constants.post_complete_parameters.initialized
         # Use timings from constants if available, otherwise from model
         T = constants.post_model_macro
-        constants.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
+        diag_nVars = constants.post_complete_parameters.diag_nVars
+        if size(diag_nVars, 1) == 0
+            diag_nVars = ℒ.I(T.nVars)
+        end
+        cache = build_first_order_index_cache(T, diag_nVars)
+        constants.post_complete_parameters = update_post_complete_parameters(
+            constants.post_complete_parameters;
+            diag_nVars = diag_nVars,
+            initialized = cache.initialized,
+            dyn_index = cache.dyn_index,
+            reverse_dynamic_order = cache.reverse_dynamic_order,
+            comb = cache.comb,
+            future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
+            past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            Ir = cache.Ir,
+            nabla_zero_cols = cache.nabla_zero_cols,
+            nabla_minus_cols = cache.nabla_minus_cols,
+            nabla_e_start = cache.nabla_e_start,
+            expand_future = cache.expand_future,
+            expand_past = cache.expand_past,
+        )
     end
-    return constants.first_order_index_cache
+    return constants.post_complete_parameters
+end
+
+function ensure_first_order_index_cache!(constants::constants)
+    if !constants.post_complete_parameters.initialized
+        # Use timings from constants if available
+        T = constants.post_model_macro
+        diag_nVars = constants.post_complete_parameters.diag_nVars
+        if size(diag_nVars, 1) == 0
+            diag_nVars = ℒ.I(T.nVars)
+        end
+        cache = build_first_order_index_cache(T, diag_nVars)
+        constants.post_complete_parameters = update_post_complete_parameters(
+            constants.post_complete_parameters;
+            diag_nVars = diag_nVars,
+            initialized = cache.initialized,
+            dyn_index = cache.dyn_index,
+            reverse_dynamic_order = cache.reverse_dynamic_order,
+            comb = cache.comb,
+            future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
+            past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            Ir = cache.Ir,
+            nabla_zero_cols = cache.nabla_zero_cols,
+            nabla_minus_cols = cache.nabla_minus_cols,
+            nabla_e_start = cache.nabla_e_start,
+            expand_future = cache.expand_future,
+            expand_past = cache.expand_past,
+        )
+    end
+    return constants.post_complete_parameters
 end
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
@@ -477,17 +630,16 @@ end
 
 function ensure_model_structure_cache!(𝓂)
     constants = 𝓂.constants
-    msc = constants.model_structure_cache
-    if isempty(msc.SS_and_pars_names)
+    if isempty(constants.post_complete_parameters.SS_and_pars_names)
         SS_and_pars_names = vcat(
             Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
-            𝓂.calibration_equations_parameters,
+            𝓂.constants.post_parameters_macro.calibration_equations_parameters,
         )
 
         all_variables = Symbol.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.aux, 𝓂.constants.post_model_macro.exo_present)))
 
-        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var)), 𝓂.calibration_equations_parameters))
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var)), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
 
         aux_indices = Int.(indexin(𝓂.constants.post_model_macro.aux, all_variables))
         processed_all_variables = copy(all_variables)
@@ -505,37 +657,38 @@ function ensure_model_structure_cache!(𝓂)
 
         vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = 𝓂.constants.post_model_macro.vars_in_ss_equations
-        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.calibration_equations_parameters)
-        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
 
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)))), 𝓂.calibration_equations_parameters)
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
         SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
 
         vars_non_obc = 𝓂.constants.post_model_macro.var[.!contains.(string.(𝓂.constants.post_model_macro.var), "ᵒᵇᶜ")]
         vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.constants.post_model_macro.aux, 𝓂.constants.post_model_macro.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
-        constants.model_structure_cache = model_structure_cache(
-            SS_and_pars_names,
-            all_variables,
-            NSSS_labels,
-            aux_indices,
-            processed_all_variables,
-            full_NSSS_display,
-            steady_state_expand_matrix,
-            custom_ss_expand_matrix,
-            vars_in_ss_equations,
-            vars_in_ss_equations_with_aux,
-            SS_and_pars_names_lead_lag,
-            SS_and_pars_names_no_exo,
-            SS_and_pars_no_exo_idx,
-            vars_idx_excluding_aux_obc,
-            vars_idx_excluding_obc,
+        constants.post_complete_parameters = update_post_complete_parameters(
+            constants.post_complete_parameters;
+            SS_and_pars_names = SS_and_pars_names,
+            all_variables = all_variables,
+            NSSS_labels = NSSS_labels,
+            aux_indices = aux_indices,
+            processed_all_variables = processed_all_variables,
+            full_NSSS_display = full_NSSS_display,
+            steady_state_expand_matrix = steady_state_expand_matrix,
+            custom_ss_expand_matrix = custom_ss_expand_matrix,
+            vars_in_ss_equations = vars_in_ss_equations,
+            vars_in_ss_equations_with_aux = vars_in_ss_equations_with_aux,
+            SS_and_pars_names_lead_lag = SS_and_pars_names_lead_lag,
+            SS_and_pars_names_no_exo = SS_and_pars_names_no_exo,
+            SS_and_pars_no_exo_idx = SS_and_pars_no_exo_idx,
+            vars_idx_excluding_aux_obc = vars_idx_excluding_aux_obc,
+            vars_idx_excluding_obc = vars_idx_excluding_obc,
         )
     end
 
-    return constants.model_structure_cache
+    return constants.post_complete_parameters
 end
 
 function compute_e4(nᵉ::Int)
@@ -544,7 +697,7 @@ function compute_e4(nᵉ::Int)
     end
     E_e4 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
     quadrup = multiplicate(nᵉ, 4)
-    comb4 = reduce(vcat, generateSumVectors(nᵉ, 4))
+                    extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
     comb4 = comb4 isa Int64 ? reshape([comb4], 1, 1) : comb4
     for j = 1:size(comb4, 1)
         E_e4[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb4[j, :])
@@ -568,37 +721,37 @@ end
 
 function ensure_moments_cache!(𝓂)
     constants = 𝓂.constants
-    mc = constants.moments_cache
-    cc = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants_cache!(𝓂)
+    to = constants.third_order
     # Use timings from constants if available, otherwise from model
     T = constants.post_model_macro
     
-    if isempty(mc.kron_states)
-        mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
+    if isempty(so.kron_states)
+        so.kron_states = ℒ.kron(so.s_in_s, so.s_in_s)
     end
-    if isempty(mc.kron_s_e)
-        mc.kron_s_e = ℒ.kron(cc.s_in_s, cc.e_in_s⁺)
+    if isempty(so.kron_s_e)
+        so.kron_s_e = ℒ.kron(so.s_in_s, so.e_in_s⁺)
     end
-    if size(mc.I_plus_s_s, 1) == 0
+    if size(so.I_plus_s_s, 1) == 0
         nˢ = T.nPast_not_future_and_mixed
-        mc.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+        so.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
     end
-    if isempty(mc.e4)
-        mc.e4 = compute_e4(T.nExo)
+    if isempty(so.e4)
+        so.e4 = compute_e4(T.nExo)
     end
-    if isempty(mc.e6)
-        mc.e6 = compute_e6(T.nExo)
+    if isempty(to.e6)
+        to.e6 = compute_e6(T.nExo)
     end
-    if isempty(mc.kron_e_v)
-        mc.kron_e_v = ℒ.kron(cc.e_in_s⁺, cc.v_in_s⁺)
+    if isempty(to.kron_e_v)
+        to.kron_e_v = ℒ.kron(so.e_in_s⁺, so.v_in_s⁺)
     end
-    return mc
+    return so
 end
 
 function ensure_moments_substate_cache!(𝓂, nˢ::Int)
     constants = 𝓂.constants
-    mc = constants.moments_cache
-    if !haskey(mc.substate_cache, nˢ)
+    to = constants.third_order
+    if !haskey(to.substate_cache, nˢ)
         # Use timings from constants if available, otherwise from model
         T = constants.post_model_macro
         nᵉ = T.nExo
@@ -607,24 +760,24 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
         e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        mc.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
+        to.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
     end
-    return mc.substate_cache[nˢ]
+    return to.substate_cache[nˢ]
 end
 
 function ensure_moments_dependency_kron_cache!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
     constants = 𝓂.constants
-    mc = constants.moments_cache
+    to = constants.third_order
     key = Tuple(dependencies)
-    if !haskey(mc.dependency_kron_cache, key)
-        cc = ensure_computational_constants_cache!(𝓂)
-        mc.dependency_kron_cache[key] = moments_dependency_kron_cache(
+    if !haskey(to.dependency_kron_cache, key)
+        so = ensure_computational_constants_cache!(𝓂)
+        to.dependency_kron_cache[key] = moments_dependency_kron_cache(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
-            ℒ.kron(s_in_s⁺, cc.e_in_s⁺),
-            ℒ.kron(s_in_s⁺, cc.v_in_s⁺),
+            ℒ.kron(s_in_s⁺, so.e_in_s⁺),
+            ℒ.kron(s_in_s⁺, so.v_in_s⁺),
         )
     end
-    return mc.dependency_kron_cache[key]
+    return to.dependency_kron_cache[key]
 end
 
 

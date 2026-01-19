@@ -604,7 +604,7 @@ function filter_and_smooth(𝓂::ℳ,
     solve!(𝓂, opts = opts)
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    cc = constants.computational_constants
+    idx_cache = constants.post_complete_parameters
     T = constants.post_model_macro
 
     parameters = 𝓂.parameter_values
@@ -622,7 +622,7 @@ function filter_and_smooth(𝓂::ℳ,
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     # Direct constants access
-    A = @views sol[:,1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
+    A = @views sol[:,1:T.nPast_not_future_and_mixed] * idx_cache.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
 

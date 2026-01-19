@@ -129,8 +129,8 @@ function get_shock_decomposition(𝓂::ℳ,
                                                                                     smooth = smooth)
     
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
-    exo_axis = 𝓂.constants.name_display_cache.exo_axis_with_subscript
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
+    exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
     if pruning
         axis2 = vcat(exo_axis, :Nonlinearities, :Initial_values)
@@ -258,7 +258,7 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     smooth = smooth)
     
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.exo_axis_with_subscript
+    axis1 = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
@@ -382,7 +382,7 @@ function get_estimated_variables(𝓂::ℳ,
                                                                                     smooth = smooth)
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
@@ -608,7 +608,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                                                     opts = opts)
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
 end
@@ -860,12 +860,12 @@ function get_conditional_forecast(𝓂::ℳ,
 
         S₂ = nothing
         if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂
         end
 
         S₃ = nothing
         if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
-            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
+            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃
         end
 
         ensure_conditional_forecast_index_cache!(𝓂; third_order = !isnothing(S₃))
@@ -1472,18 +1472,18 @@ function get_steady_state(𝓂::ℳ;
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 
     if parameter_derivatives == :all
-        length_par = length(𝓂.parameters)
+        length_par = length(𝓂.constants.post_complete_parameters.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ 𝓂.parameters string(parameter_derivatives) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.constants.post_complete_parameters.parameters string(parameter_derivatives) * " is not part of the free model parameters."
 
-        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
+        param_idx = indexin([parameter_derivatives], 𝓂.constants.post_complete_parameters.parameters)
         length_par = 1
     elseif length(parameter_derivatives) > 1
         for p in vec(collect(parameter_derivatives))
-            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+            @assert p ∈ 𝓂.constants.post_complete_parameters.parameters string(p) * " is not part of the free model parameters."
         end
-        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
+        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.constants.post_complete_parameters.parameters) |> sort
         length_par = length(parameter_derivatives)
     end
 
@@ -1513,9 +1513,9 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.calibration_equations_parameters...])
+    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...])
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.calibration_equations_parameters...])
+    calib_idx = return_variables_only ? [] : indexin([𝓂.constants.post_parameters_macro.calibration_equations_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -1527,11 +1527,11 @@ function get_steady_state(𝓂::ℳ;
     end
 
     ensure_name_display_cache!(𝓂)
-    var_axis = 𝓂.constants.name_display_cache.var_axis
-    calib_axis = 𝓂.constants.name_display_cache.calib_axis
+    var_axis = 𝓂.constants.post_complete_parameters.var_axis
+    calib_axis = 𝓂.constants.post_complete_parameters.calib_axis
     axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
 
-    axis2 = vcat(:Steady_state, 𝓂.parameters[param_idx])
+    axis2 = vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters[param_idx])
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
@@ -1773,7 +1773,7 @@ function get_solution(𝓂::ℳ;
     end
 
     if algorithm == :second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo),
@@ -1782,7 +1782,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :pruned_second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo),
@@ -1791,7 +1791,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
@@ -1802,7 +1802,7 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
@@ -1924,10 +1924,10 @@ function get_solution(𝓂::ℳ,
                                 algorithm = algorithm)
 
     
-    if length(𝓂.bounds) > 0
-        for (k,v) in 𝓂.bounds
-            if k ∈ 𝓂.parameters
-                if @ignore_derivatives min(max(parameters[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.parameters)][1]
+    if length(𝓂.constants.post_parameters_macro.bounds) > 0
+        for (k,v) in 𝓂.constants.post_parameters_macro.bounds
+            if k ∈ 𝓂.constants.post_complete_parameters.parameters
+                if @ignore_derivatives min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
                     return -Inf
                 end
             end
@@ -1966,7 +1966,7 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
@@ -1974,15 +1974,15 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
         end
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
@@ -1990,13 +1990,13 @@ function get_solution(𝓂::ℳ,
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order_auxiliary_matrices.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order.𝐔∇₃
                 
 	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
 	                                                    𝐒₁, 𝐒₂,
@@ -2007,10 +2007,10 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
-        𝐒₃ *= 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
+        𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
         if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
+            𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
         end
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
@@ -2178,8 +2178,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     axis1 = 𝓂.constants.post_model_macro.var
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
-    axis2 = 𝓂.constants.name_display_cache.exo_axis_plain
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
+    axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
     KeyedArray(cond_var_decomp; Variables = axis1, Shocks = axis2, Periods = periods)
 end
@@ -2325,8 +2325,8 @@ function get_variance_decomposition(𝓂::ℳ;
     axis1 = 𝓂.constants.post_model_macro.var
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
-    axis2 = 𝓂.constants.name_display_cache.exo_axis_plain
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
+    axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
     KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
 end
@@ -2438,7 +2438,7 @@ function get_correlation(𝓂::ℳ;
     axis1 = 𝓂.constants.post_model_macro.var
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
 end
@@ -2574,7 +2574,7 @@ function get_autocorrelation(𝓂::ℳ;
     axis1 = 𝓂.constants.post_model_macro.var
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
 end
@@ -2720,18 +2720,18 @@ function get_moments(𝓂::ℳ;
     param_idx = 0:0
     
     if parameter_derivatives == :all
-        length_par = length(𝓂.parameters)
+        length_par = length(𝓂.constants.post_complete_parameters.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ 𝓂.parameters string(parameter_derivatives) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.constants.post_complete_parameters.parameters string(parameter_derivatives) * " is not part of the free model parameters."
 
-        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
+        param_idx = indexin([parameter_derivatives], 𝓂.constants.post_complete_parameters.parameters)
         length_par = 1
     elseif length(parameter_derivatives) ≥ 1
         for p in vec(collect(parameter_derivatives))
-            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+            @assert p ∈ 𝓂.constants.post_complete_parameters.parameters string(p) * " is not part of the free model parameters."
         end
-        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
+        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.constants.post_complete_parameters.parameters) |> sort
         length_par = length(parameter_derivatives)
     end
 
@@ -2755,20 +2755,20 @@ function get_moments(𝓂::ℳ;
     axis1 = 𝓂.constants.post_model_macro.var
 
     ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.constants.name_display_cache.var_axis
-    axis2 = 𝓂.constants.name_display_cache.exo_axis_plain
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
+    axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
 
     if derivatives
         if non_stochastic_steady_state
-            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
                 axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
             end
 
-            axis2 = vcat(:Steady_state, 𝓂.parameters[param_idx])
+            axis2 = vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
                 axis2_decomposed = decompose_name.(axis2)
@@ -2778,8 +2778,8 @@ function get_moments(𝓂::ℳ;
             # dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
             dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
-            if length(𝓂.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            if length(𝓂.constants.post_parameters_macro.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -2796,7 +2796,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if variance
-            axis2 = vcat(:Variance, 𝓂.parameters[param_idx])
+            axis2 = vcat(:Variance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
                 axis2_decomposed = decompose_name.(axis2)
@@ -2916,7 +2916,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if mean && algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-            axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
+            axis2 = vcat(:Mean, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
                 axis2_decomposed = decompose_name.(axis2)
@@ -2934,15 +2934,15 @@ function get_moments(𝓂::ℳ;
         end
     else
         if non_stochastic_steady_state
-            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
                 axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
             end
 
-            if length(𝓂.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            if length(𝓂.constants.post_parameters_macro.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -3328,7 +3328,7 @@ function get_statistics(𝓂,
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
-        SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+        SS = SS_and_pars[1:end - length(𝓂.constants.post_parameters_macro.calibration_equations)]
 
         ret = Dict{Symbol,AbstractArray{T}}()
 
@@ -3364,7 +3364,7 @@ function get_statistics(𝓂,
         # @assert solved "Could not find covariance matrix."
     end
 
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    SS = SS_and_pars[1:end - length(𝓂.constants.post_parameters_macro.calibration_equations)]
 
     if !(variance == Symbol[])
         varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -3577,7 +3577,7 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.calibration_equations_parameters...]
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
@@ -3691,11 +3691,11 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.calibration_equations_parameters)
+    axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.parameters_in_equations))))
 
-    unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = vcat(vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 
     combined_values = Dict(unknowns .=> SS_and_pars[indexin(unknowns, axis1)])
 
@@ -3722,7 +3722,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     vals = [combined_values[i] for i in unknowns]
 
-    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
+    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)])
     
     residual = zeros(length(vals))
 

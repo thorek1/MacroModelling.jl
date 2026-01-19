@@ -35,27 +35,30 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     pruning = initial_state isa Vector{Vector{Float64}}
 
     T = constants.post_model_macro
-    cf_cache = constants.conditional_forecast_index_cache
+    so = constants.second_order
+    to = constants.third_order
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
 
-    shock_idxs = cf_cache.shock_idxs
-    shock²_idxs = cf_cache.shock²_idxs
-    shockvar²_idxs = cf_cache.shockvar²_idxs
-    var_vol²_idxs = cf_cache.var_vol²_idxs
-    var²_idxs = cf_cache.var²_idxs
-    shockvar_idxs = cf_cache.shockvar_idxs
+    ensure_conditional_forecast_index_cache!(constants; third_order = third_order)
+
+    shock_idxs = so.shock_idxs
+    shock²_idxs = so.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = so.var_vol²_idxs
+    var²_idxs = so.var²_idxs
+    shockvar_idxs = sparse(ℒ.kron(so.e_in_s⁺, so.s_in_s)).nzind
 
     if third_order
-        var_vol³_idxs = cf_cache.var_vol³_idxs
-        shock_idxs2 = cf_cache.shock_idxs2
-        shock_idxs3 = cf_cache.shock_idxs3
-        shock³_idxs = cf_cache.shock³_idxs
-        shockvar1_idxs = cf_cache.shockvar1_idxs
-        shockvar2_idxs = cf_cache.shockvar2_idxs
-        shockvar3_idxs = cf_cache.shockvar3_idxs
-        shockvar³2_idxs = cf_cache.shockvar³2_idxs
-        shockvar³_idxs = cf_cache.shockvar³_idxs
+        var_vol³_idxs = to.var_vol³_idxs
+        shock_idxs2 = to.shock_idxs2
+        shock_idxs3 = to.shock_idxs3
+        shock³_idxs = to.shock³_idxs
+        shockvar1_idxs = to.shockvar1_idxs
+        shockvar2_idxs = to.shockvar2_idxs
+        shockvar3_idxs = to.shockvar3_idxs
+        shockvar³2_idxs = to.shockvar³2_idxs
+        shockvar³_idxs = to.shockvar³_idxs
     end
 
     fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)

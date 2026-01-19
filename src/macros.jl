@@ -851,22 +851,7 @@ macro model(𝓂,ex...)
                         $model_name,
                         # $default_optimizer,
                         sort(collect($parameters_in_equations)),
-
-                        $parameters,
-                        $parameters,
                         $parameter_values,
-
-                        Symbol[], # missing_parameters - to be filled by @parameters
-                        false, # precompile - to be set by @parameters
-                        true, # simplify - to be set by @parameters
-
-                        Dict{Symbol, Float64}(), # guess
-
-                        $ss_calib_list,
-                        $par_calib_list,
-
-                        $ss_calib_list, #no_var_
-                        $par_calib_list, #no_var_
 
                         $ss_aux_equations,
                         $var_list_aux_SS,
@@ -896,12 +881,6 @@ macro model(𝓂,ex...)
                         $ss_equations,
                         $original_equations, 
 
-                        $calibration_equations, #no_var_
-
-                        $calibration_equations, 
-                        $calibration_equations_parameters,
-
-                        $bounds,
 
                         (zeros(0,0), x->x), # jacobian
                         (zeros(0,0), x->x), # jacobian_parameters
@@ -1519,46 +1498,11 @@ macro parameters(𝓂,ex...)
 
         missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
         missing_params = sort(missing_params_unsorted)
-        mod.$𝓂.missing_parameters = missing_params
         
         has_missing_parameters = length(missing_params) > 0
 
-        for (k,v) in $bounds
-            mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
-        end
-        
-        invalid_bounds = Symbol[]
-
-        for (k,v) in mod.$𝓂.bounds
-            if v[1] >= v[2]
-                push!(invalid_bounds, k)
-            end
-        end
-
-        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
-        
-        mod.$𝓂.ss_calib_list = ss_calib_list
-        mod.$𝓂.par_calib_list = par_calib_list
-    
-        mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
-        mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
-    
-        # Keep calib_parameters in declaration order, append missing_params at end
-        # This preserves declaration order for estimation and method of moments
-        all_params = vcat(calib_parameters, missing_params)
-        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
-
-        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
-
-        mod.$𝓂.parameters = all_params[defined_params_idx]
-        mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        mod.$𝓂.calibration_equations = calib_equations_list
-        mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
-        mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
-        mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
-        # mod.$𝓂.solution.outdated_NSSS = true
-        
-        if isa($guess, Dict{String, <:Real}) 
+        guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
+        if isa($guess, Dict{String, <:Real})
             guess_dict = Dict{Symbol, Float64}()
             for (key, value) in $guess
                 if key isa String
@@ -1570,11 +1514,52 @@ macro parameters(𝓂,ex...)
             guess_dict = $guess
         end
 
-        mod.$𝓂.guess = guess_dict
+        bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
+        for (k,v) in $bounds
+            bounds_dict[k] = haskey(bounds_dict, k) ? (max(bounds_dict[k][1], v[1]), min(bounds_dict[k][2], v[2])) : (v[1], v[2])
+        end
+        
+        invalid_bounds = Symbol[]
+
+        for (k,v) in bounds_dict
+            if v[1] >= v[2]
+                push!(invalid_bounds, k)
+            end
+        end
+
+        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+        
+        mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
+            calib_parameters_no_var,
+            $precompile,
+            $simplify,
+            guess_dict,
+            ss_calib_list,
+            par_calib_list,
+            $ss_no_var_calib_list,
+            $par_no_var_calib_list,
+            calib_equations_no_var_list,
+            calib_equations_list,
+            calib_eq_parameters,
+            bounds_dict,
+        )
+    
+        # Keep calib_parameters in declaration order, append missing_params at end
+        # This preserves declaration order for estimation and method of moments
+        all_params = vcat(calib_parameters, missing_params)
+        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+
+        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+        mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            mod.$𝓂.constants.post_complete_parameters;
+            parameters = all_params[defined_params_idx],
+            missing_parameters = missing_params,
+        )
+        mod.$𝓂.parameter_values = all_values[defined_params_idx]
+        # mod.$𝓂.solution.outdated_NSSS = true
         
         # Store precompile and simplify flag in model container
-        mod.$𝓂.precompile = $precompile
-        mod.$𝓂.simplify = $simplify
         
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)

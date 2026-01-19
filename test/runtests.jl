@@ -862,8 +862,8 @@ if test_set == "basic"
         inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
         @test inplace_calls[] > 0
         @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
-        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.calibration_equations_parameters)
-        @test length(RBC_switch.constants.custom_steady_state_buffer) == expected_cache_length
+        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.constants.post_parameters_macro.calibration_equations_parameters)
+        @test length(RBC_switch.constants.post_complete_parameters.custom_steady_state_buffer) == expected_cache_length
 
         # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
         # @test bad_calls[] > 0
@@ -1998,7 +1998,7 @@ if test_set == "basic"
         using CSV
         using DataFrames
 
-        df = DataFrame(Parameter = NAWM_EAUS_2008.parameters, Value = NAWM_EAUS_2008.parameter_values)
+        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_parameters_macro.parameters, Value = NAWM_EAUS_2008.parameter_values)
         CSV.write("NAWM_EAUS_2008_parameters.csv", df)
 
         # read the parameters from the csv file as a Dict and update NAWM_EAUS_2008_incomplete

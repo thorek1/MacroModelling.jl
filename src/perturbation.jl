@@ -8,20 +8,19 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_cache = constants.first_order_index_cache
-    idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
+    idx_cache = ensure_first_order_index_cache!(constants)
 
-    dynIndex = idx_cache_built.dyn_index
-    reverse_dynamic_order = idx_cache_built.reverse_dynamic_order
-    comb = idx_cache_built.comb
-    future_not_past_and_mixed_in_comb = idx_cache_built.future_not_past_and_mixed_in_comb
-    past_not_future_and_mixed_in_comb = idx_cache_built.past_not_future_and_mixed_in_comb
-    Ir = idx_cache_built.Ir
+    dynIndex = idx_cache.dyn_index
+    reverse_dynamic_order = idx_cache.reverse_dynamic_order
+    comb = idx_cache.comb
+    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
+    Ir = idx_cache.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_cache_built.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_cache_built.nabla_minus_cols]
-    ∇ₑ = ∇₁[:,idx_cache_built.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -94,7 +93,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    M = A[T.future_not_past_and_mixed_idx,:] * idx_cache_built.expand_past
+    M = A[T.future_not_past_and_mixed_idx,:] * idx_cache.expand_past
 
     ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
 
@@ -126,20 +125,19 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_cache = constants.first_order_index_cache
-    idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
+    idx_cache = ensure_first_order_index_cache!(constants)
 
-    dynIndex = idx_cache_built.dyn_index
-    reverse_dynamic_order = idx_cache_built.reverse_dynamic_order
-    comb = idx_cache_built.comb
-    future_not_past_and_mixed_in_comb = idx_cache_built.future_not_past_and_mixed_in_comb
-    past_not_future_and_mixed_in_comb = idx_cache_built.past_not_future_and_mixed_in_comb
-    Ir = idx_cache_built.Ir
+    dynIndex = idx_cache.dyn_index
+    reverse_dynamic_order = idx_cache.reverse_dynamic_order
+    comb = idx_cache.comb
+    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
+    Ir = idx_cache.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_cache_built.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_cache_built.nabla_minus_cols]
-    ∇̂ₑ = ∇₁[:,idx_cache_built.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
+    ∇̂ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -208,8 +206,8 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    expand_future = idx_cache_built.expand_future
-    expand_past = idx_cache_built.expand_past
+    expand_future = idx_cache.expand_future
+    expand_past = idx_cache.expand_past
 
     𝐒ᵗ = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
 
@@ -234,7 +232,7 @@ function rrule(::typeof(calculate_first_order_solution),
     tmp2 = -M' * (∇₊ * expand_future)'
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇ₑ = ∇₁[:,idx_cache_built.nabla_e_start:end]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
         ∂∇₁ = zero(∇₁)
@@ -242,9 +240,9 @@ function rrule(::typeof(calculate_first_order_solution),
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
         ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
 
-        ∂∇₁[:,idx_cache_built.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
+        ∂∇₁[:,idx_cache.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
 
-        ∂∇₁[:,idx_cache_built.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+        ∂∇₁[:,idx_cache.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
 
@@ -263,8 +261,8 @@ function rrule(::typeof(calculate_first_order_solution),
         end
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,idx_cache_built.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
-        ∂∇₁[:,idx_cache_built.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
+        ∂∇₁[:,idx_cache.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
+        ∂∇₁[:,idx_cache.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
         return NoTangent(), ∂∇₁, NoTangent()
     end
@@ -280,14 +278,13 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
-    idx_cache = constants.first_order_index_cache
-    idx_cache_built = idx_cache.initialized ? idx_cache : build_first_order_index_cache(T, ℒ.I(T.nVars))
+    idx_cache = ensure_first_order_index_cache!(constants)
 
-    expand_future = idx_cache_built.expand_future
-    expand_past = idx_cache_built.expand_past
+    expand_future = idx_cache.expand_future
+    expand_past = idx_cache.expand_past
 
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    B = ∇̂₁[:,idx_cache_built.nabla_zero_cols]
+    B = ∇̂₁[:,idx_cache.nabla_zero_cols]
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants; opts = opts, initial_guess = initial_guess)
 
@@ -322,8 +319,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         p .= ℱ.partials.(∇₁, i)
 
         dA = p[:,1:T.nFuture_not_past_and_mixed] * expand_future
-        dB = p[:,idx_cache_built.nabla_zero_cols]
-        dC = p[:,idx_cache_built.nabla_minus_cols] * expand_past
+        dB = p[:,idx_cache.nabla_zero_cols]
+        dC = p[:,idx_cache.nabla_minus_cols] * expand_past
         
         CC = invAXB * (dA * X² + dC + dB * X)
 
@@ -359,8 +356,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     Jm = expand_past
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇₀ = ∇₁[:,idx_cache_built.nabla_zero_cols]
-    ∇ₑ = ∇₁[:,idx_cache_built.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 
@@ -380,7 +377,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
         workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
-    M₂ = constants.second_order_auxiliary_matrices
+    M₂ = constants.second_order
     T = constants.post_model_macro
     # @timeit_debug timer "Calculate second order solution" begin
 
@@ -509,7 +506,7 @@ function rrule(::typeof(calculate_second_order_solution),
         workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
-    M₂ = constants.second_order_auxiliary_matrices
+    M₂ = constants.second_order
     T = constants.post_model_macro
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
@@ -781,8 +778,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
-    M₂ = constants.second_order_auxiliary_matrices
-    M₃ = constants.third_order_auxiliary_matrices
+    M₂ = constants.second_order
+    M₃ = constants.third_order
     T = constants.post_model_macro
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -1028,8 +1025,8 @@ function rrule(::typeof(calculate_third_order_solution),
         workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
-    M₂ = constants.second_order_auxiliary_matrices
-    M₃ = constants.third_order_auxiliary_matrices
+    M₂ = constants.second_order
+    M₃ = constants.third_order
     T = constants.post_model_macro
 
     # @timeit_debug timer "Third order solution - forward" begin

@@ -5,7 +5,7 @@ function calculate_covariance(parameters::Vector{R},
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
-    cc = constants.computational_constants
+    idx_cache = constants.post_complete_parameters
     T = constants.post_model_macro
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
@@ -24,7 +24,7 @@ function calculate_covariance(parameters::Vector{R},
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     # Direct constants access instead of model access
-    A = @views sol[:, 1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_cache.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
     C = @views sol[:, T.nPast_not_future_and_mixed+1:end]
     
@@ -65,8 +65,7 @@ function calculate_mean(parameters::Vector{R},
         solved = solution_error < opts.tol.NSSS_acceptance_tol
     else
         ensure_moments_cache!(𝓂)
-        cc = constants.computational_constants
-        mc = constants.moments_cache
+        so = constants.second_order
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
@@ -79,7 +78,7 @@ function calculate_mean(parameters::Vector{R},
         else
             𝓂.solution.perturbation.qme_solution = qme_sol
 
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                         opts = opts)
@@ -89,18 +88,18 @@ function calculate_mean(parameters::Vector{R},
             else
                 if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-                𝐒₂ *= 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+                𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
                 if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                    𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
+                    𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
                 end
 
                 nᵉ = T.nExo
                 nˢ = T.nPast_not_future_and_mixed
 
-                kron_states = mc.kron_states
-                kron_shocks = cc.kron_e_e
-                kron_volatility = cc.kron_v_v
+                kron_states = so.kron_states
+                kron_shocks = so.kron_e_e
+                kron_volatility = so.kron_v_v
 
                 # first order
                 states_to_variables¹ = sparse(𝐒₁[:,1:T.nPast_not_future_and_mixed])
@@ -157,8 +156,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         # Initialize constants at entry point
         constants = initialise_constants!(𝓂)
         ensure_moments_cache!(𝓂)
-        cc = constants.computational_constants
-        mc = constants.moments_cache
+        so = constants.second_order
         T = constants.post_model_macro
         nᵉ = T.nExo
 
@@ -170,13 +168,13 @@ function calculate_second_order_moments(parameters::Vector{R},
 
         # precalc second order
         ## mean
-        I_plus_s_s = mc.I_plus_s_s
+        I_plus_s_s = so.I_plus_s_s
 
         ## covariance
-        e⁴ = mc.e4
+        e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
@@ -184,16 +182,16 @@ function calculate_second_order_moments(parameters::Vector{R},
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-            𝐒₂ *= 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+            𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
             end
 
-            kron_s_s = mc.kron_states
-            kron_e_e = cc.kron_e_e
-            kron_v_v = cc.kron_v_v
-            kron_s_e = mc.kron_s_e
+            kron_s_s = so.kron_states
+            kron_e_e = so.kron_e_e
+            kron_v_v = so.kron_v_v
+            kron_s_e = so.kron_s_e
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -280,8 +278,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
     if solved
         ensure_moments_cache!(𝓂)
-        cc = 𝓂.constants.computational_constants
-        mc = 𝓂.constants.moments_cache
+        so = 𝓂.constants.second_order
         nᵉ = 𝓂.constants.post_model_macro.nExo
 
         nˢ = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -292,13 +289,13 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
         # precalc second order
         ## mean
-        I_plus_s_s = mc.I_plus_s_s
+        I_plus_s_s = so.I_plus_s_s
 
         ## covariance
-        e⁴ = mc.e4
+        e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
@@ -306,16 +303,16 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-            𝐒₂ *= 𝓂.constants.second_order_auxiliary_matrices.𝐔₂
+            𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order_auxiliary_matrices.𝐔₂)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
             end
 
-            kron_s_s = mc.kron_states
-            kron_e_e = cc.kron_e_e
-            kron_v_v = cc.kron_v_v
-            kron_s_e = mc.kron_s_e
+            kron_s_s = so.kron_states
+            kron_e_e = so.kron_e_e
+            kron_v_v = so.kron_v_v
+            kron_s_e = so.kron_s_e
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -461,10 +458,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     end
 
     ensure_moments_cache!(𝓂)
-    cc = 𝓂.constants.computational_constants
-    mc = 𝓂.constants.moments_cache
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order.𝐔∇₃
 
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
 	                                                𝓂.constants,
@@ -478,28 +475,28 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    𝐒₃ *= 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
-    kron_e_e = cc.kron_e_e
-    kron_v_v = cc.kron_v_v
-    kron_e_v = mc.kron_e_v
-    e_in_s⁺ = cc.e_in_s⁺
-    v_in_s⁺ = cc.v_in_s⁺
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
 
     # precalc second order
     ## covariance
-    e⁴ = mc.e4
+    e⁴ = so.e4
 
     # precalc third order
-    e⁶ = mc.e6
+    e⁶ = to.e6
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
@@ -705,10 +702,10 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     ensure_moments_cache!(𝓂)
-    cc = 𝓂.constants.computational_constants
-    mc = 𝓂.constants.moments_cache
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
@@ -722,28 +719,28 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    𝐒₃ *= 𝓂.constants.third_order_auxiliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order_auxiliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
-    kron_e_e = cc.kron_e_e
-    kron_v_v = cc.kron_v_v
-    kron_e_v = mc.kron_e_v
-    e_in_s⁺ = cc.e_in_s⁺
-    v_in_s⁺ = cc.v_in_s⁺
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
 
     # precalc second order
     ## covariance
-    e⁴ = mc.e4
+    e⁴ = so.e4
 
     # precalc third order
-    e⁶ = mc.e6
+    e⁶ = to.e6
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 

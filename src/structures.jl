@@ -169,22 +169,51 @@ struct symbolics
     # var_solved_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 end
 
-struct auxiliary_indices
-    dyn_var_future_idx::Vector{Int}
-    dyn_var_present_idx::Vector{Int}
-    dyn_var_past_idx::Vector{Int}
-    dyn_ss_idx::Vector{Int}
-    shocks_ss::Vector{Int}
+struct moments_substate_cache
+    I_plus_s_s::SparseMatrixCSC{Float64, Int}
+    e_es::SparseMatrixCSC{Float64, Int}
+    e_ss::SparseMatrixCSC{Float64, Int}
+    ss_s::SparseMatrixCSC{Float64, Int}
+    s_s::SparseMatrixCSC{Float64, Int}
 end
 
-struct second_order_auxiliary_matrices
+struct moments_dependency_kron_cache
+    kron_s_s::BitVector
+    kron_s_e::BitVector
+    kron_s_v::BitVector
+end
+
+mutable struct second_order
     𝛔::SparseMatrixCSC{Int}
     𝐂₂::SparseMatrixCSC{Int}
     𝐔₂::SparseMatrixCSC{Int}
     𝐔∇₂::SparseMatrixCSC{Int}
+
+    s_in_s⁺::BitVector
+    s_in_s::BitVector
+    kron_s⁺_s⁺::BitVector
+    kron_s⁺_s::BitVector
+    e_in_s⁺::BitVector
+    v_in_s⁺::BitVector
+    kron_s_s::BitVector
+    kron_e_e::BitVector
+    kron_v_v::BitVector
+    kron_s_e::BitVector
+    kron_e_s::BitVector
+    shockvar_idxs::Vector{Int}
+    shock_idxs::Vector{Int}
+    shock_idxs2::Vector{Int}
+    shock²_idxs::Vector{Int}
+    var_vol²_idxs::Vector{Int}
+    var²_idxs::Vector{Int}
+    shockvar²_idxs::Vector{Int}
+
+    kron_states::BitVector
+    I_plus_s_s::SparseMatrixCSC{Float64, Int}
+    e4::Vector{Float64}
 end
 
-struct third_order_auxiliary_matrices
+mutable struct third_order
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
     𝐈₃::Dict{Vector{Int}, Int}
@@ -207,6 +236,21 @@ struct third_order_auxiliary_matrices
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}
 
     𝐒𝐏::SparseMatrixCSC{Int}
+
+    var_vol³_idxs::Vector{Int}
+    shock_idxs2::Vector{Int}
+    shock_idxs3::Vector{Int}
+    shock³_idxs::Vector{Int}
+    shockvar1_idxs::Vector{Int}
+    shockvar2_idxs::Vector{Int}
+    shockvar3_idxs::Vector{Int}
+    shockvar³2_idxs::Vector{Int}
+    shockvar³_idxs::Vector{Int}
+
+    e6::Vector{Float64}
+    kron_e_v::BitVector
+    substate_cache::Dict{Int, moments_substate_cache}
+    dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
 end
 
 
@@ -304,136 +348,53 @@ mutable struct workspaces
     third_order::higher_order_workspace
 end
 
-# Cache for model-constant display names
-# Stores precomputed variable and shock names that depend only on model structure
-struct name_display_cache
-    # Processed variable names (with curly brackets formatted)
-    var_axis::Vector{R} where R <: Union{Symbol, String}
-    # Processed calibration equations parameter names (with curly brackets formatted)
-    calib_axis::Vector{R} where R <: Union{Symbol, String}
-    # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
-    exo_axis_plain::Vector{R} where R <: Union{Symbol, String}
-    # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)
-    exo_axis_with_subscript::Vector{R} where R <: Union{Symbol, String}
-    # Flag indicating if variables contain curly brackets
-    var_has_curly::Bool
-    # Flag indicating if shocks contain curly brackets
-    exo_has_curly::Bool
+
+
+struct post_parameters_macro
+    parameters_as_function_of_parameters::Vector{Symbol}
+    precompile::Bool
+    simplify::Bool
+    guess::Dict{Symbol, Float64}
+    ss_calib_list::Vector{Set{Symbol}}
+    par_calib_list::Vector{Set{Symbol}}
+    ss_no_var_calib_list::Vector{Set{Symbol}}
+    par_no_var_calib_list::Vector{Set{Symbol}}
+    calibration_equations_no_var::Vector{Expr}
+    calibration_equations::Vector{Expr}
+    calibration_equations_parameters::Vector{Symbol}
+    bounds::Dict{Symbol,Tuple{Float64,Float64}}
 end
 
-# Cache for model structure information
-# Stores precomputed lists and labels that depend only on model structure
-struct model_structure_cache
-    # SS_and_pars_names: processed variable names + calibration parameters
-    SS_and_pars_names::Vector{Symbol}
-    # all_variables: sorted union of var, aux, exo_present
-    all_variables::Vector{Symbol}
-    # NSSS_labels: sorted union of exo_present, var + calibration parameters
-    NSSS_labels::Vector{Symbol}
-    # aux_indices_in_all_variables: indexin(𝓂.aux, all_variables)
-    aux_indices::Vector{Int}
-    # processed_all_variables: all_variables with aux names cleaned
-    processed_all_variables::Vector{Symbol}
-    # full_NSSS with aux cleaned and curly bracket display formatting
-    full_NSSS_display::Vector{Union{Symbol, String}}
-    # Selector from NSSS order to full steady-state vector (processed variables)
-    steady_state_expand_matrix::SparseMatrixCSC{Float64, Int}
-    # Selector from custom steady-state order to var + calibrated parameters
-    custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
-    # vars_in_ss_equations: cached for custom steady state mapping (excluding ➕ auxiliaries)
-    vars_in_ss_equations::Vector{Symbol}
-    # vars_in_ss_equations_with_aux: includes ➕ auxiliaries
-    vars_in_ss_equations_with_aux::Vector{Symbol}
-    # SS_and_pars_names in lead/lag form
-    SS_and_pars_names_lead_lag::Vector{Symbol}
-    # SS_and_pars_names without exo and lead/lag markers
-    SS_and_pars_names_no_exo::Vector{Symbol}
-    # Cached indices for SS_and_pars_names_no_exo in lead/lag list
-    SS_and_pars_no_exo_idx::Vector{Int}
-    # Cached variable indices excluding auxiliary and OBC variables
-    vars_idx_excluding_aux_obc::Vector{Int}
-    # Cached variable indices excluding OBC variables
-    vars_idx_excluding_obc::Vector{Int}
-end
-
-# Cache for model-constant computational objects
-# Stores precomputed BitVectors, kronecker products, and size information
-struct computational_constants_cache
-    # BitVector for state selection: [ones(nPast+1), zeros(nExo)]
-    s_in_s⁺::BitVector
-    # BitVector for state selection: [ones(nPast), zeros(nExo+1)]  
-    s_in_s::BitVector
-    # Kronecker product: kron(s_in_s⁺, s_in_s⁺)
-    kron_s⁺_s⁺::BitVector
-    # Kronecker product: kron(s_in_s⁺, s_in_s)
-    kron_s⁺_s::BitVector
-    # Size for identity matrix of past states (store size, not the matrix itself)
-    nPast::Int
-    # Additional BitVectors for moments calculations
-    e_in_s⁺::BitVector  # [zeros(nPast+1), ones(nExo)]
-    v_in_s⁺::BitVector  # [zeros(nPast), 1, zeros(nExo)]
-    # Diagonal matrix for state selection
+struct post_complete_parameters{S <: Union{Symbol, String}}
+    parameters::Vector{Symbol}
+    missing_parameters::Vector{Symbol}
+    dyn_var_future_idx::Vector{Int}
+    dyn_var_present_idx::Vector{Int}
+    dyn_var_past_idx::Vector{Int}
+    dyn_ss_idx::Vector{Int}
+    shocks_ss::Vector{Int}
     diag_nVars::ℒ.Diagonal{Bool, Vector{Bool}}
-    # Additional kron products for moments and filter calculations
-    kron_s_s::BitVector  # kron(s_in_s⁺, s_in_s⁺) - same as kron_s⁺_s⁺ but used with s_in_s naming
-    kron_e_e::BitVector  # kron(e_in_s⁺, e_in_s⁺)
-    kron_v_v::BitVector  # kron(v_in_s⁺, v_in_s⁺)
-    kron_s_e::BitVector  # kron(s_in_s⁺, e_in_s⁺)
-    kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
-    # Sparse index patterns for filter operations (from kron().nzind)
-    shockvar_idxs::Vector{Int}  # kron(e_in_s⁺, s_in_s⁺) |> sparse |> .nzind
-    shock_idxs::Vector{Int}     # kron(e_in_s⁺, ones) |> sparse |> .nzind
-    shock_idxs2::Vector{Int}    # kron(ones, e_in_s⁺) |> sparse |> .nzind
-    shock²_idxs::Vector{Int}    # kron(e_in_s⁺, e_in_s⁺) |> sparse |> .nzind
-    var_vol²_idxs::Vector{Int}  # kron(s_in_s⁺, s_in_s⁺) |> sparse |> .nzind
-end
-
-struct conditional_forecast_index_cache
-    initialized::Bool
-    third_order_initialized::Bool
-    shock_idxs::Vector{Int}
-    shock²_idxs::Vector{Int}
-    shockvar²_idxs::Vector{Int}
-    var_vol²_idxs::Vector{Int}
-    var²_idxs::Vector{Int}
-    shockvar_idxs::Vector{Int}
-    var_vol³_idxs::Vector{Int}
-    shock_idxs2::Vector{Int}
-    shock_idxs3::Vector{Int}
-    shock³_idxs::Vector{Int}
-    shockvar1_idxs::Vector{Int}
-    shockvar2_idxs::Vector{Int}
-    shockvar3_idxs::Vector{Int}
-    shockvar³2_idxs::Vector{Int}
-    shockvar³_idxs::Vector{Int}
-end
-
-struct moments_substate_cache
-    I_plus_s_s::SparseMatrixCSC{Float64, Int}
-    e_es::SparseMatrixCSC{Float64, Int}
-    e_ss::SparseMatrixCSC{Float64, Int}
-    ss_s::SparseMatrixCSC{Float64, Int}
-    s_s::SparseMatrixCSC{Float64, Int}
-end
-
-struct moments_dependency_kron_cache
-    kron_s_s::BitVector
-    kron_s_e::BitVector
-    kron_s_v::BitVector
-end
-
-mutable struct moments_cache
-    kron_states::BitVector
-    kron_s_e::BitVector
-    I_plus_s_s::SparseMatrixCSC{Float64, Int}
-    e4::Vector{Float64}
-    e6::Vector{Float64}
-    kron_e_v::BitVector
-    substate_cache::Dict{Int, moments_substate_cache}
-    dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
-end
-
-struct first_order_index_cache
+    var_axis::Vector{S}
+    calib_axis::Vector{S}
+    exo_axis_plain::Vector{S}
+    exo_axis_with_subscript::Vector{S}
+    var_has_curly::Bool
+    exo_has_curly::Bool
+    SS_and_pars_names::Vector{Symbol}
+    all_variables::Vector{Symbol}
+    NSSS_labels::Vector{Symbol}
+    aux_indices::Vector{Int}
+    processed_all_variables::Vector{Symbol}
+    full_NSSS_display::Vector{S}
+    steady_state_expand_matrix::SparseMatrixCSC{Float64, Int}
+    custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
+    vars_in_ss_equations::Vector{Symbol}
+    vars_in_ss_equations_with_aux::Vector{Symbol}
+    SS_and_pars_names_lead_lag::Vector{Symbol}
+    SS_and_pars_names_no_exo::Vector{Symbol}
+    SS_and_pars_no_exo_idx::Vector{Int}
+    vars_idx_excluding_aux_obc::Vector{Int}
+    vars_idx_excluding_obc::Vector{Int}
     initialized::Bool
     dyn_index::UnitRange{Int}
     reverse_dynamic_order::Vector{Int}
@@ -446,23 +407,16 @@ struct first_order_index_cache
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    custom_steady_state_buffer::Vector{Float64}
 end
 
 mutable struct constants#{F <: Real, G <: AbstractFloat}
     # Model structure information (constant for a given model after @model macro)
     post_model_macro::post_model_macro
-    
-    # Cache structures
-    auxiliary_indices::auxiliary_indices
-    second_order_auxiliary_matrices::second_order_auxiliary_matrices
-    third_order_auxiliary_matrices::third_order_auxiliary_matrices
-    name_display_cache::name_display_cache
-    model_structure_cache::model_structure_cache
-    computational_constants::computational_constants_cache
-    conditional_forecast_index_cache::conditional_forecast_index_cache
-    moments_cache::moments_cache
-    first_order_index_cache::first_order_index_cache
-    custom_steady_state_buffer::Vector{Float64}
+    post_parameters_macro::post_parameters_macro
+    post_complete_parameters::post_complete_parameters
+    second_order::second_order
+    third_order::third_order
 end
 
 mutable struct solver_parameters
@@ -499,15 +453,7 @@ mutable struct ℳ
     model_name::Any
     # SS_optimizer
     parameters_in_equations::Vector{Symbol}
-    parameters_as_function_of_parameters::Vector{Symbol}
-    parameters::Vector{Symbol}
     parameter_values::Vector{Float64}
-
-    missing_parameters::Vector{Symbol}
-    precompile::Bool
-    simplify::Bool
-
-    guess::Dict{Symbol, Float64}
 
     # ss
     # dynamic_variables::Vector{Symbol}
@@ -524,11 +470,6 @@ mutable struct ℳ
     # dynamic_variables_list::Vector{Set{Symbol}}
     # dynamic_variables_future_list::Vector{Set{Symbol}}
 
-    ss_calib_list::Vector{Set{Symbol}}
-    par_calib_list::Vector{Set{Symbol}}
-
-    ss_no_var_calib_list::Vector{Set{Symbol}}
-    par_no_var_calib_list::Vector{Set{Symbol}}
 
     # ss_list::Vector{Set{Symbol}}
 
@@ -604,12 +545,6 @@ mutable struct ℳ
     # dyn_equations_future::Vector{Expr}
     original_equations::Vector{Expr}
 
-    calibration_equations_no_var::Vector{Expr}
-
-    calibration_equations::Vector{Expr}
-    calibration_equations_parameters::Vector{Symbol}
-
-    bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
     jacobian::Tuple{AbstractMatrix{<: Real},Function}
     jacobian_parameters::Tuple{AbstractMatrix{<: Real},Function}
@@ -646,3 +581,6 @@ mutable struct ℳ
 
     # estimation_helper::Dict{Vector{Symbol}, timings}
 end
+
+
+
