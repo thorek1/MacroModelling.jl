@@ -7187,159 +7187,51 @@ function solve!(𝓂::ℳ;
         end
 
         # Second order Padé approximation (unpruned)
-        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order_pade.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
-        if  ((:second_order_pade  == algorithm) && ((:second_order_pade   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        # Check if solution matrices are empty (not computed yet) or algorithm is outdated
+        pade_2_not_solved = isempty(𝓂.solution.perturbation.second_order_pade.stochastic_steady_state) || 
+                           size(𝓂.solution.perturbation.second_order_pade.𝐒₁, 1) == 0
+        pade_2_obc_not_solved = obc && size(𝓂.solution.perturbation.second_order_pade.𝐒₁̂, 1) == 0
+        
+        if  ((:second_order_pade  == algorithm) && ((:second_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_2_not_solved || pade_2_obc_not_solved)) ||
+            ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_2_not_solved || pade_2_obc_not_solved))
             
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
             
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            # Padé [1,1] approximation for second order: y = S₁*x + (1/2)*S₂*kron(x,x)
-            # Approximated as: y ≈ S₁*x ./ (1 .- D*x) where D is derived from second-order terms
-            # For efficiency, we use element-wise Padé: y_i = (S₁*x)_i / (1 - d_i * ||x||²)
-            # where d_i captures the curvature from S₂ for variable i
-            state_update₂_pade = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-                
-                linear_term = 𝐒₁ * aug_state
-                kron_aug = ℒ.kron(aug_state, aug_state)
-                quadratic_term = 𝐒₂ * kron_aug / 2
-                
-                # Padé [1,1] approximation: convert Taylor to rational form
-                # For f(x) ≈ a + bx + cx², Padé [1,1] is: (a + (b - ac/b)x) / (1 - (c/b)x)
-                # In matrix form, we approximate element-wise
-                # Use a more robust threshold to avoid numerical instability
-                tol = 1e-10
-                denominator = ones(T, length(linear_term))
-                for i in eachindex(linear_term)
-                    if abs(linear_term[i]) > tol
-                        # Padé coefficient: ratio of quadratic to linear contribution
-                        pade_coeff = quadratic_term[i] / linear_term[i]
-                        denom_val = 1 - pade_coeff
-                        # Ensure denominator doesn't become too small or negative
-                        if abs(denom_val) > tol
-                            denominator[i] = denom_val
-                        end
-                    end
-                end
-                
-                # Apply Padé approximation: y = linear / denominator
-                return linear_term ./ denominator
-            end
-
+            # Store OBC matrix if needed
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₂̂_pade = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                1
-                                shock]
-                    
-                    linear_term = Ŝ₁̂ * aug_state
-                    kron_aug = ℒ.kron(aug_state, aug_state)
-                    quadratic_term = 𝐒₂ * kron_aug / 2
-                    
-                    tol = 1e-10
-                    denominator = ones(T, length(linear_term))
-                    for i in eachindex(linear_term)
-                        if abs(linear_term[i]) > tol
-                            pade_coeff = quadratic_term[i] / linear_term[i]
-                            denom_val = 1 - pade_coeff
-                            if abs(denom_val) > tol
-                                denominator[i] = denom_val
-                            end
-                        end
-                    end
-                    
-                    return linear_term ./ denominator
-                end
+                𝐒₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
             else
-                state_update₂̂_pade = (x,y)->nothing
+                𝐒₁̂ = zeros(0, 0)
             end
 
-            𝓂.solution.perturbation.second_order_pade = second_order_perturbation_solution(stochastic_steady_state, state_update₂_pade, state_update₂̂_pade)
+            # Store the Padé solution with precomputed matrices
+            # The state update function uses these matrices via closure
+            𝓂.solution.perturbation.second_order_pade = second_order_pade_solution(stochastic_steady_state, 𝐒₁, 𝐒₂, 𝐒₁̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order_pade])
         end
 
         # Third order Padé approximation (unpruned)
-        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order_pade.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
-        if  ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        pade_3_not_solved = isempty(𝓂.solution.perturbation.third_order_pade.stochastic_steady_state) ||
+                           size(𝓂.solution.perturbation.third_order_pade.𝐒₁, 1) == 0
+        pade_3_obc_not_solved = obc && size(𝓂.solution.perturbation.third_order_pade.𝐒₁̂, 1) == 0
+        
+        if  ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_3_not_solved || pade_3_obc_not_solved))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            # Padé [2,1] approximation for third order
-            state_update₃_pade = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                1
-                                shock]
-                
-                linear_term = 𝐒₁ * aug_state
-                kron_aug = ℒ.kron(aug_state, aug_state)
-                quadratic_term = 𝐒₂ * kron_aug / 2
-                cubic_term = 𝐒₃ * ℒ.kron(kron_aug, aug_state) / 6
-                
-                # Padé [2,1] approximation for third order Taylor series
-                # f(x) ≈ a₀ + a₁x + a₂x² + a₃x³ → (b₀ + b₁x + b₂x²) / (1 + c₁x)
-                # Use robust threshold to avoid numerical instability
-                tol = 1e-10
-                taylor_sum = linear_term + quadratic_term + cubic_term
-                
-                denominator = ones(T, length(linear_term))
-                for i in eachindex(linear_term)
-                    base = linear_term[i] + quadratic_term[i]
-                    if abs(base) > tol
-                        # Use cubic term to estimate denominator coefficient
-                        higher_order_ratio = (quadratic_term[i] + cubic_term[i]) / base
-                        denom_val = 1 - higher_order_ratio
-                        if abs(denom_val) > tol
-                            denominator[i] = denom_val
-                        end
-                    end
-                end
-                
-                return taylor_sum ./ denominator
-            end
-
+            # Store OBC matrix if needed
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₃̂_pade = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                    1
-                                    shock]
-                    
-                    linear_term = Ŝ₁̂ * aug_state
-                    kron_aug = ℒ.kron(aug_state, aug_state)
-                    quadratic_term = 𝐒₂ * kron_aug / 2
-                    cubic_term = 𝐒₃ * ℒ.kron(kron_aug, aug_state) / 6
-                    
-                    tol = 1e-10
-                    taylor_sum = linear_term + quadratic_term + cubic_term
-                    
-                    denominator = ones(T, length(linear_term))
-                    for i in eachindex(linear_term)
-                        base = linear_term[i] + quadratic_term[i]
-                        if abs(base) > tol
-                            higher_order_ratio = (quadratic_term[i] + cubic_term[i]) / base
-                            denom_val = 1 - higher_order_ratio
-                            if abs(denom_val) > tol
-                                denominator[i] = denom_val
-                            end
-                        end
-                    end
-                    
-                    return taylor_sum ./ denominator
-                end
+                𝐒₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
             else
-                state_update₃̂_pade = (x,y)->nothing
+                𝐒₁̂ = zeros(0, 0)
             end
 
-            𝓂.solution.perturbation.third_order_pade = third_order_perturbation_solution(stochastic_steady_state, state_update₃_pade, state_update₃̂_pade)
+            # Store the Padé solution with precomputed matrices
+            𝓂.solution.perturbation.third_order_pade = third_order_pade_solution(stochastic_steady_state, 𝐒₁, 𝐒₂, 𝐒₃, 𝐒₁̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order_pade])
         end
@@ -9853,10 +9745,58 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
             pruning = true
         elseif :second_order_pade == algorithm
-            state_update = 𝓂.solution.perturbation.second_order_pade.state_update_obc
+            # Create state update function using precomputed matrices
+            pade_sol = 𝓂.solution.perturbation.second_order_pade
+            𝐒₁̂ = pade_sol.𝐒₁̂
+            𝐒₂ = pade_sol.𝐒₂
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁̂ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                tol = 1e-10
+                denominator = ones(T, length(linear_term))
+                for i in eachindex(linear_term)
+                    if abs(linear_term[i]) > tol
+                        pade_coeff = quadratic_term[i] / linear_term[i]
+                        denom_val = 1 - pade_coeff
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
+                    end
+                end
+                return linear_term ./ denominator
+            end
             pruning = false
         elseif :third_order_pade == algorithm
-            state_update = 𝓂.solution.perturbation.third_order_pade.state_update_obc
+            # Create state update function using precomputed matrices
+            pade_sol = 𝓂.solution.perturbation.third_order_pade
+            𝐒₁̂ = pade_sol.𝐒₁̂
+            𝐒₂ = pade_sol.𝐒₂
+            𝐒₃ = pade_sol.𝐒₃
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁̂ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                cubic_term = 𝐒₃ * ℒ.kron(kron_aug, aug_state) / 6
+                tol = 1e-10
+                taylor_sum = linear_term + quadratic_term + cubic_term
+                denominator = ones(T, length(linear_term))
+                for i in eachindex(linear_term)
+                    base = linear_term[i] + quadratic_term[i]
+                    if abs(base) > tol
+                        higher_order_ratio = (quadratic_term[i] + cubic_term[i]) / base
+                        denom_val = 1 - higher_order_ratio
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
+                    end
+                end
+                return taylor_sum ./ denominator
+            end
             pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
@@ -9880,10 +9820,58 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
             pruning = true
         elseif :second_order_pade == algorithm
-            state_update = 𝓂.solution.perturbation.second_order_pade.state_update
+            # Create state update function using precomputed matrices
+            pade_sol = 𝓂.solution.perturbation.second_order_pade
+            𝐒₁ = pade_sol.𝐒₁
+            𝐒₂ = pade_sol.𝐒₂
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                tol = 1e-10
+                denominator = ones(T, length(linear_term))
+                for i in eachindex(linear_term)
+                    if abs(linear_term[i]) > tol
+                        pade_coeff = quadratic_term[i] / linear_term[i]
+                        denom_val = 1 - pade_coeff
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
+                    end
+                end
+                return linear_term ./ denominator
+            end
             pruning = false
         elseif :third_order_pade == algorithm
-            state_update = 𝓂.solution.perturbation.third_order_pade.state_update
+            # Create state update function using precomputed matrices
+            pade_sol = 𝓂.solution.perturbation.third_order_pade
+            𝐒₁ = pade_sol.𝐒₁
+            𝐒₂ = pade_sol.𝐒₂
+            𝐒₃ = pade_sol.𝐒₃
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                cubic_term = 𝐒₃ * ℒ.kron(kron_aug, aug_state) / 6
+                tol = 1e-10
+                taylor_sum = linear_term + quadratic_term + cubic_term
+                denominator = ones(T, length(linear_term))
+                for i in eachindex(linear_term)
+                    base = linear_term[i] + quadratic_term[i]
+                    if abs(base) > tol
+                        higher_order_ratio = (quadratic_term[i] + cubic_term[i]) / base
+                        denom_val = 1 - higher_order_ratio
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
+                    end
+                end
+                return taylor_sum ./ denominator
+            end
             pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"

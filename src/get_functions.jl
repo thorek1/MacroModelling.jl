@@ -1533,6 +1533,10 @@ function get_steady_state(𝓂::ℳ;
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         elseif  algorithm == :pruned_second_order
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+        elseif  algorithm == :second_order_pade
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order_pade.stochastic_steady_state
+        elseif  algorithm == :third_order_pade
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order_pade.stochastic_steady_state
         else
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
         end
