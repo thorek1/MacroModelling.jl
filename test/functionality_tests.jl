@@ -12,31 +12,31 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
 
     params = [old_params, 
-                (m.constants.post_parameters_macro.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
-                Tuple(m.constants.post_parameters_macro.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
-                m.constants.post_parameters_macro.parameters .=> old_params, 
-                (string(m.constants.post_parameters_macro.parameters[1]) => old_params[1] * 1.0001), 
-                Tuple(string.(m.constants.post_parameters_macro.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                (m.constants.post_complete_parameters.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.constants.post_complete_parameters.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.constants.post_complete_parameters.parameters .=> old_params, 
+                (string(m.constants.post_complete_parameters.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.constants.post_complete_parameters.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                 old_params]
                 
     
     params2 = [old_params2, 
-                (m2.constants.post_parameters_macro.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
-                Tuple(m2.constants.post_parameters_macro.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
-                m2.constants.post_parameters_macro.parameters .=> old_params2, 
-                (string(m2.constants.post_parameters_macro.parameters[1]) => old_params2[1] * 1.0001), 
-                Tuple(string.(m2.constants.post_parameters_macro.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                (m2.constants.post_complete_parameters.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.constants.post_complete_parameters.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.constants.post_complete_parameters.parameters .=> old_params2, 
+                (string(m2.constants.post_complete_parameters.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.constants.post_complete_parameters.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
                 old_params2]
 
     param_derivs = [:all, 
-                    m.constants.post_parameters_macro.parameters[1], 
-                    m.constants.post_parameters_macro.parameters[1:3], 
-                    Tuple(m.constants.post_parameters_macro.parameters[1:3]), 
-                    reshape(m.constants.post_parameters_macro.parameters[1:3],3,1), 
-                    string.(m.constants.post_parameters_macro.parameters[1]), 
-                    string.(m.constants.post_parameters_macro.parameters[1:2]), 
-                    string.(Tuple(m.constants.post_parameters_macro.parameters[1:3])), 
-                    string.(reshape(m.constants.post_parameters_macro.parameters[1:3],3,1))]
+                    m.constants.post_complete_parameters.parameters[1], 
+                    m.constants.post_complete_parameters.parameters[1:3], 
+                    Tuple(m.constants.post_complete_parameters.parameters[1:3]), 
+                    reshape(m.constants.post_complete_parameters.parameters[1:3],3,1), 
+                    string.(m.constants.post_complete_parameters.parameters[1]), 
+                    string.(m.constants.post_complete_parameters.parameters[1:2]), 
+                    string.(Tuple(m.constants.post_complete_parameters.parameters[1:3])), 
+                    string.(reshape(m.constants.post_complete_parameters.parameters[1:3],3,1))]
 
     vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.constants.post_model_macro.var[1], m.constants.post_model_macro.var[1:2], Tuple(m.constants.post_model_macro.var), reshape(m.constants.post_model_macro.var,1,length(m.constants.post_model_macro.var)), string(m.constants.post_model_macro.var[1]), string.(m.constants.post_model_macro.var[1:2]), Tuple(string.(m.constants.post_model_macro.var)), reshape(string.(m.constants.post_model_macro.var),1,length(m.constants.post_model_macro.var))]
 
@@ -1718,7 +1718,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                                 if algorithm == :first_order && filter == :kalman
                                     for i in 1:100
-                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_parameters_macro.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
+                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
                                                                                 x -> begin 
                                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2272,7 +2272,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
                     for i in 1:100
-                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_parameters_macro.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2495,7 +2495,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_parameters_macro.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 

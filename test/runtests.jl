@@ -1998,7 +1998,7 @@ if test_set == "basic"
         using CSV
         using DataFrames
 
-        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_parameters_macro.parameters, Value = NAWM_EAUS_2008.parameter_values)
+        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_complete_parameters.parameters, Value = NAWM_EAUS_2008.parameter_values)
         CSV.write("NAWM_EAUS_2008_parameters.csv", df)
 
         # read the parameters from the csv file as a Dict and update NAWM_EAUS_2008_incomplete
