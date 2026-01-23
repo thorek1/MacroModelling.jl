@@ -550,7 +550,7 @@ function normalize_filtering_options(filter::Symbol,
 
     pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
 
-    if shock_decomposition && algorithm ∈ (:second_order, :third_order)
+    if shock_decomposition && algorithm ∈ (:second_order, :third_order, :second_order_pade, :third_order_pade)
         @info "Shock decomposition is not available for $(algorithm) solutions, but is available for first order, pruned second order, and pruned third order solutions. Setting `shock_decomposition = false`." maxlog = maxlog
         shock_decomposition = false
     end
@@ -6963,12 +6963,12 @@ function solve!(𝓂::ℳ;
     # end # timeit_debug
 
     if 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
-        algorithm ∈ [:second_order, :pruned_second_order]
+        algorithm ∈ [:second_order, :pruned_second_order, :second_order_pade]
         start_time = time()
         if !silent print("Take symbolic derivatives up to second order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 2)
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
-    elseif 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
+    elseif 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order, :third_order_pade]
         start_time = time()
         if !silent print("Take symbolic derivatives up to third order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 3)
@@ -6981,7 +6981,9 @@ function solve!(𝓂::ℳ;
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:second_order_pade   == algorithm) && ((:second_order_pade   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:third_order_pade    == algorithm) && ((:third_order_pade    ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
@@ -7182,6 +7184,117 @@ function solve!(𝓂::ℳ;
             𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
+        end
+
+        # Second order Padé approximation (unpruned)
+        # Check if solution matrices are empty (not computed yet) or algorithm is outdated
+        pade_2_not_solved = isempty(𝓂.solution.perturbation.second_order_pade.stochastic_steady_state) || 
+                           size(𝓂.solution.perturbation.second_order_pade.𝐒₁, 1) == 0
+        pade_2_obc_not_solved = obc && size(𝓂.solution.perturbation.second_order_pade.𝐒₁̂, 1) == 0
+        
+        if  ((:second_order_pade  == algorithm) && ((:second_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_2_not_solved || pade_2_obc_not_solved)) ||
+            ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_2_not_solved || pade_2_obc_not_solved))
+            
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
+            
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+
+            # Compute [1,1] matrix Padé coefficient matrix
+            # Taylor series: yᵢ = S₁ᵢ*x + S₂ᵢ*(x⊗x)/2
+            # Matrix Padé: yᵢ = S₁ᵢ*x / (1 - 𝐃ᵢ*(x⊗x))
+            # where 𝐃ᵢ is chosen so that expanding the Padé matches the Taylor series
+            # This gives: 𝐃ᵢ = S₂ᵢ/(2*S₁ᵢ) in a suitable sense
+            # 
+            # For numerical computation, we use: 𝐃[i,:] = S₂[i,:] ./ (2 * norm(S₁[i,:])²)
+            # This normalizes by the squared Frobenius norm of each row of S₁
+            # The approximation is: y = S₁*x ./ (1 .- 𝐃*kron(x,x))
+            
+            nVars = size(𝐒₁, 1)
+            nAug = size(𝐒₁, 2)
+            nAug² = size(𝐒₂, 2)
+            
+            # Compute row-normalized Padé denominator coefficient matrix
+            𝐃 = zeros(eltype(𝐒₂), nVars, nAug²)
+            for i in 1:nVars
+                row_norm_sq = sum(abs2, 𝐒₁[i, :])
+                if row_norm_sq > 1e-14
+                    𝐃[i, :] = 𝐒₂[i, :] / (2 * row_norm_sq)
+                end
+            end
+
+            # Store OBC matrix and its Padé coefficients if needed
+            if obc
+                𝐒₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                𝐃̂ = zeros(eltype(𝐒₂), nVars, nAug²)
+                for i in 1:nVars
+                    row_norm_sq = sum(abs2, 𝐒₁̂[i, :])
+                    if row_norm_sq > 1e-14
+                        𝐃̂[i, :] = 𝐒₂[i, :] / (2 * row_norm_sq)
+                    end
+                end
+            else
+                𝐒₁̂ = zeros(0, 0)
+                𝐃̂ = zeros(0, 0)
+            end
+
+            # Store the Padé solution with precomputed coefficient matrices
+            𝓂.solution.perturbation.second_order_pade = second_order_pade_solution(stochastic_steady_state, 𝐒₁, 𝐒₂, 𝐃, 𝐒₁̂, 𝐃̂)
+
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order_pade])
+        end
+
+        # Third order Padé approximation (unpruned)
+        pade_3_not_solved = isempty(𝓂.solution.perturbation.third_order_pade.stochastic_steady_state) ||
+                           size(𝓂.solution.perturbation.third_order_pade.𝐒₁, 1) == 0
+        pade_3_obc_not_solved = obc && size(𝓂.solution.perturbation.third_order_pade.𝐒₁̂, 1) == 0
+        
+        if  ((:third_order_pade  == algorithm) && ((:third_order_pade   ∈ 𝓂.solution.outdated_algorithms) || pade_3_not_solved || pade_3_obc_not_solved))
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
+
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+
+            # Compute [2,1] matrix Padé coefficients for third order
+            # Taylor series: yᵢ = S₁ᵢ*x + S₂ᵢ*(x⊗x)/2 + S₃ᵢ*(x⊗x⊗x)/6
+            # Matrix Padé [2,1]: yᵢ = (S₁ᵢ*x + S₂ᵢ*(x⊗x)/2) / (1 - 𝐃₂ᵢ*(x⊗x) - 𝐃₃ᵢ*(x⊗x⊗x))
+            
+            nVars = size(𝐒₁, 1)
+            nAug = size(𝐒₁, 2)
+            nAug² = size(𝐒₂, 2)
+            nAug³ = size(𝐒₃, 2)
+            
+            # Compute row-normalized Padé denominator coefficient matrices
+            𝐃₂ = zeros(eltype(𝐒₂), nVars, nAug²)
+            𝐃₃ = zeros(eltype(𝐒₃), nVars, nAug³)
+            for i in 1:nVars
+                row_norm_sq = sum(abs2, 𝐒₁[i, :]) + sum(abs2, 𝐒₂[i, :]) / 4
+                if row_norm_sq > 1e-14
+                    𝐃₂[i, :] = 𝐒₂[i, :] / (2 * row_norm_sq)
+                    𝐃₃[i, :] = 𝐒₃[i, :] / (6 * row_norm_sq)
+                end
+            end
+
+            # Store OBC matrices and Padé coefficients if needed
+            if obc
+                𝐒₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                𝐃₂̂ = zeros(eltype(𝐒₂), nVars, nAug²)
+                𝐃₃̂ = zeros(eltype(𝐒₃), nVars, nAug³)
+                for i in 1:nVars
+                    row_norm_sq = sum(abs2, 𝐒₁̂[i, :]) + sum(abs2, 𝐒₂[i, :]) / 4
+                    if row_norm_sq > 1e-14
+                        𝐃₂̂[i, :] = 𝐒₂[i, :] / (2 * row_norm_sq)
+                        𝐃₃̂[i, :] = 𝐒₃[i, :] / (6 * row_norm_sq)
+                    end
+                end
+            else
+                𝐒₁̂ = zeros(0, 0)
+                𝐃₂̂ = zeros(0, 0)
+                𝐃₃̂ = zeros(0, 0)
+            end
+
+            # Store the Padé solution with precomputed matrices
+            𝓂.solution.perturbation.third_order_pade = third_order_pade_solution(stochastic_steady_state, 𝐒₁, 𝐒₂, 𝐒₃, 𝐃₂, 𝐃₃, 𝐒₁̂, 𝐃₂̂, 𝐃₃̂)
+
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order_pade])
         end
     end
     
@@ -9692,6 +9805,50 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
             pruning = true
+        elseif :second_order_pade == algorithm
+            # Matrix Padé [1,1] approximation using precomputed coefficient matrices
+            # Taylor: y = S₁*x + S₂*(x⊗x)/2
+            # Padé: y = S₁*x * (I - 𝐃*(x⊗x))⁻¹ where 𝐃 = pinv(S₁)*S₂/2
+            pade_sol = 𝓂.solution.perturbation.second_order_pade
+            𝐒₁̂ = pade_sol.𝐒₁̂
+            𝐃̂ = pade_sol.𝐃̂
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁̂ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                # Matrix Padé denominator: (I - 𝐃̂*kron_aug)
+                # For efficiency, compute the correction term and apply element-wise
+                pade_correction = 𝐃̂ * kron_aug
+                denominator = 1 .- pade_correction
+                # Numerical stability: avoid division by very small numbers
+                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
+                return linear_term ./ denominator
+            end
+            pruning = false
+        elseif :third_order_pade == algorithm
+            # Matrix Padé [2,1] approximation using precomputed coefficient matrices
+            pade_sol = 𝓂.solution.perturbation.third_order_pade
+            𝐒₁̂ = pade_sol.𝐒₁̂
+            𝐒₂ = pade_sol.𝐒₂
+            𝐃₂̂ = pade_sol.𝐃₂̂
+            𝐃₃̂ = pade_sol.𝐃₃̂
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁̂ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                kron_aug3 = ℒ.kron(kron_aug, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                # Matrix Padé [2,1]: numerator = S₁*x + S₂*(x⊗x)/2
+                # denominator = I - 𝐃₂*(x⊗x) - 𝐃₃*(x⊗x⊗x)
+                numerator = linear_term + quadratic_term
+                pade_correction = 𝐃₂̂ * kron_aug + 𝐃₃̂ * kron_aug3
+                denominator = 1 .- pade_correction
+                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
+                return numerator ./ denominator
+            end
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -9713,6 +9870,46 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
             pruning = true
+        elseif :second_order_pade == algorithm
+            # Matrix Padé [1,1] approximation using precomputed coefficient matrices
+            pade_sol = 𝓂.solution.perturbation.second_order_pade
+            𝐒₁ = pade_sol.𝐒₁
+            𝐃 = pade_sol.𝐃
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                # Matrix Padé: y = S₁*x / (I - 𝐃*(x⊗x))
+                pade_correction = 𝐃 * kron_aug
+                denominator = 1 .- pade_correction
+                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
+                return linear_term ./ denominator
+            end
+            pruning = false
+        elseif :third_order_pade == algorithm
+            # Matrix Padé [2,1] approximation using precomputed coefficient matrices
+            pade_sol = 𝓂.solution.perturbation.third_order_pade
+            𝐒₁ = pade_sol.𝐒₁
+            𝐒₂ = pade_sol.𝐒₂
+            𝐃₂ = pade_sol.𝐃₂
+            𝐃₃ = pade_sol.𝐃₃
+            past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
+                linear_term = 𝐒₁ * aug_state
+                kron_aug = ℒ.kron(aug_state, aug_state)
+                kron_aug3 = ℒ.kron(kron_aug, aug_state)
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                # Matrix Padé [2,1]: numerator = S₁*x + S₂*(x⊗x)/2
+                # denominator = I - 𝐃₂*(x⊗x) - 𝐃₃*(x⊗x⊗x)
+                numerator = linear_term + quadratic_term
+                pade_correction = 𝐃₂ * kron_aug + 𝐃₃ * kron_aug3
+                denominator = 1 .- pade_correction
+                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
+                return numerator ./ denominator
+            end
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -10268,6 +10465,24 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     end
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
+end
+
+# Padé versions of get_relevant_steady_state_and_state_update
+# These use the same stochastic steady state calculations as their Taylor counterparts
+function get_relevant_steady_state_and_state_update(::Val{:second_order_pade}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options()) where S <: Real
+    # Use the same calculation as second_order
+    return get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts)
+end
+
+function get_relevant_steady_state_and_state_update(::Val{:third_order_pade}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+    # Use the same calculation as third_order
+    return get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts)
 end
 
 end # dispatch_doctor

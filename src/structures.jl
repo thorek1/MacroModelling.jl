@@ -195,6 +195,32 @@ struct perturbation_solution
     state_update_obc::Function
 end
 
+# Struct to store precomputed Padé matrices for second order
+# Uses [1,1] matrix Padé approximation: y ≈ 𝐍*x * (I - 𝐃*kron(x,x))⁻¹
+# Precomputes the Padé coefficient matrices from Taylor series coefficients
+struct second_order_pade_solution
+    stochastic_steady_state::Vector{Float64}
+    𝐒₁::AbstractMatrix{Float64}   # First order solution matrix (numerator coefficient)
+    𝐒₂::AbstractMatrix{Float64}   # Second order solution matrix
+    𝐃::AbstractMatrix{Float64}    # Precomputed Padé denominator coefficient matrix
+    𝐒₁̂::AbstractMatrix{Float64}   # First order solution matrix for OBC (zeros if not needed)
+    𝐃̂::AbstractMatrix{Float64}    # Padé denominator for OBC (zeros if not needed)
+end
+
+# Struct to store precomputed Padé matrices for third order
+# Uses [2,1] matrix Padé approximation
+struct third_order_pade_solution
+    stochastic_steady_state::Vector{Float64}
+    𝐒₁::AbstractMatrix{Float64}   # First order solution matrix
+    𝐒₂::AbstractMatrix{Float64}   # Second order solution matrix
+    𝐒₃::AbstractMatrix{Float64}   # Third order solution matrix
+    𝐃₂::AbstractMatrix{Float64}   # Padé denominator coefficient for quadratic term
+    𝐃₃::AbstractMatrix{Float64}   # Padé denominator coefficient for cubic term
+    𝐒₁̂::AbstractMatrix{Float64}   # First order solution matrix for OBC (zeros if not needed)
+    𝐃₂̂::AbstractMatrix{Float64}   # Padé denominator for OBC quadratic (zeros if not needed)
+    𝐃₃̂::AbstractMatrix{Float64}   # Padé denominator for OBC cubic (zeros if not needed)
+end
+
 struct second_order_perturbation_solution
     # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
@@ -216,6 +242,8 @@ mutable struct perturbation
     pruned_second_order::second_order_perturbation_solution
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
+    second_order_pade::second_order_pade_solution
+    third_order_pade::third_order_pade_solution
     qme_solution::Matrix{Float64}
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}
