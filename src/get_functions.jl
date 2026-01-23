@@ -847,6 +847,10 @@ function get_conditional_forecast(𝓂::ℳ,
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_second_order_pade
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order_pade
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
@@ -856,11 +860,15 @@ function get_conditional_forecast(𝓂::ℳ,
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            elseif algorithm == :pruned_second_order_pade
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order_pade
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
                 initial_state = initial_state - NSSS
             end
         else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order, :pruned_second_order_pade, :pruned_third_order_pade]
                 @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
             end
         end
@@ -884,7 +892,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
-    if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+    if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order, :second_order_pade, :third_order_pade, :pruned_second_order_pade, :pruned_third_order_pade]
         S₁ = 𝓂.solution.perturbation.first_order.solution_matrix
         S₁ = [S₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) S₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
@@ -894,7 +902,7 @@ function get_conditional_forecast(𝓂::ℳ,
         end
 
         S₃ = nothing
-        if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
+        if algorithm ∈ [:third_order, :pruned_third_order, :third_order_pade, :pruned_third_order_pade] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
             S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
         end
 
@@ -1296,6 +1304,10 @@ function get_irf(𝓂::ℳ;
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_second_order_pade
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order_pade
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
@@ -1305,11 +1317,15 @@ function get_irf(𝓂::ℳ;
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            elseif algorithm == :pruned_second_order_pade
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order_pade
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
                 initial_state = initial_state - NSSS
             end
         else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order, :pruned_second_order_pade, :pruned_third_order_pade]
                 @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
             end
         end
@@ -1318,7 +1334,7 @@ function get_irf(𝓂::ℳ;
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order, :pruned_second_order_pade, :second_order_pade, :pruned_third_order_pade, :third_order_pade] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
@@ -1817,6 +1833,26 @@ function get_solution(𝓂::ℳ;
                             States__Shocks¹ = axis1,
                             Variables = axis2,
                             States__Shocks² = axis1)
+    elseif algorithm == :second_order_pade
+        # Padé uses same solution matrices, transformation is in state_update
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3]);
+                            States__Shocks¹ = axis1,
+                            Variables = axis2,
+                            States__Shocks² = axis1)
+    elseif algorithm == :pruned_second_order_pade
+        # Padé uses same solution matrices, transformation is in state_update
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3]);
+                            States__Shocks¹ = axis1,
+                            Variables = axis2,
+                            States__Shocks² = axis1)
     elseif algorithm == :third_order
         return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
@@ -1829,6 +1865,30 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3,4]);
+                            States__Shocks¹ = axis1,
+                            Variables = axis2,
+                            States__Shocks² = axis1,
+                            States__Shocks³ = axis1)
+    elseif algorithm == :third_order_pade
+        # Padé uses same solution matrices, transformation is in state_update
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3,4]);
+                            States__Shocks¹ = axis1,
+                            Variables = axis2,
+                            States__Shocks² = axis1,
+                            States__Shocks³ = axis1)
+    elseif algorithm == :pruned_third_order_pade
+        # Padé uses same solution matrices, transformation is in state_update
         return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 

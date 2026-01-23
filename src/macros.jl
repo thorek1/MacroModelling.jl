@@ -1,4 +1,4 @@
-const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order, :second_order_pade, :pruned_second_order_pade, :third_order_pade, :pruned_third_order_pade]
 
 
 """
@@ -966,6 +966,10 @@ macro model(𝓂,ex...)
 
                         solution(
                             perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, (x,y)->nothing),
+                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
