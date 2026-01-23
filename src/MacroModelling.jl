@@ -4986,7 +4986,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.constants.post_parameters_macro.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.constants.post_parameters_macro.bounds[𝓂.solved_vars[end]][2]))))
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = begin
+                        _bounds = get($(𝓂.constants.post_parameters_macro.bounds), $(QuoteNode(𝓂.solved_vars[end])), (eps(), 1e12))
+                        min(max(_bounds[1], $(𝓂.solved_vals[end])), _bounds[2])
+                    end))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
