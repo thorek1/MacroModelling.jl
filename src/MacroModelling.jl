@@ -7213,12 +7213,18 @@ function solve!(𝓂::ℳ;
                 # Padé [1,1] approximation: convert Taylor to rational form
                 # For f(x) ≈ a + bx + cx², Padé [1,1] is: (a + (b - ac/b)x) / (1 - (c/b)x)
                 # In matrix form, we approximate element-wise
+                # Use a more robust threshold to avoid numerical instability
+                tol = 1e-10
                 denominator = ones(T, length(linear_term))
                 for i in eachindex(linear_term)
-                    if abs(linear_term[i]) > eps(T)
+                    if abs(linear_term[i]) > tol
                         # Padé coefficient: ratio of quadratic to linear contribution
                         pade_coeff = quadratic_term[i] / linear_term[i]
-                        denominator[i] = 1 - pade_coeff
+                        denom_val = 1 - pade_coeff
+                        # Ensure denominator doesn't become too small or negative
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
                     end
                 end
                 
@@ -7238,11 +7244,15 @@ function solve!(𝓂::ℳ;
                     kron_aug = ℒ.kron(aug_state, aug_state)
                     quadratic_term = 𝐒₂ * kron_aug / 2
                     
+                    tol = 1e-10
                     denominator = ones(T, length(linear_term))
                     for i in eachindex(linear_term)
-                        if abs(linear_term[i]) > eps(T)
+                        if abs(linear_term[i]) > tol
                             pade_coeff = quadratic_term[i] / linear_term[i]
-                            denominator[i] = 1 - pade_coeff
+                            denom_val = 1 - pade_coeff
+                            if abs(denom_val) > tol
+                                denominator[i] = denom_val
+                            end
                         end
                     end
                     
@@ -7279,12 +7289,17 @@ function solve!(𝓂::ℳ;
                 quadratic_term = 𝐒₂ * kron_aug / 2
                 
                 # Apply Padé to second order contribution
+                # Use a robust threshold to avoid numerical instability
+                tol = 1e-10
                 y₂_combined = linear_term + quadratic_term
                 denominator = ones(T, length(y₂_combined))
                 for i in eachindex(y₂_combined)
-                    if abs(linear_term[i] + quadratic_term[i]) > eps(T) && abs(linear_term[i]) > eps(T)
-                        pade_coeff = quadratic_term[i] / (linear_term[i] + quadratic_term[i])
-                        denominator[i] = 1 - pade_coeff
+                    if abs(y₂_combined[i]) > tol && abs(linear_term[i]) > tol
+                        pade_coeff = quadratic_term[i] / y₂_combined[i]
+                        denom_val = 1 - pade_coeff
+                        if abs(denom_val) > tol
+                            denominator[i] = denom_val
+                        end
                     end
                 end
                 
@@ -7304,12 +7319,16 @@ function solve!(𝓂::ℳ;
                     kron_aug = ℒ.kron(aug_state₁, aug_state₁)
                     quadratic_term = 𝐒₂ * kron_aug / 2
                     
+                    tol = 1e-10
                     y₂_combined = linear_term + quadratic_term
                     denominator = ones(T, length(y₂_combined))
                     for i in eachindex(y₂_combined)
-                        if abs(linear_term[i] + quadratic_term[i]) > eps(T) && abs(linear_term[i]) > eps(T)
-                            pade_coeff = quadratic_term[i] / (linear_term[i] + quadratic_term[i])
-                            denominator[i] = 1 - pade_coeff
+                        if abs(y₂_combined[i]) > tol && abs(linear_term[i]) > tol
+                            pade_coeff = quadratic_term[i] / y₂_combined[i]
+                            denom_val = 1 - pade_coeff
+                            if abs(denom_val) > tol
+                                denominator[i] = denom_val
+                            end
                         end
                     end
                     
