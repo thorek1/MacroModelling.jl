@@ -217,9 +217,7 @@ mutable struct perturbation
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
     second_order_pade::second_order_perturbation_solution
-    pruned_second_order_pade::second_order_perturbation_solution
     third_order_pade::third_order_perturbation_solution
-    pruned_third_order_pade::third_order_perturbation_solution
     qme_solution::Matrix{Float64}
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}

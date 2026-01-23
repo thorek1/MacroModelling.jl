@@ -1,4 +1,4 @@
-const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order, :second_order_pade, :pruned_second_order_pade, :third_order_pade, :pruned_third_order_pade]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order, :second_order_pade, :third_order_pade]
 
 
 """
@@ -971,8 +971,6 @@ macro model(𝓂,ex...)
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
