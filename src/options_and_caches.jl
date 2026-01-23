@@ -697,7 +697,7 @@ function compute_e4(nᵉ::Int)
     end
     E_e4 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
     quadrup = multiplicate(nᵉ, 4)
-                    extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+    comb4 = reduce(vcat, generateSumVectors(nᵉ, 4))
     comb4 = comb4 isa Int64 ? reshape([comb4], 1, 1) : comb4
     for j = 1:size(comb4, 1)
         E_e4[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb4[j, :])

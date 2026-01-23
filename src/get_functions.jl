@@ -1593,10 +1593,10 @@ function get_steady_state(𝓂::ℳ;
             dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
-            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.constants.post_model_macro.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
+            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.constants.post_model_macro.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters))
             # else
-            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
-            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
+            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.constants.post_complete_parameters.parameters)),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters)), ("Var. and par.", "∂x/∂y"))
             return KeyedArray(hcat(SS[[var_idx...,calib_idx...]],dSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
             # end
         end
@@ -2830,7 +2830,7 @@ function get_moments(𝓂::ℳ;
             varrs =  KeyedArray(hcat(vari[var_idx],dvariance[var_idx,:]);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
 
             if standard_deviation
-                axis2 = vcat(:Standard_deviation, 𝓂.parameters[param_idx])
+                axis2 = vcat(:Standard_deviation, 𝓂.constants.post_complete_parameters.parameters[param_idx])
             
                 if any(x -> contains(string(x), "◖"), axis2)
                     axis2_decomposed = decompose_name.(axis2)
@@ -2855,7 +2855,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if standard_deviation
-            axis2 = vcat(:Standard_deviation, 𝓂.parameters[param_idx])
+            axis2 = vcat(:Standard_deviation, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
                 axis2_decomposed = decompose_name.(axis2)
@@ -2888,7 +2888,7 @@ function get_moments(𝓂::ℳ;
 
 
         if covariance
-            axis3 = vcat(:Covariance, 𝓂.parameters[param_idx])
+            axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis3)
                 axis3_decomposed = decompose_name.(axis3)
@@ -3099,7 +3099,7 @@ function get_moments(𝓂::ℳ;
             # ---
             # Create axis names (unchanged from original)
             if !@isdefined axis3
-                axis3 = vcat(:Covariance, 𝓂.parameters[param_idx])
+                axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
 
                 if any(x -> contains(string(x), "◖"), axis3)
                     axis3_decomposed = decompose_name.(axis3)
@@ -3250,7 +3250,7 @@ end
     β = 0.95
 end
 
-get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
+get_statistics(RBC, RBC.parameter_values, parameters = get_parameters(RBC), standard_deviation = RBC.var)
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
@@ -3264,7 +3264,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 """
 function get_statistics(𝓂,
                         parameter_values::Vector{T};
-                        parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.parameters,
+                        parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
                         non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
                         mean::Union{Symbol_input,String_input} = Symbol[],
@@ -3308,9 +3308,9 @@ function get_statistics(𝓂,
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
 
 
-    other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
+    other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
 
-    sort_idx = @ignore_derivatives sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
+    sort_idx = @ignore_derivatives sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
 
     all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
@@ -3555,7 +3555,7 @@ function get_loglikelihood(𝓂::ℳ,
     #     sylvester_algorithm = :bicgstab
     # end
 
-    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
+    @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."

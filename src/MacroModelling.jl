@@ -3845,7 +3845,7 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_parameters_macro.calibration_equations),
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_parameters_macro.calibration_equations_parameters),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_complete_parameters.parameters),
 
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_present...)]))),
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_past...)]))),
