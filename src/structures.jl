@@ -196,20 +196,29 @@ struct perturbation_solution
 end
 
 # Struct to store precomputed Padé matrices for second order
+# Uses [1,1] matrix Padé approximation: y ≈ 𝐍*x * (I - 𝐃*kron(x,x))⁻¹
+# Precomputes the Padé coefficient matrices from Taylor series coefficients
 struct second_order_pade_solution
     stochastic_steady_state::Vector{Float64}
-    𝐒₁::AbstractMatrix{Float64}  # First order solution matrix
-    𝐒₂::AbstractMatrix{Float64}  # Second order solution matrix
-    𝐒₁̂::AbstractMatrix{Float64}  # First order solution matrix for OBC (zeros if not needed)
+    𝐒₁::AbstractMatrix{Float64}   # First order solution matrix (numerator coefficient)
+    𝐒₂::AbstractMatrix{Float64}   # Second order solution matrix
+    𝐃::AbstractMatrix{Float64}    # Precomputed Padé denominator coefficient matrix
+    𝐒₁̂::AbstractMatrix{Float64}   # First order solution matrix for OBC (zeros if not needed)
+    𝐃̂::AbstractMatrix{Float64}    # Padé denominator for OBC (zeros if not needed)
 end
 
 # Struct to store precomputed Padé matrices for third order
+# Uses [2,1] matrix Padé approximation
 struct third_order_pade_solution
     stochastic_steady_state::Vector{Float64}
-    𝐒₁::AbstractMatrix{Float64}  # First order solution matrix
-    𝐒₂::AbstractMatrix{Float64}  # Second order solution matrix
-    𝐒₃::AbstractMatrix{Float64}  # Third order solution matrix
-    𝐒₁̂::AbstractMatrix{Float64}  # First order solution matrix for OBC (zeros if not needed)
+    𝐒₁::AbstractMatrix{Float64}   # First order solution matrix
+    𝐒₂::AbstractMatrix{Float64}   # Second order solution matrix
+    𝐒₃::AbstractMatrix{Float64}   # Third order solution matrix
+    𝐃₂::AbstractMatrix{Float64}   # Padé denominator coefficient for quadratic term
+    𝐃₃::AbstractMatrix{Float64}   # Padé denominator coefficient for cubic term
+    𝐒₁̂::AbstractMatrix{Float64}   # First order solution matrix for OBC (zeros if not needed)
+    𝐃₂̂::AbstractMatrix{Float64}   # Padé denominator for OBC quadratic (zeros if not needed)
+    𝐃₃̂::AbstractMatrix{Float64}   # Padé denominator for OBC cubic (zeros if not needed)
 end
 
 struct second_order_perturbation_solution

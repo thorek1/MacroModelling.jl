@@ -970,8 +970,8 @@ macro model(𝓂,ex...)
                                             second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            second_order_pade_solution([], zeros(0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), zeros(0,0)),
-                                            third_order_pade_solution([], zeros(0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), zeros(0,0)),
+                                            second_order_pade_solution([], zeros(0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), zeros(0,0), zeros(0,0), zeros(0,0)),
+                                            third_order_pade_solution([], zeros(0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), zeros(0,0), zeros(0,0), zeros(0,0), zeros(0,0), zeros(0,0)),
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
