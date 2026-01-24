@@ -135,6 +135,7 @@ struct post_model_macro
     var_future_list_aux_SS::Vector{Set{Symbol}}
     var_present_list_aux_SS::Vector{Set{Symbol}}
     var_past_list_aux_SS::Vector{Set{Symbol}}
+    ss_equations_with_aux_variables::Vector{Int}
 end
 
 struct symbolics
@@ -546,7 +547,6 @@ mutable struct ℳ
     SS_dependencies::Any
 
     # ss_equations::Vector{Expr}
-    ss_equations_with_aux_variables::Vector{Int}
     # t_future_equations 
     # t_past_equations 
     # t_present_equations 

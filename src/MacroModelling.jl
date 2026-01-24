@@ -3991,7 +3991,7 @@ function write_block_solution!(𝓂,
     other_vrs_eliminated_by_sympy = Set{Symbol}()
 
     for (i,val) in enumerate(𝓂.solved_vals[end])
-        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
             val = vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
             push!(other_vrs_eliminated_by_sympy, val.args[2])
@@ -5488,7 +5488,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                 push!(solved_vals,val)
                 # push!(solved_vals_in_place, :(ℰ[$i] = $val))
             else
-                if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+                if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
                     val = vcat(𝓂.equations.steady_state_aux,𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])

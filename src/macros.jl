@@ -113,7 +113,7 @@ macro model(𝓂,ex...)
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
 
-    ss_eq_aux_ind = Int[]
+    ss_equations_with_aux_variables = Int[]
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
@@ -360,7 +360,7 @@ macro model(𝓂,ex...)
 
                                                 bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                                push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                                push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -408,7 +408,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -452,7 +452,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -496,7 +496,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -540,7 +540,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -637,7 +637,7 @@ macro model(𝓂,ex...)
         # write down SS equations including nonnegativity auxiliary variables
         prs_ex = convert_to_ss_equation(eq)
         
-        if idx ∈ ss_eq_aux_ind
+        if idx ∈ ss_equations_with_aux_variables
             if precompile
                 ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
             else
@@ -816,7 +816,8 @@ macro model(𝓂,ex...)
                 par_list_aux_SS,
                 var_future_list_aux_SS,
                 var_present_list_aux_SS,
-                var_past_list_aux_SS)
+                var_past_list_aux_SS,
+                ss_equations_with_aux_variables)
 
     ℂ = Constants(T)
 
@@ -879,9 +880,6 @@ macro model(𝓂,ex...)
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,
-
-                        # $➕_vars,
-                        $ss_eq_aux_ind,
 
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
