@@ -60,6 +60,7 @@
 
 
 struct post_model_macro
+    max_obc_horizon::Int
     # present_only::Vector{Symbol}
     # future_not_past::Vector{Symbol}
     # past_not_future::Vector{Symbol}
@@ -73,6 +74,8 @@ struct post_model_macro
 
     var::Vector{Symbol}
 
+    parameters_in_equations::Vector{Symbol}
+
     exo::Vector{Symbol}
     exo_past::Vector{Symbol}
     exo_present::Vector{Symbol}
@@ -83,6 +86,8 @@ struct post_model_macro
     aux_future::Vector{Symbol}
     aux_past::Vector{Symbol}
 
+    ➕_vars::Vector{Symbol}
+    
     nPresent_only::Int
     nMixed::Int
     nFuture_not_past_and_mixed::Int
@@ -139,15 +144,15 @@ struct symbolics
     # dyn_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dyn_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    ss_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_present_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_past_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_future_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    ss_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dynamic_variables_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    par_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    par_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
     calibration_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
     calibration_equations_parameters::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
@@ -160,7 +165,7 @@ struct symbolics
     var::Set{SPyPyC.Sym{PythonCall.Core.Py}}
     ➕_vars::Set{SPyPyC.Sym{PythonCall.Core.Py}}
 
-    # ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     par_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
     var_redundant_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
@@ -356,7 +361,7 @@ struct post_parameters_macro
     precompile::Bool
     simplify::Bool
     guess::Dict{Symbol, Float64}
-    # ss_calib_list::Vector{Set{Symbol}}
+    ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
     # ss_no_var_calib_list::Vector{Set{Symbol}}
     # par_no_var_calib_list::Vector{Set{Symbol}}
@@ -452,7 +457,6 @@ end
 mutable struct ℳ
     model_name::Any
     # SS_optimizer
-    parameters_in_equations::Vector{Symbol}
     parameter_values::Vector{Float64}
 
     # ss
@@ -534,7 +538,6 @@ mutable struct ℳ
     # nonlinear_solution_helper
     SS_dependencies::Any
 
-    ➕_vars::Vector{Symbol}
     # ss_equations::Vector{Expr}
     ss_equations_with_aux_variables::Vector{Int}
     # t_future_equations 
@@ -571,7 +574,6 @@ mutable struct ℳ
 
     obc_violation_equations::Vector{Expr}
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
-    max_obc_horizon::Int
     obc_violation_function::Function
 
     solver_parameters::Vector{solver_parameters}

@@ -487,7 +487,7 @@ get_parameters_in_equations(RBC)
 ```
 """
 function get_parameters_in_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(𝓂.constants.post_model_macro.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -579,7 +579,7 @@ get_parameters_defining_parameters(RBC)
 ```
 """
 function get_parameters_defining_parameters(𝓂::ℳ)::Vector{String}
-    replace.(string.(setdiff(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters, reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(setdiff(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.constants.post_model_macro.parameters_in_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters, reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -679,7 +679,7 @@ get_variables(RBC)
 ```
 """
 function get_variables(𝓂::ℳ)::Vector{String}
-    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -728,7 +728,7 @@ get_nonnegativity_auxiliary_variables(RBC)
 ```
 """
 function get_nonnegativity_auxiliary_variables(𝓂::ℳ)::Vector{String}
-    𝓂.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 

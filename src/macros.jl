@@ -751,6 +751,7 @@ macro model(𝓂,ex...)
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
     T = post_model_macro(
+                max_obc_horizon,
                 # present_only,
                 # future_not_past,
                 # past_not_future,
@@ -764,6 +765,8 @@ macro model(𝓂,ex...)
 
                 var,
 
+                parameters_in_equations,
+
                 exo,
                 exo_past,
                 exo_present,
@@ -773,6 +776,8 @@ macro model(𝓂,ex...)
                 aux_past,
                 aux_present,
                 aux_future,
+
+                ➕_vars,
 
                 nPresent_only,
                 nMixed,
@@ -851,7 +856,7 @@ macro model(𝓂,ex...)
         global $𝓂 =  ℳ(
                         $model_name,
                         # $default_optimizer,
-                        sort(collect($parameters_in_equations)),
+                        # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
                         $ss_aux_equations,
@@ -876,7 +881,7 @@ macro model(𝓂,ex...)
                         $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,
 
-                        $➕_vars,
+                        # $➕_vars,
                         $ss_eq_aux_ind,
                         $dyn_equations,
                         $ss_equations,
@@ -910,7 +915,7 @@ macro model(𝓂,ex...)
 
                         Expr[],
                         # $obc_shock_bounds,
-                        $max_obc_horizon,
+                        # $max_obc_horizon,
                         x->x,
                         # see here for tolerances: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/#function-value-and-parameter-tolerances
                         [
@@ -1459,9 +1464,9 @@ macro parameters(𝓂,ex...)
             push!($calib_values, 0)
         end
 
-        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
+        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
+        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
+        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
         
         # Calculate missing parameters instead of asserting
         # Include parameters from:
@@ -1476,7 +1481,7 @@ macro parameters(𝓂,ex...)
         all_required_params = union(
             reduce(union, par_calib_list, init = Set{Symbol}()),
             reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
-            Set{Symbol}(mod.$𝓂.parameters_in_equations)
+            Set{Symbol}(mod.$𝓂.constants.post_model_macro.parameters_in_equations)
         )
         
         # Add parameters from parameter definitions, but only if the target parameter is needed
@@ -1535,7 +1540,7 @@ macro parameters(𝓂,ex...)
             $precompile,
             $simplify,
             guess_dict,
-            # ss_calib_list,
+            ss_calib_list,
             par_calib_list,
             # $ss_no_var_calib_list,
             # $par_no_var_calib_list,
