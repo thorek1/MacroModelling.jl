@@ -866,8 +866,6 @@ macro model(𝓂,ex...)
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
-                        $ss_aux_equations,
-
                         $solved_vars, 
                         $solved_vals, 
 
@@ -884,9 +882,8 @@ macro model(𝓂,ex...)
 
                         # $➕_vars,
                         $ss_eq_aux_ind,
-                        $dyn_equations,
-                        $ss_equations,
-                        $original_equations, 
+
+                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[]), 
 
 
                         (zeros(0,0), x->x), # jacobian
@@ -914,9 +911,6 @@ macro model(𝓂,ex...)
                         $ℂ,
                         $𝓦,
 
-                        Expr[],
-                        # $obc_shock_bounds,
-                        # $max_obc_horizon,
                         x->x,
                         # see here for tolerances: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/#function-value-and-parameter-tolerances
                         [

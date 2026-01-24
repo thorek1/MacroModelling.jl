@@ -681,7 +681,7 @@ function process_ignore_obc_flag(shocks,
                                  𝓂::ℳ; 
                                  maxlog::Int = DEFAULT_MAXLOG)
     stochastic_model = length(𝓂.constants.post_model_macro.exo) > 0
-    obc_model = length(𝓂.obc_violation_equations) > 0
+    obc_model = length(𝓂.equations.obc_violation) > 0
 
     obc_shocks_included = false
 
@@ -845,12 +845,12 @@ end
 
 function set_up_obc_violation_function!(𝓂)
     ms = ensure_model_structure_cache!(𝓂)
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
+    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
 
     # write indices in auxiliary objects
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
 
     dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
@@ -900,7 +900,7 @@ function set_up_obc_violation_function!(𝓂)
 
         constraint_values = Vector[]
 
-        $(𝓂.obc_violation_equations...)
+        $(𝓂.equations.obc_violation...)
 
         return vcat(constraint_values...)
     end)
@@ -933,7 +933,7 @@ end
 
 function write_obc_violation_equations(𝓂)
     eqs = Expr[]
-    for (i,eq) in enumerate(𝓂.dyn_equations)
+    for (i,eq) in enumerate(𝓂.equations.dynamic)
         if check_for_minmax(eq)
             minmax_fixed_eqs = postwalk(x -> 
                 x isa Expr ?
@@ -3762,11 +3762,11 @@ end
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
-    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.dyn_equations))
+    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.equations.dynamic))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
 
-    symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
+    symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.equations.steady_state_aux))
 
     symbols_in_equation = union(𝓂.constants.post_model_macro.parameters_in_equations, 
                                 𝓂.constants.post_complete_parameters.parameters, 
@@ -3810,8 +3810,8 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
     end
 
     symbolics(
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.steady_state_aux),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.dynamic),
                 # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
@@ -3858,9 +3858,9 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.ss_calib_list),
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.par_calib_list),
 
-                [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)],
-                # [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                # [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)]
                 )
 end
@@ -3992,7 +3992,7 @@ function write_block_solution!(𝓂,
 
     for (i,val) in enumerate(𝓂.solved_vals[end])
         if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-            val = vcat(𝓂.ss_aux_equations, 𝓂.constants.post_parameters_macro.calibration_equations)[eq_idx_in_block_to_solve[i]]
+            val = vcat(𝓂.equations.steady_state_aux, 𝓂.constants.post_parameters_macro.calibration_equations)[eq_idx_in_block_to_solve[i]]
             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
             push!(other_vrs_eliminated_by_sympy, val.args[2])
             # push!(nnaux_linear,:($val))
@@ -4717,7 +4717,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                     min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 
-    ss_equations = vcat(𝓂.ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations)
+    ss_equations = vcat(𝓂.equations.steady_state, 𝓂.constants.post_parameters_macro.calibration_equations)
 
 
 
@@ -5379,7 +5379,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             verbose::Bool = false)
     unknowns = union(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 
-    @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.constants.post_parameters_macro.calibration_equations) "Unable to solve steady state. More unknowns than equations."
+    @assert length(unknowns) <= length(𝓂.equations.steady_state_aux) + length(𝓂.constants.post_parameters_macro.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
     incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
@@ -5409,7 +5409,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     n = n_blocks
 
-    ss_equations = vcat(𝓂.ss_aux_equations,𝓂.constants.post_parameters_macro.calibration_equations)
+    ss_equations = vcat(𝓂.equations.steady_state_aux,𝓂.constants.post_parameters_macro.calibration_equations)
 
     SS_solve_func = []
 
@@ -5489,7 +5489,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                 # push!(solved_vals_in_place, :(ℰ[$i] = $val))
             else
                 if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-                    val = vcat(𝓂.ss_aux_equations,𝓂.constants.post_parameters_macro.calibration_equations)[eq_idx_in_block_to_solve[i]]
+                    val = vcat(𝓂.equations.steady_state_aux,𝓂.constants.post_parameters_macro.calibration_equations)[eq_idx_in_block_to_solve[i]]
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
                     # push!(nnaux_linear,:($val))
@@ -7095,7 +7095,7 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avo
 
         write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
-        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
         
         set_up_obc_violation_function!(𝓂)
 
@@ -7910,11 +7910,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     cse = true,
                                     skipzeros = true)
 
-    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
-    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
-    shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎$")))
-    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
+    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎$")))
+    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
+    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎$")))
+    shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎$")))
+    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎$")))
 
     sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>"")) #sort by name without time index because otherwise eps_zᴸ⁽⁻¹⁾₍₋₁₎ comes before eps_z₍₋₁₎
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -8003,7 +8003,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
 
-    dyn_equations = 𝓂.dyn_equations |> 
+    dyn_equations = 𝓂.equations.dynamic |> 
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
@@ -8390,11 +8390,11 @@ end
 
 function write_auxiliary_indices!(𝓂::ℳ)
     # write indices in auxiliary objects
-    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
-    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
-    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎")))
+    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎")))
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎")))
 
     dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
     dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
@@ -10132,7 +10132,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.constants.post_parameters_macro.calibration_equations))
+        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.constants.post_parameters_macro.calibration_equations))
         
         𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
         
@@ -10184,7 +10184,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.constants.post_parameters_macro.calibration_equations))
+        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.constants.post_parameters_macro.calibration_equations))
         
         𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
         
@@ -10213,7 +10213,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
+    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
 
     ∂ = parameter_values
     C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
@@ -10299,7 +10299,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.constants.post_parameters_macro.calibration_equations))
+        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.constants.post_parameters_macro.calibration_equations))
         
         𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
         
@@ -10327,7 +10327,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
         # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
+        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
         
 
         ∂ = parameter_values

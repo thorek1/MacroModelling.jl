@@ -199,7 +199,7 @@ function write_mod_file(𝓂::ℳ)
                     r"dnorm(?=\()" => s"normpdf",
                 ) *
                 ";\n",
-            ) for e in 𝓂.original_equations
+            ) for e in 𝓂.equations.original
         ]
 
         println(io, "end;\n\nshocks;")

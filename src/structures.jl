@@ -59,6 +59,14 @@
 # using ForwardDiff
 
 
+mutable struct equations
+    original::Vector{Expr}
+    dynamic::Vector{Expr}
+    steady_state::Vector{Expr}
+    steady_state_aux::Vector{Expr}
+    obc_violation::Vector{Expr}
+end
+
 struct post_model_macro
     max_obc_horizon::Int
     # present_only::Vector{Symbol}
@@ -484,8 +492,6 @@ mutable struct ℳ
 
     # ss_list::Vector{Set{Symbol}}
 
-    ss_aux_equations::Vector{Expr}
-
     # var_solved_list
     # var_solved_calib_list
     # var_redundant_list
@@ -544,10 +550,9 @@ mutable struct ℳ
     # t_future_equations 
     # t_past_equations 
     # t_present_equations 
-    dyn_equations::Vector{Expr}
-    ss_equations::Vector{Expr}
     # dyn_equations_future::Vector{Expr}
-    original_equations::Vector{Expr}
+
+    equations::equations
 
 
     jacobian::Tuple{AbstractMatrix{<: Real},Function}
@@ -573,7 +578,6 @@ mutable struct ℳ
     constants::constants
     workspaces::workspaces
 
-    obc_violation_equations::Vector{Expr}
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
     obc_violation_function::Function
 

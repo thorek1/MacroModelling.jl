@@ -1500,7 +1500,7 @@ function get_steady_state(𝓂::ℳ;
                 dynamics = true, 
                 algorithm = algorithm, 
                 silent = silent, 
-                obc = length(𝓂.obc_violation_equations) > 0)
+                obc = length(𝓂.equations.obc_violation) > 0)
 
         if  algorithm == :third_order
             SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
@@ -3693,7 +3693,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.constants.post_model_macro.parameters_in_equations))))
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.equations.steady_state)), union(𝓂.constants.post_model_macro.parameters_in_equations))))
 
     unknowns = vcat(vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
 

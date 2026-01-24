@@ -76,7 +76,7 @@ get_equations(RBC)
 ```
 """
 function get_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
+    replace.(string.(𝓂.equations.original), "◖" => "{", "◗" => "}")
 end
 
 
@@ -134,7 +134,7 @@ get_steady_state_equations(RBC)
 ```
 """
 function get_steady_state_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.ss_aux_equations), "◖" => "{", "◗" => "}")
+    replace.(string.(𝓂.equations.steady_state_aux), "◖" => "{", "◗" => "}")
 end
 
 
@@ -195,7 +195,7 @@ get_dynamic_equations(RBC)
 ```
 """
 function get_dynamic_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.dyn_equations), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
+    replace.(string.(𝓂.equations.dynamic), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
 end
 
 
@@ -679,7 +679,7 @@ get_variables(RBC)
 ```
 """
 function get_variables(𝓂::ℳ)::Vector{String}
-    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux), init = []), union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
