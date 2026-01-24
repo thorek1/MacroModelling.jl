@@ -161,6 +161,7 @@ using DispatchDoctor
 include("default_options.jl")
 include("common_docstrings.jl")
 include("structures.jl")
+include("solver_parameters.jl")
 include("options_and_caches.jl")
 include("macros.jl")
 include("get_functions.jl")
@@ -6053,7 +6054,7 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120,
     SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
-        push!(𝓂.solver_parameters, par_inputs)
+        push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
         return true
     else 
         return false
@@ -6062,7 +6063,7 @@ end
 
 
 function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Tolerances())
-    best_param = 𝓂.solver_parameters[1]
+    best_param = DEFAULT_SOLVER_PARAMETERS[1]
 
     best_time = Inf
 
@@ -6070,7 +6071,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
     solved_NSSS = 𝓂.NSSS.solver_cache[end]
 
-    for p in 𝓂.solver_parameters
+    for p in DEFAULT_SOLVER_PARAMETERS
         total_time = 0.0
         
         for _ in 1:100
@@ -6107,7 +6108,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
     push!(𝓂.NSSS.solver_cache, solved_NSSS)
 
     if solved
-        pushfirst!(𝓂.solver_parameters, best_param)
+        pushfirst!(DEFAULT_SOLVER_PARAMETERS, best_param)
     end
 end
 
@@ -10154,7 +10155,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
@@ -10206,7 +10207,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
 
     # end # timeit_debug
@@ -10321,7 +10322,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
     
     ∂SS_and_pars = zeros(S, length(SS_and_pars), N)

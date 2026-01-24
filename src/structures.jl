@@ -570,8 +570,6 @@ mutable struct ℳ
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
     obc_violation_function::Function
 
-    solver_parameters::Vector{solver_parameters}
-
     solution::solution
     # symbolics::symbolics
 
