@@ -750,16 +750,17 @@ macro model(𝓂,ex...)
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
-    T = post_model_macro(present_only,
-                future_not_past,
-                past_not_future,
-                mixed,
+    T = post_model_macro(
+                # present_only,
+                # future_not_past,
+                # past_not_future,
+                # mixed,
                 future_not_past_and_mixed,
                 past_not_future_and_mixed,
-                present_but_not_only,
-                mixed_in_past,
-                not_mixed_in_past,
-                mixed_in_future,
+                # present_but_not_only,
+                # mixed_in_past,
+                # not_mixed_in_past,
+                # mixed_in_future,
 
                 var,
 
@@ -777,7 +778,7 @@ macro model(𝓂,ex...)
                 nMixed,
                 nFuture_not_past_and_mixed,
                 nPast_not_future_and_mixed,
-                nPresent_but_not_only,
+                # nPresent_but_not_only,
                 nVars,
                 nExo,
 
@@ -1534,10 +1535,10 @@ macro parameters(𝓂,ex...)
             $precompile,
             $simplify,
             guess_dict,
-            ss_calib_list,
+            # ss_calib_list,
             par_calib_list,
-            $ss_no_var_calib_list,
-            $par_no_var_calib_list,
+            # $ss_no_var_calib_list,
+            # $par_no_var_calib_list,
             calib_equations_no_var_list,
             calib_equations_list,
             calib_eq_parameters,

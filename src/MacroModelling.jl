@@ -3809,7 +3809,8 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         Core.eval(SymPyWorkspace, :($none = $sym_value))
     end
 
-    symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
+    symbolics(
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
                 # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
@@ -3819,19 +3820,19 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_past_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_exo_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_exo_list),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
 
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),

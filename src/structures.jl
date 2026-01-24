@@ -60,16 +60,16 @@
 
 
 struct post_model_macro
-    present_only::Vector{Symbol}
-    future_not_past::Vector{Symbol}
-    past_not_future::Vector{Symbol}
-    mixed::Vector{Symbol}
+    # present_only::Vector{Symbol}
+    # future_not_past::Vector{Symbol}
+    # past_not_future::Vector{Symbol}
+    # mixed::Vector{Symbol}
     future_not_past_and_mixed::Vector{Symbol}
     past_not_future_and_mixed::Vector{Symbol}
-    present_but_not_only::Vector{Symbol}
-    mixed_in_past::Vector{Symbol}
-    not_mixed_in_past::Vector{Symbol}
-    mixed_in_future::Vector{Symbol}
+    # present_but_not_only::Vector{Symbol}
+    # mixed_in_past::Vector{Symbol}
+    # not_mixed_in_past::Vector{Symbol}
+    # mixed_in_future::Vector{Symbol}
 
     var::Vector{Symbol}
 
@@ -87,7 +87,7 @@ struct post_model_macro
     nMixed::Int
     nFuture_not_past_and_mixed::Int
     nPast_not_future_and_mixed::Int
-    nPresent_but_not_only::Int
+    # nPresent_but_not_only::Int
     nVars::Int
     nExo::Int
     present_only_idx::Vector{Int}
@@ -125,19 +125,19 @@ struct symbolics
 
     # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    dyn_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    dyn_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    dyn_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dyn_ss_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    dyn_exo_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_exo_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
     # dyn_exo_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dyn_exo_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     # dyn_exo_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}} 
 
-    dyn_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    dyn_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    dyn_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
     var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
@@ -160,7 +160,7 @@ struct symbolics
     var::Set{SPyPyC.Sym{PythonCall.Core.Py}}
     ➕_vars::Set{SPyPyC.Sym{PythonCall.Core.Py}}
 
-    ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     par_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
     var_redundant_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
@@ -356,10 +356,10 @@ struct post_parameters_macro
     precompile::Bool
     simplify::Bool
     guess::Dict{Symbol, Float64}
-    ss_calib_list::Vector{Set{Symbol}}
+    # ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
-    ss_no_var_calib_list::Vector{Set{Symbol}}
-    par_no_var_calib_list::Vector{Set{Symbol}}
+    # ss_no_var_calib_list::Vector{Set{Symbol}}
+    # par_no_var_calib_list::Vector{Set{Symbol}}
     calibration_equations_no_var::Vector{Expr}
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
@@ -373,26 +373,26 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     dyn_var_present_idx::Vector{Int}
     dyn_var_past_idx::Vector{Int}
     dyn_ss_idx::Vector{Int}
-    shocks_ss::Vector{Int}
+    # shocks_ss::Vector{Int}
     diag_nVars::ℒ.Diagonal{Bool, Vector{Bool}}
     var_axis::Vector{S}
     calib_axis::Vector{S}
     exo_axis_plain::Vector{S}
     exo_axis_with_subscript::Vector{S}
-    var_has_curly::Bool
-    exo_has_curly::Bool
+    # var_has_curly::Bool
+    # exo_has_curly::Bool
     SS_and_pars_names::Vector{Symbol}
-    all_variables::Vector{Symbol}
-    NSSS_labels::Vector{Symbol}
-    aux_indices::Vector{Int}
-    processed_all_variables::Vector{Symbol}
+    # all_variables::Vector{Symbol}
+    # NSSS_labels::Vector{Symbol}
+    # aux_indices::Vector{Int}
+    # processed_all_variables::Vector{Symbol}
     full_NSSS_display::Vector{S}
     steady_state_expand_matrix::SparseMatrixCSC{Float64, Int}
     custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
     vars_in_ss_equations::Vector{Symbol}
     vars_in_ss_equations_with_aux::Vector{Symbol}
     SS_and_pars_names_lead_lag::Vector{Symbol}
-    SS_and_pars_names_no_exo::Vector{Symbol}
+    # SS_and_pars_names_no_exo::Vector{Symbol}
     SS_and_pars_no_exo_idx::Vector{Int}
     vars_idx_excluding_aux_obc::Vector{Int}
     vars_idx_excluding_obc::Vector{Int}
