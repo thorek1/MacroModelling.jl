@@ -245,7 +245,7 @@ get_calibration_equations(RBC)
 ```
 """
 function get_calibration_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.constants.post_parameters_macro.calibration_equations), "◖" => "{", "◗" => "}")
+    replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
 end
 
 
@@ -354,9 +354,9 @@ get_calibrated_parameters(RBC)
 """
 function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
-        return replace.(string.(𝓂.constants.post_parameters_macro.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.constants.post_model_macro.nVars + 1:end]
+        return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.constants.post_model_macro.nVars + 1:end]
     else
-        return replace.(string.(𝓂.constants.post_parameters_macro.calibration_equations_parameters), "◖" => "{", "◗" => "}")# |> sort
+        return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}")# |> sort
     end
 end
 
@@ -579,7 +579,7 @@ get_parameters_defining_parameters(RBC)
 ```
 """
 function get_parameters_defining_parameters(𝓂::ℳ)::Vector{String}
-    replace.(string.(setdiff(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.constants.post_model_macro.parameters_in_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters, reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(setdiff(𝓂.constants.post_complete_parameters.parameters, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.parameters_in_equations, 𝓂.equations.calibration_parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters, reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
 

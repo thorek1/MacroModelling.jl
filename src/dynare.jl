@@ -164,7 +164,7 @@ function write_mod_file(𝓂::ℳ)
             println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(𝓂.parameter_values[i]) * ";")
         end
 
-        for p in 𝓂.constants.post_parameters_macro.calibration_equations_parameters
+        for p in 𝓂.equations.calibration_parameters
             println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(NSSS(index_in_name ? replace(string(p), "◖" => "{", "◗" => "}") : p)) * ";") 
         end
 
@@ -177,7 +177,7 @@ function write_mod_file(𝓂::ℳ)
                     r"pnorm(?=\()" => s"normcdf",
                     r"dnorm(?=\()" => s"normpdf",
                 ) * ";") for 
-                e in 𝓂.constants.post_parameters_macro.calibration_equations_no_var
+                e in 𝓂.equations.calibration_no_var
         ]
 
         println(io, "\nmodel;")

@@ -65,6 +65,9 @@ mutable struct equations
     steady_state::Vector{Expr}
     steady_state_aux::Vector{Expr}
     obc_violation::Vector{Expr}
+    calibration::Vector{Expr}
+    calibration_no_var::Vector{Expr}
+    calibration_parameters::Vector{Symbol}
 end
 
 struct post_model_macro
@@ -380,9 +383,6 @@ struct post_parameters_macro
     par_calib_list::Vector{Set{Symbol}}
     # ss_no_var_calib_list::Vector{Set{Symbol}}
     # par_no_var_calib_list::Vector{Set{Symbol}}
-    calibration_equations_no_var::Vector{Expr}
-    calibration_equations::Vector{Expr}
-    calibration_equations_parameters::Vector{Symbol}
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 end
 

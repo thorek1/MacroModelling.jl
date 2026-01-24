@@ -1513,9 +1513,9 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...])
+    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.constants.post_parameters_macro.calibration_equations_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...])
+    calib_idx = return_variables_only ? [] : indexin([𝓂.equations.calibration_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -2761,7 +2761,7 @@ function get_moments(𝓂::ℳ;
 
     if derivatives
         if non_stochastic_steady_state
-            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.equations.calibration_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
@@ -2778,8 +2778,8 @@ function get_moments(𝓂::ℳ;
             # dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
             dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
-            if length(𝓂.constants.post_parameters_macro.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)))
+            if length(𝓂.equations.calibration_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.equations.calibration_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -2934,15 +2934,15 @@ function get_moments(𝓂::ℳ;
         end
     else
         if non_stochastic_steady_state
-            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
+            axis1 = [𝓂.constants.post_model_macro.var[var_idx]...,𝓂.equations.calibration_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
                 axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
             end
 
-            if length(𝓂.constants.post_parameters_macro.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)))
+            if length(𝓂.equations.calibration_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.equations.calibration_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -3328,7 +3328,7 @@ function get_statistics(𝓂,
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
-        SS = SS_and_pars[1:end - length(𝓂.constants.post_parameters_macro.calibration_equations)]
+        SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
         ret = Dict{Symbol,AbstractArray{T}}()
 
@@ -3364,7 +3364,7 @@ function get_statistics(𝓂,
         # @assert solved "Could not find covariance matrix."
     end
 
-    SS = SS_and_pars[1:end - length(𝓂.constants.post_parameters_macro.calibration_equations)]
+    SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
     if !(variance == Symbol[])
         varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -3577,7 +3577,7 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.constants.post_parameters_macro.calibration_equations_parameters...]
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
@@ -3691,11 +3691,11 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+    axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.equations.steady_state)), union(𝓂.constants.post_model_macro.parameters_in_equations))))
 
-    unknowns = vcat(vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+    unknowns = vcat(vars_in_ss_equations, 𝓂.equations.calibration_parameters)
 
     combined_values = Dict(unknowns .=> SS_and_pars[indexin(unknowns, axis1)])
 
@@ -3722,7 +3722,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     vals = [combined_values[i] for i in unknowns]
 
-    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.constants.post_parameters_macro.calibration_equations_parameters)])
+    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.equations.calibration_parameters)])
     
     residual = zeros(length(vals))
 

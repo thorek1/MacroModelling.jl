@@ -883,7 +883,7 @@ macro model(𝓂,ex...)
                         # $➕_vars,
                         $ss_eq_aux_ind,
 
-                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[]), 
+                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
 
                         (zeros(0,0), x->x), # jacobian
@@ -1539,11 +1539,13 @@ macro parameters(𝓂,ex...)
             par_calib_list,
             # $ss_no_var_calib_list,
             # $par_no_var_calib_list,
-            calib_equations_no_var_list,
-            calib_equations_list,
-            calib_eq_parameters,
             bounds_dict,
         )
+
+        # Update equations struct with calibration fields
+        mod.$𝓂.equations.calibration = calib_equations_list
+        mod.$𝓂.equations.calibration_no_var = calib_equations_no_var_list
+        mod.$𝓂.equations.calibration_parameters = calib_eq_parameters
     
         # Keep calib_parameters in declaration order, append missing_params at end
         # This preserves declaration order for estimation and method of moments

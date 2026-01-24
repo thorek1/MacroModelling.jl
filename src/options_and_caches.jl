@@ -113,9 +113,6 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Set{Symbol}[],
                 # Set{Symbol}[],
                 # Set{Symbol}[],
-                Expr[],
-                Expr[],
-                Symbol[],
                 Dict{Symbol,Tuple{Float64,Float64}}()
                 ),
             post_complete_parameters{Symbol}(
@@ -271,9 +268,9 @@ function ensure_name_display_cache!(𝓂)
         end
 
         if var_has_curly
-            calib_axis = replace.(string.(𝓂.constants.post_parameters_macro.calibration_equations_parameters), "◖" => "{", "◗" => "}")
+            calib_axis = replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}")
         else
-            calib_axis = 𝓂.constants.post_parameters_macro.calibration_equations_parameters
+            calib_axis = 𝓂.equations.calibration_parameters
         end
 
         exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
@@ -666,12 +663,12 @@ function ensure_model_structure_cache!(𝓂)
         SS_and_pars_names = vcat(
             Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
-            𝓂.constants.post_parameters_macro.calibration_equations_parameters,
+            𝓂.equations.calibration_parameters,
         )
 
         all_variables = Symbol.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.aux, 𝓂.constants.post_model_macro.exo_present)))
 
-        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var)), 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var)), 𝓂.equations.calibration_parameters))
 
         aux_indices = Int.(indexin(𝓂.constants.post_model_macro.aux, all_variables))
         processed_all_variables = copy(all_variables)
@@ -689,11 +686,11 @@ function ensure_model_structure_cache!(𝓂)
 
         vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = 𝓂.constants.post_model_macro.vars_in_ss_equations
-        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
-        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.constants.post_parameters_macro.calibration_equations_parameters))
+        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.equations.calibration_parameters)
+        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.equations.calibration_parameters))
 
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)))), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_parameters_macro.calibration_equations_parameters)
+        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)))), 𝓂.equations.calibration_parameters)
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.equations.calibration_parameters)
         SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
 
         vars_non_obc = 𝓂.constants.post_model_macro.var[.!contains.(string.(𝓂.constants.post_model_macro.var), "ᵒᵇᶜ")]
