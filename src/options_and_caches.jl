@@ -116,7 +116,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Expr[],
                 Symbol[],
                 Dict{Symbol,Tuple{Float64,Float64}}()),
-            post_complete_parameters{Union{Symbol, String}}(
+            post_complete_parameters{Symbol}(
                 Symbol[],
                 Symbol[],
                 Int[],
@@ -125,10 +125,10 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Int[],
                 ℒ.I(0),
-                Union{Symbol,String}[],
-                Union{Symbol,String}[],
-                Union{Symbol,String}[],
-                Union{Symbol,String}[],
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                Symbol[],
                 false,
                 false,
                 Symbol[],
@@ -136,7 +136,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Symbol[],
                 Int[],
                 Symbol[],
-                Union{Symbol,String}[],
+                Symbol[],
                 spzeros(Float64, 0, 0),
                 spzeros(Float64, 0, 0),
                 Symbol[],
@@ -163,12 +163,44 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             Third_order_cache())
 end
 
-function update_post_complete_parameters(p::post_complete_parameters{S}; kwargs...) where {S <: Union{Symbol, String}}
-    var_axis = convert(Vector{S}, get(kwargs, :var_axis, p.var_axis))
-    calib_axis = convert(Vector{S}, get(kwargs, :calib_axis, p.calib_axis))
-    exo_axis_plain = convert(Vector{S}, get(kwargs, :exo_axis_plain, p.exo_axis_plain))
-    exo_axis_with_subscript = convert(Vector{S}, get(kwargs, :exo_axis_with_subscript, p.exo_axis_with_subscript))
-    full_NSSS_display = convert(Vector{S}, get(kwargs, :full_NSSS_display, p.full_NSSS_display))
+function _axis_has_string(axis)
+    axis === nothing && return false
+    T = eltype(axis)
+    if T === String
+        return true
+    elseif T === Symbol
+        return false
+    elseif T <: Union{Symbol, String}
+        return !isempty(axis) && any(x -> x isa String, axis)
+    end
+    return false
+end
+
+function _choose_axis_type(var_axis, calib_axis, exo_axis_plain, exo_axis_with_subscript, full_NSSS_display)
+    return (_axis_has_string(var_axis) ||
+            _axis_has_string(calib_axis) ||
+            _axis_has_string(exo_axis_plain) ||
+            _axis_has_string(exo_axis_with_subscript) ||
+            _axis_has_string(full_NSSS_display)) ? String : Symbol
+end
+
+function _convert_axis(axis, ::Type{S}) where {S <: Union{Symbol, String}}
+    axis === nothing && return Vector{S}()
+    return S === String ? string.(axis) : Symbol.(axis)
+end
+
+function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
+    var_axis_in = get(kwargs, :var_axis, p.var_axis)
+    calib_axis_in = get(kwargs, :calib_axis, p.calib_axis)
+    exo_axis_plain_in = get(kwargs, :exo_axis_plain, p.exo_axis_plain)
+    exo_axis_with_subscript_in = get(kwargs, :exo_axis_with_subscript, p.exo_axis_with_subscript)
+    full_NSSS_display_in = get(kwargs, :full_NSSS_display, p.full_NSSS_display)
+    S = _choose_axis_type(var_axis_in, calib_axis_in, exo_axis_plain_in, exo_axis_with_subscript_in, full_NSSS_display_in)
+    var_axis = _convert_axis(var_axis_in, S)
+    calib_axis = _convert_axis(calib_axis_in, S)
+    exo_axis_plain = _convert_axis(exo_axis_plain_in, S)
+    exo_axis_with_subscript = _convert_axis(exo_axis_with_subscript_in, S)
+    full_NSSS_display = _convert_axis(full_NSSS_display_in, S)
     return post_complete_parameters{S}(
         get(kwargs, :parameters, p.parameters),
         get(kwargs, :missing_parameters, p.missing_parameters),
