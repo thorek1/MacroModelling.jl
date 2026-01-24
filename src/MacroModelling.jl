@@ -8179,7 +8179,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
     #     𝓂.NSSS.∂equations_∂parameters = buffer
-    𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
+    #     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
 
@@ -8211,7 +8211,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
     #     𝓂.NSSS.∂equations_∂SS_and_pars = buffer
-    𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
+    #     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
     # end
         
     if max_perturbation_order >= 2
