@@ -280,22 +280,16 @@ end
 
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
-    state_update::Function
-    state_update_obc::Function
 end
 
 struct second_order_perturbation_solution
     # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
-    state_update::Function
-    state_update_obc::Function
 end
 
 struct third_order_perturbation_solution
     # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
-    state_update::Function
-    state_update_obc::Function
 end
 
 
@@ -363,6 +357,17 @@ mutable struct model_functions
     third_order_derivatives::Function
     third_order_derivatives_parameters::Function
     third_order_derivatives_SS_and_pars::Function
+    # State update functions for perturbation solutions
+    first_order_state_update::Function
+    first_order_state_update_obc::Function
+    second_order_state_update::Function
+    second_order_state_update_obc::Function
+    pruned_second_order_state_update::Function
+    pruned_second_order_state_update_obc::Function
+    third_order_state_update::Function
+    third_order_state_update_obc::Function
+    pruned_third_order_state_update::Function
+    pruned_third_order_state_update_obc::Function
     # OBC-related functions
     obc_violation::Function
 end

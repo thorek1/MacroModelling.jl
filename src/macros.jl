@@ -918,15 +918,25 @@ macro model(𝓂,ex...)
                             x->x, # third_order_derivatives
                             x->x, # third_order_derivatives_parameters
                             x->x, # third_order_derivatives_SS_and_pars
+                            (x,y)->nothing, # first_order_state_update
+                            (x,y)->nothing, # first_order_state_update_obc
+                            (x,y)->nothing, # second_order_state_update
+                            (x,y)->nothing, # second_order_state_update_obc
+                            (x,y)->nothing, # pruned_second_order_state_update
+                            (x,y)->nothing, # pruned_second_order_state_update_obc
+                            (x,y)->nothing, # third_order_state_update
+                            (x,y)->nothing, # third_order_state_update_obc
+                            (x,y)->nothing, # pruned_third_order_state_update
+                            (x,y)->nothing, # pruned_third_order_state_update_obc
                             x->x, # obc_violation
                         ),
 
                         solution(
-                            perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, (x,y)->nothing),
-                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                            perturbation(   perturbation_solution(zeros(0,0)),
+                                            second_order_perturbation_solution([]),
+                                            second_order_perturbation_solution([]),
+                                            third_order_perturbation_solution([]),
+                                            third_order_perturbation_solution([]),
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0)   # 3rd order sol
