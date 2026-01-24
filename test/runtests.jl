@@ -796,6 +796,188 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset "Custom steady state assignment" begin
+        @model RBC_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_switch begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
+        end
+
+        custom_ss, custom_calls = make_counted_ss()
+
+        inplace_calls = Ref(0)
+        function inplace_ss!(out, params)
+            inplace_calls[] += 1
+            out .= rbc_steady_state(params)
+            return nothing
+        end
+
+        # bad_calls = Ref(0)
+        # function bad_ss(params)
+        #     bad_calls[] += 1
+        #     return zeros(4)
+        # end
+
+        custom_calls[] = 0
+        _ = get_steady_state(RBC_switch, steady_state_function = custom_ss)
+        @test custom_calls[] > 0
+
+        inplace_calls[] = 0
+        inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
+        @test inplace_calls[] > 0
+        @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
+        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.equations.calibration_parameters)
+        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
+
+        # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
+        # @test bad_calls[] > 0
+
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch, steady_state_function = nothing)
+        @test custom_calls[] == calls_before
+        @test isnothing(RBC_switch.functions.NSSS_custom)
+
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, custom_ss)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] > calls_before
+
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, nothing)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] == calls_before
+    end
+
+    @testset "Macro steady state assignment" begin
+        macro_ss, macro_calls = make_counted_ss()
+
+        @model RBC_macro_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_switch steady_state_function = macro_ss begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
+        end
+
+        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] > 0
+        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+
+        MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
+        _ = get_steady_state(RBC_macro_switch)
+        @test isnothing(RBC_macro_switch.functions.NSSS_custom)
+        @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
+
+        calls_before = macro_calls[]
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] == calls_before
+    end
+    
+    @testset verbose = true "Custom steady state function" begin
+        # Test custom steady state function with simple RBC model
+        @model RBC_custom_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_custom_ss begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get default steady state
+        default_ss = get_steady_state(RBC_custom_ss)
+        
+        # Define custom steady state function
+        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
+        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
+        function my_steady_state_rbc(params)
+            std_z, ρ, δ, α, β = params
+            
+            # Analytical steady state for RBC model
+            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+            q_ss = k_ss^α
+            c_ss = q_ss - δ * k_ss
+            z_ss = 0.0
+            
+            return [c_ss, k_ss, q_ss, z_ss]
+        end
+
+        # Test custom function directly
+        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
+        @test isapprox(custom_result, default_ss(:,:Steady_state))
+
+        # Get steady state with custom function
+        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
+        
+        # Compare with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        irf_custom = get_irf(RBC_custom_ss, levels = true)
+
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
+        @test isnothing(RBC_custom_ss.functions.NSSS_custom)
+        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
+
+        irf_after_clear = get_irf(RBC_custom_ss, levels = true)
+        @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
+        
+        # Test with verbose option (internal function still available but not exported)
+        MacroModelling.set_custom_steady_state_function!(RBC_custom_ss, my_steady_state_rbc)
+        @test !isnothing(RBC_custom_ss.functions.NSSS_custom)
+        
+        
+        @model RBC_macro_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_ss steady_state_function = my_steady_state_rbc begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+        
+        # Verify macro-defined SS function is set
+        @test isapprox(RBC_macro_ss.functions.NSSS_custom(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
+        
+        macro_ss = get_steady_state(RBC_macro_ss)
+        @test isapprox(default_ss, macro_ss, rtol = 1e-10)
+
+        RBC_custom_ss = nothing
+        RBC_macro_ss = nothing
+        RBC_func_arg = nothing
+    end
+
     @testset verbose = true "Non-stochastic steady state guess" begin
         @model RBC_CME begin
             y[0]=A[0]*k[-1]^alpha
@@ -888,188 +1070,6 @@ if test_set == "basic"
         end
 
         return ss, calls
-    end
-
-    @testset "Custom steady state assignment" begin
-        @model RBC_switch begin
-            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
-            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^alpha
-            z[0] = rho * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_switch begin
-            std_z = 0.01
-            rho = 0.2
-            delta = 0.02
-            alpha = 0.5
-            beta = 0.95
-        end
-
-        custom_ss, custom_calls = make_counted_ss()
-
-        inplace_calls = Ref(0)
-        function inplace_ss!(out, params)
-            inplace_calls[] += 1
-            out .= rbc_steady_state(params)
-            return nothing
-        end
-
-        # bad_calls = Ref(0)
-        # function bad_ss(params)
-        #     bad_calls[] += 1
-        #     return zeros(4)
-        # end
-
-        custom_calls[] = 0
-        _ = get_steady_state(RBC_switch, steady_state_function = custom_ss)
-        @test custom_calls[] > 0
-
-        inplace_calls[] = 0
-        inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
-        @test inplace_calls[] > 0
-        @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
-        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.equations.calibration_parameters)
-        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
-
-        # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
-        # @test bad_calls[] > 0
-
-        calls_before = custom_calls[]
-        _ = get_steady_state(RBC_switch, steady_state_function = nothing)
-        @test custom_calls[] == calls_before
-        @test isnothing(RBC_switch.custom_steady_state_function)
-
-        MacroModelling.set_custom_steady_state_function!(RBC_switch, custom_ss)
-        calls_before = custom_calls[]
-        _ = get_steady_state(RBC_switch)
-        @test custom_calls[] > calls_before
-
-        MacroModelling.set_custom_steady_state_function!(RBC_switch, nothing)
-        calls_before = custom_calls[]
-        _ = get_steady_state(RBC_switch)
-        @test custom_calls[] == calls_before
-    end
-
-    @testset "Macro steady state assignment" begin
-        macro_ss, macro_calls = make_counted_ss()
-
-        @model RBC_macro_switch begin
-            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
-            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^alpha
-            z[0] = rho * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_macro_switch steady_state_function = macro_ss begin
-            std_z = 0.01
-            rho = 0.2
-            delta = 0.02
-            alpha = 0.5
-            beta = 0.95
-        end
-
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
-
-        _ = get_steady_state(RBC_macro_switch)
-        @test macro_calls[] > 0
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
-
-        MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
-        _ = get_steady_state(RBC_macro_switch)
-        @test isnothing(RBC_macro_switch.custom_steady_state_function)
-        @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
-
-        calls_before = macro_calls[]
-        _ = get_steady_state(RBC_macro_switch)
-        @test macro_calls[] == calls_before
-    end
-    
-    @testset verbose = true "Custom steady state function" begin
-        # Test custom steady state function with simple RBC model
-        @model RBC_custom_ss begin
-            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^α
-            z[0] = ρ * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_custom_ss begin
-            std_z = 0.01
-            ρ = 0.2
-            δ = 0.02
-            α = 0.5
-            β = 0.95
-        end
-
-        # Get default steady state
-        default_ss = get_steady_state(RBC_custom_ss)
-        
-        # Define custom steady state function
-        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
-        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
-        function my_steady_state_rbc(params)
-            std_z, ρ, δ, α, β = params
-            
-            # Analytical steady state for RBC model
-            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
-            q_ss = k_ss^α
-            c_ss = q_ss - δ * k_ss
-            z_ss = 0.0
-            
-            return [c_ss, k_ss, q_ss, z_ss]
-        end
-
-        # Test custom function directly
-        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
-        @test isapprox(custom_result, default_ss(:,:Steady_state))
-
-        # Get steady state with custom function
-        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
-        
-        # Compare with default (should be essentially the same)
-        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
-        
-        # Test that model can be solved with custom SS function
-        irf_custom = get_irf(RBC_custom_ss, levels = true)
-
-        # Steady state should still work after clearing
-        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
-        @test isnothing(RBC_custom_ss.custom_steady_state_function)
-        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
-
-        irf_after_clear = get_irf(RBC_custom_ss, levels = true)
-        @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
-        
-        # Test with verbose option (internal function still available but not exported)
-        MacroModelling.set_custom_steady_state_function!(RBC_custom_ss, my_steady_state_rbc)
-        @test !isnothing(RBC_custom_ss.custom_steady_state_function)
-        
-        
-        @model RBC_macro_ss begin
-            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^α
-            z[0] = ρ * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_macro_ss steady_state_function = my_steady_state_rbc begin
-            std_z = 0.01
-            ρ = 0.2
-            δ = 0.02
-            α = 0.5
-            β = 0.95
-        end
-        
-        # Verify macro-defined SS function is set
-        @test isapprox(RBC_macro_ss.custom_steady_state_function(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
-        
-        macro_ss = get_steady_state(RBC_macro_ss)
-        @test isapprox(default_ss, macro_ss, rtol = 1e-10)
-
-        RBC_custom_ss = nothing
-        RBC_macro_ss = nothing
-        RBC_func_arg = nothing
     end
 
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
@@ -1167,7 +1167,7 @@ if test_set == "basic"
 
         # Steady state should still work after clearing
         after_clear_ss = get_steady_state(model, steady_state_function = nothing)
-        @test isnothing(model.custom_steady_state_function)
+        @test isnothing(model.functions.NSSS_custom)
         @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
 
         std_after_clear = get_std(model)
