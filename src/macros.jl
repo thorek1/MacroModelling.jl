@@ -85,9 +85,6 @@ macro model(𝓂,ex...)
     ss_calib_list = []
     par_calib_list = []
     
-    solved_vars = [] 
-    solved_vals = []
-    
     # ss_solve_blocks = []
     ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
@@ -866,9 +863,6 @@ macro model(𝓂,ex...)
                         # $default_optimizer,
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
-
-                        $solved_vars, 
-                        $solved_vals, 
 
                         # $ss_solve_blocks,
                         $ss_solve_blocks_in_place,

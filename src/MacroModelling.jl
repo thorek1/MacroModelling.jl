@@ -3912,7 +3912,9 @@ function write_block_solution!(𝓂,
                                 relevant_pars_across,
                                 NSSS_solver_cache_init_tmp, 
                                 eq_idx_in_block_to_solve, 
-                                atoms_in_equations_list;
+                                atoms_in_equations_list,
+                                solved_vars,
+                                solved_vals;
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
@@ -3927,8 +3929,8 @@ function write_block_solution!(𝓂,
     rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
 
 
-    push!(𝓂.solved_vars, Symbol.(vars_to_solve))
-    push!(𝓂.solved_vals, rewritten_eqs)
+    push!(solved_vars, Symbol.(vars_to_solve))
+    push!(solved_vals, rewritten_eqs)
 
 
     syms_in_eqs = Set{Symbol}()
@@ -3949,7 +3951,7 @@ function write_block_solution!(𝓂,
 
     union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.constants.post_model_macro.➕_vars))
 
-    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
 
     # guess = Expr[]
     # untransformed_guess = Expr[]
@@ -3984,13 +3986,12 @@ function write_block_solution!(𝓂,
     # nnaux_linear = []
     # nnaux_error = []
     # push!(nnaux_error, :(aux_error = 0))
-    solved_vals = Expr[]
     # solved_vals_in_place = Expr[]
     # partially_solved_block = Expr[]
 
     other_vrs_eliminated_by_sympy = Set{Symbol}()
 
-    for (i,val) in enumerate(𝓂.solved_vals[end])
+    for (i,val) in enumerate(solved_vals[end])
         if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
             val = vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
@@ -4002,8 +4003,9 @@ function write_block_solution!(𝓂,
 
 
     
+    solved_vals_local = Expr[]
     for (i,val) in enumerate(rewritten_eqs)
-        push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+        push!(solved_vals_local, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
         # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
     end
 
@@ -4030,7 +4032,7 @@ function write_block_solution!(𝓂,
     # other_vars = Expr[]
     other_vars_input = Symbol[]
     other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
-                                        sort(𝓂.solved_vars[end]) ),
+                                        sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
@@ -4081,7 +4083,7 @@ function write_block_solution!(𝓂,
     end
     # aux_replacements = Dict{Symbol,Any}(aux_vars .=> aux_expr)
 
-    replaced_solved_vals = solved_vals |> 
+    replaced_solved_vals = solved_vals_local |> 
         x -> replace_symbols.(x, Ref(aux_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
@@ -4918,6 +4920,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     relevant_pars_across = Symbol[]
     NSSS_solver_cache_init_tmp = []
 
+    solved_vars = []
+    solved_vals = []
+
     min_max_errors = []
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
@@ -4963,41 +4968,41 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                 # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
                 ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
                 
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(solved_vars,Symbol(var_to_solve_for))
+                push!(solved_vals,Meta.parse(string(soll[1])))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                if (solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars) 
+                    push!(SS_solve_func,:($(solved_vars[end]) = max(eps(),$(solved_vals[end]))))
                 else
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    push!(SS_solve_func,:($(solved_vars[end]) = $(solved_vals[end])))
                 end
 
                 push!(atoms_in_equations_list,[])
             else
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(solved_vars,Symbol(var_to_solve_for))
+                push!(solved_vals,Meta.parse(string(soll[1])))
                 
                 [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars)
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = begin
-                        _bounds = get($(𝓂.constants.post_parameters_macro.bounds), $(QuoteNode(𝓂.solved_vars[end])), (eps(), 1e12))
-                        min(max(_bounds[1], $(𝓂.solved_vals[end])), _bounds[2])
+                if (solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars)
+                    push!(SS_solve_func,:($(solved_vars[end]) = begin
+                        _bounds = get($(𝓂.constants.post_parameters_macro.bounds), $(QuoteNode(solved_vars[end])), (eps(), 1e12))
+                        min(max(_bounds[1], $(solved_vals[end])), _bounds[2])
                     end))
-                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
+                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, solved_vars[end], solved_vals[end])))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
-                    unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
+                    unique_➕_eqs[solved_vals[end]] = solved_vars[end]
                 else
                     vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.constants.post_model_macro.➕_vars), Symbol[]]
                     
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([solved_vals[end]], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
     
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
@@ -5005,11 +5010,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                         push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     end
                     
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                    push!(SS_solve_func,:($(solved_vars[end]) = $(rewritten_eqs[1])))
                 end
 
-                if haskey(𝓂.constants.post_parameters_macro.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.constants.post_model_macro.➕_vars
-                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.constants.post_parameters_macro.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.constants.post_parameters_macro.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
+                if haskey(𝓂.constants.post_parameters_macro.bounds, solved_vars[end]) && solved_vars[end] ∉ 𝓂.constants.post_model_macro.➕_vars
+                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.constants.post_parameters_macro.bounds[solved_vars[end]][1]), $(solved_vars[end])), $(𝓂.constants.post_parameters_macro.bounds[solved_vars[end]][2])) - $(solved_vars[end]))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for bounded variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                 end
             end
@@ -5039,11 +5044,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
                     for vars in vars_to_solve
-                        push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
+                        push!(solved_vars,Symbol(vars))
+                        push!(solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
-                        push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                        push!(SS_solve_func,:($(solved_vars[end]) = $(solved_vals[end])))
                     end
                 end
             end
@@ -5058,7 +5063,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 pe = sortperm(eqs_to_solve, by = string)
 
                 if length(pe) > 5
-                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                     # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
@@ -5067,7 +5072,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     #     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
                     #     𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)  
                     # else
-                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)  
                         # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
                     # end
                 end
@@ -5105,7 +5110,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
     end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
@@ -5418,6 +5423,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     relevant_pars_across = []
     NSSS_solver_cache_init_tmp = []
 
+    solved_vars = []
+    solved_vals = []
+
     n_block = 1
 
     while n > 0
@@ -5430,8 +5438,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
             println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
         end
         
-        push!(𝓂.solved_vars,Symbol.(vars_to_solve))
-        push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
+        push!(solved_vars,Symbol.(vars_to_solve))
+        push!(solved_vals,Meta.parse.(string.(eqs_to_solve)))
 
         syms_in_eqs = Set()
 
@@ -5440,7 +5448,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         end
 
         # println(syms_in_eqs)
-        push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+        push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
 
         # calib_pars = []
         calib_pars_input = []
@@ -5461,8 +5469,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # guess = Expr[]
         # untransformed_guess = Expr[]
         result = Expr[]
-        sorted_vars = sort(𝓂.solved_vars[end])
-        # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.constants.post_model_macro.➕_vars))
+        sorted_vars = sort(solved_vars[end])
+        # sorted_vars = sort(setdiff(solved_vars[end],𝓂.constants.post_model_macro.➕_vars))
         for (i, parss) in enumerate(sorted_vars) 
             # push!(guess,:($parss = guess[$i]))
             # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
@@ -5483,7 +5491,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         other_vrs_eliminated_by_sympy = Set()
 
-        for (i,val) in enumerate(𝓂.solved_vals[end])
+        for (i,val) in enumerate(solved_vals[end])
             if typeof(val) ∈ [Symbol,Float64,Int]
                 push!(solved_vals,val)
                 # push!(solved_vals_in_place, :(ℰ[$i] = $val))
@@ -5530,7 +5538,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         other_vars_input = []
         # other_vars_inverse = []
         other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
-                                            sort(𝓂.solved_vars[end]) ),
+                                            sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
         for var in other_vrs
@@ -5809,7 +5817,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
     end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))

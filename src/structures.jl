@@ -514,8 +514,6 @@ mutable struct ℳ
     # dyn_exo_present_list::Vector{Set{Symbol}}
     # dyn_exo_past_list::Vector{Set{Symbol}} 
 
-    solved_vars::Vector#{Union{Symbol,Vector{Symbol}}}
-    solved_vals::Vector#{Union{Float64,Expr,Int,Vector{Union{Float64,Expr,Int}}}}
     # non_linear_solved_vars
     # non_linear_solved_vals
     # solved_sub_vals
