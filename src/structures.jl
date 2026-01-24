@@ -329,24 +329,42 @@ end
 mutable struct non_stochastic_steady_state
     solve_blocks_in_place::Vector{ss_solve_block}
     solver_cache::CircularBuffer{Vector{Vector{Float64}}}
-    solve_func::Function
-    check_func::Function
-    custom_function::Union{Nothing, Function}
-    ∂equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
-    ∂equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+    ∂equations_∂parameters::AbstractMatrix{<: Real}
+    ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}
     dependencies::Any
 end
 
 mutable struct perturbation_derivatives
-    jacobian::Tuple{AbstractMatrix{<: Real}, Function}
-    jacobian_parameters::Tuple{AbstractMatrix{<: Real}, Function}
-    jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
-    hessian::Tuple{AbstractMatrix{<: Real}, Function}
-    hessian_parameters::Tuple{AbstractMatrix{<: Real}, Function}
-    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
-    third_order_derivatives::Tuple{AbstractMatrix{<: Real}, Function}
-    third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real}, Function}
-    third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+    jacobian::AbstractMatrix{<: Real}
+    jacobian_parameters::AbstractMatrix{<: Real}
+    jacobian_SS_and_pars::AbstractMatrix{<: Real}
+    hessian::AbstractMatrix{<: Real}
+    hessian_parameters::AbstractMatrix{<: Real}
+    hessian_SS_and_pars::AbstractMatrix{<: Real}
+    third_order_derivatives::AbstractMatrix{<: Real}
+    third_order_derivatives_parameters::AbstractMatrix{<: Real}
+    third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real}
+end
+
+mutable struct model_functions
+    # NSSS-related functions
+    NSSS_solve::Function
+    NSSS_check::Function
+    NSSS_custom::Union{Nothing, Function}
+    NSSS_∂equations_∂parameters::Function
+    NSSS_∂equations_∂SS_and_pars::Function
+    # Perturbation derivative functions
+    jacobian::Function
+    jacobian_parameters::Function
+    jacobian_SS_and_pars::Function
+    hessian::Function
+    hessian_parameters::Function
+    hessian_SS_and_pars::Function
+    third_order_derivatives::Function
+    third_order_derivatives_parameters::Function
+    third_order_derivatives_SS_and_pars::Function
+    # OBC-related functions
+    obc_violation::Function
 end
 
 mutable struct solution
@@ -568,7 +586,7 @@ mutable struct ℳ
     workspaces::workspaces
 
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
-    obc_violation_function::Function
+    functions::model_functions
 
     solution::solution
     # symbolics::symbolics

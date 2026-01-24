@@ -91,8 +91,10 @@ macro model(𝓂,ex...)
     NSSS_solve_func = x->x
     NSSS_check_func = x->x
     NSSS_custom_function = nothing
-    NSSS_∂equations_∂parameters = (zeros(0,0), x->x)
-    NSSS_∂equations_∂SS_and_pars = (zeros(0,0), x->x)
+    NSSS_∂equations_∂parameters = zeros(0,0)
+    NSSS_∂equations_∂parameters_func = x->x
+    NSSS_∂equations_∂SS_and_pars = zeros(0,0)
+    NSSS_∂equations_∂SS_and_pars_func = x->x
     NSSS_dependencies = nothing
 
     original_equations = []
@@ -867,9 +869,6 @@ macro model(𝓂,ex...)
                         non_stochastic_steady_state(
                             $NSSS_solve_blocks_in_place,
                             $NSSS_solver_cache,
-                            $NSSS_solve_func,
-                            $NSSS_check_func,
-                            $NSSS_custom_function,
                             $NSSS_∂equations_∂parameters,
                             $NSSS_∂equations_∂SS_and_pars,
                             $NSSS_dependencies
@@ -878,15 +877,15 @@ macro model(𝓂,ex...)
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
                         perturbation_derivatives(
-                            (zeros(0,0), x->x), # jacobian
-                            (zeros(0,0), x->x), # jacobian_parameters
-                            (zeros(0,0), x->x), # jacobian_SS_and_pars
-                            (zeros(0,0), x->x), # hessian
-                            (zeros(0,0), x->x), # hessian_parameters
-                            (zeros(0,0), x->x), # hessian_SS_and_pars
-                            (zeros(0,0), x->x), # third_order_derivatives
-                            (zeros(0,0), x->x), # third_order_derivatives_parameters
-                            (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                            zeros(0,0), # jacobian
+                            zeros(0,0), # jacobian_parameters
+                            zeros(0,0), # jacobian_SS_and_pars
+                            zeros(0,0), # hessian
+                            zeros(0,0), # hessian_parameters
+                            zeros(0,0), # hessian_SS_and_pars
+                            zeros(0,0), # third_order_derivatives
+                            zeros(0,0), # third_order_derivatives_parameters
+                            zeros(0,0), # third_order_derivatives_SS_and_pars
                         ),
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
@@ -904,7 +903,23 @@ macro model(𝓂,ex...)
                         $ℂ,
                         $𝓦,
 
-                        x->x,
+                        model_functions(
+                            $NSSS_solve_func,
+                            $NSSS_check_func,
+                            $NSSS_custom_function,
+                            $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
+                            $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
+                            x->x, # jacobian
+                            x->x, # jacobian_parameters
+                            x->x, # jacobian_SS_and_pars
+                            x->x, # hessian
+                            x->x, # hessian_parameters
+                            x->x, # hessian_SS_and_pars
+                            x->x, # third_order_derivatives
+                            x->x, # third_order_derivatives_parameters
+                            x->x, # third_order_derivatives_SS_and_pars
+                            x->x, # obc_violation
+                        ),
 
                         solution(
                             perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, (x,y)->nothing),

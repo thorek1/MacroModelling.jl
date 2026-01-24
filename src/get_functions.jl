@@ -1588,7 +1588,7 @@ function get_steady_state(𝓂::ℳ;
 
                 end
         else
-            # dSS = 𝒜.jacobian(𝒷(), x->𝓂.NSSS.solve_func(x, 𝓂),𝓂.parameter_values)
+            # dSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
             # dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
             dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1609,8 +1609,8 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.solution.outdated_NSSS ? 𝓂.NSSS.solve_func(𝓂.parameter_values, 𝓂) : 𝓂.solution.non_stochastic_steady_state
-    # return 𝓂.NSSS.solve_func(𝓂)
+    # return 𝓂.solution.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    # return 𝓂.functions.NSSS_solve(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
 
@@ -2784,7 +2784,7 @@ function get_moments(𝓂::ℳ;
                 var_idx_ext = var_idx
             end
 
-            # dNSSS = 𝒜.jacobian(𝒷(), x->𝓂.NSSS.solve_func(x, 𝓂),𝓂.parameter_values)
+            # dNSSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
@@ -3726,7 +3726,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
     
     residual = zeros(length(vals))
 
-    𝓂.NSSS.check_func(residual, 𝓂.parameter_values, vals)
+    𝓂.functions.NSSS_check(residual, 𝓂.parameter_values, vals)
 
     KeyedArray(abs.(residual), Equation = axis1)
 end
