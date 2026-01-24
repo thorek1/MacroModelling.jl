@@ -3834,15 +3834,15 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_present_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_past_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_future_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.ss_list_aux_SS),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_list_aux_SS),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.par_list_aux_SS),
 
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_parameters_macro.calibration_equations),
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_parameters_macro.calibration_equations_parameters),
@@ -3873,8 +3873,8 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(Symbolics.var_future_list, Symbolics.var_present_list_aux_SS),
-            intersect.(Symbolics.var_future_list, Symbolics.var_past_list_aux_SS),
+            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_present_list_aux_SS),
+            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_past_list_aux_SS),
             intersect.(Symbolics.var_present_list_aux_SS, Symbolics.var_past_list_aux_SS),
             intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_present_list_aux_SS),
             intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_past_list_aux_SS),
@@ -3958,7 +3958,7 @@ function write_block_solution!(𝓂,
 
     calib_pars_input = Symbol[]
 
-    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
     
     union!(relevant_pars_across, relevant_pars)
 
@@ -5383,9 +5383,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
-        eq_list = vcat(union.(union.(𝓂.var_list_aux_SS,
-                        𝓂.ss_list_aux_SS),
-                    𝓂.par_list_aux_SS),
+        eq_list = vcat(union.(union.(𝓂.constants.post_model_macro.var_list_aux_SS,
+                        𝓂.constants.post_model_macro.ss_list_aux_SS),
+                    𝓂.constants.post_model_macro.par_list_aux_SS),
                 union.(𝓂.constants.post_parameters_macro.ss_calib_list,
                     𝓂.constants.post_parameters_macro.par_calib_list))
 
@@ -5444,7 +5444,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         # calib_pars = []
         calib_pars_input = []
-        relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.constants.post_parameters_macro.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
+        relevant_pars = reduce(union,vcat(𝓂.constants.post_model_macro.par_list_aux_SS,𝓂.constants.post_parameters_macro.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
         
         iii = 1

@@ -809,7 +809,14 @@ macro model(𝓂,ex...)
 
                 dyn_future_list,
                 dyn_present_list,
-                dyn_past_list)
+                dyn_past_list,
+
+                var_list_aux_SS,
+                ss_list_aux_SS,
+                par_list_aux_SS,
+                var_future_list_aux_SS,
+                var_present_list_aux_SS,
+                var_past_list_aux_SS)
 
     ℂ = Constants(T)
 
@@ -860,12 +867,6 @@ macro model(𝓂,ex...)
                         $parameter_values,
 
                         $ss_aux_equations,
-                        $var_list_aux_SS,
-                        $ss_list_aux_SS,
-                        $par_list_aux_SS,
-                        $var_future_list_aux_SS,
-                        $var_present_list_aux_SS,
-                        $var_past_list_aux_SS,
 
                         $solved_vars, 
                         $solved_vals, 

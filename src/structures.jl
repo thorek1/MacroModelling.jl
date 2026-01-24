@@ -117,6 +117,13 @@ struct post_model_macro
     dyn_future_list::Vector{Set{Symbol}}
     dyn_present_list::Vector{Set{Symbol}}
     dyn_past_list::Vector{Set{Symbol}}
+
+    var_list_aux_SS::Vector{Set{Symbol}}
+    ss_list_aux_SS::Vector{Set{Symbol}}
+    par_list_aux_SS::Vector{Set{Symbol}}
+    var_future_list_aux_SS::Vector{Set{Symbol}}
+    var_present_list_aux_SS::Vector{Set{Symbol}}
+    var_past_list_aux_SS::Vector{Set{Symbol}}
 end
 
 struct symbolics
@@ -478,12 +485,6 @@ mutable struct ℳ
     # ss_list::Vector{Set{Symbol}}
 
     ss_aux_equations::Vector{Expr}
-    var_list_aux_SS::Vector{Set{Symbol}}
-    ss_list_aux_SS::Vector{Set{Symbol}}
-    par_list_aux_SS::Vector{Set{Symbol}}
-    var_future_list_aux_SS::Vector{Set{Symbol}}
-    var_present_list_aux_SS::Vector{Set{Symbol}}
-    var_past_list_aux_SS::Vector{Set{Symbol}}
 
     # var_solved_list
     # var_solved_calib_list
