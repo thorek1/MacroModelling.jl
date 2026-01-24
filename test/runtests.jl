@@ -930,7 +930,7 @@ if test_set == "basic"
         @test inplace_calls[] > 0
         @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
         expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.constants.post_parameters_macro.calibration_equations_parameters)
-        @test length(RBC_switch.constants.post_complete_parameters.custom_steady_state_buffer) == expected_cache_length
+        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
 
         # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
         # @test bad_calls[] > 0

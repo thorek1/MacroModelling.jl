@@ -10028,14 +10028,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
 end
 
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
-    buffer = 𝓂.constants.post_complete_parameters.custom_steady_state_buffer
+    buffer = 𝓂.workspaces.custom_steady_state_buffer
 
     if length(buffer) != expected_length
         buffer = Vector{Float64}(undef, expected_length)
-        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-            𝓂.constants.post_complete_parameters;
-            custom_steady_state_buffer = buffer,
-        )
+        𝓂.workspaces.custom_steady_state_buffer = buffer
     end
 
     return buffer

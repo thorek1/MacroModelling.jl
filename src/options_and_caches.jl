@@ -98,7 +98,8 @@ end
 
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
-                Higher_order_workspace(T = T, S = S))
+                Higher_order_workspace(T = T, S = S),
+                Float64[])
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -157,8 +158,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1:0,
                 1,
                 zeros(Bool, 0, 0),
-                zeros(Bool, 0, 0),
-                Float64[]),
+                zeros(Bool, 0, 0)),
             Second_order_cache(),
             Third_order_cache())
 end
@@ -243,7 +243,6 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
-        get(kwargs, :custom_steady_state_buffer, p.custom_steady_state_buffer),
     )
 end
 

@@ -346,6 +346,7 @@ end
 mutable struct workspaces
     second_order::higher_order_workspace
     third_order::higher_order_workspace
+    custom_steady_state_buffer::Vector{Float64}
 end
 
 
@@ -407,7 +408,6 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
-    custom_steady_state_buffer::Vector{Float64}
 end
 
 mutable struct constants#{F <: Real, G <: AbstractFloat}
@@ -581,6 +581,3 @@ mutable struct ℳ
 
     # estimation_helper::Dict{Vector{Symbol}, timings}
 end
-
-
-
