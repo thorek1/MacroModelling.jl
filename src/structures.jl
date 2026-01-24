@@ -337,6 +337,18 @@ mutable struct non_stochastic_steady_state
     dependencies::Any
 end
 
+mutable struct perturbation_derivatives
+    jacobian::Tuple{AbstractMatrix{<: Real}, Function}
+    jacobian_parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+    hessian::Tuple{AbstractMatrix{<: Real}, Function}
+    hessian_parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+    third_order_derivatives::Tuple{AbstractMatrix{<: Real}, Function}
+    third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+end
+
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::Vector{Float64}
@@ -540,16 +552,7 @@ mutable struct ℳ
 
     equations::equations
 
-
-    jacobian::Tuple{AbstractMatrix{<: Real},Function}
-    jacobian_parameters::Tuple{AbstractMatrix{<: Real},Function}
-    jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
-    hessian::Tuple{AbstractMatrix{<: Real},Function}
-    hessian_parameters::Tuple{AbstractMatrix{<: Real},Function}
-    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
-    third_order_derivatives::Tuple{AbstractMatrix{<: Real},Function}
-    third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
-    third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    derivatives::perturbation_derivatives
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}

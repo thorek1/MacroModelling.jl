@@ -8047,7 +8047,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian = buffer, func_exprs
+    𝓂.derivatives.jacobian = buffer, func_exprs
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
@@ -8077,7 +8077,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
+    𝓂.derivatives.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
  
 
     ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
@@ -8107,7 +8107,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
+    𝓂.derivatives.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
 
 
 
@@ -8230,7 +8230,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian = buffer, func_exprs
+            𝓂.derivatives.hessian = buffer, func_exprs
 
 
             ∇₂_parameters = derivatives[2][2][:,1:nps]
@@ -8260,7 +8260,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
+            𝓂.derivatives.hessian_parameters =  buffer_parameters, func_∇₂_parameters
         
 
             ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
@@ -8290,7 +8290,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
+            𝓂.derivatives.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
         end
     end
 
@@ -8328,7 +8328,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives = buffer, func_exprs
+            𝓂.derivatives.third_order_derivatives = buffer, func_exprs
 
 
             ∇₃_parameters = derivatives[3][2][:,1:nps]
@@ -8358,7 +8358,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
+            𝓂.derivatives.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
         
 
             ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
@@ -8388,7 +8388,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars
+            𝓂.derivatives.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars
         end
     end
 
@@ -8803,18 +8803,18 @@ function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             𝓂::ℳ)::Matrix{M} where {M,N}
                             # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    if eltype(𝓂.jacobian[1]) != M
-        if 𝓂.jacobian[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.jacobian[1],M)
+    if eltype(𝓂.derivatives.jacobian[1]) != M
+        if 𝓂.derivatives.jacobian[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.derivatives.jacobian[1],M)
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+            jac_buffer = zeros(M, size(𝓂.derivatives.jacobian[1]))
         end
     else
-        jac_buffer = 𝓂.jacobian[1]
+        jac_buffer = 𝓂.derivatives.jacobian[1]
     end
     
-    𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
+    𝓂.derivatives.jacobian[2](jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
 end
@@ -8833,11 +8833,11 @@ function rrule(::typeof(calculate_jacobian),
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
 
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
+        𝓂.derivatives.jacobian_parameters[2](𝓂.derivatives.jacobian_parameters[1], parameters, SS_and_pars)
+        𝓂.derivatives.jacobian_SS_and_pars[2](𝓂.derivatives.jacobian_SS_and_pars[1], parameters, SS_and_pars)
 
-        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
-        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
+        ∂parameters = 𝓂.derivatives.jacobian_parameters[1]' * vec(∂∇₁)
+        ∂SS_and_pars = 𝓂.derivatives.jacobian_SS_and_pars[1]' * vec(∂∇₁)
 
         # end # timeit_debug
         # end # timeit_debug
@@ -8851,18 +8851,18 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.hessian[1]) != M
-        if 𝓂.hessian[1] isa SparseMatrixCSC
-            hes_buffer = similar(𝓂.hessian[1],M)
+    if eltype(𝓂.derivatives.hessian[1]) != M
+        if 𝓂.derivatives.hessian[1] isa SparseMatrixCSC
+            hes_buffer = similar(𝓂.derivatives.hessian[1],M)
             hes_buffer.nzval .= 0
         else
-            hes_buffer = zeros(M, size(𝓂.hessian[1]))
+            hes_buffer = zeros(M, size(𝓂.derivatives.hessian[1]))
         end
     else
-        hes_buffer = 𝓂.hessian[1]
+        hes_buffer = 𝓂.derivatives.hessian[1]
     end
 
-    𝓂.hessian[2](hes_buffer, parameters, SS_and_pars)
+    𝓂.derivatives.hessian[2](hes_buffer, parameters, SS_and_pars)
     
     return hes_buffer
 end
@@ -8875,11 +8875,11 @@ function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     function calculate_hessian_pullback(∂∇₂)
         # @timeit_debug timer "Calculate hessian - reverse" begin
 
-        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
-        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
+        𝓂.derivatives.hessian_parameters[2](𝓂.derivatives.hessian_parameters[1], parameters, SS_and_pars)
+        𝓂.derivatives.hessian_SS_and_pars[2](𝓂.derivatives.hessian_SS_and_pars[1], parameters, SS_and_pars)
 
-        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
-        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
+        ∂parameters = 𝓂.derivatives.hessian_parameters[1]' * vec(∂∇₂)
+        ∂SS_and_pars = 𝓂.derivatives.hessian_SS_and_pars[1]' * vec(∂∇₂)
 
         # end # timeit_debug
         # end # timeit_debug
@@ -8895,18 +8895,18 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.third_order_derivatives[1]) != M
-        if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
-            third_buffer = similar(𝓂.third_order_derivatives[1],M)
+    if eltype(𝓂.derivatives.third_order_derivatives[1]) != M
+        if 𝓂.derivatives.third_order_derivatives[1] isa SparseMatrixCSC
+            third_buffer = similar(𝓂.derivatives.third_order_derivatives[1],M)
             third_buffer.nzval .= 0
         else
-            third_buffer = zeros(M, size(𝓂.third_order_derivatives[1]))
+            third_buffer = zeros(M, size(𝓂.derivatives.third_order_derivatives[1]))
         end
     else
-        third_buffer = 𝓂.third_order_derivatives[1]
+        third_buffer = 𝓂.derivatives.third_order_derivatives[1]
     end
 
-    𝓂.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
+    𝓂.derivatives.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
     
     return third_buffer
 end
@@ -8921,11 +8921,11 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
         # @timeit_debug timer "3rd order derivatives - pullback" begin
-        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
-        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
+        𝓂.derivatives.third_order_derivatives_parameters[2](𝓂.derivatives.third_order_derivatives_parameters[1], parameters, SS_and_pars)
+        𝓂.derivatives.third_order_derivatives_SS_and_pars[2](𝓂.derivatives.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
 
-        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
-        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
+        ∂parameters = 𝓂.derivatives.third_order_derivatives_parameters[1]' * vec(∂∇₃)
+        ∂SS_and_pars = 𝓂.derivatives.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
 
         # end # timeit_debug
         # end # timeit_debug
