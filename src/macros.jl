@@ -85,15 +85,15 @@ macro model(𝓂,ex...)
     ss_calib_list = []
     par_calib_list = []
     
-    # ss_solve_blocks = []
-    ss_solve_blocks_in_place = ss_solve_block[]
+    # NSSS struct fields
+    NSSS_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    SS_solve_func = x->x
-    # SS_calib_func = x->x
-    SS_check_func = x->x
-    ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
-    ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
-    SS_dependencies = nothing
+    NSSS_solve_func = x->x
+    NSSS_check_func = x->x
+    NSSS_custom_function = nothing
+    NSSS_∂equations_∂parameters = (zeros(0,0), x->x)
+    NSSS_∂equations_∂SS_and_pars = (zeros(0,0), x->x)
+    NSSS_dependencies = nothing
 
     original_equations = []
     calibration_equations = []
@@ -864,16 +864,16 @@ macro model(𝓂,ex...)
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
-                        # $ss_solve_blocks,
-                        $ss_solve_blocks_in_place,
-                        $NSSS_solver_cache,
-                        $SS_solve_func,
-                        # $SS_calib_func,
-                        $SS_check_func,
-                        nothing, # custom_steady_state_function
-                        $∂SS_equations_∂parameters,
-                        $∂SS_equations_∂SS_and_pars,
-                        $SS_dependencies,
+                        non_stochastic_steady_state(
+                            $NSSS_solve_blocks_in_place,
+                            $NSSS_solver_cache,
+                            $NSSS_solve_func,
+                            $NSSS_check_func,
+                            $NSSS_custom_function,
+                            $NSSS_∂equations_∂parameters,
+                            $NSSS_∂equations_∂SS_and_pars,
+                            $NSSS_dependencies
+                        ),
 
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 

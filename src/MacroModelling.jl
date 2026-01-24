@@ -1025,8 +1025,8 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
         push!(𝓂.solution.outdated_algorithms, i)
     end
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
+    while length(𝓂.NSSS.solver_cache) > 1
+        pop!(𝓂.NSSS.solver_cache)
     end
 
     𝓂.solution.outdated_NSSS = true
@@ -1118,11 +1118,11 @@ get_irf(RBC, steady_state_function = my_steady_state)
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
 function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType)
-    had_custom = !isnothing(𝓂.custom_steady_state_function)
+    had_custom = !isnothing(𝓂.NSSS.custom_function)
 
     # Store the custom function
     if isnothing(f)
-        𝓂.custom_steady_state_function = nothing
+        𝓂.NSSS.custom_function = nothing
         
         if had_custom
             𝓂.solution.outdated_NSSS = true
@@ -1130,8 +1130,8 @@ function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType
                 push!(𝓂.solution.outdated_algorithms, alg)
             end
         end
-    elseif f isa Function && f !== 𝓂.custom_steady_state_function
-        𝓂.custom_steady_state_function = f 
+    elseif f isa Function && f !== 𝓂.NSSS.custom_function
+        𝓂.NSSS.custom_function = f 
 
         𝓂.solution.outdated_NSSS = true
         for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
@@ -4249,13 +4249,13 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(ubs = [$(ubs...)]))
             
     # n_block = length(𝓂.ss_solve_blocks) + 1 
-    n_block = length(𝓂.ss_solve_blocks_in_place) + 1   
+    n_block = length(𝓂.NSSS.solve_blocks_in_place) + 1   
         
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
     push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block), 
-                                                            𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                            𝓂.NSSS.solve_blocks_in_place[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                             # f, 
@@ -4284,7 +4284,7 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
     
-    push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
+    push!(𝓂.NSSS.solve_blocks_in_place, ss_solve_block(
             function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
             function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
         )
@@ -4786,7 +4786,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
-    𝓂.SS_check_func = func_exprs
+    𝓂.NSSS.check_func = func_exprs
 
 
     # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.calibration_equations_parameters))
@@ -4809,7 +4809,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
     # 𝓂.SS_calib_func(calib_vals, 𝔓)
 
-    # 𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
+    # 𝓂.NSSS.check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
 
     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ss_equations_sub, 𝔓) # nϵ x nx
 
@@ -4838,7 +4838,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+    𝓂.NSSS.∂equations_∂parameters = buffer, func_exprs
 
 
 
@@ -4869,7 +4869,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    𝓂.NSSS.∂equations_∂SS_and_pars = buffer, func_exprs
 
     return nothing
 end
@@ -5086,7 +5086,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     end
 
     push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
+    push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
@@ -5115,7 +5115,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
 
-    𝓂.SS_dependencies = dependencies
+    𝓂.NSSS.dependencies = dependencies
     
 
     
@@ -5132,16 +5132,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
 
-    # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+    # push!(SS_solve_func,:(for pars in 𝓂.NSSS.solver_cache
     #                             latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
     #                             if latest <= current_best
     #                                 current_best = latest
     #                             end
     #                         end))
         push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol) && (scale == 1)
-                                    reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_tmp)
                             end))
-    # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
+    # push!(SS_solve_func,:(if length(𝓂.NSSS.solver_cache) > 100 popfirst!(𝓂.NSSS.solver_cache) end))
     
     # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
 
@@ -5173,10 +5173,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.NSSS.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS_solver_cache
+                    for pars in 𝓂.NSSS.solver_cache
                         copy!(initial_parameters_tmp, pars[end])
 
                         ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
@@ -5285,8 +5285,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 end)
 
 
-    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.SS_solve_func = eval(solve_exp)
+    𝓂.NSSS.solve_func = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.NSSS.solve_func = eval(solve_exp)
 
     return nothing
 end
@@ -5309,7 +5309,7 @@ function solve_steady_state!(𝓂::ℳ,
         return Float64[], 0.0, false
     end
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.NSSS.custom_function isa Function)
         if !silent 
             print("Find non-stochastic steady state:\t\t\t\t\t") 
         end
@@ -5319,7 +5319,7 @@ function solve_steady_state!(𝓂::ℳ,
     
     found_solution = true
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.NSSS.custom_function isa Function)
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
         if solution_error > opts.tol.NSSS_acceptance_tol
@@ -5331,7 +5331,7 @@ function solve_steady_state!(𝓂::ℳ,
         end
     end
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.NSSS.custom_function isa Function)
         if !silent 
             println(round(time() - start_time, digits = 3), " seconds") 
         end
@@ -5751,7 +5751,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         push!(SS_solve_func,:(solution = block_solver(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
-                                                                𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                                𝓂.NSSS.solve_blocks_in_place[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                                 # f, 
@@ -5779,7 +5779,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
 
-        push!(𝓂.ss_solve_blocks_in_place, 
+        push!(𝓂.NSSS.solve_blocks_in_place, 
             ss_solve_block(
                 function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
                 function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
@@ -5793,7 +5793,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     push!(NSSS_solver_cache_init_tmp,[Inf])
     push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
+    push!(𝓂.NSSS.solver_cache,NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
@@ -5822,7 +5822,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
 
-    𝓂.SS_dependencies = dependencies
+    𝓂.NSSS.dependencies = dependencies
 
     
     dyn_exos = []
@@ -5835,9 +5835,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
-    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
+    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS.solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS.solver_cache[end][end]), sum(abs2,params_flt))))
 
-    push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+    push!(SS_solve_func,:(for pars in 𝓂.NSSS.solver_cache
                                 latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
                                 if latest <= current_best
                                     current_best = latest
@@ -5845,7 +5845,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             end))
 
     push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol)
-                                    reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
 
@@ -5870,10 +5870,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.NSSS.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS_solver_cache
+                    for pars in 𝓂.NSSS.solver_cache
                         latest = sum(abs2,pars[end] - initial_parameters)
                         if latest <= current_best
                             current_best = latest
@@ -5901,10 +5901,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
                             # if scale <= solved_scale continue end
 
-                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                            closest_solution = 𝓂.NSSS_solver_cache[end]
+                            current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
+                            closest_solution = 𝓂.NSSS.solver_cache[end]
 
-                            for pars in 𝓂.NSSS_solver_cache
+                            for pars in 𝓂.NSSS.solver_cache
                                 latest = sum(abs2,pars[end] - initial_parameters)
                                 if latest <= current_best
                                     current_best = latest
@@ -5969,8 +5969,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     return zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters))), (1, 0)
                 end)
 
-    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.SS_solve_func = eval(solve_exp)
+    𝓂.NSSS.solve_func = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.NSSS.solve_func = eval(solve_exp)
 
     return nothing
 end
@@ -5990,11 +5990,11 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
+    while length(𝓂.NSSS.solver_cache) > 1
+        pop!(𝓂.NSSS.solver_cache)
     end
 
-    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
+    runtime = @elapsed outmodel = try 𝓂.NSSS.solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > tol.NSSS_acceptance_tol) || !isfinite(outmodel[2][1]) ? 
@@ -6050,7 +6050,7 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120,
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
         push!(𝓂.solver_parameters, par_inputs)
@@ -6068,7 +6068,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
     solved = false
 
-    solved_NSSS = 𝓂.NSSS_solver_cache[end]
+    solved_NSSS = 𝓂.NSSS.solver_cache[end]
 
     for p in 𝓂.solver_parameters
         total_time = 0.0
@@ -6076,11 +6076,11 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         for _ in 1:100
             start_time = time()
 
-            while length(𝓂.NSSS_solver_cache) > 1
-                pop!(𝓂.NSSS_solver_cache)
+            while length(𝓂.NSSS.solver_cache) > 1
+                pop!(𝓂.NSSS.solver_cache)
             end
 
-            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
+            SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
             elapsed_time = time() - start_time
 
@@ -6100,11 +6100,11 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         solved = true
     end
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
+    while length(𝓂.NSSS.solver_cache) > 1
+        pop!(𝓂.NSSS.solver_cache)
     end
 
-    push!(𝓂.NSSS_solver_cache, solved_NSSS)
+    push!(𝓂.NSSS.solver_cache, solved_NSSS)
 
     if solved
         pushfirst!(𝓂.solver_parameters, best_param)
@@ -7149,8 +7149,8 @@ function solve!(𝓂::ℳ;
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
     
     if 𝓂.solution.functions_written &&
-        isnothing(𝓂.custom_steady_state_function) &&
-        !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+        isnothing(𝓂.NSSS.custom_function) &&
+        !(𝓂.NSSS.solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
 
         set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
     end
@@ -8133,7 +8133,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     #     𝓂.SS_calib_func(calib_vals, 𝔛¹)
     
-    #     𝓂.SS_check_func(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
+    #     𝓂.NSSS.check_func(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
     # println(ϵˢ)
     #     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
     
@@ -8162,7 +8162,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+    #     𝓂.NSSS.∂equations_∂parameters = buffer, func_exprs
 
 
 
@@ -8193,7 +8193,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    #     𝓂.NSSS.∂equations_∂SS_and_pars = buffer, func_exprs
     # end
         
     if max_perturbation_order >= 2
@@ -8513,8 +8513,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         
         # Clear the NSSS_solver_cache since parameter order/count has changed
         # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
-        while length(𝓂.NSSS_solver_cache) > 0
-            pop!(𝓂.NSSS_solver_cache)
+        while length(𝓂.NSSS.solver_cache) > 0
+            pop!(𝓂.NSSS.solver_cache)
         end
     end
     
@@ -8557,8 +8557,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if isnothing(𝓂.SS_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
-                # if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
+                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 
@@ -8627,7 +8627,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             changed_pars = 𝓂.constants.post_complete_parameters.parameters[match_idx]
 
             # for p in changes_pars
-            #     if p ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+            #     if p ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true # fix the SS_dependencies
                     # println("SS outdated.")
             #     end
@@ -10055,20 +10055,20 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     end
 
     result = nothing
-    has_inplace = hasmethod(𝓂.custom_steady_state_function, Tuple{typeof(parameter_values), typeof(parameter_values)})
+    has_inplace = hasmethod(𝓂.NSSS.custom_function, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
         output = get_custom_steady_state_buffer!(𝓂, expected_length)
 
         try 
-            𝓂.custom_steady_state_function(output, parameter_values)
+            𝓂.NSSS.custom_function(output, parameter_values)
         catch
         end
         
         result = output
-    elseif applicable(𝓂.custom_steady_state_function, parameter_values)
+    elseif applicable(𝓂.NSSS.custom_function, parameter_values)
         result = try
-            𝓂.custom_steady_state_function(parameter_values)
+            𝓂.NSSS.custom_function(parameter_values)
         catch
             fill(NaN, expected_length)
         end
@@ -10129,7 +10129,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     ms = ensure_model_structure_cache!(𝓂)
     
     # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.custom_steady_state_function isa Function
+    if 𝓂.NSSS.custom_function isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
 
@@ -10142,7 +10142,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
         
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
+        𝓂.NSSS.check_func(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
@@ -10154,7 +10154,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
@@ -10181,7 +10181,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ms = ensure_model_structure_cache!(𝓂)
 
     # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.custom_steady_state_function isa Function
+    if 𝓂.NSSS.custom_function isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
 
@@ -10194,7 +10194,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
         residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
         
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
+        𝓂.NSSS.check_func(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
@@ -10206,7 +10206,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
 
     # end # timeit_debug
@@ -10226,34 +10226,34 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = parameter_values
     C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+    if eltype(𝓂.NSSS.∂equations_∂parameters[1]) != eltype(parameter_values)
+        if 𝓂.NSSS.∂equations_∂parameters[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.NSSS.∂equations_∂parameters[1], eltype(parameter_values))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.NSSS.∂equations_∂parameters[1]))
         end
     else
-        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
+        jac_buffer = 𝓂.NSSS.∂equations_∂parameters[1]
     end
 
-    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+    𝓂.NSSS.∂equations_∂parameters[2](jac_buffer, ∂, C)
 
     ∂SS_equations_∂parameters = jac_buffer
 
     
-    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
-        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+    if eltype(𝓂.NSSS.∂equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
+        if 𝓂.NSSS.∂equations_∂SS_and_pars[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.NSSS.∂equations_∂SS_and_pars[1], eltype(SS_and_pars))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.NSSS.∂equations_∂SS_and_pars[1]))
         end
     else
-        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
+        jac_buffer = 𝓂.NSSS.∂equations_∂SS_and_pars[1]
     end
 
-    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
+    𝓂.NSSS.∂equations_∂SS_and_pars[2](jac_buffer, ∂, C)
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
 
@@ -10296,7 +10296,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_cache!(𝓂)
 
-    if 𝓂.custom_steady_state_function isa Function
+    if 𝓂.NSSS.custom_function isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
 
@@ -10309,7 +10309,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
         
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
+        𝓂.NSSS.check_func(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
@@ -10321,7 +10321,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.NSSS.solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
     
     ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
@@ -10341,34 +10341,34 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂ = parameter_values
         C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-        if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-            if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+        if eltype(𝓂.NSSS.∂equations_∂parameters[1]) != eltype(parameter_values)
+            if 𝓂.NSSS.∂equations_∂parameters[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.NSSS.∂equations_∂parameters[1], eltype(parameter_values))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+                jac_buffer = zeros(eltype(parameter_values), size(𝓂.NSSS.∂equations_∂parameters[1]))
             end
         else
-            jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
+            jac_buffer = 𝓂.NSSS.∂equations_∂parameters[1]
         end
 
-        𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+        𝓂.NSSS.∂equations_∂parameters[2](jac_buffer, ∂, C)
 
         ∂SS_equations_∂parameters = jac_buffer
 
         
-        if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
-            if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+        if eltype(𝓂.NSSS.∂equations_∂SS_and_pars[1]) != eltype(parameter_values)
+            if 𝓂.NSSS.∂equations_∂SS_and_pars[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.NSSS.∂equations_∂SS_and_pars[1], eltype(SS_and_pars))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.NSSS.∂equations_∂SS_and_pars[1]))
             end
         else
-            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
+            jac_buffer = 𝓂.NSSS.∂equations_∂SS_and_pars[1]
         end
 
-        𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
+        𝓂.NSSS.∂equations_∂SS_and_pars[2](jac_buffer, ∂, C)
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 

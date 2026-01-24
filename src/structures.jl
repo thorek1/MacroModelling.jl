@@ -326,6 +326,17 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+mutable struct non_stochastic_steady_state
+    solve_blocks_in_place::Vector{ss_solve_block}
+    solver_cache::CircularBuffer{Vector{Vector{Float64}}}
+    solve_func::Function
+    check_func::Function
+    custom_function::Union{Nothing, Function}
+    ∂equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    ∂equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
+    dependencies::Any
+end
+
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::Vector{Float64}
@@ -518,31 +529,8 @@ mutable struct ℳ
     # non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
-    # ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
-    ss_solve_blocks_in_place::Vector{ss_solve_block}
-    # Vector{Tuple{
-    #     Tuple{
-    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-    #         }, 
-    #     Tuple{
-    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-    #         }
-    #     }
-    # }
-    # ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
-    #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
-    # SS_init_guess::Vector{Real}
-    NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
-    SS_solve_func::Function
-    # SS_calib_func::Function
-    SS_check_func::Function
-    custom_steady_state_function::Union{Nothing, Function}
-    ∂SS_equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
-    ∂SS_equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
-    # nonlinear_solution_helper
-    SS_dependencies::Any
+
+    NSSS::non_stochastic_steady_state
 
     # ss_equations::Vector{Expr}
     # t_future_equations 
