@@ -14,7 +14,7 @@ function calculate_covariance(parameters::Vector{R},
         return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
@@ -66,7 +66,7 @@ function calculate_mean(parameters::Vector{R},
     else
         ensure_moments_cache!(𝓂)
         so = constants.second_order
-        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
@@ -78,7 +78,7 @@ function calculate_mean(parameters::Vector{R},
         else
             𝓂.solution.perturbation.qme_solution = qme_sol
 
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                         opts = opts)
@@ -174,7 +174,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
@@ -295,7 +295,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
@@ -461,7 +461,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
 	                                                𝓂.constants,
@@ -705,7 +705,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,

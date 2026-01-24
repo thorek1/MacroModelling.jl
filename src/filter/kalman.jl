@@ -613,7 +613,7 @@ function filter_and_smooth(𝓂::ℳ,
     
     @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not solve non-stochastic steady state." 
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants; 

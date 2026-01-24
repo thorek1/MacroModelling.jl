@@ -6417,7 +6417,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
     
     # end # timeit_debug
 
@@ -6439,7 +6439,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
@@ -6757,7 +6757,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
@@ -6771,7 +6771,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
@@ -6787,7 +6787,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
@@ -7210,7 +7210,7 @@ function solve!(𝓂::ℳ;
             
             # @timeit_debug timer "Calculate Jacobian" begin
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
             
             # end # timeit_debug
 
@@ -7236,7 +7236,7 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants;
@@ -8825,20 +8825,20 @@ end
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
-                            𝓂::ℳ)::Matrix{M} where {M,N}
-                            # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    if eltype(𝓂.derivatives.jacobian) != M
-        if 𝓂.derivatives.jacobian isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.derivatives.jacobian,M)
+                            derivatives::perturbation_derivatives,
+                            jacobian_func::Function)::Matrix{M} where {M,N}
+    if eltype(derivatives.jacobian) != M
+        if derivatives.jacobian isa SparseMatrixCSC
+            jac_buffer = similar(derivatives.jacobian,M)
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(M, size(𝓂.derivatives.jacobian))
+            jac_buffer = zeros(M, size(derivatives.jacobian))
         end
     else
-        jac_buffer = 𝓂.derivatives.jacobian
+        jac_buffer = derivatives.jacobian
     end
     
-    𝓂.functions.jacobian(jac_buffer, parameters, SS_and_pars)
+    jacobian_func(jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
 end
@@ -8848,25 +8848,24 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
                 SS_and_pars, 
-                𝓂)#;
-                # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "Calculate jacobian - forward" begin
-
-    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+                derivatives::perturbation_derivatives,
+                jacobian_func::Function;
+                jacobian_parameters_func::Union{Function,Nothing} = nothing,
+                jacobian_SS_and_pars_func::Union{Function,Nothing} = nothing)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, derivatives, jacobian_func)
 
     function calculate_jacobian_pullback(∂∇₁)
-        # @timeit_debug timer "Calculate jacobian - reverse" begin
+        if jacobian_parameters_func === nothing || jacobian_SS_and_pars_func === nothing
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+        
+        jacobian_parameters_func(derivatives.jacobian_parameters, parameters, SS_and_pars)
+        jacobian_SS_and_pars_func(derivatives.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        𝓂.functions.jacobian_parameters(𝓂.derivatives.jacobian_parameters, parameters, SS_and_pars)
-        𝓂.functions.jacobian_SS_and_pars(𝓂.derivatives.jacobian_SS_and_pars, parameters, SS_and_pars)
+        ∂parameters = derivatives.jacobian_parameters' * vec(∂∇₁)
+        ∂SS_and_pars = derivatives.jacobian_SS_and_pars' * vec(∂∇₁)
 
-        ∂parameters = 𝓂.derivatives.jacobian_parameters' * vec(∂∇₁)
-        ∂SS_and_pars = 𝓂.derivatives.jacobian_SS_and_pars' * vec(∂∇₁)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
@@ -8874,41 +8873,49 @@ end
 
 @stable default_mode = "disable" begin
 
-function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.derivatives.hessian) != M
-        if 𝓂.derivatives.hessian isa SparseMatrixCSC
-            hes_buffer = similar(𝓂.derivatives.hessian,M)
+function calculate_hessian(parameters::Vector{M}, 
+                            SS_and_pars::Vector{N}, 
+                            derivatives::perturbation_derivatives,
+                            hessian_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(derivatives.hessian) != M
+        if derivatives.hessian isa SparseMatrixCSC
+            hes_buffer = similar(derivatives.hessian,M)
             hes_buffer.nzval .= 0
         else
-            hes_buffer = zeros(M, size(𝓂.derivatives.hessian))
+            hes_buffer = zeros(M, size(derivatives.hessian))
         end
     else
-        hes_buffer = 𝓂.derivatives.hessian
+        hes_buffer = derivatives.hessian
     end
 
-    𝓂.functions.hessian(hes_buffer, parameters, SS_and_pars)
+    hessian_func(hes_buffer, parameters, SS_and_pars)
     
     return hes_buffer
 end
 
 end # dispatch_doctor
 
-function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
-    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
+function rrule(::typeof(calculate_hessian), 
+                parameters, 
+                SS_and_pars, 
+                derivatives::perturbation_derivatives,
+                hessian_func::Function;
+                hessian_parameters_func::Union{Function,Nothing} = nothing,
+                hessian_SS_and_pars_func::Union{Function,Nothing} = nothing)
+    hessian = calculate_hessian(parameters, SS_and_pars, derivatives, hessian_func)
 
     function calculate_hessian_pullback(∂∇₂)
-        # @timeit_debug timer "Calculate hessian - reverse" begin
+        if hessian_parameters_func === nothing || hessian_SS_and_pars_func === nothing
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+        
+        hessian_parameters_func(derivatives.hessian_parameters, parameters, SS_and_pars)
+        hessian_SS_and_pars_func(derivatives.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        𝓂.functions.hessian_parameters(𝓂.derivatives.hessian_parameters, parameters, SS_and_pars)
-        𝓂.functions.hessian_SS_and_pars(𝓂.derivatives.hessian_SS_and_pars, parameters, SS_and_pars)
+        ∂parameters = derivatives.hessian_parameters' * vec(∂∇₂)
+        ∂SS_and_pars = derivatives.hessian_SS_and_pars' * vec(∂∇₂)
 
-        ∂parameters = 𝓂.derivatives.hessian_parameters' * vec(∂∇₂)
-        ∂SS_and_pars = 𝓂.derivatives.hessian_SS_and_pars' * vec(∂∇₂)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
     return hessian, calculate_hessian_pullback
@@ -8918,43 +8925,47 @@ end
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
-                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.derivatives.third_order_derivatives) != M
-        if 𝓂.derivatives.third_order_derivatives isa SparseMatrixCSC
-            third_buffer = similar(𝓂.derivatives.third_order_derivatives,M)
+                                            derivatives::perturbation_derivatives,
+                                            third_order_derivatives_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(derivatives.third_order_derivatives) != M
+        if derivatives.third_order_derivatives isa SparseMatrixCSC
+            third_buffer = similar(derivatives.third_order_derivatives,M)
             third_buffer.nzval .= 0
         else
-            third_buffer = zeros(M, size(𝓂.derivatives.third_order_derivatives))
+            third_buffer = zeros(M, size(derivatives.third_order_derivatives))
         end
     else
-        third_buffer = 𝓂.derivatives.third_order_derivatives
+        third_buffer = derivatives.third_order_derivatives
     end
 
-    𝓂.functions.third_order_derivatives(third_buffer, parameters, SS_and_pars)
+    third_order_derivatives_func(third_buffer, parameters, SS_and_pars)
     
     return third_buffer
 end
 
 end # dispatch_doctor
 
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
-    # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "3rd order derivatives - forward" begin
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
-    # end # timeit_debug
+function rrule(::typeof(calculate_third_order_derivatives), 
+                parameters, 
+                SS_and_pars, 
+                derivatives::perturbation_derivatives,
+                third_order_derivatives_func::Function;
+                third_order_derivatives_parameters_func::Union{Function,Nothing} = nothing,
+                third_order_derivatives_SS_and_pars_func::Union{Function,Nothing} = nothing)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, derivatives, third_order_derivatives_func)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
-        # @timeit_debug timer "3rd order derivatives - pullback" begin
-        𝓂.functions.third_order_derivatives_parameters(𝓂.derivatives.third_order_derivatives_parameters, parameters, SS_and_pars)
-        𝓂.functions.third_order_derivatives_SS_and_pars(𝓂.derivatives.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+        if third_order_derivatives_parameters_func === nothing || third_order_derivatives_SS_and_pars_func === nothing
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+        
+        third_order_derivatives_parameters_func(derivatives.third_order_derivatives_parameters, parameters, SS_and_pars)
+        third_order_derivatives_SS_and_pars_func(derivatives.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = 𝓂.derivatives.third_order_derivatives_parameters' * vec(∂∇₃)
-        ∂SS_and_pars = 𝓂.derivatives.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
+        ∂parameters = derivatives.third_order_derivatives_parameters' * vec(∂∇₃)
+        ∂SS_and_pars = derivatives.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
 
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
@@ -10545,7 +10556,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj;

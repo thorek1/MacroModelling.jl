@@ -34,6 +34,15 @@ function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts 
     return out
 end
 
+function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
+    if hasmethod(calculate_jacobian, Tuple{typeof(parameters), typeof(SS_and_pars), ℳ})
+        out = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    else
+        out = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)
+    end
+    return out
+end
+
 
 function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     SUITE[𝓂.model_name] = BenchmarkGroup()
@@ -52,11 +61,11 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     SUITE[𝓂.model_name]["NSSS"] = @benchmarkable get_NSSS_and_parameters($𝓂, $𝓂.parameter_values) setup = clear_solution_caches!($𝓂, :first_order)
     
     
-    ∇₁ = calculate_jacobian(𝓂.parameter_values, reference_steady_state, 𝓂)
+    ∇₁ = calculate_jacobian_for_bench(𝓂.parameter_values, reference_steady_state, 𝓂)
     
     clear_solution_caches!(𝓂, :first_order)
     
-    SUITE[𝓂.model_name]["jacobian"] = @benchmarkable calculate_jacobian($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["jacobian"] = @benchmarkable calculate_jacobian_for_bench($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
     
     
     SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
