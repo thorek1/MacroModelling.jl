@@ -2159,7 +2159,11 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
             end
         end
         if Inf in periods
-            covar_raw, _ = solve_lyapunov_equation(A, CC, 
+            # Ensure lyapunov workspace is properly sized and get it
+            lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+
+            covar_raw, _ = solve_lyapunov_equation(A, CC,
+                                                    workspace = lyap_ws,
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                     tol = opts.tol.lyapunov_tol,
                                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -2307,7 +2311,11 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        covar_raw, _ = solve_lyapunov_equation(A, CC, 
+        # Ensure lyapunov workspace is properly sized and get it
+        lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+
+        covar_raw, _ = solve_lyapunov_equation(A, CC,
+                                                workspace = lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                 tol = opts.tol.lyapunov_tol,
                                                 acceptance_tol = opts.tol.lyapunov_acceptance_tol,

@@ -23,6 +23,14 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
     ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
+    # Ensure QME workspace is available (create temporary if not provided)
+    qme_ws = if qme_workspace === nothing
+        n = T.nVars - T.nPresent_only
+        Qme_workspace(n)
+    else
+        qme_workspace
+    end
+    
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
@@ -42,7 +50,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_workspace;
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -141,6 +149,14 @@ function rrule(::typeof(calculate_first_order_solution),
     ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
     ∇̂ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
+    # Ensure QME workspace is available (create temporary if not provided)
+    qme_ws = if qme_workspace === nothing
+        n = T.nVars - T.nPresent_only
+        Qme_workspace(n)
+    else
+        qme_workspace
+    end
+    
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
@@ -160,7 +176,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_workspace;
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,

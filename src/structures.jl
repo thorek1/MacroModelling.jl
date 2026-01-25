@@ -368,6 +368,50 @@ mutable struct qme_workspace{T <: Real}
 end
 
 
+"""
+Pre-allocated workspace matrices for the Lyapunov equation solver.
+Solves: A * X * A' + C = X using the doubling algorithm or Krylov methods.
+
+Used by `solve_lyapunov_equation` in lyapunov.jl.
+Avoids per-call allocations for temporary matrices.
+
+Fields for doubling algorithm:
+- `𝐂`: Current solution iterate
+- `𝐂¹`: Next solution iterate  
+- `𝐀`: Copy of A for iteration (will be squared)
+- `𝐂A`: Temporary for C * A'
+- `𝐀²`: Temporary for A * A
+
+Fields for Krylov methods (bicgstab, gmres):
+- `tmp̄`: Temporary matrix for linear operator
+- `𝐗`: Reshape buffer for solution vector
+- `b`: RHS vector for Krylov solver
+- `krylov_solver`: Pre-allocated Krylov solver state
+
+All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
+"""
+mutable struct lyapunov_workspace{T <: Real}
+    # Dimension (stored for reallocation checks)
+    n::Int
+    
+    # Doubling algorithm working matrices (lazily allocated)
+    𝐂::Matrix{T}
+    𝐂¹::Matrix{T}
+    𝐀::Matrix{T}
+    𝐂A::Matrix{T}
+    𝐀²::Matrix{T}
+    
+    # Krylov method buffers (lazily allocated)
+    tmp̄::Matrix{T}
+    𝐗::Matrix{T}
+    b::Vector{T}
+    
+    # Krylov solver state (lazily allocated, can be reused across calls)
+    bicgstab_workspace::Krylov.BicgstabWorkspace{T, T, Vector{T}}
+    gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
+end
+
+
 struct ss_solve_block
     ss_problem::function_and_jacobian
     extended_ss_problem::function_and_jacobian
@@ -511,6 +555,9 @@ mutable struct workspaces
     third_order::higher_order_workspace
     custom_steady_state_buffer::Vector{Float64}
     qme::qme_workspace{Float64}
+    lyapunov_1st_order::lyapunov_workspace{Float64}
+    lyapunov_2nd_order::lyapunov_workspace{Float64}
+    lyapunov_3rd_order::lyapunov_workspace{Float64}
 end
 
 

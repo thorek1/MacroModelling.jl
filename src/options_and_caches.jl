@@ -149,11 +149,109 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, n, n))  # AXX
 end
 
+"""
+    Lyapunov_workspace(n::Int; T::Type = Float64)
+
+Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
+`n` is the dimension of the square matrices.
+Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
+"""
+function Lyapunov_workspace(n::Int; T::Type = Float64)
+    lyapunov_workspace{T}(
+        n,                      # dimension
+        zeros(T, 0, 0),         # 𝐂 (doubling)
+        zeros(T, 0, 0),         # 𝐂¹ (doubling)
+        zeros(T, 0, 0),         # 𝐀 (doubling)
+        zeros(T, 0, 0),         # 𝐂A (doubling)
+        zeros(T, 0, 0),         # 𝐀² (doubling)
+        zeros(T, 0, 0),         # tmp̄ (Krylov)
+        zeros(T, 0, 0),         # 𝐗 (Krylov)
+        zeros(T, 0),            # b (Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20)  # gmres_workspace
+    )
+end
+
+"""
+    ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
+
+Ensure the doubling algorithm buffers are allocated in the workspace.
+"""
+function ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
+    n = ws.n
+    if size(ws.𝐂, 1) != n
+        ws.𝐂 = zeros(T, n, n)
+    end
+    if size(ws.𝐂¹, 1) != n
+        ws.𝐂¹ = zeros(T, n, n)
+    end
+    if size(ws.𝐀, 1) != n
+        ws.𝐀 = zeros(T, n, n)
+    end
+    if size(ws.𝐂A, 1) != n
+        ws.𝐂A = zeros(T, n, n)
+    end
+    if size(ws.𝐀², 1) != n
+        ws.𝐀² = zeros(T, n, n)
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
+
+Ensure the Krylov method buffers are allocated in the workspace.
+"""
+function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
+    n = ws.n
+    if size(ws.tmp̄, 1) != n
+        ws.tmp̄ = zeros(T, n, n)
+    end
+    if size(ws.𝐗, 1) != n
+        ws.𝐗 = zeros(T, n, n)
+    end
+    if length(ws.b) != n * n
+        ws.b = zeros(T, n * n)
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+
+Ensure the bicgstab solver workspace is allocated.
+"""
+function ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if length(ws.bicgstab_workspace.x) != n * n && n > 0
+        ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
+
+Ensure the gmres solver workspace is allocated.
+"""
+function ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if length(ws.gmres_workspace.x) != n * n && n > 0
+        ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+    end
+    return ws
+end
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
-                Qme_workspace(0, T = T))  # Initialize with size 0, will be resized when needed
+                Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
+                Lyapunov_workspace(0, T = T),  # 1st order - will be resized
+                Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
+                Lyapunov_workspace(0, T = T))  # 3rd order - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -721,6 +819,52 @@ function ensure_qme_workspace!(workspaces::workspaces, n::Int)
         workspaces.qme = Qme_workspace(n)
     end
     return workspaces.qme
+end
+
+
+"""
+    ensure_lyapunov_workspace!(workspaces, n, order::Symbol)
+
+Ensure the Lyapunov workspace for the specified moment order is properly sized.
+`n` is the dimension of the square matrices.
+`order` should be `:first_order`, `:second_order`, or `:third_order`.
+If the workspace is the wrong size, it will be reallocated.
+Note: buffers are still lazily allocated when algorithms are actually used.
+"""
+function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbol)
+    if order == :first_order
+        ws = workspaces.lyapunov_1st_order
+        if ws.n != n
+            workspaces.lyapunov_1st_order = Lyapunov_workspace(n)
+        end
+        return workspaces.lyapunov_1st_order
+    elseif order == :second_order
+        ws = workspaces.lyapunov_2nd_order
+        if ws.n != n
+            workspaces.lyapunov_2nd_order = Lyapunov_workspace(n)
+        end
+        return workspaces.lyapunov_2nd_order
+    elseif order == :third_order
+        ws = workspaces.lyapunov_3rd_order
+        if ws.n != n
+            workspaces.lyapunov_3rd_order = Lyapunov_workspace(n)
+        end
+        return workspaces.lyapunov_3rd_order
+    else
+        error("Invalid order: $order. Must be :first_order, :second_order, or :third_order")
+    end
+end
+
+"""
+    ensure_lyapunov_workspace_1st_order!(𝓂)
+
+Ensure the first-order Lyapunov workspace is properly sized for the model.
+The dimension is `nVars` (size of the covariance matrix).
+"""
+function ensure_lyapunov_workspace_1st_order!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    n = T.nVars
+    return ensure_lyapunov_workspace!(𝓂.workspaces, n, :first_order)
 end
 
 

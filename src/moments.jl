@@ -34,11 +34,15 @@ function calculate_covariance(parameters::Vector{R},
         return CC, sol, ∇₁, SS_and_pars, solved
     end
 
-    covar_raw, solved = solve_lyapunov_equation(A, CC, 
-                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                tol = opts.tol.lyapunov_tol,
-                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                verbose = opts.verbose)
+    # Ensure lyapunov workspace is properly sized and get it
+    lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+
+    covar_raw, solved = solve_lyapunov_equation(A, CC,
+                            workspace = lyap_ws,
+                            lyapunov_algorithm = opts.lyapunov_algorithm, 
+                            tol = opts.tol.lyapunov_tol,
+                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                            verbose = opts.verbose)
 
     return covar_raw, sol , ∇₁, SS_and_pars, solved
 end
@@ -368,11 +372,15 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
             C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-            Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, 
-                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                tol = opts.tol.lyapunov_tol,
-                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                verbose = opts.verbose)
+            # Ensure second-order lyapunov workspace and solve
+            lyap_ws_2nd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₂, 1), :second_order)
+
+            Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C,
+                                    workspace = lyap_ws_2nd,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose)
 
             if info
                 # if Σᶻ₂ isa DenseMatrix
@@ -639,11 +647,15 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, 
-                                            lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                            tol = opts.tol.lyapunov_tol,
-                                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                            verbose = opts.verbose)
+        # Ensure third-order lyapunov workspace and solve
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C,
+                                    workspace = lyap_ws_3rd,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose)
 
         if !info
             return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
@@ -881,11 +893,15 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, 
-                                            lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                            tol = opts.tol.lyapunov_tol,
-                                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                            verbose = opts.verbose)
+        # Ensure third-order lyapunov workspace and solve
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C,
+                                    workspace = lyap_ws_3rd,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose)
 
         if !info
             return zeros(T,0,0), zeros(T,0), zeros(T,0), false
