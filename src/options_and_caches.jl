@@ -375,6 +375,99 @@ function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; t
     return ws
 end
 
+
+"""
+    Inversion_workspace(;T::Type = Float64)
+
+Create a workspace for inversion filter computations with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_inversion_buffers!.
+"""
+function Inversion_workspace(;T::Type = Float64)
+    inversion_workspace{T}(
+        0, 0,                   # n_exo, n_past dimensions
+        zeros(T, 0),            # kron_buffer (n_exo^2)
+        zeros(T, 0, 0),         # kron_buffer2 (n_exo^2 × n_exo)
+        zeros(T, 0),            # kron_buffer² (n_exo^3)
+        zeros(T, 0, 0),         # kron_buffer3 (n_exo^3 × n_exo)
+        zeros(T, 0, 0),         # kron_buffer4 (n_exo^3 × n_exo^2)
+        zeros(T, 0, 0),         # kron_buffer_state (n_exo × n_past+1)
+        zeros(T, 0),            # kronstate_vol ((n_past+1)^2)
+        zeros(T, 0),            # kronaug_state ((n_past+1+n_exo)^2)
+        zeros(T, 0),            # kron_kron_aug_state ((n_past+1+n_exo)^3)
+        zeros(T, 0),            # state_vol (n_past+1)
+        zeros(T, 0),            # aug_state₁ (n_past+1+n_exo)
+        zeros(T, 0))            # aug_state₂ (n_past+1+n_exo)
+end
+
+
+"""
+    ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
+
+Ensure the inversion workspace buffers are allocated for the given dimensions.
+Only allocates 3rd order buffers if third_order=true.
+"""
+function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
+    ws.n_exo = n_exo
+    ws.n_past = n_past
+    
+    n_exo² = n_exo^2
+    n_exo³ = n_exo^3
+    n_state_vol = n_past + 1
+    n_aug = n_past + 1 + n_exo
+    
+    # Shock-related kron buffers (2nd order)
+    if length(ws.kron_buffer) != n_exo²
+        ws.kron_buffer = zeros(T, n_exo²)
+    end
+    if size(ws.kron_buffer2, 1) != n_exo² || size(ws.kron_buffer2, 2) != n_exo
+        ws.kron_buffer2 = zeros(T, n_exo², n_exo)
+    end
+    
+    # Shock-related kron buffers (3rd order)
+    if third_order
+        if length(ws.kron_buffer²) != n_exo³
+            ws.kron_buffer² = zeros(T, n_exo³)
+        end
+        if size(ws.kron_buffer3, 1) != n_exo³ || size(ws.kron_buffer3, 2) != n_exo
+            ws.kron_buffer3 = zeros(T, n_exo³, n_exo)
+        end
+        if size(ws.kron_buffer4, 1) != n_exo³ || size(ws.kron_buffer4, 2) != n_exo²
+            ws.kron_buffer4 = zeros(T, n_exo³, n_exo²)
+        end
+    end
+    
+    # State-related kron buffers
+    # kron_buffer_state holds kron(J, state_vol) where J is (n_exo, n_exo) and state_vol is (n_state_vol,)
+    if size(ws.kron_buffer_state, 1) != n_exo * n_state_vol || size(ws.kron_buffer_state, 2) != n_exo
+        ws.kron_buffer_state = zeros(T, n_exo * n_state_vol, n_exo)
+    end
+    if length(ws.kronstate_vol) != n_state_vol^2
+        ws.kronstate_vol = zeros(T, n_state_vol^2)
+    end
+    if length(ws.kronaug_state) != n_aug^2
+        ws.kronaug_state = zeros(T, n_aug^2)
+    end
+    if third_order
+        if length(ws.kron_kron_aug_state) != n_aug^3
+            ws.kron_kron_aug_state = zeros(T, n_aug^3)
+        end
+    end
+    
+    # State vectors
+    if length(ws.state_vol) != n_state_vol
+        ws.state_vol = zeros(T, n_state_vol)
+    end
+    if length(ws.aug_state₁) != n_aug
+        ws.aug_state₁ = zeros(T, n_aug)
+    end
+    if length(ws.aug_state₂) != n_aug
+        ws.aug_state₂ = zeros(T, n_aug)
+    end
+    
+    return ws
+end
+
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
@@ -384,7 +477,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
-                Find_shocks_workspace(T = T))  # conditional forecast - will be resized
+                Find_shocks_workspace(T = T),  # conditional forecast - will be resized
+                Inversion_workspace(T = T))  # inversion filter - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -1013,6 +1107,21 @@ function ensure_lyapunov_workspace_1st_order!(𝓂)
     T = 𝓂.constants.post_model_macro
     n = T.nVars
     return ensure_lyapunov_workspace!(𝓂.workspaces, n, :first_order)
+end
+
+
+"""
+    ensure_inversion_workspace!(𝓂; third_order::Bool = false)
+
+Ensure the inversion filter workspace is properly sized for the model.
+Dimensions are based on nExo (number of shocks) and nPast_not_future_and_mixed.
+"""
+function ensure_inversion_workspace!(𝓂; third_order::Bool = false)
+    T = 𝓂.constants.post_model_macro
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    ensure_inversion_buffers!(𝓂.workspaces.inversion, n_exo, n_past; third_order = third_order)
+    return 𝓂.workspaces.inversion
 end
 
 

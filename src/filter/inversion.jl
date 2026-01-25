@@ -21,7 +21,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                 filter_algorithm, 
                                 opts,
                                 on_failure_loglikelihood,
-                                lyap_ws::lyapunov_workspace) #; 
+                                lyap_ws::lyapunov_workspace,
+                                inv_ws::inversion_workspace) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
@@ -29,6 +30,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     data_in_deviations, 
                                                     observables, 
                                                     constants_obj, 
+                                                    inv_ws,
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
@@ -43,7 +45,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     𝐒::Matrix{R}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    constants::constants; 
+                                                    constants::constants,
+                                                    ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
@@ -60,6 +63,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -169,7 +173,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Matrix{Float64}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}}, 
-                constants::constants; 
+                constants::constants,
+                ws::inversion_workspace{Float64}; 
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 on_failure_loglikelihood = -Inf,
@@ -342,7 +347,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    constants::constants; 
+                                                    constants::constants,
+                                                    ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
@@ -352,8 +358,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     T = constants.post_model_macro
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
-             
-    precision_factor = 1.0
+    
+    # Ensure workspace buffers are properly sized
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
 
     n_obs = size(data_in_deviations,2)
 
@@ -401,22 +410,29 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
 
-    state¹⁻_vol = vcat(state₁, 1)
+    # Use workspace buffers for model-constant allocations
+    state¹⁻_vol = ws.state_vol
+    copyto!(state¹⁻_vol, 1, state₁, 1)
+    state¹⁻_vol[end] = 1
 
-    aug_state₁ = [state₁; 1; ones(T.nExo)]
-    aug_state₂ = [state₂; 0; zeros(T.nExo)]
+    aug_state₁ = ws.aug_state₁
+    copyto!(aug_state₁, 1, state₁, 1)
+    aug_state₁[length(state₁) + 1] = 1
+    fill!(view(aug_state₁, length(state₁) + 2:length(aug_state₁)), 1)
+    
+    aug_state₂ = ws.aug_state₂
+    copyto!(aug_state₂, 1, state₂, 1)
+    aug_state₂[length(state₂) + 1] = 0
+    fill!(view(aug_state₂, length(state₂) + 2:length(aug_state₂)), 0)
 
-    kronaug_state₁ = zeros(length(aug_state₁)^2)
+    kronaug_state₁ = ws.kronaug_state
 
     J = ℒ.I(T.nExo)
 
-    kron_buffer = zeros(T.nExo^2)
-
-    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
-
-    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
-
-    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+    kron_buffer = ws.kron_buffer
+    kron_buffer2 = ws.kron_buffer2
+    kron_buffer3 = ws.kron_buffer_state
+    kronstate¹⁻_vol = ws.kronstate_vol
 
     shock_independent = zeros(size(data_in_deviations,1))
 
@@ -579,7 +595,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                constants::constants; 
+                constants::constants,
+                ws::inversion_workspace{Float64}; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
@@ -1051,7 +1068,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    constants::constants; 
+                                                    constants::constants,
+                                                    ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -1280,7 +1298,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                constants::constants; 
+                constants::constants,
+                ws::inversion_workspace{Float64}; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
@@ -1722,7 +1741,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    constants::constants;
+                                                    constants::constants,
+                                                    ws::inversion_workspace{Float64};
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -2147,7 +2167,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                constants::constants; 
+                constants::constants,
+                ws::inversion_workspace{Float64}; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
@@ -2700,7 +2721,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    constants::constants; 
+                                                    constants::constants,
+                                                    ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -3025,7 +3047,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                constants::constants; 
+                constants::constants,
+                ws::inversion_workspace{Float64}; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,

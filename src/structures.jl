@@ -578,6 +578,38 @@ mutable struct find_shocks_workspace{T <: Real}
 end
 
 
+"""
+Workspace for inversion filter computations.
+Contains pre-allocated buffers for state-related kronecker products and state vectors.
+Buffers are lazily allocated and resized as needed via ensure_inversion_buffers!.
+"""
+mutable struct inversion_workspace{T <: Real}
+    # Dimensions (for reallocation checks)
+    n_exo::Int
+    n_past::Int
+    
+    # Shock-related kron buffers (2nd order)
+    kron_buffer::Vector{T}           # n_exo^2
+    kron_buffer2::Matrix{T}          # (n_exo^2, n_exo) - ℒ.kron(J, x) where J = I(n_exo)
+    
+    # Shock-related kron buffers (3rd order)
+    kron_buffer²::Vector{T}          # n_exo^3
+    kron_buffer3::Matrix{T}          # (n_exo^3, n_exo)
+    kron_buffer4::Matrix{T}          # (n_exo^3, n_exo^2)
+    
+    # State-related kron buffers
+    kron_buffer_state::Matrix{T}     # (n_exo * (n_past+1), n_exo) - ℒ.kron(J, state_vol) where J = I(n_exo)
+    kronstate_vol::Vector{T}         # (n_past+1)^2 - ℒ.kron(state_vol, state_vol)
+    kronaug_state::Vector{T}         # (n_past+1+n_exo)^2
+    kron_kron_aug_state::Vector{T}   # (n_past+1+n_exo)^3 (3rd order)
+    
+    # State vectors
+    state_vol::Vector{T}             # n_past+1
+    aug_state₁::Vector{T}            # n_past+1+n_exo
+    aug_state₂::Vector{T}            # n_past+1+n_exo
+end
+
+
 mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
@@ -605,6 +637,7 @@ mutable struct workspaces
     lyapunov_3rd_order::lyapunov_workspace{Float64}
     sylvester_1st_order::sylvester_workspace{Float64}
     find_shocks::find_shocks_workspace{Float64}
+    inversion::inversion_workspace{Float64}
 end
 
 

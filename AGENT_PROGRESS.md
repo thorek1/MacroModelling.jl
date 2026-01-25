@@ -1,6 +1,71 @@
 # Agent Progress Log
 
-## Current Session (2026-01-25) - Added find_shocks_workspace for Conditional Forecast Caching
+## Current Session (2026-01-26) - Added Inversion Filter Workspace Caching
+
+### Summary
+
+Added workspace struct to cache Kronecker product buffers used in the inversion filter algorithms. The buffers depend on model dimensions (n_exo and n_past) and are now lazily allocated once per model rather than every call.
+
+### Changes Made This Session
+
+1. **Added `inversion_workspace` struct in structures.jl:**
+   - `n_exo::Int, n_past::Int` - dimension tracking for reallocation checks
+   - Shock-related kron buffers (2nd order):
+     - `kron_buffer::Vector{T}` - size n_exo^2
+     - `kron_buffer2::Matrix{T}` - size (n_exo^2, n_exo)
+   - Shock-related kron buffers (3rd order):
+     - `kron_buffer²::Vector{T}` - size n_exo^3
+     - `kron_buffer3::Matrix{T}` - size (n_exo^3, n_exo)
+     - `kron_buffer4::Matrix{T}` - size (n_exo^3, n_exo^2)
+   - State-related kron buffers:
+     - `kron_buffer_state::Matrix{T}` - size (n_exo*(n_past+1), n_exo)
+     - `kronstate_vol::Vector{T}` - size (n_past+1)^2
+     - `kronaug_state::Vector{T}` - size (n_past+1+n_exo)^2
+     - `kron_kron_aug_state::Vector{T}` - size (n_past+1+n_exo)^3 (3rd order)
+   - State vectors:
+     - `state_vol::Vector{T}` - size n_past+1
+     - `aug_state₁::Vector{T}` - size n_past+1+n_exo
+     - `aug_state₂::Vector{T}` - size n_past+1+n_exo
+
+2. **Updated `workspaces` struct in structures.jl:**
+   - Added `inversion::inversion_workspace{Float64}` field
+
+3. **Added functions in options_and_caches.jl:**
+   - `Inversion_workspace(;T::Type = Float64)` - constructor with 0-dimensional lazy init
+   - `ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)` - lazy allocation
+   - `ensure_inversion_workspace!(𝓂; third_order = false)` - helper to get workspace from model
+   - Updated `Workspaces()` to include `Inversion_workspace(T = T)`
+
+4. **Updated inversion.jl:**
+   - Updated `calculate_loglikelihood(::Val{:inversion}, ...)` to accept `inv_ws` parameter
+   - Updated all 5 `calculate_inversion_filter_loglikelihood` signatures to accept workspace
+   - Updated all 5 `rrule` function signatures to accept workspace
+   - Added `@ignore_derivatives ensure_inversion_buffers!` call in pruned_second_order
+   - Implemented workspace buffer usage in pruned_second_order forward pass
+
+5. **Updated kalman.jl:**
+   - Added `inv_ws::inversion_workspace` parameter for API consistency (unused)
+
+6. **Updated get_functions.jl:**
+   - Get inversion workspace before calling calculate_loglikelihood
+   - Pass workspace through to filter functions
+
+### Tests Verified
+
+- ✅ FS2000 model: Kalman filter (reference)
+- ✅ FS2000 model: Inversion filter (first_order)
+- ✅ FS2000 model: Inversion filter (pruned_second_order)
+- ✅ FS2000 model: Inversion filter (second_order)
+- ✅ FS2000 model: Inversion filter (pruned_third_order)
+- ✅ FS2000 model: Inversion filter (third_order)
+
+### Remaining Work
+
+The workspace buffers are now passed through to all inversion filter functions, but only `pruned_second_order` actually uses them. The other functions still allocate their own buffers. Future sessions can refactor those functions to use the workspace.
+
+---
+
+## Previous Session (2026-01-25) - Added find_shocks_workspace for Conditional Forecast Caching
 
 ### Summary
 
