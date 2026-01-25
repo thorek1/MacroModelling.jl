@@ -14,7 +14,26 @@ const SUITE = BenchmarkGroup()
 # SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
 import LinearAlgebra as ℒ
 using MacroModelling
-import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ, lyapunov_workspace, ensure_lyapunov_workspace!, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
+
+# Backward compatible wrapper for solve_lyapunov_equation (creates workspace on the fly)
+function solve_lyapunov_equation_compat(A::AbstractMatrix{T}, C::AbstractMatrix{T}; lyapunov_algorithm::Symbol = :doubling) where T
+    n = size(A, 1)
+    ws = lyapunov_workspace(n)
+    return solve_lyapunov_equation(A, C, ws; lyapunov_algorithm = lyapunov_algorithm)
+end
+
+# Version-aware wrapper for solve_lyapunov_equation benchmarking
+function solve_lyapunov_for_bench(A, C, 𝓂::ℳ; lyapunov_algorithm::Symbol = :doubling)
+    if hasproperty(𝓂, :timings)
+        # Old API - no workspace argument
+        return solve_lyapunov_equation(A, C; lyapunov_algorithm = lyapunov_algorithm)
+    else
+        # New API - with workspace argument
+        lyap_ws = lyapunov_workspace(size(A, 1))
+        return solve_lyapunov_equation(A, C, lyap_ws; lyapunov_algorithm = lyapunov_algorithm)
+    end
+end
 
 function timings_for_bench(𝓂::ℳ)
     if hasproperty(𝓂, :timings)
@@ -90,13 +109,14 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
 
     CC = C * C'
     
-    solve_lyapunov_equation(A, CC)
+    # Use version-aware wrapper for initial call
+    solve_lyapunov_for_bench(A, CC, 𝓂)
     
     SUITE[𝓂.model_name]["lyapunov"] = BenchmarkGroup()
-    SUITE[𝓂.model_name]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
     
     
     clear_solution_caches!(𝓂, :first_order)
