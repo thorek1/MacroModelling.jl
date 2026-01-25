@@ -1,6 +1,49 @@
 # Agent Progress Log
 
-## Current Session (2026-01-25) - Expanded Sylvester Workspace for Allocation Caching
+## Current Session (2026-01-25) - Added find_shocks_workspace for Conditional Forecast Caching
+
+### Summary
+
+Added workspace struct to cache Kronecker product buffers used in `find_shocks_conditional_forecast`. The buffers depend only on `n_exo` (number of shocks) and are now lazily allocated once per model rather than every call.
+
+### Changes Made This Session
+
+1. **Added `find_shocks_workspace` struct in structures.jl:**
+   - `n_exo::Int` - dimension tracking for reallocation checks
+   - `kron_buffer::Vector{T}` - size n_exo^2, for ℒ.kron(x, x)
+   - `kron_buffer2::Matrix{T}` - size n_exo^2 × n_exo, for ℒ.kron(J, x)
+   - `kron_buffer²::Vector{T}` - size n_exo^3, for ℒ.kron(x, kron_buffer) (3rd order)
+   - `kron_buffer3::Matrix{T}` - size n_exo^3 × n_exo, for ℒ.kron(J, kron_buffer) (3rd order)
+   - `kron_buffer4::Matrix{T}` - size n_exo^3 × n_exo^2, for ℒ.kron(kron(J,J), x) (3rd order)
+
+2. **Updated `workspaces` struct in structures.jl:**
+   - Added `find_shocks::find_shocks_workspace{Float64}` field
+
+3. **Added functions in options_and_caches.jl:**
+   - `Find_shocks_workspace(;T::Type = Float64)` - constructor with 0-dimensional lazy init
+   - `ensure_find_shocks_buffers!(ws, n_exo; third_order = false)` - lazy allocation for given n_exo
+   - Updated `Workspaces()` to include `Find_shocks_workspace(T = T)`
+
+4. **Updated find_shocks_conditional_forecast in find_shocks.jl:**
+   - Added `ws::find_shocks_workspace{Float64}` as required positional parameter
+   - Calls `ensure_find_shocks_buffers!(ws, n_exo; third_order = ...)` at start
+   - Uses workspace buffers instead of allocating fresh ones each call
+
+5. **Updated call sites in get_functions.jl:**
+   - Both `get_conditional_forecast` call sites now pass `𝓂.workspaces.find_shocks`
+
+6. **Updated OptimExt.jl:**
+   - Added `find_shocks_workspace` to imports
+   - Updated LBFGS method signature to include workspace parameter (for consistency, unused)
+
+### Tests Verified
+
+- ✅ Smets Wouters 2007 model: 2nd order conditional forecast
+- ✅ Smets Wouters 2007 model: 3rd order conditional forecast
+
+---
+
+## Previous Session (2026-01-25) - Expanded Sylvester Workspace for Allocation Caching
 
 ### Summary
 
