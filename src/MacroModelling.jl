@@ -1026,14 +1026,14 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
         push!(𝓂.solution.outdated_algorithms, i)
     end
 
-    while length(𝓂.NSSS.solver_cache) > 1
-        pop!(𝓂.NSSS.solver_cache)
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
     𝓂.solution.outdated_NSSS = true
-    𝓂.solution.perturbation.qme_solution = zeros(0,0)
-    𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
-    𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
+    𝓂.caches.qme_solution = zeros(0,0)
+    𝓂.caches.second_order_solution = spzeros(0,0)
+    𝓂.caches.third_order_solution = spzeros(0,0)
 
     return nothing
 end
@@ -4839,7 +4839,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.NSSS.∂equations_∂parameters = buffer
+    𝓂.caches.∂equations_∂parameters = buffer
     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
@@ -4871,7 +4871,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.NSSS.∂equations_∂SS_and_pars = buffer
+    𝓂.caches.∂equations_∂SS_and_pars = buffer
     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
 
     return nothing
@@ -5089,7 +5089,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     end
 
     push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_init_tmp)
+    push!(𝓂.caches.solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
@@ -5135,16 +5135,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
 
-    # push!(SS_solve_func,:(for pars in 𝓂.NSSS.solver_cache
+    # push!(SS_solve_func,:(for pars in 𝓂.caches.solver_cache
     #                             latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
     #                             if latest <= current_best
     #                                 current_best = latest
     #                             end
     #                         end))
         push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol) && (scale == 1)
-                                    reverse_diff_friendly_push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                             end))
-    # push!(SS_solve_func,:(if length(𝓂.NSSS.solver_cache) > 100 popfirst!(𝓂.NSSS.solver_cache) end))
+    # push!(SS_solve_func,:(if length(𝓂.caches.solver_cache) > 100 popfirst!(𝓂.caches.solver_cache) end))
     
     # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
 
@@ -5176,10 +5176,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS.solver_cache[end]
+                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.caches.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS.solver_cache
+                    for pars in 𝓂.caches.solver_cache
                         copy!(initial_parameters_tmp, pars[end])
 
                         ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
@@ -5344,7 +5344,7 @@ function solve_steady_state!(𝓂::ℳ,
         @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
     end
     
-    𝓂.solution.non_stochastic_steady_state = SS_and_pars
+    𝓂.caches.non_stochastic_steady_state = SS_and_pars
     𝓂.solution.outdated_NSSS = false
     
     return SS_and_pars, solution_error, found_solution
@@ -5796,7 +5796,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     push!(NSSS_solver_cache_init_tmp,[Inf])
     push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.NSSS.solver_cache,NSSS_solver_cache_init_tmp)
+    push!(𝓂.caches.solver_cache,NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
@@ -5838,9 +5838,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
-    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS.solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS.solver_cache[end][end]), sum(abs2,params_flt))))
+    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.caches.solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.caches.solver_cache[end][end]), sum(abs2,params_flt))))
 
-    push!(SS_solve_func,:(for pars in 𝓂.NSSS.solver_cache
+    push!(SS_solve_func,:(for pars in 𝓂.caches.solver_cache
                                 latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
                                 if latest <= current_best
                                     current_best = latest
@@ -5848,7 +5848,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             end))
 
     push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol)
-                                    reverse_diff_friendly_push!(𝓂.NSSS.solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
 
@@ -5873,10 +5873,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS.solver_cache[end]
+                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.caches.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS.solver_cache
+                    for pars in 𝓂.caches.solver_cache
                         latest = sum(abs2,pars[end] - initial_parameters)
                         if latest <= current_best
                             current_best = latest
@@ -5904,10 +5904,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
                             # if scale <= solved_scale continue end
 
-                            current_best = sum(abs2,𝓂.NSSS.solver_cache[end][end] - initial_parameters)
-                            closest_solution = 𝓂.NSSS.solver_cache[end]
+                            current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                            closest_solution = 𝓂.caches.solver_cache[end]
 
-                            for pars in 𝓂.NSSS.solver_cache
+                            for pars in 𝓂.caches.solver_cache
                                 latest = sum(abs2,pars[end] - initial_parameters)
                                 if latest <= current_best
                                     current_best = latest
@@ -5993,8 +5993,8 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.NSSS.solver_cache) > 1
-        pop!(𝓂.NSSS.solver_cache)
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
     runtime = @elapsed outmodel = try 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
@@ -6071,7 +6071,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
     solved = false
 
-    solved_NSSS = 𝓂.NSSS.solver_cache[end]
+    solved_NSSS = 𝓂.caches.solver_cache[end]
 
     for p in DEFAULT_SOLVER_PARAMETERS
         total_time = 0.0
@@ -6079,8 +6079,8 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         for _ in 1:100
             start_time = time()
 
-            while length(𝓂.NSSS.solver_cache) > 1
-                pop!(𝓂.NSSS.solver_cache)
+            while length(𝓂.caches.solver_cache) > 1
+                pop!(𝓂.caches.solver_cache)
             end
 
             SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [p])
@@ -6103,11 +6103,11 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         solved = true
     end
 
-    while length(𝓂.NSSS.solver_cache) > 1
-        pop!(𝓂.NSSS.solver_cache)
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
-    push!(𝓂.NSSS.solver_cache, solved_NSSS)
+    push!(𝓂.caches.solver_cache, solved_NSSS)
 
     if solved
         pushfirst!(DEFAULT_SOLVER_PARAMETERS, best_param)
@@ -6417,7 +6417,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     # end # timeit_debug
 
@@ -6426,9 +6426,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     # end # timeit_debug
 
@@ -6439,18 +6439,18 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
     # @timeit_debug timer "Calculate second order solution" begin
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
 
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
@@ -6757,24 +6757,24 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         if opts.verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
 
@@ -6783,16 +6783,16 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
                                                 𝓂.workspaces;
-                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                initial_guess = 𝓂.caches.third_order_solution,
                                                 # timer = timer, 
                                                 opts = opts)
 
@@ -6801,7 +6801,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
     if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
         𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.constants.third_order.𝐔₃
@@ -7202,7 +7202,7 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.caches.non_stochastic_steady_state, (eps(), 0))
 
             # end # timeit_debug
 
@@ -7210,7 +7210,7 @@ function solve!(𝓂::ℳ;
             
             # @timeit_debug timer "Calculate Jacobian" begin
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
             
             # end # timeit_debug
 
@@ -7219,9 +7219,9 @@ function solve!(𝓂::ℳ;
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                initial_guess = 𝓂.caches.qme_solution)
     
-            if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+            if solved 𝓂.caches.qme_solution = qme_sol end
 
             # end # timeit_debug
 
@@ -7236,14 +7236,14 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                    initial_guess = 𝓂.caches.qme_solution)
 
-                if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+                if solved 𝓂.caches.qme_solution = qme_sol end
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -7256,12 +7256,12 @@ function solve!(𝓂::ℳ;
                 state_update₁̂ = (x,y)->nothing
             end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(S₁)
+            𝓂.caches.first_order_solution_matrix = S₁
             𝓂.functions.first_order_state_update = state_update₁
             𝓂.functions.first_order_state_update_obc = state_update₁̂
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order])
 
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
+            𝓂.caches.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
         end
 
@@ -7294,7 +7294,7 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(stochastic_steady_state)
+            𝓂.caches.second_order_stochastic_steady_state = stochastic_steady_state
             𝓂.functions.second_order_state_update = state_update₂
             𝓂.functions.second_order_state_update_obc = state_update₂̂
 
@@ -7329,7 +7329,7 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(stochastic_steady_state)
+            𝓂.caches.pruned_second_order_stochastic_steady_state = stochastic_steady_state
             𝓂.functions.pruned_second_order_state_update = state_update₂
             𝓂.functions.pruned_second_order_state_update_obc = state_update₂̂
 
@@ -7362,7 +7362,7 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(stochastic_steady_state)
+            𝓂.caches.third_order_stochastic_steady_state = stochastic_steady_state
             𝓂.functions.third_order_state_update = state_update₃
             𝓂.functions.third_order_state_update_obc = state_update₃̂
 
@@ -7404,7 +7404,7 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(stochastic_steady_state)
+            𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
             𝓂.functions.pruned_third_order_state_update = state_update₃
             𝓂.functions.pruned_third_order_state_update_obc = state_update₃̂
 
@@ -8060,7 +8060,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.derivatives.jacobian = buffer
+    𝓂.caches.jacobian = buffer
     𝓂.functions.jacobian = func_exprs
 
 
@@ -8091,7 +8091,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.derivatives.jacobian_parameters = buffer_parameters
+    𝓂.caches.jacobian_parameters = buffer_parameters
     𝓂.functions.jacobian_parameters = func_∇₁_parameters
  
 
@@ -8122,7 +8122,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.derivatives.jacobian_SS_and_pars = buffer_SS_and_pars
+    𝓂.caches.jacobian_SS_and_pars = buffer_SS_and_pars
     𝓂.functions.jacobian_SS_and_pars = func_∇₁_SS_and_pars
 
 
@@ -8178,7 +8178,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.NSSS.∂equations_∂parameters = buffer
+    #     𝓂.caches.∂equations_∂parameters = buffer
     #     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
@@ -8210,7 +8210,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.NSSS.∂equations_∂SS_and_pars = buffer
+    #     𝓂.caches.∂equations_∂SS_and_pars = buffer
     #     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
     # end
         
@@ -8248,7 +8248,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.hessian = buffer
+            𝓂.caches.hessian = buffer
             𝓂.functions.hessian = func_exprs
 
 
@@ -8279,7 +8279,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.hessian_parameters = buffer_parameters
+            𝓂.caches.hessian_parameters = buffer_parameters
             𝓂.functions.hessian_parameters = func_∇₂_parameters
         
 
@@ -8310,7 +8310,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.hessian_SS_and_pars = buffer_SS_and_pars
+            𝓂.caches.hessian_SS_and_pars = buffer_SS_and_pars
             𝓂.functions.hessian_SS_and_pars = func_∇₂_SS_and_pars
         end
     end
@@ -8349,7 +8349,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.third_order_derivatives = buffer
+            𝓂.caches.third_order_derivatives = buffer
             𝓂.functions.third_order_derivatives = func_exprs
 
 
@@ -8380,7 +8380,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.third_order_derivatives_parameters = buffer_parameters
+            𝓂.caches.third_order_derivatives_parameters = buffer_parameters
             𝓂.functions.third_order_derivatives_parameters = func_∇₃_parameters
         
 
@@ -8411,7 +8411,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.derivatives.third_order_derivatives_SS_and_pars = buffer_SS_and_pars
+            𝓂.caches.third_order_derivatives_SS_and_pars = buffer_SS_and_pars
             𝓂.functions.third_order_derivatives_SS_and_pars = func_∇₃_SS_and_pars
         end
     end
@@ -8537,8 +8537,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         
         # Clear the NSSS_solver_cache since parameter order/count has changed
         # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
-        while length(𝓂.NSSS.solver_cache) > 0
-            pop!(𝓂.NSSS.solver_cache)
+        while length(𝓂.caches.solver_cache) > 0
+            pop!(𝓂.caches.solver_cache)
         end
     end
     
@@ -8825,17 +8825,17 @@ end
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
-                            derivatives::perturbation_derivatives,
+                            caches_obj::caches,
                             jacobian_func::Function)::Matrix{M} where {M,N}
-    if eltype(derivatives.jacobian) != M
-        if derivatives.jacobian isa SparseMatrixCSC
-            jac_buffer = similar(derivatives.jacobian,M)
+    if eltype(caches_obj.jacobian) != M
+        if caches_obj.jacobian isa SparseMatrixCSC
+            jac_buffer = similar(caches_obj.jacobian,M)
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(M, size(derivatives.jacobian))
+            jac_buffer = zeros(M, size(caches_obj.jacobian))
         end
     else
-        jac_buffer = derivatives.jacobian
+        jac_buffer = caches_obj.jacobian
     end
     
     jacobian_func(jac_buffer, parameters, SS_and_pars)
@@ -8848,22 +8848,22 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
                 SS_and_pars, 
-                derivatives::perturbation_derivatives,
+                caches_obj::caches,
                 jacobian_func::Function;
                 jacobian_parameters_func::Union{Function,Nothing} = nothing,
                 jacobian_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, derivatives, jacobian_func)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_func)
 
     function calculate_jacobian_pullback(∂∇₁)
         if jacobian_parameters_func === nothing || jacobian_SS_and_pars_func === nothing
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
-        jacobian_parameters_func(derivatives.jacobian_parameters, parameters, SS_and_pars)
-        jacobian_SS_and_pars_func(derivatives.jacobian_SS_and_pars, parameters, SS_and_pars)
+        jacobian_parameters_func(caches_obj.jacobian_parameters, parameters, SS_and_pars)
+        jacobian_SS_and_pars_func(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = derivatives.jacobian_parameters' * vec(∂∇₁)
-        ∂SS_and_pars = derivatives.jacobian_SS_and_pars' * vec(∂∇₁)
+        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
@@ -8875,17 +8875,17 @@ end
 
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
-                            derivatives::perturbation_derivatives,
+                            caches_obj::caches,
                             hessian_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(derivatives.hessian) != M
-        if derivatives.hessian isa SparseMatrixCSC
-            hes_buffer = similar(derivatives.hessian,M)
+    if eltype(caches_obj.hessian) != M
+        if caches_obj.hessian isa SparseMatrixCSC
+            hes_buffer = similar(caches_obj.hessian,M)
             hes_buffer.nzval .= 0
         else
-            hes_buffer = zeros(M, size(derivatives.hessian))
+            hes_buffer = zeros(M, size(caches_obj.hessian))
         end
     else
-        hes_buffer = derivatives.hessian
+        hes_buffer = caches_obj.hessian
     end
 
     hessian_func(hes_buffer, parameters, SS_and_pars)
@@ -8898,22 +8898,22 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_hessian), 
                 parameters, 
                 SS_and_pars, 
-                derivatives::perturbation_derivatives,
+                caches_obj::caches,
                 hessian_func::Function;
                 hessian_parameters_func::Union{Function,Nothing} = nothing,
                 hessian_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    hessian = calculate_hessian(parameters, SS_and_pars, derivatives, hessian_func)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_func)
 
     function calculate_hessian_pullback(∂∇₂)
         if hessian_parameters_func === nothing || hessian_SS_and_pars_func === nothing
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
-        hessian_parameters_func(derivatives.hessian_parameters, parameters, SS_and_pars)
-        hessian_SS_and_pars_func(derivatives.hessian_SS_and_pars, parameters, SS_and_pars)
+        hessian_parameters_func(caches_obj.hessian_parameters, parameters, SS_and_pars)
+        hessian_SS_and_pars_func(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = derivatives.hessian_parameters' * vec(∂∇₂)
-        ∂SS_and_pars = derivatives.hessian_SS_and_pars' * vec(∂∇₂)
+        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
@@ -8925,17 +8925,17 @@ end
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
-                                            derivatives::perturbation_derivatives,
+                                            caches_obj::caches,
                                             third_order_derivatives_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(derivatives.third_order_derivatives) != M
-        if derivatives.third_order_derivatives isa SparseMatrixCSC
-            third_buffer = similar(derivatives.third_order_derivatives,M)
+    if eltype(caches_obj.third_order_derivatives) != M
+        if caches_obj.third_order_derivatives isa SparseMatrixCSC
+            third_buffer = similar(caches_obj.third_order_derivatives,M)
             third_buffer.nzval .= 0
         else
-            third_buffer = zeros(M, size(derivatives.third_order_derivatives))
+            third_buffer = zeros(M, size(caches_obj.third_order_derivatives))
         end
     else
-        third_buffer = derivatives.third_order_derivatives
+        third_buffer = caches_obj.third_order_derivatives
     end
 
     third_order_derivatives_func(third_buffer, parameters, SS_and_pars)
@@ -8948,22 +8948,22 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_third_order_derivatives), 
                 parameters, 
                 SS_and_pars, 
-                derivatives::perturbation_derivatives,
+                caches_obj::caches,
                 third_order_derivatives_func::Function;
                 third_order_derivatives_parameters_func::Union{Function,Nothing} = nothing,
                 third_order_derivatives_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, derivatives, third_order_derivatives_func)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_func)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
         if third_order_derivatives_parameters_func === nothing || third_order_derivatives_SS_and_pars_func === nothing
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
-        third_order_derivatives_parameters_func(derivatives.third_order_derivatives_parameters, parameters, SS_and_pars)
-        third_order_derivatives_SS_and_pars_func(derivatives.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+        third_order_derivatives_parameters_func(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
+        third_order_derivatives_SS_and_pars_func(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = derivatives.third_order_derivatives_parameters' * vec(∂∇₃)
-        ∂SS_and_pars = derivatives.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
+        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
@@ -9018,7 +9018,7 @@ function compute_irf_responses(𝓂::ℳ,
         function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
             unconditional_forecast_horizon = 𝓂.constants.post_model_macro.max_obc_horizon
 
-            reference_ss = 𝓂.solution.non_stochastic_steady_state
+            reference_ss = 𝓂.caches.non_stochastic_steady_state
 
             obc_shock_idx = contains.(string.(𝓂.constants.post_model_macro.exo),"ᵒᵇᶜ")
 
@@ -10261,15 +10261,15 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = parameter_values
     C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-    if eltype(𝓂.NSSS.∂equations_∂parameters) != eltype(parameter_values)
-        if 𝓂.NSSS.∂equations_∂parameters isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.NSSS.∂equations_∂parameters, eltype(parameter_values))
+    if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
+        if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.NSSS.∂equations_∂parameters))
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
         end
     else
-        jac_buffer = 𝓂.NSSS.∂equations_∂parameters
+        jac_buffer = 𝓂.caches.∂equations_∂parameters
     end
 
     𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
@@ -10277,15 +10277,15 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂parameters = jac_buffer
 
     
-    if eltype(𝓂.NSSS.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
-        if 𝓂.NSSS.∂equations_∂SS_and_pars isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.NSSS.∂equations_∂SS_and_pars, eltype(SS_and_pars))
+    if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
+        if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.NSSS.∂equations_∂SS_and_pars))
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
         end
     else
-        jac_buffer = 𝓂.NSSS.∂equations_∂SS_and_pars
+        jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
     end
 
     𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
@@ -10376,15 +10376,15 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂ = parameter_values
         C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-        if eltype(𝓂.NSSS.∂equations_∂parameters) != eltype(parameter_values)
-            if 𝓂.NSSS.∂equations_∂parameters isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.NSSS.∂equations_∂parameters, eltype(parameter_values))
+        if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
+            if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.NSSS.∂equations_∂parameters))
+                jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
             end
         else
-            jac_buffer = 𝓂.NSSS.∂equations_∂parameters
+            jac_buffer = 𝓂.caches.∂equations_∂parameters
         end
 
         𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
@@ -10392,15 +10392,15 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂SS_equations_∂parameters = jac_buffer
 
         
-        if eltype(𝓂.NSSS.∂equations_∂SS_and_pars) != eltype(parameter_values)
-            if 𝓂.NSSS.∂equations_∂SS_and_pars isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.NSSS.∂equations_∂SS_and_pars, eltype(SS_and_pars))
+        if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(parameter_values)
+            if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.NSSS.∂equations_∂SS_and_pars))
+                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
             end
         else
-            jac_buffer = 𝓂.NSSS.∂equations_∂SS_and_pars
+            jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
         end
 
         𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
@@ -10556,15 +10556,15 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj;
                                                         # timer = timer,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         # println("NSSS not found")

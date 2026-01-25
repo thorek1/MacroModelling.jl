@@ -897,16 +897,16 @@ if test_set == "basic"
             beta = 0.95
         end
 
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
 
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] > 0
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
 
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.functions.NSSS_custom)
-        @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
+        @test RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
@@ -3922,7 +3922,7 @@ if test_set == "basic"
         end
 
         get_solution(RBC_CME)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -3931,7 +3931,7 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :I_K_ratio => .1)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -3940,7 +3940,7 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :cap_share => 1.5)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -3995,7 +3995,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
     #                                                                 6.73489e-6   0.000168887
     #                                                                 1.01124e-5   0.000253583
     #                                                                 -0.000365783  0.00217203
@@ -4006,7 +4006,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
     #         3.42408e-6   0.000111417
     #         5.14124e-6   0.000167292
     #     -0.000196196  0.00190741
@@ -4017,7 +4017,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
     #     4.00629e-6   0.000118171
     #     6.01543e-6   0.000177434
     # -0.000207089  0.00201698
@@ -4072,7 +4072,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -4083,7 +4083,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -4094,7 +4094,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698

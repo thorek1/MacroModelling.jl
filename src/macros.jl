@@ -868,15 +868,12 @@ macro model(𝓂,ex...)
 
                         non_stochastic_steady_state(
                             $NSSS_solve_blocks_in_place,
-                            $NSSS_solver_cache,
-                            $NSSS_∂equations_∂parameters,
-                            $NSSS_∂equations_∂SS_and_pars,
                             $NSSS_dependencies
                         ),
 
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
-                        perturbation_derivatives(
+                        caches(
                             zeros(0,0), # jacobian
                             zeros(0,0), # jacobian_parameters
                             zeros(0,0), # jacobian_SS_and_pars
@@ -886,6 +883,18 @@ macro model(𝓂,ex...)
                             zeros(0,0), # third_order_derivatives
                             zeros(0,0), # third_order_derivatives_parameters
                             zeros(0,0), # third_order_derivatives_SS_and_pars
+                            zeros(0,0), # first_order_solution_matrix
+                            zeros(0,0), # qme_solution
+                            Float64[],  # second_order_stochastic_steady_state
+                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # second_order_solution
+                            Float64[],  # pruned_second_order_stochastic_steady_state
+                            Float64[],  # third_order_stochastic_steady_state
+                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
+                            Float64[],  # pruned_third_order_stochastic_steady_state
+                            Float64[],  # non_stochastic_steady_state
+                            $NSSS_solver_cache,  # solver_cache
+                            $NSSS_∂equations_∂parameters,  # ∂equations_∂parameters
+                            $NSSS_∂equations_∂SS_and_pars,  # ∂equations_∂SS_and_pars
                         ),
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
@@ -932,16 +941,6 @@ macro model(𝓂,ex...)
                         ),
 
                         solution(
-                            perturbation(   perturbation_solution(zeros(0,0)),
-                                            second_order_perturbation_solution([]),
-                                            second_order_perturbation_solution([]),
-                                            third_order_perturbation_solution([]),
-                                            third_order_perturbation_solution([]),
-                                            zeros(0,0),                                 # 1st order sol
-                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
-                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0)   # 3rd order sol
-                            ),
-                            Float64[], 
                             # Set([:first_order]),
                             Set(all_available_algorithms),
                             true,

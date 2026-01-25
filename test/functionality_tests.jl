@@ -76,7 +76,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             simulation = simulation[:,1:last_stable_col,:]
 
             data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.constants.post_model_macro.var[var_idxs]) : m2.constants.post_model_macro.var[var_idxs],:,:simulate)
-            data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
+            data2 = data_in_levels2 .- m2.caches.non_stochastic_steady_state[var_idxs]
 
 
 
@@ -103,7 +103,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             simulation = simulation[:,1:last_stable_col,:]
 
             data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
-            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+            data = data_in_levels .- m.caches.non_stochastic_steady_state[var_idxs]
 
             
             if !(algorithm in [:second_order, :third_order])
@@ -1464,7 +1464,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         simulation = simulation[:,1:last_stable_col,:]
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
-        data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+        data = data_in_levels .- m.caches.non_stochastic_steady_state[var_idxs]
 
 
         if !(algorithm ∈ [:second_order, :third_order])

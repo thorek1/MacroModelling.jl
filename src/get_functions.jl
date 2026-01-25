@@ -838,7 +838,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
-    Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
+    Y = zeros(size(𝓂.caches.first_order_solution_matrix,1),periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
@@ -855,17 +855,17 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        S₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+        S₁ = 𝓂.caches.first_order_solution_matrix
         S₁ = [S₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) S₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
 
         S₂ = nothing
-        if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂
+        if size(𝓂.caches.second_order_solution, 2) > 0
+            S₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
         end
 
         S₃ = nothing
-        if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
-            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃
+        if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.caches.third_order_solution, 2) > 0
+            S₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
         end
 
         ensure_conditional_forecast_index_cache!(𝓂; third_order = !isnothing(S₃))
@@ -935,7 +935,7 @@ function get_conditional_forecast(𝓂::ℳ,
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm == :first_order
-        C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]
+        C = @views 𝓂.caches.first_order_solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]
     
         CC = C[cond_var_idx,free_shock_idx]
 
@@ -1087,15 +1087,15 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
                                                             opts = opts,
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                            initial_guess = 𝓂.caches.qme_solution)
     
     if solved 
-        𝓂.solution.perturbation.qme_solution = qme_sol
+        𝓂.caches.qme_solution = qme_sol
     else
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
@@ -1503,13 +1503,13 @@ function get_steady_state(𝓂::ℳ;
                 obc = length(𝓂.equations.obc_violation) > 0)
 
         if  algorithm == :third_order
-            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.caches.third_order_stochastic_steady_state
         elseif  algorithm == :pruned_third_order
-            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.caches.pruned_third_order_stochastic_steady_state
         elseif  algorithm == :pruned_second_order
-            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.caches.pruned_second_order_stochastic_steady_state
         else
-            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_present)),sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present)))]
+            SS[1:length(𝓂.constants.post_model_macro.var)] = 𝓂.caches.second_order_stochastic_steady_state#[indexin(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_present)),sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present)))]
         end
     end
 
@@ -1609,7 +1609,7 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.solution.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    # return 𝓂.solution.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.caches.non_stochastic_steady_state
     # return 𝓂.functions.NSSS_solve(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
@@ -1751,7 +1751,7 @@ function get_solution(𝓂::ℳ;
             algorithm = algorithm)
 
     if algorithm == :first_order
-        solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
+        solution_matrix = 𝓂.caches.first_order_solution_matrix
     end
 
     axis1 = [𝓂.constants.post_model_macro.past_not_future_and_mixed; :Volatility; 𝓂.constants.post_model_macro.exo]
@@ -1773,7 +1773,7 @@ function get_solution(𝓂::ℳ;
     end
 
     if algorithm == :second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo),
@@ -1782,7 +1782,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :pruned_second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo),
@@ -1791,7 +1791,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
@@ -1802,7 +1802,7 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃, 
                                     𝓂.constants.post_model_macro.nVars, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
                                     𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo, 
@@ -1824,7 +1824,7 @@ function get_solution(𝓂::ℳ;
             axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.post_model_macro.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.post_model_macro.exo)]
         end
 
-        return KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.constants.post_model_macro.var)] solution_matrix]';
+        return KeyedArray([𝓂.caches.non_stochastic_steady_state[1:length(𝓂.constants.post_model_macro.var)] solution_matrix]';
                             Steady_state__States__Shocks = axis1,
                             Variables = axis2)
     end
@@ -1946,14 +1946,14 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         if algorithm == :second_order
@@ -1966,13 +1966,13 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     opts = opts)
 
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -1982,13 +1982,13 @@ function get_solution(𝓂::ℳ,
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     opts = opts)
     
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -1996,16 +1996,16 @@ function get_solution(𝓂::ℳ,
             𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
                 
 	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
 	                                                    𝐒₁, 𝐒₂,
 	                                                    𝓂.constants,
                                                         𝓂.workspaces;
-	                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
+	                                                    initial_guess = 𝓂.caches.third_order_solution,
 	                                                    opts = opts)
 
-        if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+        if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
         
         𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
@@ -2131,14 +2131,14 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     A = @views 𝑺₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[indexin(𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nVars),:]
     
@@ -2289,14 +2289,14 @@ function get_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     variances_by_shock = zeros(𝓂.constants.post_model_macro.nVars, 𝓂.constants.post_model_macro.nExo)
 
@@ -2735,7 +2735,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.caches.non_stochastic_steady_state), (eps(), 0))
 
     @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
 

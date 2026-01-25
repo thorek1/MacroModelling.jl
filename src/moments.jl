@@ -14,14 +14,14 @@ function calculate_covariance(parameters::Vector{R},
         return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian) 
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     # Direct constants access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_cache.diag_nVars[T.past_not_future_and_mixed_idx,:]
@@ -66,19 +66,19 @@ function calculate_mean(parameters::Vector{R},
     else
         ensure_moments_cache!(𝓂)
         so = constants.second_order
-        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)# |> Matrix
+        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
         
         if !solved 
             mean_of_variables = SS_and_pars[1:T.nVars]
         else
-            𝓂.solution.perturbation.qme_solution = qme_sol
+            𝓂.caches.qme_solution = qme_sol
 
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                         opts = opts)
@@ -86,7 +86,7 @@ function calculate_mean(parameters::Vector{R},
             if !solved 
                 mean_of_variables = SS_and_pars[1:T.nVars]
             else
-                if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+                if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
 
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -174,13 +174,13 @@ function calculate_second_order_moments(parameters::Vector{R},
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
 
         if solved2
-            if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+            if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
 
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -295,13 +295,13 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
 
         if solved2
-            if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+            if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
 
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -461,19 +461,19 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
 	                                                𝓂.constants,
                                                     𝓂.workspaces;
-	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+	                                                initial_guess = 𝓂.caches.third_order_solution,
 	                                                opts = opts)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
 
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
@@ -705,19 +705,19 @@ function calculate_third_order_moments(parameters::Vector{T},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
                                                 𝓂.workspaces;
-                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                initial_guess = 𝓂.caches.third_order_solution,
                                                 opts = opts)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
 
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 

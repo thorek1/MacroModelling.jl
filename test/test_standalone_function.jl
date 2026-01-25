@@ -290,7 +290,7 @@ end
 
 
 
-    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
+    SSS_delta = RBC_CME.caches.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.caches.second_order_stochastic_steady_state
 
     initial_state = zeros(RBC_CME.constants.post_model_macro.nVars) - SSS_delta
 
@@ -306,7 +306,7 @@ end
 
 
 
-    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
+    SSS_delta = RBC_CME.caches.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.caches.third_order_stochastic_steady_state
 
     initial_state = zeros(RBC_CME.constants.post_model_macro.nVars) - SSS_delta
 
@@ -322,7 +322,7 @@ end
 
 
 
-    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.solution.perturbation.pruned_second_order.stochastic_steady_state
+    SSS_delta = RBC_CME.caches.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.caches.pruned_second_order_stochastic_steady_state
 
     initial_state = [zeros(RBC_CME.constants.post_model_macro.nVars), zeros(RBC_CME.constants.post_model_macro.nVars) ]
     
@@ -338,7 +338,7 @@ end
 
 
 
-    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.solution.perturbation.pruned_third_order.stochastic_steady_state
+    SSS_delta = RBC_CME.caches.non_stochastic_steady_state[1:length(RBC_CME.constants.post_model_macro.var)] - RBC_CME.caches.pruned_third_order_stochastic_steady_state
 
     initial_state = [zeros(RBC_CME.constants.post_model_macro.nVars), zeros(RBC_CME.constants.post_model_macro.nVars), zeros(RBC_CME.constants.post_model_macro.nVars)]
 

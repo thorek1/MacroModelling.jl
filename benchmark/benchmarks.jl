@@ -38,7 +38,7 @@ function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
     if hasmethod(calculate_jacobian, Tuple{typeof(parameters), typeof(SS_and_pars), ℳ})
         out = calculate_jacobian(parameters, SS_and_pars, 𝓂)
     else
-        out = calculate_jacobian(parameters, SS_and_pars, 𝓂.derivatives, 𝓂.functions.jacobian)
+        out = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
     end
     return out
 end
