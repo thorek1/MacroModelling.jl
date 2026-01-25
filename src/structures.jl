@@ -311,17 +311,17 @@ mutable struct caches
     third_order_derivatives_parameters::AbstractMatrix{<: Real}
     third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real}
     # Perturbation solution buffers
-    first_order_solution_matrix::Matrix{Float64}
-    qme_solution::Matrix{Float64}
-    second_order_stochastic_steady_state::Vector{Float64}
-    second_order_solution::AbstractMatrix{Float64}
-    pruned_second_order_stochastic_steady_state::Vector{Float64}
-    third_order_stochastic_steady_state::Vector{Float64}
-    third_order_solution::AbstractMatrix{Float64}
-    pruned_third_order_stochastic_steady_state::Vector{Float64}
+    first_order_solution_matrix::Matrix{<: Real}
+    qme_solution::Matrix{<: Real}
+    second_order_stochastic_steady_state::Vector{<: Real}
+    second_order_solution::AbstractMatrix{<: Real}
+    pruned_second_order_stochastic_steady_state::Vector{<: Real}
+    third_order_stochastic_steady_state::Vector{<: Real}
+    third_order_solution::AbstractMatrix{<: Real}
+    pruned_third_order_stochastic_steady_state::Vector{<: Real}
     # Non-stochastic steady state solution and solver caches
-    non_stochastic_steady_state::Vector{Float64}
-    solver_cache::CircularBuffer{Vector{Vector{Float64}}}
+    non_stochastic_steady_state::Vector{<: Real}
+    solver_cache::CircularBuffer{Vector{Vector{<: Real}}}
     ∂equations_∂parameters::AbstractMatrix{<: Real}
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}
 end
