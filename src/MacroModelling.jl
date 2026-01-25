@@ -6438,7 +6438,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
+                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
+                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
     
     # end # timeit_debug
 
@@ -6460,7 +6462,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian,
+                            hessian_parameters_func = 𝓂.functions.hessian_parameters,
+                            hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
@@ -6778,7 +6782,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
+                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
+                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
@@ -6792,7 +6798,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian,
+                            hessian_parameters_func = 𝓂.functions.hessian_parameters,
+                            hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -6808,7 +6816,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives,
+                            third_order_derivatives_parameters_func = 𝓂.functions.third_order_derivatives_parameters,
+                            third_order_derivatives_SS_and_pars_func = 𝓂.functions.third_order_derivatives_SS_and_pars) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
@@ -10598,7 +10608,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
+                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
+                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj;

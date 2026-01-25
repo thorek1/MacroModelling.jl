@@ -1087,7 +1087,9 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian,
+                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
+                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
