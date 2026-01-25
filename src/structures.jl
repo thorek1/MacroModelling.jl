@@ -346,6 +346,25 @@ mutable struct caches
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}
 end
 
+# Structs for perturbation derivative functions (used for AD)
+struct jacobian_functions
+    f::Function                     # The main jacobian function
+    f_parameters::Function          # Derivative w.r.t. parameters
+    f_SS_and_pars::Function         # Derivative w.r.t. steady state and parameters
+end
+
+struct hessian_functions
+    f::Function                     # The main hessian function
+    f_parameters::Function          # Derivative w.r.t. parameters
+    f_SS_and_pars::Function         # Derivative w.r.t. steady state and parameters
+end
+
+struct third_order_derivatives_functions
+    f::Function                     # The main third order derivatives function
+    f_parameters::Function          # Derivative w.r.t. parameters
+    f_SS_and_pars::Function         # Derivative w.r.t. steady state and parameters
+end
+
 mutable struct model_functions
     # NSSS-related functions
     NSSS_solve::Function
@@ -354,15 +373,9 @@ mutable struct model_functions
     NSSS_∂equations_∂parameters::Function
     NSSS_∂equations_∂SS_and_pars::Function
     # Perturbation derivative functions
-    jacobian::Function
-    jacobian_parameters::Function
-    jacobian_SS_and_pars::Function
-    hessian::Function
-    hessian_parameters::Function
-    hessian_SS_and_pars::Function
-    third_order_derivatives::Function
-    third_order_derivatives_parameters::Function
-    third_order_derivatives_SS_and_pars::Function
+    jacobian::jacobian_functions
+    hessian::hessian_functions
+    third_order_derivatives::third_order_derivatives_functions
     # State update functions for perturbation solutions
     first_order_state_update::Function
     first_order_state_update_obc::Function

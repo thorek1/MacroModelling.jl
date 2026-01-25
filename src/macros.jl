@@ -918,15 +918,9 @@ macro model(𝓂,ex...)
                             $NSSS_custom_function,
                             $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
-                            x->x, # jacobian
-                            x->x, # jacobian_parameters
-                            x->x, # jacobian_SS_and_pars
-                            x->x, # hessian
-                            x->x, # hessian_parameters
-                            x->x, # hessian_SS_and_pars
-                            x->x, # third_order_derivatives
-                            x->x, # third_order_derivatives_parameters
-                            x->x, # third_order_derivatives_SS_and_pars
+                            jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
+                            hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
+                            third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
                             (x,y)->nothing, # first_order_state_update
                             (x,y)->nothing, # first_order_state_update_obc
                             (x,y)->nothing, # second_order_state_update

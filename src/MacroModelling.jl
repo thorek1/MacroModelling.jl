@@ -6438,9 +6438,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
-                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
-                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     # end # timeit_debug
 
@@ -6462,9 +6460,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian,
-                            hessian_parameters_func = 𝓂.functions.hessian_parameters,
-                            hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
@@ -6782,9 +6778,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
-                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
-                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
@@ -6798,9 +6792,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian,
-                            hessian_parameters_func = 𝓂.functions.hessian_parameters,
-                            hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -6816,9 +6808,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives,
-                            third_order_derivatives_parameters_func = 𝓂.functions.third_order_derivatives_parameters,
-                            third_order_derivatives_SS_and_pars_func = 𝓂.functions.third_order_derivatives_SS_and_pars) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
@@ -8092,7 +8082,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.caches.jacobian = buffer
-    𝓂.functions.jacobian = func_exprs
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
@@ -8123,7 +8112,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.caches.jacobian_parameters = buffer_parameters
-    𝓂.functions.jacobian_parameters = func_∇₁_parameters
  
 
     ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
@@ -8154,7 +8142,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.caches.jacobian_SS_and_pars = buffer_SS_and_pars
-    𝓂.functions.jacobian_SS_and_pars = func_∇₁_SS_and_pars
+    
+    # Create jacobian_functions struct with all three functions
+    𝓂.functions.jacobian = jacobian_functions(func_exprs, func_∇₁_parameters, func_∇₁_SS_and_pars)
 
 
 
@@ -8280,7 +8270,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.hessian = buffer
-            𝓂.functions.hessian = func_exprs
 
 
             ∇₂_parameters = derivatives[2][2][:,1:nps]
@@ -8311,7 +8300,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.hessian_parameters = buffer_parameters
-            𝓂.functions.hessian_parameters = func_∇₂_parameters
         
 
             ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
@@ -8342,7 +8330,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.hessian_SS_and_pars = buffer_SS_and_pars
-            𝓂.functions.hessian_SS_and_pars = func_∇₂_SS_and_pars
+            
+            # Create hessian_functions struct with all three functions
+            𝓂.functions.hessian = hessian_functions(func_exprs, func_∇₂_parameters, func_∇₂_SS_and_pars)
         end
     end
 
@@ -8381,7 +8371,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.third_order_derivatives = buffer
-            𝓂.functions.third_order_derivatives = func_exprs
 
 
             ∇₃_parameters = derivatives[3][2][:,1:nps]
@@ -8412,7 +8401,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.third_order_derivatives_parameters = buffer_parameters
-            𝓂.functions.third_order_derivatives_parameters = func_∇₃_parameters
         
 
             ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
@@ -8443,7 +8431,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.caches.third_order_derivatives_SS_and_pars = buffer_SS_and_pars
-            𝓂.functions.third_order_derivatives_SS_and_pars = func_∇₃_SS_and_pars
+            
+            # Create third_order_derivatives_functions struct with all three functions
+            𝓂.functions.third_order_derivatives = third_order_derivatives_functions(func_exprs, func_∇₃_parameters, func_∇₃_SS_and_pars)
         end
     end
 
@@ -8872,9 +8862,7 @@ end
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
-                            jacobian_func::Function;
-                            jacobian_parameters_func::Union{Function,Nothing} = nothing,
-                            jacobian_SS_and_pars_func::Union{Function,Nothing} = nothing)::Matrix{M} where {M,N}
+                            jacobian_funcs::jacobian_functions)::Matrix{M} where {M,N}
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -8886,7 +8874,7 @@ function calculate_jacobian(parameters::Vector{M},
         jac_buffer = caches_obj.jacobian
     end
     
-    jacobian_func(jac_buffer, parameters, SS_and_pars)
+    jacobian_funcs.f(jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
 end
@@ -8897,18 +8885,12 @@ function rrule(::typeof(calculate_jacobian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                jacobian_func::Function;
-                jacobian_parameters_func::Union{Function,Nothing} = nothing,
-                jacobian_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_func)
+                jacobian_funcs::jacobian_functions)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
 
     function calculate_jacobian_pullback(∂∇₁)
-        if jacobian_parameters_func === nothing || jacobian_SS_and_pars_func === nothing
-            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-        end
-        
-        jacobian_parameters_func(caches_obj.jacobian_parameters, parameters, SS_and_pars)
-        jacobian_SS_and_pars_func(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
+        jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
+        jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
         ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
         ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
@@ -8924,9 +8906,7 @@ end
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
-                            hessian_func::Function;
-                            hessian_parameters_func::Union{Function,Nothing} = nothing,
-                            hessian_SS_and_pars_func::Union{Function,Nothing} = nothing)::SparseMatrixCSC{M, Int} where {M,N}
+                            hessian_funcs::hessian_functions)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -8938,7 +8918,7 @@ function calculate_hessian(parameters::Vector{M},
         hes_buffer = caches_obj.hessian
     end
 
-    hessian_func(hes_buffer, parameters, SS_and_pars)
+    hessian_funcs.f(hes_buffer, parameters, SS_and_pars)
     
     return hes_buffer
 end
@@ -8949,18 +8929,12 @@ function rrule(::typeof(calculate_hessian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                hessian_func::Function;
-                hessian_parameters_func::Union{Function,Nothing} = nothing,
-                hessian_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_func)
+                hessian_funcs::hessian_functions)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
 
     function calculate_hessian_pullback(∂∇₂)
-        if hessian_parameters_func === nothing || hessian_SS_and_pars_func === nothing
-            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-        end
-        
-        hessian_parameters_func(caches_obj.hessian_parameters, parameters, SS_and_pars)
-        hessian_SS_and_pars_func(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
+        hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
+        hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
         ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
         ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
@@ -8976,9 +8950,7 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
-                                            third_order_derivatives_func::Function;
-                                            third_order_derivatives_parameters_func::Union{Function,Nothing} = nothing,
-                                            third_order_derivatives_SS_and_pars_func::Union{Function,Nothing} = nothing)::SparseMatrixCSC{M, Int} where {M,N}
+                                            third_order_derivatives_funcs::third_order_derivatives_functions)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
@@ -8990,7 +8962,7 @@ function calculate_third_order_derivatives(parameters::Vector{M},
         third_buffer = caches_obj.third_order_derivatives
     end
 
-    third_order_derivatives_func(third_buffer, parameters, SS_and_pars)
+    third_order_derivatives_funcs.f(third_buffer, parameters, SS_and_pars)
     
     return third_buffer
 end
@@ -9001,18 +8973,12 @@ function rrule(::typeof(calculate_third_order_derivatives),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                third_order_derivatives_func::Function;
-                third_order_derivatives_parameters_func::Union{Function,Nothing} = nothing,
-                third_order_derivatives_SS_and_pars_func::Union{Function,Nothing} = nothing)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_func)
+                third_order_derivatives_funcs::third_order_derivatives_functions)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
-        if third_order_derivatives_parameters_func === nothing || third_order_derivatives_SS_and_pars_func === nothing
-            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-        end
-        
-        third_order_derivatives_parameters_func(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
-        third_order_derivatives_SS_and_pars_func(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+        third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
+        third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
 
         ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
         ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
@@ -10608,9 +10574,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian,
-                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
-                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj;

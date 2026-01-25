@@ -1087,9 +1087,7 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian,
-                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
-                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants;
@@ -1948,9 +1946,7 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian;
-                            jacobian_parameters_func = 𝓂.functions.jacobian_parameters,
-                            jacobian_SS_and_pars_func = 𝓂.functions.jacobian_SS_and_pars)# |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
@@ -1970,9 +1966,7 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian;
-                                hessian_parameters_func = 𝓂.functions.hessian_parameters,
-                                hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -1988,9 +1982,7 @@ function get_solution(𝓂::ℳ,
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian;
-                                hessian_parameters_func = 𝓂.functions.hessian_parameters,
-                                hessian_SS_and_pars_func = 𝓂.functions.hessian_SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -2004,9 +1996,7 @@ function get_solution(𝓂::ℳ,
             𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives;
-                                                third_order_derivatives_parameters_func = 𝓂.functions.third_order_derivatives_parameters,
-                                                third_order_derivatives_SS_and_pars_func = 𝓂.functions.third_order_derivatives_SS_and_pars)# * 𝓂.constants.third_order.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
                 
 	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
 	                                                    𝐒₁, 𝐒₂,
