@@ -3828,7 +3828,6 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
     symbolics(
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.steady_state_aux),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.dynamic),
                 # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
@@ -3869,8 +3868,6 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_past...)]))),
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_future...)]))),
                 Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.vars_in_ss_equations...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.➕_vars...)]))),
 
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.ss_calib_list),
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.par_calib_list),

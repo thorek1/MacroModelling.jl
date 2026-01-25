@@ -140,7 +140,6 @@ end
 
 struct symbolics
     ss_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-    dyn_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
     # dyn_equations_future::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
 
     # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
@@ -181,8 +180,6 @@ struct symbolics
     # var_past::Set{SPyPyC.Sym{PythonCall.Core.Py}}
     # var_future::Set{SPyPyC.Sym{PythonCall.Core.Py}}
     vars_in_ss_equations::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-    var::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-    ➕_vars::Set{SPyPyC.Sym{PythonCall.Core.Py}}
 
     ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
     par_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
