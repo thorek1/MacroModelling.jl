@@ -61,7 +61,54 @@ Added workspace struct to cache Kronecker product buffers used in the inversion 
 
 ### Remaining Work
 
-The workspace buffers are now passed through to all inversion filter functions, but only `pruned_second_order` actually uses them. The other functions still allocate their own buffers. Future sessions can refactor those functions to use the workspace.
+✅ **COMPLETED** - All inversion filter functions now use workspace buffers.
+
+---
+
+## Previous Session (2026-01-26, continued) - Completed Inversion Filter Workspace Usage
+
+### Summary
+
+Completed the workspace buffer implementation by updating all remaining inversion filter functions (`second_order`, `pruned_third_order`, `third_order`) to use the workspace buffers instead of allocating fresh buffers each call.
+
+### Changes Made This Session
+
+1. **Updated `second_order` in inversion.jl (~lines 1067-1170):**
+   - Added `@ignore_derivatives ensure_inversion_buffers!(ws, T.nExo, size(data_in_deviations, 2) + 1)` call
+   - Replaced local allocations with workspace buffers:
+     - `state¹⁻_vol = ws.state_vol`
+     - `aug_state = ws.aug_state₁`
+     - `kronaug_state = ws.kronaug_state`
+     - `kron_buffer = ws.kron_buffer`
+     - `kron_buffer2 = ws.kron_buffer2`
+     - `kron_buffer3 = ws.kron_buffer_state`
+     - `kronstate¹⁻_vol = ws.kronstate_vol`
+
+2. **Updated `pruned_third_order` in inversion.jl (~lines 1750-1880):**
+   - Added `@ignore_derivatives ensure_inversion_buffers!(ws, T.nExo, size(data_in_deviations, 2) + 1, third_order = true)` call
+   - Replaced local allocations with workspace buffers:
+     - All kron_buffer variants from workspace
+     - `kron_aug_state₁ = ws.kronaug_state`
+     - `kron_kron_aug_state₁ = ws.kron_kron_aug_state`
+
+3. **Updated `third_order` in inversion.jl (~lines 2735-2860):**
+   - Added `@ignore_derivatives ensure_inversion_buffers!(ws, T.nExo, size(data_in_deviations, 2) + 1, third_order = true)` call
+   - Replaced local allocations with workspace buffers for kron operations
+
+### Tests Verified
+
+All 5 inversion filter algorithms tested and working:
+- ✅ first_order
+- ✅ second_order
+- ✅ pruned_second_order
+- ✅ pruned_third_order
+- ✅ third_order
+
+### Git Status
+
+- Committed: `Use inversion_workspace buffers in all filter algorithms`
+- Branch: `copilot/refactor-cache-creation`
+- Status: Ahead of origin by 2 commits
 
 ---
 
