@@ -60,8 +60,8 @@ function Third_order_cache()
         Int[],
         Float64[],
         BitVector(),
-        Dict{Int, moments_substate_cache}(),
-        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}(),
+        Dict{Int, moments_substate_indices}(),
+        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_indices}(),
     )
 end
 
@@ -777,10 +777,10 @@ function ensure_moments_cache!(𝓂)
     return so
 end
 
-function ensure_moments_substate_cache!(𝓂, nˢ::Int)
+function ensure_moments_substate_indices!(𝓂, nˢ::Int)
     constants = 𝓂.constants
     to = constants.third_order
-    if !haskey(to.substate_cache, nˢ)
+    if !haskey(to.substate_indices, nˢ)
         # Use timings from constants if available, otherwise from model
         T = constants.post_model_macro
         nᵉ = T.nExo
@@ -789,24 +789,24 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
         e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        to.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
+        to.substate_indices[nˢ] = moments_substate_indices(I_plus_s_s, e_es, e_ss, ss_s, s_s)
     end
-    return to.substate_cache[nˢ]
+    return to.substate_indices[nˢ]
 end
 
-function ensure_moments_dependency_kron_cache!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
+function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
     constants = 𝓂.constants
     to = constants.third_order
     key = Tuple(dependencies)
-    if !haskey(to.dependency_kron_cache, key)
+    if !haskey(to.dependency_kron_indices, key)
         so = ensure_computational_constants_cache!(𝓂)
-        to.dependency_kron_cache[key] = moments_dependency_kron_cache(
+        to.dependency_kron_indices[key] = moments_dependency_kron_indices(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, so.e_in_s⁺),
             ℒ.kron(s_in_s⁺, so.v_in_s⁺),
         )
     end
-    return to.dependency_kron_cache[key]
+    return to.dependency_kron_indices[key]
 end
 
 

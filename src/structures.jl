@@ -190,7 +190,7 @@ struct symbolics
     # var_solved_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 end
 
-struct moments_substate_cache
+struct moments_substate_indices
     I_plus_s_s::SparseMatrixCSC{Float64, Int}
     e_es::SparseMatrixCSC{Float64, Int}
     e_ss::SparseMatrixCSC{Float64, Int}
@@ -198,18 +198,22 @@ struct moments_substate_cache
     s_s::SparseMatrixCSC{Float64, Int}
 end
 
-struct moments_dependency_kron_cache
+struct moments_dependency_kron_indices
     kron_s_s::BitVector
     kron_s_e::BitVector
     kron_s_v::BitVector
 end
 
 mutable struct second_order
+    # Filled by create_second_order_auxiliary_matrices (MacroModelling.jl)
+    # ← triggered by: write_functions_mapping! ← solve!
     𝛔::SparseMatrixCSC{Int}
     𝐂₂::SparseMatrixCSC{Int}
     𝐔₂::SparseMatrixCSC{Int}
     𝐔∇₂::SparseMatrixCSC{Int}
 
+    # Filled by ensure_computational_constants_cache! (options_and_caches.jl)
+    # ← triggered by: solve!, calculate_* (perturbation.jl), inversion filter functions
     s_in_s⁺::BitVector
     s_in_s::BitVector
     kron_s⁺_s⁺::BitVector
@@ -226,38 +230,40 @@ mutable struct second_order
     shock_idxs2::Vector{Int}
     shock²_idxs::Vector{Int}
     var_vol²_idxs::Vector{Int}
+
+    # Filled by ensure_conditional_forecast_index_cache! (options_and_caches.jl)
+    # ← triggered by: get_conditional_forecast (get_functions.jl), find_shocks (filter/find_shocks.jl)
     var²_idxs::Vector{Int}
     shockvar²_idxs::Vector{Int}
 
+    # Filled by ensure_moments_cache! (options_and_caches.jl)
+    # ← triggered by: calculate_mean, calculate_second_order_moments*, calculate_third_order_moments* (moments.jl)
     kron_states::BitVector
     I_plus_s_s::SparseMatrixCSC{Float64, Int}
     e4::Vector{Float64}
 end
 
 mutable struct third_order
+    # Filled by create_third_order_auxiliary_matrices (MacroModelling.jl)
+    # ← triggered by: write_functions_mapping! ← solve!
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
     𝐈₃::Dict{Vector{Int}, Int}
-
     𝐂∇₃::SparseMatrixCSC{Int}
     𝐔∇₃::SparseMatrixCSC{Int}
-
     𝐏::SparseMatrixCSC{Int}
-
     𝐏₁ₗ::SparseMatrixCSC{Int}
     𝐏₁ᵣ::SparseMatrixCSC{Int}
-
     𝐏₁ₗ̂::SparseMatrixCSC{Int}
     𝐏₂ₗ̂::SparseMatrixCSC{Int}
-
     𝐏₁ₗ̄::SparseMatrixCSC{Int}
     𝐏₂ₗ̄::SparseMatrixCSC{Int}
-
     𝐏₁ᵣ̃::SparseMatrixCSC{Int}
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}
-
     𝐒𝐏::SparseMatrixCSC{Int}
 
+    # Filled by ensure_conditional_forecast_index_cache! (options_and_caches.jl)
+    # ← triggered by: get_conditional_forecast (get_functions.jl), find_shocks (filter/find_shocks.jl)
     var_vol³_idxs::Vector{Int}
     shock_idxs2::Vector{Int}
     shock_idxs3::Vector{Int}
@@ -268,10 +274,15 @@ mutable struct third_order
     shockvar³2_idxs::Vector{Int}
     shockvar³_idxs::Vector{Int}
 
+    # Filled by ensure_moments_cache! (options_and_caches.jl)
+    # ← triggered by: calculate_third_order_moments* (moments.jl)
     e6::Vector{Float64}
     kron_e_v::BitVector
-    substate_cache::Dict{Int, moments_substate_cache}
-    dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
+
+    # Dict caches filled by ensure_moments_substate_indices! and ensure_moments_dependency_kron_indices! (options_and_caches.jl)
+    # ← triggered by: calculate_third_order_moments* (moments.jl)
+    substate_indices::Dict{Int, moments_substate_indices}
+    dependency_kron_indices::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_indices}
 end
 
 

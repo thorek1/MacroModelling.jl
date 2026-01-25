@@ -536,12 +536,12 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         s_in_s⁺ = BitVector(vcat(𝓂.constants.post_model_macro.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
-        substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
-        I_plus_s_s = substate_cache.I_plus_s_s
-        e_es = substate_cache.e_es
-        e_ss = substate_cache.e_ss
-        ss_s = substate_cache.ss_s
-        s_s = substate_cache.s_s
+        substate_indices = ensure_moments_substate_indices!(𝓂, nˢ)
+        I_plus_s_s = substate_indices.I_plus_s_s
+        e_es = substate_indices.e_es
+        e_ss = substate_indices.e_ss
+        ss_s = substate_indices.ss_s
+        s_s = substate_indices.s_s
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -551,7 +551,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         e_to_s₁ = 𝐒₁[iˢ, (𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1):end]
 
         # second order
-        dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
+        dep_kron = ensure_moments_dependency_kron_indices!(𝓂, dependencies, s_in_s⁺)
         kron_s_s = dep_kron.kron_s_s
         kron_s_e = dep_kron.kron_s_e
 
@@ -778,12 +778,12 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         s_in_s⁺ = BitVector(vcat(𝓂.constants.post_model_macro.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
-        substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
-        I_plus_s_s = substate_cache.I_plus_s_s
-        e_es = substate_cache.e_es
-        e_ss = substate_cache.e_ss
-        ss_s = substate_cache.ss_s
-        s_s = substate_cache.s_s
+        substate_indices = ensure_moments_substate_indices!(𝓂, nˢ)
+        I_plus_s_s = substate_indices.I_plus_s_s
+        e_es = substate_indices.e_es
+        e_ss = substate_indices.e_ss
+        ss_s = substate_indices.ss_s
+        s_s = substate_indices.s_s
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -793,7 +793,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         e_to_s₁ = 𝐒₁[iˢ, (𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1):end]
 
         # second order
-        dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
+        dep_kron = ensure_moments_dependency_kron_indices!(𝓂, dependencies, s_in_s⁺)
         kron_s_s = dep_kron.kron_s_s
         kron_s_e = dep_kron.kron_s_e
 
