@@ -1080,6 +1080,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
+    # Ensure workspace buffers are properly sized
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -1127,23 +1132,28 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     state = state[T.past_not_future_and_mixed_idx]
 
-    state¹⁻_vol = vcat(state, 1)
+    # Use workspace buffers for model-constant allocations
+    state¹⁻_vol = ws.state_vol
+    copyto!(state¹⁻_vol, 1, state, 1)
+    state¹⁻_vol[end] = 1
 
-    aug_state = [zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)]
+    aug_state = ws.aug_state₁
+    fill!(aug_state, 0)
+    aug_state[n_past + 1] = 1
 
-    kronaug_state = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^2)
+    kronaug_state = ws.kronaug_state
 
-    kron_buffer = zeros(T.nExo^2)
+    kron_buffer = ws.kron_buffer
 
     J = ℒ.I(T.nExo)
 
-    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+    kron_buffer2 = ws.kron_buffer2
 
-    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
+    kron_buffer3 = ws.kron_buffer_state
 
     shock_independent = zeros(size(data_in_deviations,1))
 
-    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+    kronstate¹⁻_vol = ws.kronstate_vol
 
     𝐒ⁱ = copy(𝐒¹ᵉ)
 
@@ -1752,6 +1762,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     T = constants.post_model_macro
     # @timeit_debug timer "Inversion filter" begin
 
+    # Ensure workspace buffers are properly sized
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -1867,9 +1882,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer3sv = ℒ.kron(kron_buffer2sv, vcat(1,state[1]))
     
-    kron_aug_state₁ = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^2)
+    # Use workspace buffers for augmented state kron operations
+    kron_aug_state₁ = ws.kronaug_state
     
-    kron_kron_aug_state₁ = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^3)
+    kron_kron_aug_state₁ = ws.kron_kron_aug_state
 
     state¹⁻ = state[1]
 
@@ -2733,6 +2749,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
+    # Ensure workspace buffers are properly sized
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -2819,17 +2840,18 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     𝐒³ᵉ     = nnz(𝐒³ᵉ)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
     𝐒⁻³     = nnz(𝐒⁻³)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
 
-    kron_buffer = zeros(T.nExo^2)
+    # Use workspace buffers for shock-related kron operations
+    kron_buffer = ws.kron_buffer
 
-    kron_buffer² = zeros(T.nExo^3)
+    kron_buffer² = ws.kron_buffer²
 
     J = ℒ.I(T.nExo)
 
-    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+    kron_buffer2 = ws.kron_buffer2
 
-    kron_buffer3 = ℒ.kron(J, kron_buffer)
+    kron_buffer3 = ws.kron_buffer3
 
-    kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+    kron_buffer4 = ws.kron_buffer4
 
     II = sparse(ℒ.I(T.nExo^2))
 
