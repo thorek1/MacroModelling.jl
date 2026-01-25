@@ -8826,7 +8826,9 @@ end
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
-                            jacobian_func::Function)::Matrix{M} where {M,N}
+                            jacobian_func::Function;
+                            jacobian_parameters_func::Union{Function,Nothing} = nothing,
+                            jacobian_SS_and_pars_func::Union{Function,Nothing} = nothing)::Matrix{M} where {M,N}
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -8876,7 +8878,9 @@ end
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
-                            hessian_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
+                            hessian_func::Function;
+                            hessian_parameters_func::Union{Function,Nothing} = nothing,
+                            hessian_SS_and_pars_func::Union{Function,Nothing} = nothing)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -8926,7 +8930,9 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
-                                            third_order_derivatives_func::Function)::SparseMatrixCSC{M, Int} where {M,N}
+                                            third_order_derivatives_func::Function;
+                                            third_order_derivatives_parameters_func::Union{Function,Nothing} = nothing,
+                                            third_order_derivatives_SS_and_pars_func::Union{Function,Nothing} = nothing)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
