@@ -1,6 +1,6 @@
 module OptimExt
 
-import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters
+import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters, find_shocks_workspace
 import Optim
 
 # Helper function for LBFGS optimization objective
@@ -25,7 +25,7 @@ end
                                     cond_var_idx::Vector{Int},
                                     free_shock_idx::Vector{Int},
                                     state_update::Function,
-                                    S₁, S₂, S₃, constants; verbose::Bool = false)
+                                    S₁, S₂, S₃, constants, ws; verbose::Bool = false)
 
 Find shocks that satisfy conditional forecast constraints using LBFGS optimizer.
 
@@ -41,6 +41,7 @@ Note: This is the Optim-based implementation. It requires the Optim.jl extension
 - `S₁`: First-order solution matrix
 - `S₂`, `S₃`: Higher-order perturbation matrices (not used in LBFGS, for compatibility only)
 - `constants`: Model constants (unused for LBFGS)
+- `ws`: Find shocks workspace (unused for LBFGS)
 
 # Returns
 - `x`: Vector of optimal shock values
@@ -55,7 +56,9 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
                                         #  pruning::Bool,
-                                         S₁, S₂, S₃, constants; verbose::Bool = false)
+                                         S₁, S₂, S₃, constants, 
+                                         ws::find_shocks_workspace{Float64}; 
+                                         verbose::Bool = false)
                                          
     pruning = typeof(initial_state) <: Vector{Vector{Float64}}
     precision_factor = 1.0

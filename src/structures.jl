@@ -555,6 +555,29 @@ mutable struct sylvester_workspace{G <: AbstractFloat}
 end
 
 
+"""
+Workspace for find_shocks used in conditional forecasts.
+
+Contains pre-allocated Kronecker product buffers that depend only on n_exo (number of shocks).
+All buffers are initialized to 0-dimensional and lazily resized on first use via ensure_find_shocks_buffers!.
+
+Used by find_shocks_conditional_forecast (filter/find_shocks.jl).
+"""
+mutable struct find_shocks_workspace{T <: Real}
+    # Dimension (for reallocation checks)
+    n_exo::Int
+    
+    # 2nd order buffers
+    kron_buffer::Vector{T}   # n_exo^2 - for ℒ.kron(x, x)
+    kron_buffer2::Matrix{T}  # n_exo^2 × n_exo - for ℒ.kron(J, x), where J = I(n_exo)
+    
+    # 3rd order buffers
+    kron_buffer²::Vector{T}  # n_exo^3 - for ℒ.kron(x, kron_buffer)
+    kron_buffer3::Matrix{T}  # n_exo^3 × n_exo - for ℒ.kron(J, kron_buffer)
+    kron_buffer4::Matrix{T}  # n_exo^3 × n_exo^2 - for ℒ.kron(kron(J,J), x)
+end
+
+
 mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
@@ -581,6 +604,7 @@ mutable struct workspaces
     lyapunov_2nd_order::lyapunov_workspace{Float64}
     lyapunov_3rd_order::lyapunov_workspace{Float64}
     sylvester_1st_order::sylvester_workspace{Float64}
+    find_shocks::find_shocks_workspace{Float64}
 end
 
 

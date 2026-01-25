@@ -24,7 +24,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          𝐒₁::AbstractMatrix{Float64},
                                          𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
-                                         constants::constants;
+                                         constants::constants,
+                                         ws::find_shocks_workspace{Float64};
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13,
                                          verbose::Bool = false)
@@ -241,15 +242,16 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     end
 
     initial_guess = copy(all_shocks)
+    
+    # Ensure workspace buffers are allocated
+    third_order = !isnothing(𝐒ⁱ³ᵉ)
+    ensure_find_shocks_buffers!(ws, n_exo; third_order = third_order)
 
     if isnothing(𝐒ⁱ³ᵉ)
-        kron_buffer = zeros(n_exo^2)
-        kron_buffer2 = ℒ.kron(J, zeros(n_exo))
-
         x, matched = find_shocks(Val(:LagrangeNewton),
                                  initial_guess,
-                                 kron_buffer,
-                                 kron_buffer2,
+                                 ws.kron_buffer,
+                                 ws.kron_buffer2,
                                  J,
                                  𝐒ⁱ,
                                  𝐒ⁱ²ᵉ,
@@ -258,19 +260,13 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                  tol = tol,
                                  verbose = verbose)
     else
-        kron_buffer = zeros(n_exo^2)
-        kron_buffer² = zeros(n_exo^3)
-        kron_buffer2 = ℒ.kron(J, zeros(n_exo))
-        kron_buffer3 = ℒ.kron(J, kron_buffer)
-        kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(n_exo))
-
         x, matched = find_shocks(Val(:LagrangeNewton),
                                  initial_guess,
-                                 kron_buffer,
-                                 kron_buffer²,
-                                 kron_buffer2,
-                                 kron_buffer3,
-                                 kron_buffer4,
+                                 ws.kron_buffer,
+                                 ws.kron_buffer²,
+                                 ws.kron_buffer2,
+                                 ws.kron_buffer3,
+                                 ws.kron_buffer4,
                                  J,
                                  𝐒ⁱ,
                                  𝐒ⁱ²ᵉ,

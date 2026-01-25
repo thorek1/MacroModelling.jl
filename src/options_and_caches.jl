@@ -119,6 +119,22 @@ function Sylvester_workspace(;S::Type = Float64)
         Krylov_workspace(S = S))
 end
 
+"""
+    Find_shocks_workspace(;T::Type = Float64)
+
+Create a workspace for find_shocks conditional forecast with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_find_shocks_buffers!.
+"""
+function Find_shocks_workspace(;T::Type = Float64)
+    find_shocks_workspace{T}(
+        0,                      # n_exo dimension
+        zeros(T,0),             # kron_buffer (n_exo^2)
+        zeros(T,0,0),           # kron_buffer2 (n_exo × n_exo)
+        zeros(T,0),             # kron_buffer² (n_exo^3)
+        zeros(T,0,0),           # kron_buffer3 (n_exo × n_exo^2)
+        zeros(T,0,0))           # kron_buffer4 (n_exo^2 × n_exo)
+end
+
 function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
     higher_order_workspace(spzeros(T,0,0),
                         spzeros(T,0,0),
@@ -321,6 +337,44 @@ function ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m:
     return ws
 end
 
+"""
+    ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
+
+Ensure the find_shocks workspace buffers are allocated for the given number of shocks.
+Only allocates 3rd order buffers if third_order=true.
+Buffer sizes: kron_buffer (n_exo^2), kron_buffer2 (n_exo^2 × n_exo), 
+              kron_buffer² (n_exo^3), kron_buffer3 (n_exo^3 × n_exo), kron_buffer4 (n_exo^3 × n_exo^2)
+"""
+function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
+    ws.n_exo = n_exo
+    
+    n_exo² = n_exo^2
+    n_exo³ = n_exo^3
+    
+    # 2nd order buffers (always needed)
+    if length(ws.kron_buffer) != n_exo²
+        ws.kron_buffer = zeros(T, n_exo²)
+    end
+    if size(ws.kron_buffer2, 1) != n_exo² || size(ws.kron_buffer2, 2) != n_exo
+        ws.kron_buffer2 = zeros(T, n_exo², n_exo)
+    end
+    
+    # 3rd order buffers (only if needed)
+    if third_order
+        if length(ws.kron_buffer²) != n_exo³
+            ws.kron_buffer² = zeros(T, n_exo³)
+        end
+        if size(ws.kron_buffer3, 1) != n_exo³ || size(ws.kron_buffer3, 2) != n_exo
+            ws.kron_buffer3 = zeros(T, n_exo³, n_exo)
+        end
+        if size(ws.kron_buffer4, 1) != n_exo³ || size(ws.kron_buffer4, 2) != n_exo²
+            ws.kron_buffer4 = zeros(T, n_exo³, n_exo²)
+        end
+    end
+    
+    return ws
+end
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
@@ -329,7 +383,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
-                Sylvester_workspace(S = S))  # 1st order sylvester - will be resized
+                Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
+                Find_shocks_workspace(T = T))  # conditional forecast - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
