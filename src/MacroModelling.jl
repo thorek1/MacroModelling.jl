@@ -7279,7 +7279,8 @@ function solve!(𝓂::ℳ;
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
-                                                                    qme_ws;
+                                                                    qme_ws,
+                                                                    sylv_ws;
                                                                     opts = opts,
                                                                     initial_guess = 𝓂.caches.qme_solution)
                 if solved 𝓂.caches.qme_solution = qme_sol end
