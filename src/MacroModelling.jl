@@ -6033,7 +6033,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 end
 
 """
-    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
 Find optimal steady state solver parameters using NLopt's ESCH algorithm.
 
@@ -6047,7 +6047,7 @@ It uses the ESCH global optimization algorithm from the NLopt package.
 - `tol`: Tolerance structure
 - `verbosity`: Verbosity level for output
 """
-function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
