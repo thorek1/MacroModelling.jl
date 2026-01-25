@@ -6447,10 +6447,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
+    qme_ws = ensure_qme_workspace!(𝓂)
+    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        qme_workspace = qme_ws)
 
     if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -6783,10 +6786,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
+    qme_ws = ensure_qme_workspace!(𝓂)
+    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        qme_workspace = qme_ws)
     
     if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -7240,10 +7246,13 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
+            qme_ws = ensure_qme_workspace!(𝓂)
+            
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.caches.qme_solution)
+                                                                initial_guess = 𝓂.caches.qme_solution,
+                                                                qme_workspace = qme_ws)
     
             if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -7265,7 +7274,8 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.caches.qme_solution)
+                                                                    initial_guess = 𝓂.caches.qme_solution,
+                                                                    qme_workspace = qme_ws)
 
                 if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -10579,11 +10589,14 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
+    qme_ws = ensure_qme_workspace!(𝓂)
+    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        qme_workspace = qme_ws)
 
     if solved 𝓂.caches.qme_solution = qme_sol end
 

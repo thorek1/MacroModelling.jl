@@ -127,10 +127,33 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         Sylvester_workspace(S = S))
 end
 
+"""
+    Qme_workspace(n::Int; T::Type = Float64)
+
+Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
+`n` is the dimension of the square matrices (nVars - nPresent_only).
+"""
+function Qme_workspace(n::Int; T::Type = Float64)
+    qme_workspace(  zeros(T, n, n),  # E
+                    zeros(T, n, n),  # F
+                    zeros(T, n, n),  # X
+                    zeros(T, n, n),  # Y
+                    zeros(T, n, n),  # X_new
+                    zeros(T, n, n),  # Y_new
+                    zeros(T, n, n),  # E_new
+                    zeros(T, n, n),  # F_new
+                    zeros(T, n, n),  # temp1
+                    zeros(T, n, n),  # temp2
+                    zeros(T, n, n),  # temp3
+                    zeros(T, n, n),  # B̄
+                    zeros(T, n, n))  # AXX
+end
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
-                Float64[])
+                Float64[],
+                Qme_workspace(0, T = T))  # Initialize with size 0, will be resized when needed
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -676,6 +699,30 @@ function ensure_first_order_index_cache!(constants::constants)
     end
     return constants.post_complete_parameters
 end
+
+
+"""
+    ensure_qme_workspace!(𝓂)
+    ensure_qme_workspace!(workspaces, n)
+
+Ensure the QME (quadratic matrix equation) workspace is properly sized for the model.
+The workspace dimension is `n = nVars - nPresent_only` (the size of the QME matrices).
+If the workspace is the wrong size, it will be reallocated.
+"""
+function ensure_qme_workspace!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    n = T.nVars - T.nPresent_only
+    return ensure_qme_workspace!(𝓂.workspaces, n)
+end
+
+function ensure_qme_workspace!(workspaces::workspaces, n::Int)
+    ws = workspaces.qme
+    if size(ws.E, 1) != n
+        workspaces.qme = Qme_workspace(n)
+    end
+    return workspaces.qme
+end
+
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     selector = spzeros(Float64, length(target), length(source))

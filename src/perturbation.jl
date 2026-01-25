@@ -3,7 +3,8 @@
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        qme_workspace::Union{Nothing, MacroModelling.qme_workspace{R}} = nothing)::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -41,7 +42,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_workspace;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -119,7 +120,8 @@ function rrule(::typeof(calculate_first_order_solution),
                 ∇₁::Matrix{R},
                 constants::constants;
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                qme_workspace::Union{Nothing, MacroModelling.qme_workspace{R}} = nothing) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -158,7 +160,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_workspace;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -463,7 +465,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             tol = opts.tol.sylvester_tol,
                                             𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                            verbose = opts.verbose) # timer = timer)
+                                            verbose = opts.verbose)
 
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -586,7 +588,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                             tol = opts.tol.sylvester_tol,
                                             𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                            verbose = opts.verbose) # timer = timer)
+                                            verbose = opts.verbose)
 
     # end # timeit_debug
     # @timeit_debug timer "Post-process" begin
@@ -978,7 +980,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             tol = opts.tol.sylvester_tol,
                                             𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                            verbose = opts.verbose) # timer = timer)
+                                            verbose = opts.verbose)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -1238,7 +1240,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                             tol = opts.tol.sylvester_tol,
                                             𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                            verbose = opts.verbose) # timer = timer)
+                                            verbose = opts.verbose)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin

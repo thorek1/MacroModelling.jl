@@ -328,6 +328,46 @@ mutable struct function_and_jacobian{T <: Real}
     workspace::nonlinear_solver_workspace{T}
 end
 
+
+"""
+Pre-allocated workspace matrices for the quadratic matrix equation doubling algorithm.
+All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
+
+Used by `solve_quadratic_matrix_equation` with `Val{:doubling}` in quadratic_matrix_equation.jl.
+Avoids per-call allocations for temporary matrices in the iterative doubling algorithm.
+
+Fields:
+- `E`, `F`: Working matrices for the doubling recurrence
+- `X`, `Y`: Current iteration solution matrices
+- `X_new`, `Y_new`, `E_new`, `F_new`: Next iteration matrices  
+- `temp1`, `temp2`, `temp3`: Temporary matrices for intermediate computations
+- `B̄`: Copy of B for LU factorization (modified in-place)
+- `AXX`: Temporary for residual computation (A * X² + B * X + C)
+"""
+mutable struct qme_workspace{T <: Real}
+    # Doubling algorithm working matrices
+    E::Matrix{T}
+    F::Matrix{T}
+    X::Matrix{T}
+    Y::Matrix{T}
+    X_new::Matrix{T}
+    Y_new::Matrix{T}
+    E_new::Matrix{T}
+    F_new::Matrix{T}
+    
+    # Temporary matrices for intermediate operations
+    temp1::Matrix{T}
+    temp2::Matrix{T}
+    temp3::Matrix{T}
+    
+    # LU factorization buffer
+    B̄::Matrix{T}
+    
+    # Residual computation buffer
+    AXX::Matrix{T}
+end
+
+
 struct ss_solve_block
     ss_problem::function_and_jacobian
     extended_ss_problem::function_and_jacobian
@@ -470,6 +510,7 @@ mutable struct workspaces
     second_order::higher_order_workspace
     third_order::higher_order_workspace
     custom_steady_state_buffer::Vector{Float64}
+    qme::qme_workspace{Float64}
 end
 
 
