@@ -1022,15 +1022,21 @@ end
 
 
 function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    for i in [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
-        push!(𝓂.solution.outdated_algorithms, i)
-    end
+    # Mark all solutions as outdated
+    𝓂.solution.outdated.non_stochastic_steady_state = true
+    𝓂.solution.outdated.jacobian = true
+    𝓂.solution.outdated.hessian = true
+    𝓂.solution.outdated.third_order_derivatives = true
+    𝓂.solution.outdated.first_order_solution = true
+    𝓂.solution.outdated.second_order_solution = true
+    𝓂.solution.outdated.pruned_second_order_solution = true
+    𝓂.solution.outdated.third_order_solution = true
+    𝓂.solution.outdated.pruned_third_order_solution = true
 
     while length(𝓂.caches.solver_cache) > 1
         pop!(𝓂.caches.solver_cache)
     end
 
-    𝓂.solution.outdated_NSSS = true
     𝓂.caches.qme_solution = zeros(0,0)
     𝓂.caches.second_order_solution = spzeros(0,0)
     𝓂.caches.third_order_solution = spzeros(0,0)
@@ -1126,18 +1132,28 @@ function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType
         𝓂.functions.NSSS_custom = nothing
         
         if had_custom
-            𝓂.solution.outdated_NSSS = true
-            for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-                push!(𝓂.solution.outdated_algorithms, alg)
-            end
+            𝓂.solution.outdated.non_stochastic_steady_state = true
+            𝓂.solution.outdated.jacobian = true
+            𝓂.solution.outdated.hessian = true
+            𝓂.solution.outdated.third_order_derivatives = true
+            𝓂.solution.outdated.first_order_solution = true
+            𝓂.solution.outdated.second_order_solution = true
+            𝓂.solution.outdated.pruned_second_order_solution = true
+            𝓂.solution.outdated.third_order_solution = true
+            𝓂.solution.outdated.pruned_third_order_solution = true
         end
     elseif f isa Function && f !== 𝓂.functions.NSSS_custom
         𝓂.functions.NSSS_custom = f 
 
-        𝓂.solution.outdated_NSSS = true
-        for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-            push!(𝓂.solution.outdated_algorithms, alg)
-        end
+        𝓂.solution.outdated.non_stochastic_steady_state = true
+        𝓂.solution.outdated.jacobian = true
+        𝓂.solution.outdated.hessian = true
+        𝓂.solution.outdated.third_order_derivatives = true
+        𝓂.solution.outdated.first_order_solution = true
+        𝓂.solution.outdated.second_order_solution = true
+        𝓂.solution.outdated.pruned_second_order_solution = true
+        𝓂.solution.outdated.third_order_solution = true
+        𝓂.solution.outdated.pruned_third_order_solution = true
     end
 
     return nothing
@@ -5345,7 +5361,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     𝓂.caches.non_stochastic_steady_state = SS_and_pars
-    𝓂.solution.outdated_NSSS = false
+    𝓂.solution.outdated.non_stochastic_steady_state = false
     
     return SS_and_pars, solution_error, found_solution
 end
@@ -5368,7 +5384,12 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
     
     write_functions_mapping!(𝓂, perturbation_order)
 
-    𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    # Mark all solutions as outdated when derivative functions are rewritten
+    𝓂.solution.outdated.first_order_solution = true
+    𝓂.solution.outdated.second_order_solution = true
+    𝓂.solution.outdated.pruned_second_order_solution = true
+    𝓂.solution.outdated.third_order_solution = true
+    𝓂.solution.outdated.pruned_third_order_solution = true
 
     if !silent
         println(round(time() - start_time, digits = 3), " seconds")
@@ -7194,15 +7215,15 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        if  ((:first_order         == algorithm) && (𝓂.solution.outdated.first_order_solution || (obc && obc_not_solved))) ||
+            ((:second_order        == algorithm) && (𝓂.solution.outdated.second_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_second_order == algorithm) && (𝓂.solution.outdated.pruned_second_order_solution || (obc && obc_not_solved))) ||
+            ((:third_order         == algorithm) && (𝓂.solution.outdated.third_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && (𝓂.solution.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.caches.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated.non_stochastic_steady_state ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.caches.non_stochastic_steady_state, (eps(), 0))
 
             # end # timeit_debug
 
@@ -7259,15 +7280,15 @@ function solve!(𝓂::ℳ;
             𝓂.caches.first_order_solution_matrix = S₁
             𝓂.functions.first_order_state_update = state_update₁
             𝓂.functions.first_order_state_update_obc = state_update₁̂
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order])
+            𝓂.solution.outdated.first_order_solution = false
 
             𝓂.caches.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
+            𝓂.solution.outdated.non_stochastic_steady_state = solution_error > opts.tol.NSSS_acceptance_tol
         end
 
         obc_not_solved = isnothing(𝓂.functions.second_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        if  ((:second_order  == algorithm) && (𝓂.solution.outdated.second_order_solution || (obc && obc_not_solved))) ||
+            ((:third_order  == algorithm) && (𝓂.solution.outdated.third_order_solution || (obc && obc_not_solved)))
             
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
@@ -7298,12 +7319,12 @@ function solve!(𝓂::ℳ;
             𝓂.functions.second_order_state_update = state_update₂
             𝓂.functions.second_order_state_update_obc = state_update₂̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
+            𝓂.solution.outdated.second_order_solution = false
         end
         
         obc_not_solved = isnothing(𝓂.functions.pruned_second_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        if  ((:pruned_second_order  == algorithm) && (𝓂.solution.outdated.pruned_second_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && (𝓂.solution.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts, pruning = true) # , timer = timer)
 
@@ -7333,11 +7354,11 @@ function solve!(𝓂::ℳ;
             𝓂.functions.pruned_second_order_state_update = state_update₂
             𝓂.functions.pruned_second_order_state_update_obc = state_update₂̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
+            𝓂.solution.outdated.pruned_second_order_solution = false
         end
         
         obc_not_solved = isnothing(𝓂.functions.third_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        if  ((:third_order  == algorithm) && (𝓂.solution.outdated.third_order_solution || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
@@ -7366,11 +7387,11 @@ function solve!(𝓂::ℳ;
             𝓂.functions.third_order_state_update = state_update₃
             𝓂.functions.third_order_state_update_obc = state_update₃̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
+            𝓂.solution.outdated.third_order_solution = false
         end
 
         obc_not_solved = isnothing(𝓂.functions.pruned_third_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
-        if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        if ((:pruned_third_order  == algorithm) && (𝓂.solution.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts, pruning = true)
 
@@ -7408,7 +7429,7 @@ function solve!(𝓂::ℳ;
             𝓂.functions.pruned_third_order_state_update = state_update₃
             𝓂.functions.pruned_third_order_state_update_obc = state_update₃̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
+            𝓂.solution.outdated.pruned_third_order_solution = false
         end
     end
     
@@ -8501,8 +8522,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         remaining_missing = setdiff(p.missing_parameters, missing_params_provided)
         
         # Mark that solution needs to be recomputed
-        𝓂.solution.outdated_NSSS = true
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        𝓂.solution.outdated.non_stochastic_steady_state = true
+        𝓂.solution.outdated.jacobian = true
+        𝓂.solution.outdated.hessian = true
+        𝓂.solution.outdated.third_order_derivatives = true
+        𝓂.solution.outdated.first_order_solution = true
+        𝓂.solution.outdated.second_order_solution = true
+        𝓂.solution.outdated.pruned_second_order_solution = true
+        𝓂.solution.outdated.third_order_solution = true
+        𝓂.solution.outdated.pruned_third_order_solution = true
         
         # If all missing parameters are now provided, print a message
         if !isempty(remaining_missing)
@@ -8576,14 +8604,21 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(p.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
-            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            𝓂.solution.outdated.jacobian = true
+            𝓂.solution.outdated.hessian = true
+            𝓂.solution.outdated.third_order_derivatives = true
+            𝓂.solution.outdated.first_order_solution = true
+            𝓂.solution.outdated.second_order_solution = true
+            𝓂.solution.outdated.pruned_second_order_solution = true
+            𝓂.solution.outdated.third_order_solution = true
+            𝓂.solution.outdated.pruned_third_order_solution = true
         end
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
-                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true
+                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated.non_stochastic_steady_state == false)
+                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated.non_stochastic_steady_state == false
+                    𝓂.solution.outdated.non_stochastic_steady_state = true
                 end
                 
                 if verbose println("\t",p.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
@@ -8593,7 +8628,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         end
     end
 
-    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+    if 𝓂.solution.outdated.non_stochastic_steady_state == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
 end
@@ -8638,7 +8673,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         @warn("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
-            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            𝓂.solution.outdated.non_stochastic_steady_state = true
+            𝓂.solution.outdated.jacobian = true
+            𝓂.solution.outdated.hessian = true
+            𝓂.solution.outdated.third_order_derivatives = true
+            𝓂.solution.outdated.first_order_solution = true
+            𝓂.solution.outdated.second_order_solution = true
+            𝓂.solution.outdated.pruned_second_order_solution = true
+            𝓂.solution.outdated.third_order_solution = true
+            𝓂.solution.outdated.pruned_third_order_solution = true
 
             match_idx = []
             for (i, v) in enumerate(parameters)
@@ -8649,13 +8692,6 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             
             changed_vals = parameters[match_idx]
             changed_pars = 𝓂.constants.post_complete_parameters.parameters[match_idx]
-
-            # for p in changes_pars
-            #     if p ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true # fix the SS_dependencies
-                    # println("SS outdated.")
-            #     end
-            # end
 
             if verbose 
                 println("Parameter changes: ")
@@ -8668,7 +8704,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         end
     end
 
-    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+    if 𝓂.solution.outdated.non_stochastic_steady_state == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
 end

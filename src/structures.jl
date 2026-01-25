@@ -299,6 +299,26 @@ mutable struct non_stochastic_steady_state
     dependencies::Any
 end
 
+"""
+Tracks which cache elements are outdated and need recalculation.
+When parameters change, all fields are set to `true` (outdated).
+When a cache is computed, its corresponding field is set to `false` (up to date).
+"""
+mutable struct outdated_caches
+    # Non-stochastic steady state
+    non_stochastic_steady_state::Bool
+    # Perturbation derivative buffers
+    jacobian::Bool
+    hessian::Bool
+    third_order_derivatives::Bool
+    # Perturbation solution buffers
+    first_order_solution::Bool
+    second_order_solution::Bool
+    pruned_second_order_solution::Bool
+    third_order_solution::Bool
+    pruned_third_order_solution::Bool
+end
+
 mutable struct caches
     # Perturbation derivative buffers
     jacobian::AbstractMatrix{<: Real}
@@ -321,7 +341,7 @@ mutable struct caches
     pruned_third_order_stochastic_steady_state::Vector{<: Real}
     # Non-stochastic steady state solution and solver caches
     non_stochastic_steady_state::Vector{<: Real}
-    solver_cache::CircularBuffer{Vector{Vector{<: Real}}}
+    solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     ∂equations_∂parameters::AbstractMatrix{<: Real}
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}
 end
@@ -359,11 +379,8 @@ mutable struct model_functions
 end
 
 mutable struct solution
-    # algorithms::Set{Symbol}
-    outdated_algorithms::Set{Symbol}
-    outdated_NSSS::Bool
+    outdated::outdated_caches
     functions_written::Bool
-    # valid_steady_state_solution
 end
 
 mutable struct krylov_workspace{G <: AbstractFloat}

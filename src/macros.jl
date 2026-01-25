@@ -941,10 +941,18 @@ macro model(𝓂,ex...)
                         ),
 
                         solution(
-                            # Set([:first_order]),
-                            Set(all_available_algorithms),
-                            true,
-                            false
+                            outdated_caches(
+                                true, # non_stochastic_steady_state
+                                true, # jacobian
+                                true, # hessian
+                                true, # third_order_derivatives
+                                true, # first_order_solution
+                                true, # second_order_solution
+                                true, # pruned_second_order_solution
+                                true, # third_order_solution
+                                true, # pruned_third_order_solution
+                            ),
+                            false # functions_written
                         ),
 
                         # Dict{Vector{Symbol}, timings}() # estimation_helper
