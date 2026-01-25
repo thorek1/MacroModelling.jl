@@ -204,7 +204,7 @@ struct moments_dependency_kron_indices
     kron_s_v::BitVector
 end
 
-mutable struct second_order
+mutable struct second_order_constants
     # Filled by create_second_order_auxiliary_matrices (MacroModelling.jl)
     # ← triggered by: write_functions_mapping! ← solve!
     𝛔::SparseMatrixCSC{Int}
@@ -243,7 +243,7 @@ mutable struct second_order
     e4::Vector{Float64}
 end
 
-mutable struct third_order
+mutable struct third_order_constants
     # Filled by create_third_order_auxiliary_matrices (MacroModelling.jl)
     # ← triggered by: write_functions_mapping! ← solve!
     𝐂₃::SparseMatrixCSC{Int}
@@ -504,8 +504,8 @@ mutable struct constants#{F <: Real, G <: AbstractFloat}
     post_model_macro::post_model_macro
     post_parameters_macro::post_parameters_macro
     post_complete_parameters::post_complete_parameters
-    second_order::second_order
-    third_order::third_order
+    second_order::second_order_constants
+    third_order::third_order_constants
 end
 
 mutable struct solver_parameters

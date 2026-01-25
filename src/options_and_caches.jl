@@ -2,7 +2,7 @@
 function Second_order_cache()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
-    return second_order(
+    return second_order_constants(
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
@@ -33,7 +33,7 @@ end
 
 function Third_order_cache()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
-    return third_order(
+    return third_order_constants(
         empty_sparse_int,
         empty_sparse_int,
         Dict{Vector{Int}, Int}(),
