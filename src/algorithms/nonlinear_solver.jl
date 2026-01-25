@@ -452,7 +452,8 @@ function newton(
     new_residuals_norm = 1.0
     guess_update_norm = 1.0
     
-    iters = [0,0]
+    grad_iter = 0
+    func_iter = 0
     
     for iter in 1:iterations
     
@@ -510,8 +511,8 @@ function newton(
     
             # ℒ.axpy!(-1, sol_cache.u, new_guess)
     
-            iters[1] += 1
-            iters[2] += 1
+            grad_iter += 1
+            func_iter += 1
 
             # println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
             break
@@ -580,21 +581,21 @@ function newton(
         rel_xtol_reached = guess_update_norm / max(new_guess_norm, ℒ.norm(new_guess))
         # rel_ftol_reached = new_residuals_norm / max(eps(),init_residuals_norm)
         
-        iters[1] += 1
-        iters[2] += 1
+        grad_iter += 1
+        func_iter += 1
 
-        # println("GN: $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
+        # println("GN: $grad_iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     end
 
-    # if iters[1] == iterations
+    # if grad_iter == iterations
     #     println("GN failed to converge - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")#; rel_ftol: $rel_ftol_reached")
     # else
-    #     println("GN converged after $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
+    #     println("GN converged after $grad_iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     # end
 
     # best_guess = undo_transform(new_guess,transformation_level)
     
-    return new_guess, (iters[1], iters[2], rel_xtol_reached, new_residuals_norm)
+    return new_guess, (grad_iter, func_iter, rel_xtol_reached, new_residuals_norm)
 end
 
 
