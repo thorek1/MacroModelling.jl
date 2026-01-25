@@ -525,10 +525,32 @@ mutable struct krylov_workspace{G <: AbstractFloat}
     bicgstab::BicgstabWorkspace{G,G,Vector{G}}
 end
 
+"""
+Workspace for the Sylvester equation solver (A * X * B + C = X).
+
+All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
+Sylvester has two independent dimensions: n (rows of A/C) and m (cols of B/C).
+"""
 mutable struct sylvester_workspace{G <: AbstractFloat}
+    # Dimensions (stored for reallocation checks)
+    n::Int  # rows of A, rows of C
+    m::Int  # cols of B, cols of C
+    
+    # Krylov method buffers (lazily allocated, n×m)
     tmp::Matrix{G}
     𝐗::Matrix{G}
     𝐂::Matrix{G}
+    
+    # Doubling algorithm working matrices (lazily allocated)
+    𝐀::Matrix{G}      # n×n copy of A
+    𝐀¹::Matrix{G}     # n×n for A²
+    𝐁::Matrix{G}      # m×m copy of B
+    𝐁¹::Matrix{G}     # m×m for B²
+    𝐂_dbl::Matrix{G}  # n×m iteration buffer
+    𝐂¹::Matrix{G}     # n×m iteration buffer
+    𝐂B::Matrix{G}     # n×m temporary for C*B multiplication
+    
+    # Krylov solver state (lazily allocated)
     krylov_workspace::krylov_workspace{G}
 end
 

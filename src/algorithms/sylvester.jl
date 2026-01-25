@@ -929,17 +929,29 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         # guess_provided = false
         initial_guess = zero(C)
     end
-                                  
-    𝐀  = copy(A)    
-    𝐀¹ = copy(A)
-    𝐁  = copy(B)
-    𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
-    # ℒ.rmul!(𝐂, -1)
-    𝐂¹  = similar(𝐂)
-    𝐂B = copy(C)
+    
+    # Ensure workspace buffers are allocated
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    # Use workspace buffers
+    𝐀  = 𝕊ℂ.𝐀
+    𝐀¹ = 𝕊ℂ.𝐀¹
+    𝐁  = 𝕊ℂ.𝐁
+    𝐁¹ = 𝕊ℂ.𝐁¹
+    𝐂  = 𝕊ℂ.𝐂_dbl
+    𝐂¹ = 𝕊ℂ.𝐂¹
+    𝐂B = 𝕊ℂ.𝐂B
+    
+    copyto!(𝐀, A)
+    copyto!(𝐁, B)
+    
+    # 𝐂  = A * initial_guess * B + C - initial_guess
+    ℒ.mul!(𝐂B, initial_guess, B)
+    ℒ.mul!(𝐂, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂)
+    ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -1006,7 +1018,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     #     println("Sylvester: doubling $reached_tol")
     # end
 
-    return 𝐂, iters, reached_tol # return info on convergence
+    return copy(𝐂), iters, reached_tol # return info on convergence
 end
 
 
@@ -1025,15 +1037,20 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-      
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
-    𝐂¹ = zero(C)
-    tmp̄ = zero(C)
     
+    # Ensure workspace buffers are allocated (reuse Krylov buffers for tmp and 𝐂¹)
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
+    
+    # Use workspace buffers
+    𝐂¹ = 𝕊ℂ.𝐂
+    tmp̄ = 𝕊ℂ.tmp
+      
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess
     ℒ.mul!(tmp̄, initial_guess, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
     ℒ.axpy!(1, C, 𝐂¹)
-
     ℒ.axpy!(-1, initial_guess, 𝐂¹)
 
     𝐂 = try 
@@ -1084,20 +1101,10 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
-    # println(ℒ.norm(𝐂¹))
-
-    if length(𝕊ℂ.tmp) == 0
-        𝕊ℂ.tmp = zero(C)
-    end
-
-    if length(𝕊ℂ.𝐗) == 0
-        𝕊ℂ.𝐗 = zero(C)
-    end
-    
-    if length(𝕊ℂ.𝐂) == 0
-        𝕊ℂ.𝐂 = zero(C)
-    end
+    # Ensure workspace buffers are allocated
+    n = size(C, 1)
+    m = size(C, 2)
+    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
     
     𝐂¹ = 𝕊ℂ.𝐂
     tmp̄ = 𝕊ℂ.tmp
@@ -1246,20 +1253,10 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
-    # println(ℒ.norm(𝐂¹))
-
-    if length(𝕊ℂ.tmp) == 0
-        𝕊ℂ.tmp = zero(C)
-    end
-
-    if length(𝕊ℂ.𝐗) == 0
-        𝕊ℂ.𝐗 = zero(C)
-    end
-    
-    if length(𝕊ℂ.𝐂) == 0
-        𝕊ℂ.𝐂 = zero(C)
-    end
+    # Ensure workspace buffers are allocated
+    n = size(C, 1)
+    m = size(C, 2)
+    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
     
     𝐂¹ = 𝕊ℂ.𝐂
     tmp̄ = 𝕊ℂ.tmp
@@ -1408,20 +1405,10 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
-    # println(ℒ.norm(𝐂¹))
-
-    if length(𝕊ℂ.tmp) == 0
-        𝕊ℂ.tmp = zero(C)
-    end
-
-    if length(𝕊ℂ.𝐗) == 0
-        𝕊ℂ.𝐗 = zero(C)
-    end
-    
-    if length(𝕊ℂ.𝐂) == 0
-        𝕊ℂ.𝐂 = zero(C)
-    end
+    # Ensure workspace buffers are allocated
+    n = size(C, 1)
+    m = size(C, 2)
+    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
     
     𝐂¹ = 𝕊ℂ.𝐂
     tmp̄ = 𝕊ℂ.tmp

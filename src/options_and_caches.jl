@@ -104,10 +104,19 @@ function Krylov_workspace(;S::Type = Float64)
 end
 
 function Sylvester_workspace(;S::Type = Float64)
-    sylvester_workspace(   zeros(S,0,0),
-                        zeros(S,0,0),
-                        zeros(S,0,0),
-                        Krylov_workspace(S = S))
+    sylvester_workspace(
+        0, 0,                   # n, m dimensions
+        zeros(S,0,0),           # tmp (Krylov)
+        zeros(S,0,0),           # 𝐗 (Krylov)
+        zeros(S,0,0),           # 𝐂 (Krylov)
+        zeros(S,0,0),           # 𝐀 (doubling)
+        zeros(S,0,0),           # 𝐀¹ (doubling)
+        zeros(S,0,0),           # 𝐁 (doubling)
+        zeros(S,0,0),           # 𝐁¹ (doubling)
+        zeros(S,0,0),           # 𝐂_dbl (doubling)
+        zeros(S,0,0),           # 𝐂¹ (doubling)
+        zeros(S,0,0),           # 𝐂B (doubling)
+        Krylov_workspace(S = S))
 end
 
 function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
@@ -241,6 +250,74 @@ function ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
     if length(ws.gmres_workspace.x) != n * n && n > 0
         ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
     end
+    return ws
+end
+
+# ============================================================================
+# Sylvester workspace ensure functions
+# ============================================================================
+
+"""
+    ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+
+Ensure the doubling algorithm buffers are allocated in the workspace.
+`n` is the row dimension (size of A), `m` is the column dimension (size of B).
+"""
+function ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+    # Update stored dimensions
+    ws.n = n
+    ws.m = m
+    
+    # A-related buffers (n×n)
+    if size(ws.𝐀, 1) != n || size(ws.𝐀, 2) != n
+        ws.𝐀 = zeros(T, n, n)
+    end
+    if size(ws.𝐀¹, 1) != n || size(ws.𝐀¹, 2) != n
+        ws.𝐀¹ = zeros(T, n, n)
+    end
+    
+    # B-related buffers (m×m)
+    if size(ws.𝐁, 1) != m || size(ws.𝐁, 2) != m
+        ws.𝐁 = zeros(T, m, m)
+    end
+    if size(ws.𝐁¹, 1) != m || size(ws.𝐁¹, 2) != m
+        ws.𝐁¹ = zeros(T, m, m)
+    end
+    
+    # C-related buffers (n×m)
+    if size(ws.𝐂_dbl, 1) != n || size(ws.𝐂_dbl, 2) != m
+        ws.𝐂_dbl = zeros(T, n, m)
+    end
+    if size(ws.𝐂¹, 1) != n || size(ws.𝐂¹, 2) != m
+        ws.𝐂¹ = zeros(T, n, m)
+    end
+    if size(ws.𝐂B, 1) != n || size(ws.𝐂B, 2) != m
+        ws.𝐂B = zeros(T, n, m)
+    end
+    
+    return ws
+end
+
+"""
+    ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+
+Ensure the Krylov method buffers are allocated in the workspace.
+"""
+function ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+    ws.n = n
+    ws.m = m
+    
+    # All are n×m matrices
+    if size(ws.tmp, 1) != n || size(ws.tmp, 2) != m
+        ws.tmp = zeros(T, n, m)
+    end
+    if size(ws.𝐗, 1) != n || size(ws.𝐗, 2) != m
+        ws.𝐗 = zeros(T, n, m)
+    end
+    if size(ws.𝐂, 1) != n || size(ws.𝐂, 2) != m
+        ws.𝐂 = zeros(T, n, m)
+    end
+    
     return ws
 end
 

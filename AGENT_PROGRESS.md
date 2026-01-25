@@ -1,6 +1,46 @@
 # Agent Progress Log
 
-## Current Session (2026-01-26) - Fixed AD Compatibility for Workspace Refactoring
+## Current Session (2026-01-25) - Expanded Sylvester Workspace for Allocation Caching
+
+### Summary
+
+Extended `sylvester_workspace` struct to cache more allocations, similar to the lyapunov workspace pattern. The workspace now caches buffers for the doubling algorithm and properly manages dimensions.
+
+### Changes Made This Session
+
+1. **Expanded `sylvester_workspace` struct in structures.jl:**
+   - Added dimension fields: `n` (rows), `m` (cols) for tracking buffer sizes
+   - Added doubling algorithm buffers: `𝐀`, `𝐀¹`, `𝐁`, `𝐁¹`, `𝐂_dbl`, `𝐂¹`, `𝐂B`
+   - Renamed existing Krylov buffers section for clarity
+   - All buffers lazy-initialized to 0-dimensional arrays
+
+2. **Updated `Sylvester_workspace` constructor in options_and_caches.jl:**
+   - Now initializes all new fields (dimensions + doubling buffers)
+
+3. **Added ensure functions in options_and_caches.jl:**
+   - `ensure_sylvester_doubling_buffers!(ws, n, m)` - allocates A/B/C buffers for doubling
+   - `ensure_sylvester_krylov_buffers!(ws, n, m)` - allocates Krylov method buffers
+
+4. **Updated dense-dense doubling method in sylvester.jl:**
+   - Now uses workspace buffers instead of allocating fresh copies
+   - Calls `ensure_sylvester_doubling_buffers!` at start
+   - Returns `copy(𝐂)` to avoid aliasing workspace
+
+5. **Updated bartels_stewart method in sylvester.jl:**
+   - Now uses `ensure_sylvester_krylov_buffers!` for `𝐂¹` and `tmp̄`
+
+6. **Updated Krylov methods (bicgstab, dqgmres, gmres) in sylvester.jl:**
+   - Replaced ad-hoc `if length(...) == 0` checks with `ensure_sylvester_krylov_buffers!`
+   - Cleaner, more consistent allocation pattern
+
+### Tests Verified
+
+- ✅ RBC model 2nd order solution (uses Sylvester equation)
+- ✅ RBC model 3rd order solution (uses Sylvester equation)
+
+---
+
+## Previous Session (2026-01-26) - Fixed AD Compatibility for Workspace Refactoring
 
 ### Summary
 
