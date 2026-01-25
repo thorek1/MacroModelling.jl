@@ -11,13 +11,19 @@
 @stable default_mode = "disable" begin
 
 function solve_lyapunov_equation(A::AbstractMatrix{T},
-                                C::AbstractMatrix{T};
-                                workspace::lyapunov_workspace = Lyapunov_workspace(size(A, 1)),
+                                C::AbstractMatrix{T},
+                                workspace::lyapunov_workspace;
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-14,
                                 acceptance_tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
+    # Update workspace dimension if needed (for cases like Kalman filter where dimension differs from initial setup)
+    n = size(A, 1)
+    if workspace.n != n
+        workspace.n = n
+    end
+    
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
         
@@ -83,22 +89,22 @@ end # dispatch_doctor
 
 function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64};
-                workspace::lyapunov_workspace = Lyapunov_workspace(size(A, 1)),
+                C::AbstractMatrix{Float64},
+                workspace::lyapunov_workspace;
                 lyapunov_algorithm::Symbol = :doubling,
                 tol::AbstractFloat = 1e-14,
                 acceptance_tol::AbstractFloat = 1e-12,
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace = workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
         if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], workspace = workspace, lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
+        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], workspace, lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
     
         solved = solved && slvd
 
@@ -113,8 +119,8 @@ end
 @stable default_mode = "disable" begin
 
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    workspace::lyapunov_workspace = Lyapunov_workspace(size(A, 1)),
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    workspace::lyapunov_workspace;
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-14,
                                     acceptance_tol::AbstractFloat = 1e-12,
@@ -124,7 +130,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace = workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     Ã = copy(Â)
     C̃ = copy(Ĉ)
@@ -140,7 +146,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_lyapunov_equation(Â, X, workspace = workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
         
         solved = solved && slvd
 

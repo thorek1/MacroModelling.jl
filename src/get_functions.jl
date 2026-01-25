@@ -1088,9 +1088,15 @@ function get_irf(𝓂::ℳ,
     end
 
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+
+    # Ensure QME workspace
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants;
+                                                            constants,
+                                                            qme_ws,
+                                                            sylv_ws;
                                                             opts = opts,
                                                             initial_guess = 𝓂.caches.qme_solution)
     
@@ -1948,8 +1954,14 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
+    # Ensure QME workspace
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants;
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2133,8 +2145,14 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
+    # Ensure QME workspace
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants;
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2162,8 +2180,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
             # Ensure lyapunov workspace is properly sized and get it
             lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
 
-            covar_raw, _ = solve_lyapunov_equation(A, CC,
-                                                    workspace = lyap_ws,
+            covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                     tol = opts.tol.lyapunov_tol,
                                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -2295,8 +2312,14 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
+    # Ensure QME workspace
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants;
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2314,8 +2337,7 @@ function get_variance_decomposition(𝓂::ℳ;
         # Ensure lyapunov workspace is properly sized and get it
         lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
 
-        covar_raw, _ = solve_lyapunov_equation(A, CC,
-                                                workspace = lyap_ws,
+        covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                 tol = opts.tol.lyapunov_tol,
                                                 acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -3612,7 +3634,10 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
+    # Ensure lyapunov workspace for Kalman filter initial covariance
+    lyap_ws = @ignore_derivatives ensure_lyapunov_workspace_1st_order!(𝓂)
+
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, lyap_ws) # timer = timer
 
     # end # timeit_debug
 

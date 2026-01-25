@@ -1,10 +1,11 @@
 @stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{R},
-                                        constants::constants;
+                                        constants::constants,
+                                        qme_ws::qme_workspace{R},
+                                        sylv_ws::sylvester_workspace{R};
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        qme_workspace::Union{Nothing, MacroModelling.qme_workspace{R}} = nothing)::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -22,14 +23,6 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
     ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
     ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
-    
-    # Ensure QME workspace is available (create temporary if not provided)
-    qme_ws = if qme_workspace === nothing
-        n = T.nVars - T.nPresent_only
-        Qme_workspace(n)
-    else
-        qme_workspace
-    end
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -126,10 +119,11 @@ end # dispatch_doctor
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
-                constants::constants;
+                constants::constants,
+                qme_ws::qme_workspace{R},
+                sylv_ws::sylvester_workspace{R};
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0),
-                qme_workspace::Union{Nothing, MacroModelling.qme_workspace{R}} = nothing) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -148,14 +142,6 @@ function rrule(::typeof(calculate_first_order_solution),
     ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
     ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
     ∇̂ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
-    
-    # Ensure QME workspace is available (create temporary if not provided)
-    qme_ws = if qme_workspace === nothing
-        n = T.nVars - T.nPresent_only
-        Qme_workspace(n)
-    else
-        qme_workspace
-    end
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -184,7 +170,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     verbose = opts.verbose)
 
     if !solved
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     # end # timeit_debug
@@ -208,7 +194,7 @@ function rrule(::typeof(calculate_first_order_solution),
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -236,7 +222,7 @@ function rrule(::typeof(calculate_first_order_solution),
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
     ℒ.ldiv!(C, ∇̂ₑ)
@@ -268,21 +254,21 @@ function rrule(::typeof(calculate_first_order_solution),
 
         tmp1 = M' * ∂𝐒ᵗ * expand_past
 
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1,
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
         if !solved
-            NoTangent(), NoTangent(), NoTangent()
+            NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,idx_cache.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
         ∂∇₁[:,idx_cache.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
-        return NoTangent(), ∂∇₁, NoTangent()
+        return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent()
     end
 
     return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
@@ -291,7 +277,9 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
-                                        constants::constants;
+                                        constants::constants,
+                                        qme_ws::qme_workspace,
+                                        sylv_ws::sylvester_workspace;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
@@ -304,7 +292,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_cache.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants; opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws; opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -344,7 +332,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
 
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, 
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
@@ -475,11 +463,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose)
 
@@ -598,11 +585,10 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(A, B, C,  
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose)
 
@@ -652,10 +638,9 @@ function rrule(::typeof(calculate_second_order_solution),
             return (𝐒₂, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
+        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
-                                                𝕊ℂ = ℂ.sylvester_workspace,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
@@ -990,11 +975,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose)
     
@@ -1250,11 +1234,10 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
-                                            𝕊ℂ = ℂ.sylvester_workspace,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose)
     
@@ -1362,10 +1345,9 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # ∂𝐒₃ *= 𝐔₃t
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
+        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃, ℂ.sylvester_workspace,
                                                 sylvester_algorithm = opts.sylvester_algorithm³,
                                                 tol = opts.tol.sylvester_tol,
-                                                𝕊ℂ = ℂ.sylvester_workspace,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 

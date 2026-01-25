@@ -12,12 +12,12 @@
 @stable default_mode = "disable" begin
 function solve_sylvester_equation(A::M,
                                     B::N,
-                                    C::O;
+                                    C::O,
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
@@ -58,10 +58,9 @@ function solve_sylvester_equation(A::M,
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
+    x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 𝕊ℂ,
                                                         initial_guess = initial_guess, 
                                                         tol = tol,
-                                                        𝕊ℂ = 𝕊ℂ,
                                                         # timer = timer, 
                                                         verbose = verbose)
 
@@ -77,10 +76,9 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
-                                                            Val(:bartels_stewart), 
+                                                            Val(:bartels_stewart), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
-                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -95,10 +93,9 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
-                                                            Val(:dqgmres), 
+                                                            Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
                                                             tol = tol, 
-                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -117,10 +114,9 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
-                                                            Val(:gmres), 
+                                                            Val(:gmres), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
-                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -135,10 +131,9 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
-                                                            Val(:dqgmres), 
+                                                            Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
                                                             tol = tol, 
-                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -157,10 +152,9 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
-                                                            Val(:doubling), 
+                                                            Val(:doubling), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
-                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -192,7 +186,7 @@ function solve_sylvester_equation(A::M,
     #     cc = collect(C)
 
     #     X, solved, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
-    #                                                         Val(:dqgmres), 
+    #                                                         Val(:dqgmres), 𝕊ℂ,
     #                                                         initial_guess = x, 
     #                                                         tol = tol, 
     #                                                         verbose = verbose,
@@ -213,7 +207,7 @@ function solve_sylvester_equation(A::M,
     #     cc = collect(C)
 
     #     x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
-    #                                                         Val(:doubling), 
+    #                                                         Val(:doubling), 𝕊ℂ,
     #                                                         initial_guess = zeros(0,0), 
     #                                                         tol = tol, 
     #                                                         verbose = verbose,
@@ -239,19 +233,18 @@ end # dispatch_doctor
 function rrule(::typeof(solve_sylvester_equation),
     A::M,
     B::N,
-    C::O;
+    C::O,
+    𝕊ℂ::sylvester_workspace;
     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
     sylvester_algorithm::Symbol = :doubling,
     acceptance_tol::AbstractFloat = 1e-10,
     tol::AbstractFloat = 1e-14,
-    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
-    P, solved = solve_sylvester_equation(A, B, C, 
+    P, solved = solve_sylvester_equation(A, B, C, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
                                         tol = tol, 
-                                        𝕊ℂ = 𝕊ℂ,
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
@@ -260,10 +253,9 @@ function rrule(::typeof(solve_sylvester_equation),
     function solve_sylvester_equation_pullback(∂P)
         if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 
+        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
                                             tol = tol, 
-                                            𝕊ℂ = 𝕊ℂ,
                                             verbose = verbose)
 
         solved = solved && slvd
@@ -282,11 +274,11 @@ end
 
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     tol::AbstractFloat = 1e-14,
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
@@ -295,10 +287,9 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 
+    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
                                         tol = tol, 
-                                        𝕊ℂ = 𝕊ℂ,
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
@@ -317,9 +308,8 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_sylvester_equation(Â, B̂, X, 
+        P, slvd = solve_sylvester_equation(Â, B̂, X, 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
-                                            𝕊ℂ = 𝕊ℂ,
                                             tol = tol, 
                                             verbose = verbose)
 
@@ -338,9 +328,9 @@ end
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     B::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
@@ -406,9 +396,9 @@ end
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     B::AbstractSparseMatrix{T},
                                     C::Matrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -491,9 +481,9 @@ end
 function solve_sylvester_equation(  A::Matrix{T},
                                     B::AbstractSparseMatrix{T},
                                     C::Matrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -595,9 +585,9 @@ end
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     B::Matrix{T},
                                     C::Matrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{T} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -677,9 +667,9 @@ end
 function solve_sylvester_equation(  A::Matrix{T},
                                     B::Matrix{T},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -760,9 +750,9 @@ end
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     B::Matrix{T},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -842,9 +832,9 @@ end
 function solve_sylvester_equation(  A::Matrix{T},
                                     B::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -924,9 +914,9 @@ end
 function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     B::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1023,9 +1013,9 @@ end
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::Union{ℒ.Adjoint{Float64, Matrix{T}}, DenseMatrix{T}},
                                     C::DenseMatrix{T},
-                                    ::Val{:bartels_stewart};
+                                    ::Val{:bartels_stewart},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1079,9 +1069,9 @@ end
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::AbstractMatrix{T},
                                     C::DenseMatrix{T},
-                                    ::Val{:bicgstab};
+                                    ::Val{:bicgstab},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1241,9 +1231,9 @@ end
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::AbstractMatrix{T},
                                     C::DenseMatrix{T},
-                                    ::Val{:dqgmres};
+                                    ::Val{:dqgmres},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1403,9 +1393,9 @@ end
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::AbstractMatrix{T},
                                     C::DenseMatrix{T},
-                                    ::Val{:gmres};
+                                    ::Val{:gmres},
+                                    𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_workspace = Sylvester_workspace(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat

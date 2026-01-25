@@ -16,8 +16,14 @@ function calculate_covariance(parameters::Vector{R},
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) 
 
+    # Ensure QME workspace
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants;
+                                                            constants,
+                                                            qme_ws,
+                                                            sylv_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
@@ -37,8 +43,7 @@ function calculate_covariance(parameters::Vector{R},
     # Ensure lyapunov workspace is properly sized and get it
     lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
 
-    covar_raw, solved = solve_lyapunov_equation(A, CC,
-                            workspace = lyap_ws,
+    covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
                             tol = opts.tol.lyapunov_tol,
                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -72,8 +77,14 @@ function calculate_mean(parameters::Vector{R},
         so = constants.second_order
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
         
+        # Ensure QME workspace
+        qme_ws = ensure_qme_workspace!(𝓂)
+        sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+        
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants;
+                                                            constants,
+                                                            qme_ws,
+                                                            sylv_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
         
@@ -375,8 +386,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             # Ensure second-order lyapunov workspace and solve
             lyap_ws_2nd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₂, 1), :second_order)
 
-            Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C,
-                                    workspace = lyap_ws_2nd,
+            Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyap_ws_2nd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -650,8 +660,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         # Ensure third-order lyapunov workspace and solve
         lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C,
-                                    workspace = lyap_ws_3rd,
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -896,8 +905,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         # Ensure third-order lyapunov workspace and solve
         lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C,
-                                    workspace = lyap_ws_3rd,
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,

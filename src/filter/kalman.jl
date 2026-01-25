@@ -13,12 +13,14 @@ function calculate_loglikelihood(::Val{:kalman},
                                 warmup_iterations, 
                                 filter_algorithm, 
                                 opts,
-                                on_failure_loglikelihood) #; 
+                                on_failure_loglikelihood,
+                                lyap_ws::lyapunov_workspace) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
-                                                constants_obj, 
+                                                constants_obj,
+                                                lyap_ws,
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
@@ -29,7 +31,8 @@ end
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                constants::constants; 
+                                                constants::constants,
+                                                lyap_ws::lyapunov_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
@@ -38,14 +41,15 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
     T = constants.post_model_macro
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                constants::constants; 
+                                                constants::constants,
+                                                lyap_ws::lyapunov_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 on_failure_loglikelihood::U = -Inf,
@@ -54,14 +58,15 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
     T = constants.post_model_macro
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                constants::constants; 
+                                                constants::constants,
+                                                lyap_ws::lyapunov_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
@@ -79,7 +84,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, opts = opts)
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
     # timer = timer, 
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
@@ -89,10 +94,11 @@ end
 # Specialization for :theoretical
 function get_initial_covariance(::Val{:theoretical}, 
                                 A::AbstractMatrix{S}, 
-                                B::AbstractMatrix{S}; 
+                                B::AbstractMatrix{S},
+                                lyap_ws::lyapunov_workspace; 
                                 opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-    P, _ = solve_lyapunov_equation(A, B, 
+    P, _ = solve_lyapunov_equation(A, B, lyap_ws,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -105,7 +111,8 @@ end
 # Specialization for :diagonal
 function get_initial_covariance(::Val{:diagonal}, 
                                 A::AbstractMatrix{S}, 
-                                B::AbstractMatrix{S}; 
+                                B::AbstractMatrix{S},
+                                lyap_ws::lyapunov_workspace; 
                                 opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
@@ -615,8 +622,13 @@ function filter_and_smooth(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants; 
+                                                            constants,
+                                                            qme_ws,
+                                                            sylv_ws; 
                                                             opts = opts)
 
     if solved 𝓂.caches.qme_solution = qme_sol end

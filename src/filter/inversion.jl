@@ -20,7 +20,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                 warmup_iterations, 
                                 filter_algorithm, 
                                 opts,
-                                on_failure_loglikelihood) #; 
+                                on_failure_loglikelihood,
+                                lyap_ws::lyapunov_workspace) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
@@ -3506,8 +3507,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
+    qme_ws = ensure_qme_workspace!(𝓂)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants;
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
     

@@ -251,7 +251,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
-                Lyapunov_workspace(0, T = T))  # 3rd order - will be resized
+                Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
+                Sylvester_workspace(S = S))  # 1st order sylvester - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -819,6 +820,21 @@ function ensure_qme_workspace!(workspaces::workspaces, n::Int)
         workspaces.qme = Qme_workspace(n)
     end
     return workspaces.qme
+end
+
+"""
+    ensure_sylvester_1st_order_workspace!(𝓂)
+    ensure_sylvester_1st_order_workspace!(workspaces)
+
+Return the first-order sylvester workspace from the model or workspaces.
+The workspace is lazily sized by the sylvester solver when needed.
+"""
+function ensure_sylvester_1st_order_workspace!(𝓂)
+    return 𝓂.workspaces.sylvester_1st_order
+end
+
+function ensure_sylvester_1st_order_workspace!(workspaces::workspaces)
+    return workspaces.sylvester_1st_order
 end
 
 

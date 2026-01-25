@@ -2,7 +2,7 @@ using SparseArrays
 using MacroModelling
 using Random
 using Test
-import MacroModelling: post_model_macro, get_NSSS_and_parameters
+import MacroModelling: post_model_macro, get_NSSS_and_parameters, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
 using ForwardDiff
 import LinearAlgebra as ℒ
 using FiniteDifferences, Zygote
@@ -73,7 +73,9 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 T = RBC_CME.constants.post_model_macro
 
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants)# |> Matrix{Float32}
+qme_ws = ensure_qme_workspace!(RBC_CME)
+sylv_ws = ensure_sylvester_1st_order_workspace!(RBC_CME)
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants, qme_ws, sylv_ws)# |> Matrix{Float32}
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces)
 

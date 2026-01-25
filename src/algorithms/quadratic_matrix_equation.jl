@@ -533,7 +533,8 @@ end
 function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        constants::constants; 
+                                        constants::constants,
+                                        workspace::qme_workspace;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur, 
@@ -547,7 +548,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_algorithm), 
-                                                constants; 
+                                                constants,
+                                                workspace;
                                                 tol = tol,
                                                 initial_guess = initial_guess,
                                                 # timer = timer,

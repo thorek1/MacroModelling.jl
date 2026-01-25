@@ -29,7 +29,9 @@ function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts 
     if hasproperty(𝓂, :timings)
         out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
     else
-        out = calculate_first_order_solution(∇₁, 𝓂.constants; opts = opts)
+        qme_ws = ensure_qme_workspace!(𝓂)
+        sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+        out = calculate_first_order_solution(∇₁, 𝓂.constants, qme_ws, sylv_ws; opts = opts)
     end
     return out
 end

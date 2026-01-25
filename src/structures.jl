@@ -558,6 +558,7 @@ mutable struct workspaces
     lyapunov_1st_order::lyapunov_workspace{Float64}
     lyapunov_2nd_order::lyapunov_workspace{Float64}
     lyapunov_3rd_order::lyapunov_workspace{Float64}
+    sylvester_1st_order::sylvester_workspace{Float64}
 end
 
 
