@@ -5507,7 +5507,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # nnaux_linear = []
         # nnaux_error = []
         # push!(nnaux_error, :(aux_error = 0))
-        solved_vals = Expr[]
+        solved_vals_local = Expr[]
         # solved_vals_in_place = Expr[]
         
         eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
@@ -5517,7 +5517,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         for (i,val) in enumerate(solved_vals[end])
             if typeof(val) ∈ [Symbol,Float64,Int]
-                push!(solved_vals,val)
+                push!(solved_vals_local,val)
                 # push!(solved_vals_in_place, :(ℰ[$i] = $val))
             else
                 if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
@@ -5525,11 +5525,11 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
                     # push!(nnaux_linear,:($val))
-                    push!(solved_vals,:($val))
+                    push!(solved_vals_local,:($val))
                     # push!(solved_vals_in_place,:(ℰ[$i] = $val))
                     # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                 else
-                    push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                    push!(solved_vals_local,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                     # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
                 end
             end
@@ -5607,7 +5607,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
         # aux_replacements = Dict(aux_vars .=> aux_expr)
     
-        replaced_solved_vals = solved_vals |> 
+        replaced_solved_vals = solved_vals_local |> 
             # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
             x -> replace_symbols.(x, Ref(parameter_dict)) |> 
             x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
