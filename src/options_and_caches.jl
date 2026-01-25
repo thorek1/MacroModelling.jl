@@ -66,6 +66,37 @@ function Third_order_cache()
 end
 
 
+"""
+Create a workspace for nonlinear solvers (Levenberg-Marquardt and Newton).
+
+# Arguments
+- `func_buffer::Vector{T}`: Pre-allocated buffer for function evaluation
+- `jac_buffer::AbstractMatrix{T}`: Pre-allocated buffer for Jacobian
+- `chol_buffer::LinearCache`: Pre-allocated Cholesky factorization cache
+- `lu_buffer::LinearCache`: Pre-allocated LU factorization cache
+"""
+function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
+                                    chol_buffer::𝒮.LinearCache, lu_buffer::𝒮.LinearCache) where T <: Real
+    n = length(func_buffer)
+    nonlinear_solver_workspace(
+        func_buffer,          # func_buffer
+        jac_buffer,           # jac_buffer
+        chol_buffer,          # chol_buffer
+        lu_buffer,            # lu_buffer
+        zeros(T, n),          # current_guess
+        zeros(T, n),          # previous_guess
+        zeros(T, n),          # guess_update
+        zeros(T, n),          # current_guess_untransformed
+        zeros(T, n),          # previous_guess_untransformed
+        zeros(T, n),          # best_previous_guess
+        zeros(T, n),          # best_current_guess
+        zeros(T, n),          # factor
+        zeros(T, n),          # u_bounds
+        zeros(T, n),          # l_bounds
+    )
+end
+
+
 function Krylov_workspace(;S::Type = Float64)
     krylov_workspace(  GmresWorkspace(0,0,Vector{S}),
                     DqgmresWorkspace(0,0,Vector{S}),

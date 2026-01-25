@@ -47,13 +47,23 @@ function levenberg_marquardt(
 
     max_linesearch_iterations = 600
 
-    # function f̂(x) 
-    #     f(undo_transform(x,transformation_level))  
-    # #     # f(undo_transform(x,transformation_level,shift))  
-    # end
-    u_bounds = copy(upper_bounds)
-    l_bounds = copy(lower_bounds)
-    current_guess = copy(initial_guess)
+    # Get pre-allocated workspace vectors and buffers
+    ws = fnj.workspace
+    u_bounds = ws.u_bounds
+    l_bounds = ws.l_bounds
+    current_guess = ws.current_guess
+    current_guess_untransformed = ws.current_guess_untransformed
+    previous_guess = ws.previous_guess
+    previous_guess_untransformed = ws.previous_guess_untransformed
+    guess_update = ws.guess_update
+    factor = ws.factor
+    best_previous_guess = ws.best_previous_guess
+    best_current_guess = ws.best_current_guess
+    
+    # Initialize from input bounds and guess
+    copy!(u_bounds, upper_bounds)
+    copy!(l_bounds, lower_bounds)
+    copy!(current_guess, initial_guess)
 
     for _ in 1:transformation_level
         u_bounds .= asinh.(u_bounds)
@@ -61,16 +71,10 @@ function levenberg_marquardt(
         current_guess .= asinh.(current_guess)
     end
 
-    sol_cache = fnj.chol_buffer
+    sol_cache = ws.chol_buffer
 
-    current_guess_untransformed = copy(current_guess)
-    previous_guess = similar(current_guess)
-    previous_guess_untransformed = similar(current_guess)
-    guess_update = similar(current_guess)
-    factor = similar(current_guess)
-    best_previous_guess = similar(current_guess)
-    best_current_guess = similar(current_guess)
-    ∇ = fnj.jac_buffer
+    copy!(current_guess_untransformed, current_guess)
+    ∇ = ws.jac_buffer
     ∇̂ = sol_cache.A
     # ∇̄ = similar(fnj.jac_buffer)
 
@@ -146,9 +150,9 @@ function levenberg_marquardt(
             ℒ.mul!(∇̂, ∇', ∇)
         end
 
-        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+        fnj.func(ws.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
 
-        copy!(factor, fnj.func_buffer)
+        copy!(factor, ws.func_buffer)
 
         μ¹s = μ¹ * ℒ.dot(factor, factor)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
@@ -209,9 +213,9 @@ function levenberg_marquardt(
             current_guess_untransformed .= sinh.(current_guess_untransformed)
         end
 
-        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+        fnj.func(ws.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
       
-        P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
+        P̋ = ℒ.dot(ws.func_buffer, ws.func_buffer)
         # P̋ = sum(abs2, f̂(current_guess))
 
         func_iter += 3
@@ -280,9 +284,9 @@ function levenberg_marquardt(
                     current_guess_untransformed .= sinh.(current_guess_untransformed)
                 end
 
-                fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+                fnj.func(ws.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
 
-                P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
+                P̋ = ℒ.dot(ws.func_buffer, ws.func_buffer)
                 # P̋ = sum(abs2, f̂(current_guess))
                 func_iter += 1
 
@@ -324,9 +328,9 @@ function levenberg_marquardt(
             current_guess_untransformed .= sinh.(current_guess_untransformed)
         end
 
-        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+        fnj.func(ws.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
 
-        largest_residual = ℒ.norm(fnj.func_buffer)    
+        largest_residual = ℒ.norm(ws.func_buffer)    
         # largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
@@ -427,17 +431,21 @@ function newton(
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     # @assert all(lower_bounds .< upper_bounds)
 
-    new_guess = initial_guess # fnj.lu_buffer.b
-    guess_update = fnj.lu_buffer.b
+    # Get pre-allocated workspace vectors and buffers
+    ws = fnj.workspace
+    new_guess = ws.current_guess
+    copy!(new_guess, initial_guess)
+    
+    guess_update = ws.lu_buffer.b
 
-    fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
+    fnj.func(ws.func_buffer, new_guess, parameters_and_solved_vars)
 
-    new_residuals = fnj.func_buffer
+    new_residuals = ws.func_buffer
     # new_residuals = f(new_guess)
 
-    ∇ = fnj.jac_buffer
+    ∇ = ws.jac_buffer
 
-    sol_cache = fnj.lu_buffer
+    sol_cache = ws.lu_buffer
 
     rel_xtol_reached = 1.0
     rel_ftol_reached = 1.0

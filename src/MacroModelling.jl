@@ -4297,10 +4297,13 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
+    # Create nonlinear solver workspaces for regular and extended problems
+    workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
+    ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
     
     push!(𝓂.NSSS.solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
-            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+            function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
+            function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
         )
     )
     
@@ -5799,11 +5802,14 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
+        # Create nonlinear solver workspaces for regular and extended problems
+        workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
+        ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
 
         push!(𝓂.NSSS.solve_blocks_in_place, 
             ss_solve_block(
-                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
-                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+                function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
+                function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
             )
         )
 
@@ -6211,9 +6217,9 @@ function solve_ss(SS_optimizer::Function,
 
     # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
     
-    max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
+    max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
 
     if sol_minimum < ftol && verbose
             println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
@@ -6256,9 +6262,9 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, guess, parameters_and_solved_vars)
 
-    res = SS_solve_block.ss_problem.func_buffer
+    res = SS_solve_block.ss_problem.workspace.func_buffer
 
     sol_minimum  = ℒ.norm(res)
 
@@ -6268,9 +6274,9 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             # ∇̂ = ℒ.lu!(∇, check = false)
 
-            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars)
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.workspace.jac_buffer, guess, parameters_and_solved_vars)
 
-            ∇ = SS_solve_block.ss_problem.jac_buffer
+            ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
 
             ∇̂ = ℒ.lu(∇, check = false)
             

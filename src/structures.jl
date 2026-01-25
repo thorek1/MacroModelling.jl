@@ -286,15 +286,46 @@ mutable struct third_order_constants
 end
 
 
-mutable struct function_and_jacobian
-    func::Function
-    # func_aux::Function
-    func_buffer::Vector{<:Real}
-    # func_aux_buffer::Vector{<:Real}
-    jac::Function
-    jac_buffer::AbstractMatrix{<:Real}
+"""
+Pre-allocated workspace vectors and buffers for nonlinear solvers (Levenberg-Marquardt and Newton).
+All vectors are the same size as the problem dimension (number of unknowns).
+
+Used by `levenberg_marquardt` and `newton` in nonlinear_solver.jl.
+Avoids per-call allocations for temporary arrays.
+"""
+mutable struct nonlinear_solver_workspace{T <: Real}
+    # Function and Jacobian evaluation buffers
+    func_buffer::Vector{T}
+    jac_buffer::AbstractMatrix{T}
     chol_buffer::𝒮.LinearCache
     lu_buffer::𝒮.LinearCache
+    
+    # Guess vectors
+    current_guess::Vector{T}
+    previous_guess::Vector{T}
+    guess_update::Vector{T}
+    
+    # Untransformed guess vectors (for coordinate transformation)
+    current_guess_untransformed::Vector{T}
+    previous_guess_untransformed::Vector{T}
+    
+    # Output vectors
+    best_previous_guess::Vector{T}
+    best_current_guess::Vector{T}
+    
+    # Multipurpose factor vector (transformation jacobian diagonal / temp storage)
+    factor::Vector{T}
+    
+    # Transformed bounds (for Levenberg-Marquardt with coordinate transformation)
+    u_bounds::Vector{T}
+    l_bounds::Vector{T}
+end
+
+
+mutable struct function_and_jacobian{T <: Real}
+    func::Function
+    jac::Function
+    workspace::nonlinear_solver_workspace{T}
 end
 
 struct ss_solve_block
