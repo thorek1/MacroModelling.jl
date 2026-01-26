@@ -599,6 +599,224 @@ function newton(
 end
 
 
+function traub(
+    fnj::function_and_jacobian, 
+    initial_guess::Array{T,1}, 
+    parameters_and_solved_vars::Array{T,1},
+    lower_bounds::Array{T,1}, 
+    upper_bounds::Array{T,1},
+    parameters::solver_parameters;
+    tol::Tolerances = Tolerances()
+    )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
+    # Traub's method: A third-order iterative method for root-finding
+    # Uses two function evaluations per iteration for higher convergence order
+    # Formula:
+    #   y_n = x_n - f(x_n)/f'(x_n)  (Newton step)
+    #   x_{n+1} = y_n - f(y_n)/f'(x_n) (Traub step)
+
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    iterations = 250
+    transformation_level = 0
+
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+
+    current_guess = copy(initial_guess)
+    intermediate_guess = similar(current_guess)
+    guess_update = fnj.lu_buffer.b
+
+    fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars)
+
+    current_residuals = fnj.func_buffer
+    intermediate_residuals = similar(current_residuals)
+
+    ∇ = fnj.jac_buffer
+
+    sol_cache = fnj.lu_buffer
+
+    rel_xtol_reached = 1.0
+    rel_ftol_reached = 1.0
+    current_residuals_norm = 1.0
+    guess_update_norm = 1.0
+    
+    iters = [0, 0]
+    
+    for iter in 1:iterations
+    
+        if ∇ isa SparseMatrixCSC
+            ∇.nzval .= 0
+        else
+            ∇ .= 0
+        end
+
+        # Compute Jacobian at current point
+        fnj.jac(∇, current_guess, parameters_and_solved_vars)
+
+        # Compute residuals at current point
+        fnj.func(current_residuals, current_guess, parameters_and_solved_vars)
+
+        finn = has_nonfinite(current_residuals)
+
+        if finn
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            current_residuals_norm = 1.0
+            break 
+        end
+        
+        if current_residuals_norm < ftol || rel_xtol_reached < rel_xtol || guess_update_norm < xtol
+            current_guess_norm = ℒ.norm(current_guess)
+
+            old_residuals_norm = current_residuals_norm
+
+            current_residuals_norm = ℒ.norm(current_residuals)
+            
+            # First Traub step: compute intermediate point (Newton step)
+            if ∇ isa SparseMatrixCSC
+                sol_cache.A = ∇
+                sol_cache.b = current_residuals
+                𝒮.solve!(sol_cache)
+                guess_update .= sol_cache.u
+                intermediate_guess .= current_guess
+                ℒ.axpy!(-1, guess_update, intermediate_guess)
+            else
+                fact∇ = ℒ.lu!(∇, check = false)
+                try
+                    if !ℒ.issuccess(fact∇)
+                        fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                    end
+                    copy!(intermediate_guess, current_residuals)
+                    ℒ.ldiv!(fact∇, intermediate_guess)
+                    guess_update_norm = ℒ.norm(intermediate_guess)
+                    intermediate_guess .= current_guess .- intermediate_guess
+                catch
+                    rel_xtol_reached = typemax(T)
+                    current_residuals_norm = typemax(T)
+                    break
+                end
+            end
+
+            minmax!(intermediate_guess, lower_bounds, upper_bounds)
+
+            # Compute residuals at intermediate point
+            fnj.func(intermediate_residuals, intermediate_guess, parameters_and_solved_vars)
+
+            # Second Traub step: use same Jacobian with intermediate residuals
+            if ∇ isa SparseMatrixCSC
+                sol_cache.A = ∇
+                sol_cache.b = intermediate_residuals
+                𝒮.solve!(sol_cache)
+                guess_update .= sol_cache.u
+            else
+                try
+                    copy!(guess_update, intermediate_residuals)
+                    ℒ.ldiv!(fact∇, guess_update)
+                catch
+                    rel_xtol_reached = typemax(T)
+                    current_residuals_norm = typemax(T)
+                    break
+                end
+            end
+
+            guess_update_norm = ℒ.norm(guess_update)
+            current_guess .= intermediate_guess .- guess_update
+    
+            iters[1] += 2  # Two function evaluations per iteration
+            iters[2] += 1  # One Jacobian evaluation
+
+            break
+        end
+
+        current_guess_norm = ℒ.norm(current_guess)
+
+        old_residuals_norm = current_residuals_norm
+
+        current_residuals_norm = ℒ.norm(current_residuals)
+        
+        if iter > 5 && ℒ.norm(rel_xtol_reached) > sqrt(rel_xtol) && current_residuals_norm > old_residuals_norm
+            break
+        end
+
+        # First Traub step: compute intermediate point (Newton step)
+        if ∇ isa SparseMatrixCSC
+            sol_cache.A = ∇
+            sol_cache.b = current_residuals
+            𝒮.solve!(sol_cache)
+            guess_update .= sol_cache.u
+            intermediate_guess .= current_guess
+            ℒ.axpy!(-1, guess_update, intermediate_guess)
+        else
+            fact∇ = ℒ.lu!(∇, check = false)
+            try
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
+                copy!(intermediate_guess, current_residuals)
+                ℒ.ldiv!(fact∇, intermediate_guess)
+                intermediate_guess .= current_guess .- intermediate_guess
+            catch
+                rel_xtol_reached = typemax(T)
+                current_residuals_norm = typemax(T)
+                break
+            end
+        end
+
+        finn = has_nonfinite(intermediate_guess)
+
+        if finn
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            current_residuals_norm = 1.0
+            break 
+        end
+        
+        minmax!(intermediate_guess, lower_bounds, upper_bounds)
+
+        # Compute residuals at intermediate point
+        fnj.func(intermediate_residuals, intermediate_guess, parameters_and_solved_vars)
+
+        # Second Traub step: use same Jacobian with intermediate residuals
+        if ∇ isa SparseMatrixCSC
+            sol_cache.A = ∇
+            sol_cache.b = intermediate_residuals
+            𝒮.solve!(sol_cache)
+            guess_update .= sol_cache.u
+        else
+            try
+                copy!(guess_update, intermediate_residuals)
+                ℒ.ldiv!(fact∇, guess_update)
+            catch
+                rel_xtol_reached = typemax(T)
+                current_residuals_norm = typemax(T)
+                break
+            end
+        end
+
+        guess_update_norm = ℒ.norm(guess_update)
+        current_guess .= intermediate_guess .- guess_update
+
+        finn = has_nonfinite(current_guess)
+
+        if finn
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            current_residuals_norm = 1.0
+            break 
+        end
+        
+        minmax!(current_guess, lower_bounds, upper_bounds)
+
+        rel_xtol_reached = guess_update_norm / max(current_guess_norm, ℒ.norm(current_guess))
+        
+        iters[1] += 2  # Two function evaluations per iteration
+        iters[2] += 1  # One Jacobian evaluation
+    end
+    
+    return current_guess, (iters[1], iters[2], rel_xtol_reached, current_residuals_norm)
+end
+
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
     @inbounds for i in eachindex(x)
