@@ -1655,6 +1655,123 @@ sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true
 
 
 """
+$(SIGNATURES)
+Return the mean of the pruned perturbation solution computed at a specified approximation point.
+
+This function allows computing the mean of the ergodic distribution when the perturbation 
+solution is computed around a different point than the non-stochastic steady state.
+
+# Arguments
+- $MODEL®
+# Keyword Arguments
+- $PARAMETERS®
+- `approximation_point` [Default: `nothing`, Type: `Union{Nothing, KeyedArray}`]: the point around which to compute the perturbation solution. If `nothing`, uses the non-stochastic steady state.
+- `algorithm` [Default: `:pruned_second_order`, Type: `Symbol`]: algorithm to use. Currently only `:pruned_second_order` is supported.
+- $QME®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `KeyedArray` with the mean values.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Mean computed around NSSS (default)
+get_mean_at_approximation_point(RBC)
+# output
+1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+And data, 4-element Vector{Float64}:
+ (:c)   5.936894477029751
+ (:k)  47.39592121534711
+ (:q)   6.884812901336693
+ (:z)   0.0
+```
+"""
+function get_mean_at_approximation_point(𝓂::ℳ; 
+                                          parameters::ParameterType = nothing, 
+                                          approximation_point::Union{Nothing, KeyedArray} = nothing,
+                                          algorithm::Symbol = :pruned_second_order,
+                                          verbose::Bool = DEFAULT_VERBOSE,
+                                          tol::Tolerances = Tolerances(),
+                                          quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                          sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
+    
+    @assert algorithm ∈ [:pruned_second_order] "Mean at approximation point currently only supports :pruned_second_order algorithm."
+    
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
+
+    # Need to solve with second order algorithm to set up second-order derivatives
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts)
+
+    # Convert approximation_point KeyedArray to Vector if provided
+    approx_point_vec = nothing
+    if !isnothing(approximation_point) && approximation_point isa KeyedArray
+        # Get NSSS to understand the structure 
+        SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+        
+        # Get variable labels
+        NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+        
+        # Convert KeyedArray to a Vector matching SS_and_pars structure
+        approx_point_vec = copy(SS_and_pars)
+        
+        # Get the keys from the approximation_point KeyedArray
+        approx_keys = axiskeys(approximation_point, 1)
+        
+        # Map each key to the corresponding position in SS_and_pars
+        for (i, key) in enumerate(approx_keys)
+            key_sym = key isa Symbol ? key : Symbol(key)
+            idx = findfirst(x -> x == key_sym, NSSS_labels)
+            if !isnothing(idx)
+                approx_point_vec[idx] = approximation_point[i]
+            end
+        end
+    end
+
+    mean_vars, solved, _, _, _, _, _, _ = calculate_pruned_second_order_mean_at_point(𝓂.parameter_values, 𝓂,
+                                                                                       approximation_point = approx_point_vec,
+                                                                                       opts = opts)
+
+    @assert solved "Could not compute mean at the specified approximation point."
+
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+
+    var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+    axis1 = vars_in_ss_equations
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    return KeyedArray(mean_vars[var_idx];  Variables = axis1)
+end
+
+
+"""
 See [`get_steady_state`](@ref)
 """
 SS = get_steady_state
