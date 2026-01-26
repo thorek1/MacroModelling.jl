@@ -489,6 +489,8 @@ mutable struct outdated_caches
 end
 
 mutable struct caches
+    # Outdated flags for cache invalidation
+    outdated::outdated_caches
     # Perturbation derivative buffers
     jacobian::AbstractMatrix{<: Real}
     jacobian_parameters::AbstractMatrix{<: Real}
@@ -558,10 +560,7 @@ mutable struct model_functions
     pruned_third_order_state_update_obc::Function
     # OBC-related functions
     obc_violation::Function
-end
-
-mutable struct solution
-    outdated::outdated_caches
+    # Whether all functions have been written/compiled
     functions_written::Bool
 end
 
@@ -863,8 +862,6 @@ mutable struct ℳ
 
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
     functions::model_functions
-
-    solution::solution
     # symbolics::symbolics
 
     # estimation_helper::Dict{Vector{Symbol}, timings}

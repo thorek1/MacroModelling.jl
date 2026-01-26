@@ -1617,7 +1617,7 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.solution.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.caches.non_stochastic_steady_state
+    # return 𝓂.caches.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.caches.non_stochastic_steady_state
     # return 𝓂.functions.NSSS_solve(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
@@ -2767,7 +2767,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated.non_stochastic_steady_state ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.caches.non_stochastic_steady_state), (eps(), 0))
+    NSSS, (solution_error, iters) = 𝓂.caches.outdated.non_stochastic_steady_state ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.caches.non_stochastic_steady_state), (eps(), 0))
 
     @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
 

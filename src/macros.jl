@@ -874,6 +874,17 @@ macro model(𝓂,ex...)
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
                         caches(
+                            outdated_caches(
+                                true, # non_stochastic_steady_state
+                                true, # jacobian
+                                true, # hessian
+                                true, # third_order_derivatives
+                                true, # first_order_solution
+                                true, # second_order_solution
+                                true, # pruned_second_order_solution
+                                true, # third_order_solution
+                                true, # pruned_third_order_solution
+                            ),
                             zeros(0,0), # jacobian
                             zeros(0,0), # jacobian_parameters
                             zeros(0,0), # jacobian_SS_and_pars
@@ -932,20 +943,6 @@ macro model(𝓂,ex...)
                             (x,y)->nothing, # pruned_third_order_state_update
                             (x,y)->nothing, # pruned_third_order_state_update_obc
                             x->x, # obc_violation
-                        ),
-
-                        solution(
-                            outdated_caches(
-                                true, # non_stochastic_steady_state
-                                true, # jacobian
-                                true, # hessian
-                                true, # third_order_derivatives
-                                true, # first_order_solution
-                                true, # second_order_solution
-                                true, # pruned_second_order_solution
-                                true, # third_order_solution
-                                true, # pruned_third_order_solution
-                            ),
                             false # functions_written
                         ),
 
@@ -1548,7 +1545,7 @@ macro parameters(𝓂,ex...)
             missing_parameters = missing_params,
         )
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        # mod.$𝓂.solution.outdated_NSSS = true
+        # mod.$𝓂.caches.outdated_NSSS = true
         
         # Store precompile and simplify flag in model container
         
@@ -1557,7 +1554,7 @@ macro parameters(𝓂,ex...)
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
         # end
 
-        mod.$𝓂.solution.functions_written = false
+        mod.$𝓂.functions.functions_written = false
 
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed
@@ -1576,7 +1573,7 @@ macro parameters(𝓂,ex...)
             
             write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
 
-            mod.$𝓂.solution.functions_written = true
+            mod.$𝓂.functions.functions_written = true
         end
 
         if has_missing_parameters && $report_missing_parameters
