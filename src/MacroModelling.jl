@@ -5361,7 +5361,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     𝓂.caches.non_stochastic_steady_state = SS_and_pars
-    𝓂.caches.outdated.non_stochastic_steady_state = false
+    𝓂.caches.outdated.non_stochastic_steady_state = !found_solution
     
     return SS_and_pars, solution_error, found_solution
 end
