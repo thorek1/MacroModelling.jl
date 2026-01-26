@@ -1485,30 +1485,41 @@ end
 #                         tol = tol)
 # end
 
+# Helper to convert dense matrix to sparse using I,J,V format (avoids Julia 1.12 SparseArrays bug)
+function dense_to_sparse(A::DenseMatrix{S}, tol::R) where {S <: Real, R <: AbstractFloat}
+    m, n = size(A)
+    I = Int[]
+    J = Int[]
+    V = S[]
+    @inbounds for j in 1:n
+        for i in 1:m
+            v = A[i,j]
+            if abs(v) > tol
+                push!(I, i)
+                push!(J, j)
+                push!(V, v)
+            end
+        end
+    end
+    return sparse(I, J, V, m, n)
+end
+
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        try
-            if multithreaded
-                a = sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-                droptol!(a, tol)
-            else
-                a = convert(SparseMatrixCSC{S}, A)
-                droptol!(a, tol)
-            end
+        # Use dense_to_sparse to avoid Julia 1.12 SparseArrays bug in SparseMatrixCSC(::Matrix)
+        a = dense_to_sparse(A, tol)
+        if multithreaded
+            return ThreadedSparseArrays.ThreadedSparseMatrixCSC(a)
+        else
             return a
-        catch e
-            # Fall back to dense format if sparse conversion fails (e.g., Julia 1.12 SparseArrays bug)
-            return convert(Matrix, A)
         end
     else
-        a = convert(Matrix, A)
+        return convert(Matrix, A)
     end
-
-    return a
 end
 
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
