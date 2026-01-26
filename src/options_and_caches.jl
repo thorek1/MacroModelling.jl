@@ -1238,22 +1238,22 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     return selector
 end
 
-function ensure_model_structure_cache!(𝓂)
-    constants = 𝓂.constants
+function ensure_model_structure_cache!(constants::constants, calibration_parameters::Vector{Symbol})
+    T = constants.post_model_macro
     if isempty(constants.post_complete_parameters.SS_and_pars_names)
         SS_and_pars_names = vcat(
-            Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))),
+            Symbol.(replace.(string.(sort(union(T.var, T.exo_past, T.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
-            𝓂.equations.calibration_parameters,
+            calibration_parameters,
         )
 
-        all_variables = Symbol.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.aux, 𝓂.constants.post_model_macro.exo_present)))
+        all_variables = Symbol.(sort(union(T.var, T.aux, T.exo_present)))
 
-        NSSS_labels = Symbol.(vcat(sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var)), 𝓂.equations.calibration_parameters))
+        NSSS_labels = Symbol.(vcat(sort(union(T.exo_present, T.var)), calibration_parameters))
 
-        aux_indices = Int.(indexin(𝓂.constants.post_model_macro.aux, all_variables))
+        aux_indices = Int.(indexin(T.aux, all_variables))
         processed_all_variables = copy(all_variables)
-        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.aux)
+        processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.aux)
 
         full_NSSS = copy(processed_all_variables)
         if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -1265,17 +1265,17 @@ function ensure_model_structure_cache!(𝓂)
 
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 
-        vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations_no_aux
-        vars_in_ss_equations_with_aux = 𝓂.constants.post_model_macro.vars_in_ss_equations
-        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.equations.calibration_parameters)
-        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.equations.calibration_parameters))
+        vars_in_ss_equations = T.vars_in_ss_equations_no_aux
+        vars_in_ss_equations_with_aux = T.vars_in_ss_equations
+        extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
+        custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))
 
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)))), 𝓂.equations.calibration_parameters)
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.equations.calibration_parameters)
+        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(T.var, T.exo_past, T.exo_future)))), calibration_parameters)
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(T.var, T.exo_past, T.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), calibration_parameters)
         SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
 
-        vars_non_obc = 𝓂.constants.post_model_macro.var[.!contains.(string.(𝓂.constants.post_model_macro.var), "ᵒᵇᶜ")]
-        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.constants.post_model_macro.aux, 𝓂.constants.post_model_macro.exo_present)), all_variables))
+        vars_non_obc = T.var[.!contains.(string.(T.var), "ᵒᵇᶜ")]
+        vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(T.aux, T.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
         constants.post_complete_parameters = update_post_complete_parameters(
@@ -1300,6 +1300,8 @@ function ensure_model_structure_cache!(𝓂)
 
     return constants.post_complete_parameters
 end
+
+ensure_model_structure_cache!(𝓂) = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
 
 function compute_e4(nᵉ::Int)
     if nᵉ == 0
@@ -1329,11 +1331,10 @@ function compute_e6(nᵉ::Int)
     return sextup * E_e6
 end
 
-function ensure_moments_cache!(𝓂)
-    constants = 𝓂.constants
-    so = ensure_computational_constants_cache!(𝓂)
+function ensure_moments_cache!(constants::constants)
+    so = ensure_computational_constants_cache!(constants)
     to = constants.third_order
-    # Use timings from constants if available, otherwise from model
+    # Use timings from constants
     T = constants.post_model_macro
     nᵉ = T.nExo
     
@@ -1377,6 +1378,8 @@ function ensure_moments_cache!(𝓂)
     end
     return so
 end
+
+ensure_moments_cache!(𝓂) = ensure_moments_cache!(𝓂.constants)
 
 function ensure_moments_substate_indices!(𝓂, nˢ::Int)
     constants = 𝓂.constants

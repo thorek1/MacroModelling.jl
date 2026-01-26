@@ -2848,8 +2848,8 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
 end
 
 
-function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
-    @assert size(data,1) <= 𝓂.constants.post_model_macro.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+function get_and_check_observables(T::post_model_macro, data::KeyedArray{Float64})::Vector{Symbol}
+    @assert size(data,1) <= T.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))
 
@@ -2857,12 +2857,14 @@ function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector
 
     observables_symbols = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
-    @assert length(setdiff(observables_symbols, 𝓂.constants.post_model_macro.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.constants.post_model_macro.var))
+    @assert length(setdiff(observables_symbols, T.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols, T.var))
 
     sort!(observables_symbols)
     
     return observables_symbols
 end
+
+get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64}) = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
 function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
     n = length(x)
@@ -3786,10 +3788,14 @@ function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Ve
 end
 
 
-function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
-    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂)
+function expand_steady_state(SS_and_pars::Vector{M}, ms::post_complete_parameters) where M
     X = ms.steady_state_expand_matrix
     return X * SS_and_pars
+end
+
+function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
+    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂)
+    return expand_steady_state(SS_and_pars, ms)
 end
 
 
