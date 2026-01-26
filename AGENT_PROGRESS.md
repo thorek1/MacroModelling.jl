@@ -1,6 +1,62 @@
 # Agent Progress Log
 
-## Current Session (2026-01-26) - Added Inversion Filter Workspace Caching
+## Current Session (2026-01-26) - Added Kalman Filter Workspace Caching
+
+### Summary
+
+Added `kalman_workspace` struct to cache iteration buffers used in the Kalman filter. The buffers depend on observation and state dimensions and are now lazily allocated once per model rather than every call.
+
+### Changes Made This Session
+
+1. **Added `kalman_workspace` struct in structures.jl:**
+   - `n_obs::Int, n_states::Int` - dimension tracking for reallocation checks
+   - State and observation vectors:
+     - `u::Vector{T}` - n_states (state estimate)
+     - `z::Vector{T}` - n_obs (predicted observation)
+     - `ztmp::Vector{T}` - n_obs (temp for observation)
+     - `utmp::Vector{T}` - n_states (temp for state)
+   - Matrix buffers:
+     - `Ctmp::Matrix{T}` - (n_obs, n_states) for C*P
+     - `F::Matrix{T}` - (n_obs, n_obs) innovation covariance
+     - `K::Matrix{T}` - (n_states, n_obs) Kalman gain
+     - `tmp::Matrix{T}` - (n_states, n_states) temp for P
+     - `Ptmp::Matrix{T}` - (n_states, n_states) temp for P
+
+2. **Updated `workspaces` struct in structures.jl:**
+   - Added `kalman::kalman_workspace{Float64}` field
+
+3. **Added functions in options_and_caches.jl:**
+   - `Kalman_workspace(;T::Type = Float64)` - constructor with 0-dimensional lazy init
+   - `ensure_kalman_buffers!(ws, n_obs, n_states)` - lazy allocation with dimension check
+   - `ensure_kalman_workspace!(𝓂)` - helper to get workspace from model
+   - Updated `Workspaces()` to include `Kalman_workspace(T = T)`
+
+4. **Updated kalman.jl:**
+   - Updated `calculate_loglikelihood(::Val{:kalman}, ...)` to accept `kalman_ws` parameter
+   - Updated all `calculate_kalman_filter_loglikelihood` signatures to accept workspace
+   - Updated `run_kalman_iterations` (Float64 version) to use workspace buffers:
+     - Added `@ignore_derivatives ensure_kalman_buffers!(ws, n_obs, n_states)` call
+     - Replaced local allocations with workspace buffer references
+   - Updated `run_kalman_iterations` (Dual version) for API consistency (doesn't use workspace)
+   - Updated `rrule` function signature with NoTangent() for workspace parameter
+
+5. **Updated inversion.jl:**
+   - Added `kalman_ws::kalman_workspace` parameter for API consistency (unused)
+
+6. **Updated get_functions.jl:**
+   - Get kalman workspace before calling calculate_loglikelihood
+   - Pass workspace through to filter functions
+
+### Tests Verified
+
+- ✅ FS2000 model: Kalman filter log-likelihood: 213.67622662861726
+- ✅ FS2000 model: Workspace reuse (multiple calls return same result)
+- ✅ FS2000 model: Different data sizes handled correctly
+- ✅ FS2000 model: Inversion filter still works (first_order)
+
+---
+
+## Previous Session (2026-01-26) - Added Inversion Filter Workspace Caching
 
 ### Summary
 
