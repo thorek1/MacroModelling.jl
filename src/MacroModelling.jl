@@ -10340,13 +10340,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # For pullback computation, we need the caches
     if isnothing(caches_for_pullback)
         # If no caches provided, we cannot compute the pullback
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     SS_and_pars_names = ms.SS_and_pars_names
@@ -10391,7 +10391,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
@@ -10405,7 +10405,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     end
 
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1]
     end
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
@@ -10423,10 +10423,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
                                opts = opts, cold_start = cold_start, model = 𝓂, caches_for_pullback = 𝓂.caches)
     
     # Wrap the pullback to match the expected signature for model-based version
+    # Model-based version has 2 positional args: model, parameter_values
+    # So pullback returns: (NoTangent for function, NoTangent for model, gradient for parameter_values)
     function model_pullback(∂SS_and_pars)
         component_pullback = pullback(∂SS_and_pars)
-        # Return: NoTangent for function, NoTangent for model, gradient for parameter_values, NoTangent for opts
-        return NoTangent(), NoTangent(), component_pullback[6], NoTangent()
+        # component_pullback[6] is the gradient for parameter_values from the component-based version
+        return NoTangent(), NoTangent(), component_pullback[6]
     end
     
     return result, model_pullback
