@@ -10125,18 +10125,19 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     return state_update, pruning
 end
 
-function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
-    buffer = 𝓂.workspaces.custom_steady_state_buffer
+function get_custom_steady_state_buffer!(ws::workspaces, expected_length::Int)
+    buffer = ws.custom_steady_state_buffer
 
     if length(buffer) != expected_length
         buffer = Vector{Float64}(undef, expected_length)
-        𝓂.workspaces.custom_steady_state_buffer = buffer
+        ws.custom_steady_state_buffer = buffer
     end
 
     return buffer
 end
 
-function evaluate_custom_steady_state_function(𝓂::ℳ,
+function evaluate_custom_steady_state_function(NSSS_custom::Function,
+                                                ws::workspaces,
                                                 parameter_values::AbstractVector{S},
                                                 expected_length::Int,
                                                 expected_parameter_length::Int) where {S <: Real}
@@ -10145,20 +10146,20 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     end
 
     result = nothing
-    has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
+    has_inplace = hasmethod(NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
-        output = get_custom_steady_state_buffer!(𝓂, expected_length)
+        output = get_custom_steady_state_buffer!(ws, expected_length)
 
         try 
-            𝓂.functions.NSSS_custom(output, parameter_values)
+            NSSS_custom(output, parameter_values)
         catch
         end
         
         result = output
-    elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
+    elseif applicable(NSSS_custom, parameter_values)
         result = try
-            𝓂.functions.NSSS_custom(parameter_values)
+            NSSS_custom(parameter_values)
         catch
             fill(NaN, expected_length)
         end
@@ -10210,152 +10211,192 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
-function get_NSSS_and_parameters(𝓂::ℳ, 
+"""
+    get_NSSS_and_parameters(functions, workspaces, constants, equations, parameter_values; ...)
+
+Core function for computing the non-stochastic steady state (NSSS) and parameters.
+
+This version accepts individual components (functions, workspaces, constants, equations) 
+instead of the main model struct, allowing for more flexible usage patterns.
+
+# Arguments
+- `functions::model_functions`: Model functions including NSSS_solve, NSSS_check, NSSS_custom
+- `workspaces::workspaces`: Pre-allocated workspace buffers
+- `constants::constants`: Model structure constants
+- `equations::equations`: Model equations
+- `parameter_values::Vector{S}`: Vector of parameter values
+
+# Keyword Arguments
+- `opts::CalculationOptions`: Calculation options (default: `merge_calculation_options()`)
+- `cold_start::Bool`: Whether to use cold start for solver (default: `false`)
+- `model`: Optional model struct required when NSSS_custom is not available (the generated NSSS_solve function requires it)
+
+# Returns
+- `Tuple{Vector{S}, Tuple{S, Int}}`: (SS_and_pars, (solution_error, iterations))
+"""
+function get_NSSS_and_parameters(functions::model_functions,
+                                    workspaces::workspaces,
+                                    constants::constants,
+                                    equations::equations,
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
-                                    cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
-                                    # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+                                    cold_start::Bool = false,
+                                    model = nothing)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+    ms = ensure_model_structure_cache!(constants, equations.calibration_parameters)
     
     # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.functions.NSSS_custom isa Function
+    if functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
-        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
+        expected_length = length(vars_in_ss_equations) + length(equations.calibration_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
+            functions.NSSS_custom,
+            workspaces,
             parameter_values,
             expected_length,
-            length(𝓂.constants.post_complete_parameters.parameters),
+            length(constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = zeros(length(equations.steady_state) + length(equations.calibration))
         
-        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
+        functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        # NSSS_solve is a generated function that requires the full model struct
+        if isnothing(model)
+            throw(ArgumentError("Component-based get_NSSS_and_parameters requires either a custom steady state function (NSSS_custom) " *
+                               "or the model parameter to be provided for the default solver."))
+        end
+        SS_and_pars, (solution_error, iters) = functions.NSSS_solve(parameter_values, model, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose 
             println("Failed to find NSSS") 
         end
-
-        # return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    # end # timeit_debug
     return SS_and_pars, (solution_error, iters)
+end
+
+# Convenience method that extracts components from the model struct
+function get_NSSS_and_parameters(𝓂::ℳ, 
+                                    parameter_values::Vector{S}; 
+                                    opts::CalculationOptions = merge_calculation_options(),
+                                    cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+    get_NSSS_and_parameters(𝓂.functions, 𝓂.workspaces, 𝓂.constants, 𝓂.equations, parameter_values; 
+                            opts = opts, cold_start = cold_start, model = 𝓂)
 end
 
 end # dispatch_doctor
 
 function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂::ℳ, 
+                functions::model_functions,
+                workspaces::workspaces,
+                constants::constants,
+                equations::equations,
                 parameter_values::Vector{S}; 
                 opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
-                # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS - forward" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+                cold_start::Bool = false,
+                model = nothing,
+                caches_for_pullback::Union{Nothing, caches} = nothing) where S <: Real
+    ms = ensure_model_structure_cache!(constants, equations.calibration_parameters)
 
     # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.functions.NSSS_custom isa Function
+    if functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
-        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
+        expected_length = length(vars_in_ss_equations) + length(equations.calibration_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
+            functions.NSSS_custom,
+            workspaces,
             parameter_values,
             expected_length,
-            length(𝓂.constants.post_complete_parameters.parameters),
+            length(constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = zeros(length(equations.steady_state) + length(equations.calibration))
         
-        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
+        functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        if isnothing(model)
+            throw(ArgumentError("Component-based get_NSSS_and_parameters requires either a custom steady state function (NSSS_custom) " *
+                               "or the model parameter to be provided for the default solver."))
+        end
+        SS_and_pars, (solution_error, iters) = functions.NSSS_solve(parameter_values, model, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
-
-    # end # timeit_debug
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    # @timeit_debug timer "Calculate NSSS - pullback" begin
+    # For pullback computation, we need the caches
+    if isnothing(caches_for_pullback)
+        # If no caches provided, we cannot compute the pullback
+        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
 
     SS_and_pars_names = ms.SS_and_pars_names
     SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
+    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(equations.steady_state_aux)),union(constants.post_model_macro.parameters_in_equations,constants.post_model_macro.➕_vars))))), equations.calibration_parameters))
 
     ∂ = parameter_values
-    C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
+    C = SS_and_pars[ms.SS_and_pars_no_exo_idx]
 
-    if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-        if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
+    if eltype(caches_for_pullback.∂equations_∂parameters) != eltype(parameter_values)
+        if caches_for_pullback.∂equations_∂parameters isa SparseMatrixCSC
+            jac_buffer = similar(caches_for_pullback.∂equations_∂parameters, eltype(parameter_values))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
+            jac_buffer = zeros(eltype(parameter_values), size(caches_for_pullback.∂equations_∂parameters))
         end
     else
-        jac_buffer = 𝓂.caches.∂equations_∂parameters
+        jac_buffer = caches_for_pullback.∂equations_∂parameters
     end
 
-    𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
+    functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
 
     ∂SS_equations_∂parameters = jac_buffer
 
     
-    if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
-        if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
+    if eltype(caches_for_pullback.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
+        if caches_for_pullback.∂equations_∂SS_and_pars isa SparseMatrixCSC
+            jac_buffer = similar(caches_for_pullback.∂equations_∂SS_and_pars, eltype(SS_and_pars))
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
+            jac_buffer = zeros(eltype(SS_and_pars), size(caches_for_pullback.∂equations_∂SS_and_pars))
         end
     else
-        jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
+        jac_buffer = caches_for_pullback.∂equations_∂SS_and_pars
     end
 
-    𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
+    functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
 
     ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
 
-    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
+    jvp = zeros(length(SS_and_pars_names_lead_lag), length(constants.post_complete_parameters.parameters))
     
     for (i,v) in enumerate(SS_and_pars_names)
         if v in unknowns
@@ -10363,55 +10404,76 @@ function rrule(::typeof(get_NSSS_and_parameters),
         end
     end
 
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
-        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
-
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
 
+# Convenience rrule for model-based version
+function rrule(::typeof(get_NSSS_and_parameters), 
+                𝓂::ℳ, 
+                parameter_values::Vector{S}; 
+                opts::CalculationOptions = merge_calculation_options(),
+                cold_start::Bool = false) where S <: Real
+    # Call component-based rrule
+    (result, pullback) = rrule(get_NSSS_and_parameters, 
+                               𝓂.functions, 𝓂.workspaces, 𝓂.constants, 𝓂.equations, parameter_values;
+                               opts = opts, cold_start = cold_start, model = 𝓂, caches_for_pullback = 𝓂.caches)
+    
+    # Wrap the pullback to match the expected signature for model-based version
+    function model_pullback(∂SS_and_pars)
+        component_pullback = pullback(∂SS_and_pars)
+        # Return: NoTangent for function, NoTangent for model, gradient for parameter_values, NoTangent for opts
+        return NoTangent(), NoTangent(), component_pullback[6], NoTangent()
+    end
+    
+    return result, model_pullback
+end
+
 @stable default_mode = "disable" begin
 
-function get_NSSS_and_parameters(𝓂::ℳ, 
+function get_NSSS_and_parameters(functions::model_functions,
+                                workspaces::workspaces,
+                                constants::constants,
+                                equations::equations,
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
-                                # timer::TimerOutput = TimerOutput(),
+                                cold_start::Bool = false,
+                                model = nothing,
+                                caches_for_derivatives::Union{Nothing, caches} = nothing)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
     parameter_values = ℱ.value.(parameter_values_dual)
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_cache!(constants, equations.calibration_parameters)
 
-    if 𝓂.functions.NSSS_custom isa Function
+    if functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
-        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
+        expected_length = length(vars_in_ss_equations) + length(equations.calibration_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
+            functions.NSSS_custom,
+            workspaces,
             parameter_values,
             expected_length,
-            length(𝓂.constants.post_complete_parameters.parameters),
+            length(constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = zeros(length(equations.steady_state) + length(equations.calibration))
         
-        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
+        functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        if isnothing(model)
+            throw(ArgumentError("Component-based get_NSSS_and_parameters requires either a custom steady state function (NSSS_custom) " *
+                               "or the model parameter to be provided for the default solver."))
+        end
+        SS_and_pars, (solution_error, iters) = functions.NSSS_solve(parameter_values, model, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
     
     ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
@@ -10420,45 +10482,44 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         if opts.verbose println("Failed to find NSSS") end
 
         solution_error = S(10.0)
-    else
+    elseif !isnothing(caches_for_derivatives)
         SS_and_pars_names = ms.SS_and_pars_names
         SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
-        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
+        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(equations.steady_state_aux)),union(constants.post_model_macro.parameters_in_equations,constants.post_model_macro.➕_vars))))), equations.calibration_parameters))
         
 
         ∂ = parameter_values
-        C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
+        C = SS_and_pars[ms.SS_and_pars_no_exo_idx]
 
-        if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
+        if eltype(caches_for_derivatives.∂equations_∂parameters) != eltype(parameter_values)
+            if caches_for_derivatives.∂equations_∂parameters isa SparseMatrixCSC
+                jac_buffer = similar(caches_for_derivatives.∂equations_∂parameters, eltype(parameter_values))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
+                jac_buffer = zeros(eltype(parameter_values), size(caches_for_derivatives.∂equations_∂parameters))
             end
         else
-            jac_buffer = 𝓂.caches.∂equations_∂parameters
+            jac_buffer = caches_for_derivatives.∂equations_∂parameters
         end
 
-        𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
+        functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
 
         ∂SS_equations_∂parameters = jac_buffer
 
         
-        if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
+        if eltype(caches_for_derivatives.∂equations_∂SS_and_pars) != eltype(parameter_values)
+            if caches_for_derivatives.∂equations_∂SS_and_pars isa SparseMatrixCSC
+                jac_buffer = similar(caches_for_derivatives.∂equations_∂SS_and_pars, eltype(SS_and_pars))
                 jac_buffer.nzval .= 0
             else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
+                jac_buffer = zeros(eltype(SS_and_pars), size(caches_for_derivatives.∂equations_∂SS_and_pars))
             end
         else
-            jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
+            jac_buffer = caches_for_derivatives.∂equations_∂SS_and_pars
         end
 
-        𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
+        functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 
@@ -10469,9 +10530,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             
             solution_error = S(10.0)
         else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
 
-            jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
+            jvp = zeros(length(SS_and_pars_names_lead_lag), length(constants.post_complete_parameters.parameters))
             
             for (i,v) in enumerate(SS_and_pars_names)
                 if v in unknowns
@@ -10490,6 +10551,15 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(SS_and_pars)), (solution_error, iters)
+end
+
+# Convenience method for model-based ForwardDiff version
+function get_NSSS_and_parameters(𝓂::ℳ, 
+                                parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
+                                opts::CalculationOptions = merge_calculation_options(),
+                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+    get_NSSS_and_parameters(𝓂.functions, 𝓂.workspaces, 𝓂.constants, 𝓂.equations, parameter_values_dual;
+                            opts = opts, cold_start = cold_start, model = 𝓂, caches_for_derivatives = 𝓂.caches)
 end
 
 
