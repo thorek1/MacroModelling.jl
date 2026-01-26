@@ -14,24 +14,26 @@ const SUITE = BenchmarkGroup()
 # SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
 import LinearAlgebra as ℒ
 using MacroModelling
-import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ, lyapunov_workspace, ensure_lyapunov_workspace!, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ
 
-# Backward compatible wrapper for solve_lyapunov_equation (creates workspace on the fly)
-function solve_lyapunov_equation_compat(A::AbstractMatrix{T}, C::AbstractMatrix{T}; lyapunov_algorithm::Symbol = :doubling) where T
-    n = size(A, 1)
-    ws = lyapunov_workspace(n)
-    return solve_lyapunov_equation(A, C, ws; lyapunov_algorithm = lyapunov_algorithm)
+# Check if new workspace API is available (not present in old package versions)
+const HAS_WORKSPACE_API = isdefined(MacroModelling, :Lyapunov_workspace)
+
+# Conditionally import workspace types only if they exist
+if HAS_WORKSPACE_API
+    import MacroModelling: Lyapunov_workspace, lyapunov_workspace, ensure_lyapunov_workspace!, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
 end
 
 # Version-aware wrapper for solve_lyapunov_equation benchmarking
-function solve_lyapunov_for_bench(A, C, 𝓂::ℳ; lyapunov_algorithm::Symbol = :doubling)
-    if hasproperty(𝓂, :timings)
+# For new API: uses pre-allocated workspace for true benchmark of workspace reuse
+# For old API: calls without workspace argument
+function solve_lyapunov_for_bench(A, C, lyap_ws; lyapunov_algorithm::Symbol = :doubling)
+    if HAS_WORKSPACE_API
+        # New API - reuse pre-allocated workspace (shows benefit of workspace caching)
+        return solve_lyapunov_equation(A, C, lyap_ws; lyapunov_algorithm = lyapunov_algorithm)
+    else
         # Old API - no workspace argument
         return solve_lyapunov_equation(A, C; lyapunov_algorithm = lyapunov_algorithm)
-    else
-        # New API - with workspace argument
-        lyap_ws = lyapunov_workspace(size(A, 1))
-        return solve_lyapunov_equation(A, C, lyap_ws; lyapunov_algorithm = lyapunov_algorithm)
     end
 end
 
@@ -45,12 +47,12 @@ function timings_for_bench(𝓂::ℳ)
 end
 
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
-    if hasproperty(𝓂, :timings)
-        out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
-    else
+    if HAS_WORKSPACE_API
         qme_ws = ensure_qme_workspace!(𝓂)
         sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
         out = calculate_first_order_solution(∇₁, 𝓂.constants, qme_ws, sylv_ws; opts = opts)
+    else
+        out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
     end
     return out
 end
@@ -109,14 +111,19 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
 
     CC = C * C'
     
-    # Use version-aware wrapper for initial call
-    solve_lyapunov_for_bench(A, CC, 𝓂)
+    # Create workspace once before benchmarks (new API) or use nothing (old API)
+    # For new API: pre-allocated workspace shows benefit of workspace caching
+    # For old API: workspace is not used
+    lyap_ws = HAS_WORKSPACE_API ? Lyapunov_workspace(size(A, 1)) : nothing
+    
+    # Warm up call
+    solve_lyapunov_for_bench(A, CC, lyap_ws)
     
     SUITE[𝓂.model_name]["lyapunov"] = BenchmarkGroup()
-    SUITE[𝓂.model_name]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-    SUITE[𝓂.model_name]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $𝓂, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $lyap_ws, lyapunov_algorithm = :doubling)
+    SUITE[𝓂.model_name]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $lyap_ws, lyapunov_algorithm = :bartels_stewart)
+    SUITE[𝓂.model_name]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $lyap_ws, lyapunov_algorithm = :bicgstab)
+    SUITE[𝓂.model_name]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_for_bench($A, $CC, $lyap_ws, lyapunov_algorithm = :gmres)
     
     
     clear_solution_caches!(𝓂, :first_order)
