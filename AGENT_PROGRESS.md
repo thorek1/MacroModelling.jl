@@ -1,6 +1,83 @@
 # Agent Progress Log
 
-## Current Session (2026-01-26) - Added Workspace Caching to moments.jl
+## Current Session (2026-01-26) - Struct Naming and Documentation
+
+### Summary
+
+Renamed structs to better reflect their purpose and added comprehensive documentation explaining the model struct organization (constants vs workspaces vs caches).
+
+### Changes Made
+
+1. **Renamed structs for clarity:**
+   - `second_order_constants` → `second_order_indices` (these are mostly indices and auxiliary matrices)
+   - `third_order_constants` → `third_order_indices` (same reason)
+   - Constructor functions renamed: `Second_order_cache()` → `Second_order_indices()`, `Third_order_cache()` → `Third_order_indices()`
+
+2. **Added top-level documentation to structures.jl:**
+   - Overview of the four main categories: constants, workspaces, caches, functions
+   - Data flow diagram explaining how macros → constants → workspaces → caches
+
+3. **Added comprehensive docstrings:**
+   - `second_order_indices`: Documents all three categories of data (auxiliary matrices, index caches, moment caches)
+   - `third_order_indices`: Same structure with 3rd order specifics
+   - `constants`: Explains relationship to other structs
+   - `workspaces`: Purpose and field documentation
+   - `caches`: Cache invalidation and relationship to other structs
+   - `ℳ` (main model struct): Complete overview with usage example
+
+### PR Goals Alignment
+
+This PR now clearly implements:
+1. ✅ **Constants** (`𝓂.constants`): Model structure info that never changes after initialization
+2. ✅ **Workspaces** (`𝓂.workspaces`): Pre-allocated temporary buffers for avoiding allocations
+3. ✅ **Caches** (`𝓂.caches`): Stored results that can be reused (invalidated on param change)
+
+### Files Modified
+- `src/structures.jl`: Renamed structs, added documentation
+- `src/options_and_caches.jl`: Updated constructor function names
+
+### Tests
+- ✅ Package compiles successfully
+- ✅ All struct types accessible
+- ✅ Constructor functions work
+- ✅ End-to-end model test (RBC → get_irf, get_steady_state) passes
+
+---
+
+## Previous Session (2026-01-26) - Documentation Verification
+
+### Summary
+
+Verified that documentation and docstrings work correctly with the PR changes (struct refactoring and function signature simplifications).
+
+### Verification Steps
+
+1. **Searched for internal function references in docs:** 
+   - `get_and_check_observables`, `ensure_moments_cache!`, `ensure_model_structure_cache!`, `expand_steady_state` 
+   - Result: No references found in docs/
+
+2. **Verified docstring examples use public API:**
+   - `src/get_functions.jl` doctests use: `get_shock_decomposition`, `simulate`, `get_irf`, etc.
+   - `src/inspect.jl` doctests use: `get_equations`, `get_variables`, `get_shocks`, etc.
+   - None reference the changed internal functions
+
+3. **Tested key public API functions:**
+   - `@model` and `@parameters` macros ✅
+   - `get_shock_decomposition` ✅
+   - `get_irf` ✅  
+   - `get_steady_state` ✅
+   - `simulate` ✅
+
+### Conclusion
+
+The documentation and docstrings are **not affected** by the PR changes because:
+- All code examples use the high-level public API (`@model`, `@parameters`, `get_irf`, `simulate`, etc.)
+- The changed functions are internal implementation details not exposed in documentation
+- The public API signatures remain unchanged
+
+---
+
+## Previous Session (2026-01-26) - Added Workspace Caching to moments.jl
 
 ### Summary
 

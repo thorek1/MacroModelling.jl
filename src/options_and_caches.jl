@@ -1,34 +1,47 @@
 
-function Second_order_cache()
+"""
+    Second_order_indices()
+
+Create an empty `second_order_indices` struct with all fields initialized to empty/zero values.
+These will be lazily populated by various ensure_*_cache! functions as needed.
+
+See [`second_order_indices`](@ref) for field documentation.
+"""
+function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
-    return second_order_constants(
+    return second_order_indices(
+        # Auxiliary matrices (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        BitVector(),
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        BitVector(),
-        empty_sparse_float,
-        Float64[],
+        # Computational index caches (BitVectors)
+        BitVector(),         # s_in_s⁺
+        BitVector(),         # s_in_s
+        BitVector(),         # kron_s⁺_s⁺
+        BitVector(),         # kron_s⁺_s
+        BitVector(),         # e_in_s⁺
+        BitVector(),         # v_in_s⁺
+        BitVector(),         # kron_s_s
+        BitVector(),         # kron_e_e
+        BitVector(),         # kron_v_v
+        BitVector(),         # kron_s_e
+        BitVector(),         # kron_e_s
+        # Index arrays
+        Int[],               # shockvar_idxs
+        Int[],               # shock_idxs
+        Int[],               # shock_idxs2
+        Int[],               # shock²_idxs
+        Int[],               # var_vol²_idxs
+        # Conditional forecast indices
+        Int[],               # var²_idxs
+        Int[],               # shockvar²_idxs
+        # Moment computation caches
+        BitVector(),         # kron_states
+        empty_sparse_float,  # I_plus_s_s
+        Float64[],           # e4
         Float64[],           # vec_Iₑ
         empty_matrix_float,  # e4_nᵉ²_nᵉ²
         empty_matrix_float,  # e4_nᵉ_nᵉ³
@@ -36,37 +49,49 @@ function Second_order_cache()
     )
 end
 
-function Third_order_cache()
+"""
+    Third_order_indices()
+
+Create an empty `third_order_indices` struct with all fields initialized to empty/zero values.
+These will be lazily populated by various ensure_*_cache! functions as needed.
+
+See [`third_order_indices`](@ref) for field documentation.
+"""
+function Third_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
-    return third_order_constants(
-        empty_sparse_int,
-        empty_sparse_int,
-        Dict{Vector{Int}, Int}(),
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        empty_sparse_int,
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Int[],
-        Float64[],
-        BitVector(),
+    return third_order_indices(
+        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
+        empty_sparse_int,    # 𝐂₃
+        empty_sparse_int,    # 𝐔₃
+        Dict{Vector{Int}, Int}(),  # 𝐈₃
+        empty_sparse_int,    # 𝐂∇₃
+        empty_sparse_int,    # 𝐔∇₃
+        empty_sparse_int,    # 𝐏
+        empty_sparse_int,    # 𝐏₁ₗ
+        empty_sparse_int,    # 𝐏₁ᵣ
+        empty_sparse_int,    # 𝐏₁ₗ̂
+        empty_sparse_int,    # 𝐏₂ₗ̂
+        empty_sparse_int,    # 𝐏₁ₗ̄
+        empty_sparse_int,    # 𝐏₂ₗ̄
+        empty_sparse_int,    # 𝐏₁ᵣ̃
+        empty_sparse_int,    # 𝐏₂ᵣ̃
+        empty_sparse_int,    # 𝐒𝐏
+        # Conditional forecast index caches
+        Int[],               # var_vol³_idxs
+        Int[],               # shock_idxs2
+        Int[],               # shock_idxs3
+        Int[],               # shock³_idxs
+        Int[],               # shockvar1_idxs
+        Int[],               # shockvar2_idxs
+        Int[],               # shockvar3_idxs
+        Int[],               # shockvar³2_idxs
+        Int[],               # shockvar³_idxs
+        # Moment computation caches
+        Float64[],           # e6
+        BitVector(),         # kron_e_v
         empty_matrix_float,  # e6_nᵉ³_nᵉ³
+        # Substate index Dict caches
         Dict{Int, moments_substate_indices}(),
         Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_indices}(),
     )
@@ -627,8 +652,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1,
                 zeros(Bool, 0, 0),
                 zeros(Bool, 0, 0)),
-            Second_order_cache(),
-            Third_order_cache())
+            Second_order_indices(),
+            Third_order_indices())
 end
 
 function _axis_has_string(axis)
