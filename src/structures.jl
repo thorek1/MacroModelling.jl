@@ -372,6 +372,9 @@ mutable struct qme_workspace{T <: Real}
     
     # Residual computation buffer
     AXX::Matrix{T}
+    
+    # Sylvester workspace for ForwardDiff path
+    sylvester_ws::sylvester_workspace{T}
 end
 
 
@@ -657,6 +660,19 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G}
+    # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
+    # Second order pullback buffers
+    ∂∇₂::Matrix{F}
+    ∂∇₁::Matrix{F}
+    ∂𝐒₁::Matrix{F}
+    ∂spinv::Matrix{F}
+    ∂𝐒₁₋╱𝟏ₑ::Matrix{F}
+    ∂𝐒₁₊╱𝟎::Matrix{F}
+    ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋::Matrix{F}
+    # Third order pullback buffers (only dense matrices)
+    ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
+    ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
+    ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
 end
 
 mutable struct workspaces

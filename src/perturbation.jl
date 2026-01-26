@@ -615,17 +615,41 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # end # timeit_debug
 
+    # Ensure pullback workspace buffers are properly sized
+    if size(ℂ.∂∇₂) != size(∇₂)
+        ℂ.∂∇₂ = zeros(S, size(∇₂))
+    end
+    if size(ℂ.∂∇₁) != size(∇₁)
+        ℂ.∂∇₁ = zeros(S, size(∇₁))
+    end
+    if size(ℂ.∂𝐒₁) != size(𝐒₁)
+        ℂ.∂𝐒₁ = zeros(S, size(𝐒₁))
+    end
+    if size(ℂ.∂spinv) != size(∇₁₊𝐒₁➕∇₁₀)
+        ℂ.∂spinv = zeros(S, size(∇₁₊𝐒₁➕∇₁₀))
+    end
+    if size(ℂ.∂𝐒₁₋╱𝟏ₑ) != size(𝐒₁₋╱𝟏ₑ)
+        ℂ.∂𝐒₁₋╱𝟏ₑ = zeros(S, size(𝐒₁₋╱𝟏ₑ))
+    end
+    if size(ℂ.∂𝐒₁₊╱𝟎) != size(𝐒₁₊╱𝟎)
+        ℂ.∂𝐒₁₊╱𝟎 = zeros(S, size(𝐒₁₊╱𝟎))
+    end
+    if size(ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) != size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+    end
+
     function second_order_solution_pullback(∂𝐒₂_solved) 
         # @timeit_debug timer "Second order solution - pullback" begin
             
         # @timeit_debug timer "Preallocate" begin
-        ∂∇₂ = zeros(size(∇₂))
-        ∂∇₁ = zero(∇₁)
-        ∂𝐒₁ = zero(𝐒₁)
-        ∂spinv = zero(∇₁₊𝐒₁➕∇₁₀)
-        ∂𝐒₁₋╱𝟏ₑ = zeros(size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₁₊╱𝟎 = zeros(size(𝐒₁₊╱𝟎))
-        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zeros(size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        # Use workspace buffers and fill with zeros instead of allocating new arrays
+        ∂∇₂ = ℂ.∂∇₂; fill!(∂∇₂, zero(S))
+        ∂∇₁ = ℂ.∂∇₁; fill!(∂∇₁, zero(S))
+        ∂𝐒₁ = ℂ.∂𝐒₁; fill!(∂𝐒₁, zero(S))
+        ∂spinv = ℂ.∂spinv; fill!(∂spinv, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ = ℂ.∂𝐒₁₋╱𝟏ₑ; fill!(∂𝐒₁₋╱𝟏ₑ, zero(S))
+        ∂𝐒₁₊╱𝟎 = ℂ.∂𝐒₁₊╱𝟎; fill!(∂𝐒₁₊╱𝟎, zero(S))
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋; fill!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, zero(S))
 
         # end # timeit_debug
 
@@ -1314,28 +1338,40 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     
+    # Ensure pullback workspace buffers are properly sized (for dense matrices only)
+    if size(ℂ.∂∇₁_3rd) != size(∇₁)
+        ℂ.∂∇₁_3rd = zeros(S, size(∇₁))
+    end
+    if size(ℂ.∂𝐒₁_3rd) != size(𝐒₁)
+        ℂ.∂𝐒₁_3rd = zeros(S, size(𝐒₁))
+    end
+    if size(ℂ.∂spinv_3rd) != size(spinv)
+        ℂ.∂spinv_3rd = zeros(S, size(spinv))
+    end
+
     function third_order_solution_pullback(∂𝐒₃_solved) 
-        ∂∇₁ = zero(∇₁)
-        ∂∇₂ = zero(∇₂)
+        # Use workspace buffers for dense matrices, zero() for sparse
+        ∂∇₁ = ℂ.∂∇₁_3rd; fill!(∂∇₁, zero(S))
+        ∂∇₂ = zero(∇₂)  # sparse
         # ∂𝐔∇₃ = zero(𝐔∇₃)
-        ∂∇₃ = zero(∇₃)
-        ∂𝐒₁ = zero(𝐒₁)
-        ∂𝐒₂ = zero(𝐒₂)
-        ∂spinv = zero(spinv)
-        ∂𝐒₁₋╱𝟏ₑ = zero(𝐒₁₋╱𝟏ₑ)
-        ∂kron𝐒₁₋╱𝟏ₑ = zero(kron𝐒₁₋╱𝟏ₑ)
-        ∂𝐒₁₊╱𝟎 = zero(𝐒₁₊╱𝟎)
-        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂tmpkron = zero(tmpkron)
-        ∂tmpkron22 = zero(ℂ.tmpkron22)
-        ∂kronaux = zero(kronaux)
+        ∂∇₃ = zero(∇₃)  # sparse
+        ∂𝐒₁ = ℂ.∂𝐒₁_3rd; fill!(∂𝐒₁, zero(S))
+        ∂𝐒₂ = zero(𝐒₂)  # sparse
+        ∂spinv = ℂ.∂spinv_3rd; fill!(∂spinv, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ = zero(𝐒₁₋╱𝟏ₑ)  # may be sparse
+        ∂kron𝐒₁₋╱𝟏ₑ = zero(kron𝐒₁₋╱𝟏ₑ)  # may be sparse
+        ∂𝐒₁₊╱𝟎 = zero(𝐒₁₊╱𝟎)  # may be sparse
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)  # may be sparse
+        ∂tmpkron = zero(tmpkron)  # sparse
+        ∂tmpkron22 = zero(ℂ.tmpkron22)  # sparse
+        ∂kronaux = zero(kronaux)  # kron product
         ∂aux = zero(aux)
-        ∂tmpkron0 = zero(ℂ.tmpkron0)
-        ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = zero(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-        ∂𝐒₂₊╱𝟎 = zero(𝐒₂₊╱𝟎)
-        ∂𝐒₂₊╱𝟎𝛔 = zero(𝐒₂₊╱𝟎𝛔)
-        ∂∇₁₊ = zero(∇₁₊)
-        ∂𝐒₂₋╱𝟎 = zero(𝐒₂₋╱𝟎)
+        ∂tmpkron0 = zero(ℂ.tmpkron0)  # sparse
+        ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = zero(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)  # may be sparse
+        ∂𝐒₂₊╱𝟎 = zero(𝐒₂₊╱𝟎)  # may be sparse
+        ∂𝐒₂₊╱𝟎𝛔 = zero(𝐒₂₊╱𝟎𝛔)  # may be sparse
+        ∂∇₁₊ = zero(∇₁₊)  # may be sparse
+        ∂𝐒₂₋╱𝟎 = zero(𝐒₂₋╱𝟎)  # may be sparse
 
         # @timeit_debug timer "Third order solution - pullback" begin
 

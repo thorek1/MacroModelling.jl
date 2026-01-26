@@ -156,7 +156,19 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         zeros(T,0,0),
-                        Sylvester_workspace(S = S))
+                        Sylvester_workspace(S = S),
+                        # Second order pullback gradient buffers (lazily allocated)
+                        zeros(T,0,0),  # ∂∇₂
+                        zeros(T,0,0),  # ∂∇₁
+                        zeros(T,0,0),  # ∂𝐒₁
+                        zeros(T,0,0),  # ∂spinv
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎
+                        zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+                        # Third order pullback gradient buffers (only dense matrices)
+                        zeros(T,0,0),  # ∂∇₁_3rd
+                        zeros(T,0,0),  # ∂𝐒₁_3rd
+                        zeros(T,0,0))  # ∂spinv_3rd
 end
 
 """
@@ -178,7 +190,8 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, n, n),  # temp2
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
-                    zeros(T, n, n))  # AXX
+                    zeros(T, n, n),  # AXX
+                    Sylvester_workspace(S = T))  # sylvester_ws
 end
 
 """

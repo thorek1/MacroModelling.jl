@@ -581,7 +581,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :doubling)
+        dX, slvd = solve_sylvester_equation(AA, -X, -CC, workspace.sylvester_ws, sylvester_algorithm = :doubling)
 
         solved = Bool(solved) && Bool(slvd)
 
