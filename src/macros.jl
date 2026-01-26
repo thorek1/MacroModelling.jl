@@ -85,18 +85,17 @@ macro model(𝓂,ex...)
     ss_calib_list = []
     par_calib_list = []
     
-    solved_vars = [] 
-    solved_vals = []
-    
-    # ss_solve_blocks = []
-    ss_solve_blocks_in_place = ss_solve_block[]
+    # NSSS struct fields
+    NSSS_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    SS_solve_func = x->x
-    # SS_calib_func = x->x
-    SS_check_func = x->x
-    ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
-    ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
-    SS_dependencies = nothing
+    NSSS_solve_func = x->x
+    NSSS_check_func = x->x
+    NSSS_custom_function = nothing
+    NSSS_∂equations_∂parameters = zeros(0,0)
+    NSSS_∂equations_∂parameters_func = x->x
+    NSSS_∂equations_∂SS_and_pars = zeros(0,0)
+    NSSS_∂equations_∂SS_and_pars_func = x->x
+    NSSS_dependencies = nothing
 
     original_equations = []
     calibration_equations = []
@@ -113,7 +112,7 @@ macro model(𝓂,ex...)
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
 
-    ss_eq_aux_ind = Int[]
+    ss_equations_with_aux_variables = Int[]
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
@@ -360,7 +359,7 @@ macro model(𝓂,ex...)
 
                                                 bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                                push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                                push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -408,7 +407,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -452,7 +451,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -496,7 +495,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -540,7 +539,7 @@ macro model(𝓂,ex...)
 
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
 
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
 
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
@@ -637,7 +636,7 @@ macro model(𝓂,ex...)
         # write down SS equations including nonnegativity auxiliary variables
         prs_ex = convert_to_ss_equation(eq)
         
-        if idx ∈ ss_eq_aux_ind
+        if idx ∈ ss_equations_with_aux_variables
             if precompile
                 ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
             else
@@ -667,7 +666,7 @@ macro model(𝓂,ex...)
     dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
 
     all_symbols = reduce(union,collect.(get_symbols.(dyn_equations)))
-    parameters_in_equations = sort(setdiff(all_symbols,match_pattern(all_symbols,r"₎$")))
+    parameters_in_equations = sort(collect(setdiff(all_symbols,match_pattern(all_symbols,r"₎$"))))
     
     dyn_var_future  =  sort(collect(reduce(union,dyn_var_future_list)))
     dyn_var_present =  sort(collect(reduce(union,dyn_var_present_list)))
@@ -693,7 +692,7 @@ macro model(𝓂,ex...)
     exo                       = sort(collect(reduce(union,dyn_exo_list)))
     var                       = sort(dyn_var_present)
     aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
+    aux                       = sort(aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)])
     exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
     exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
     exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
@@ -733,28 +732,57 @@ macro model(𝓂,ex...)
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
-    ℂ = Caches()
+    aux_future_tmp  = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_future))
+    aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_future_tmp)]
 
-    T = timings(present_only,
-                future_not_past,
-                past_not_future,
-                mixed,
+    aux_past_tmp    = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_past))
+    aux_past        = aux_past_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_past_tmp)]
+
+    aux_present_tmp = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
+    aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
+
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
+    vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
+
+    dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
+    dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
+    dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
+    dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
+
+    T = post_model_macro(
+                max_obc_horizon,
+                # present_only,
+                # future_not_past,
+                # past_not_future,
+                # mixed,
                 future_not_past_and_mixed,
                 past_not_future_and_mixed,
-                present_but_not_only,
-                mixed_in_past,
-                not_mixed_in_past,
-                mixed_in_future,
-                exo,
+                # present_but_not_only,
+                # mixed_in_past,
+                # not_mixed_in_past,
+                # mixed_in_future,
+
                 var,
-                aux,
+
+                parameters_in_equations,
+
+                exo,
+                exo_past,
                 exo_present,
+                exo_future,
+
+                aux,
+                aux_past,
+                aux_present,
+                aux_future,
+
+                ➕_vars,
 
                 nPresent_only,
                 nMixed,
                 nFuture_not_past_and_mixed,
                 nPast_not_future_and_mixed,
-                nPresent_but_not_only,
+                # nPresent_but_not_only,
                 nVars,
                 nExo,
 
@@ -768,25 +796,32 @@ macro model(𝓂,ex...)
                 past_not_future_idx,
 
                 reorder,
-                dynamic_order)
+                dynamic_order,
+                vars_in_ss_equations,
+                vars_in_ss_equations_no_aux,
 
+                dyn_var_future_list,
+                dyn_var_present_list,
+                dyn_var_past_list,
+                dyn_ss_list,
+                dyn_exo_list,
 
-    aux_future_tmp  = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_future))
-    aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_future_tmp)]
+                dyn_future_list,
+                dyn_present_list,
+                dyn_past_list,
 
-    aux_past_tmp    = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_past))
-    aux_past        = aux_past_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_past_tmp)]
+                var_list_aux_SS,
+                ss_list_aux_SS,
+                par_list_aux_SS,
+                var_future_list_aux_SS,
+                var_present_list_aux_SS,
+                var_past_list_aux_SS,
+                ss_equations_with_aux_variables)
 
-    aux_present_tmp = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
+    ℂ = Constants(T)
 
-    vars_in_ss_equations  = setdiff(reduce(union,get_symbols.(ss_aux_equations)),parameters_in_equations)
+    𝓦 = Workspaces()
 
-
-    dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
-    dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
-    dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
-    dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
     # write down original equations as written down in model block
     for (i,arg) in enumerate(model_ex.args)
@@ -828,91 +863,50 @@ macro model(𝓂,ex...)
         global $𝓂 =  ℳ(
                         $model_name,
                         # $default_optimizer,
-                        sort(collect($exo)), 
-                        sort(collect($parameters_in_equations)), 
-
-                        $parameters,
-                        $parameters,
+                        # sort(collect($parameters_in_equations)),
                         $parameter_values,
-                        
-                        Symbol[], # missing_parameters - to be filled by @parameters
-                        false, # precompile - to be set by @parameters
-                        true, # simplify - to be set by @parameters
 
-                        Dict{Symbol, Float64}(), # guess
+                        non_stochastic_steady_state(
+                            $NSSS_solve_blocks_in_place,
+                            $NSSS_dependencies
+                        ),
 
-                        sort($aux),
-                        sort(collect($aux_present)), 
-                        sort(collect($aux_future)), 
-                        sort(collect($aux_past)), 
+                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
-                        sort(collect($exo_future)), 
-                        sort(collect($exo_present)), 
-                        sort(collect($exo_past)), 
-
-                        sort(collect($vars_in_ss_equations)),
-                        sort($var), 
-                        
-                        $ss_calib_list,
-                        $par_calib_list,
-
-                        $ss_calib_list, #no_var_
-                        $par_calib_list, #no_var_
-
-                        $ss_aux_equations,
-                        $var_list_aux_SS,
-                        $ss_list_aux_SS,
-                        $par_list_aux_SS,
-                        $var_future_list_aux_SS,
-                        $var_present_list_aux_SS,
-                        $var_past_list_aux_SS,
-
-                        $dyn_var_future_list,
-                        $dyn_var_present_list,
-                        $dyn_var_past_list, 
-                        $dyn_ss_list,
-                        $dyn_exo_list,
-
-                        $dyn_future_list,
-                        $dyn_present_list,
-                        $dyn_past_list, 
-
-                        $solved_vars, 
-                        $solved_vals, 
-
-                        # $ss_solve_blocks,
-                        $ss_solve_blocks_in_place,
-                        $NSSS_solver_cache,
-                        $SS_solve_func,
-                        # $SS_calib_func,
-                        $SS_check_func,
-                        nothing, # custom_steady_state_function
-                        $∂SS_equations_∂parameters,
-                        $∂SS_equations_∂SS_and_pars,
-                        $SS_dependencies,
-
-                        $➕_vars,
-                        $ss_eq_aux_ind,
-                        $dyn_equations,
-                        $ss_equations,
-                        $original_equations, 
-
-                        $calibration_equations, #no_var_
-
-                        $calibration_equations, 
-                        $calibration_equations_parameters,
-
-                        $bounds,
-
-                        (zeros(0,0), x->x), # jacobian
-                        (zeros(0,0), x->x), # jacobian_parameters
-                        (zeros(0,0), x->x), # jacobian_SS_and_pars
-                        (zeros(0,0), x->x), # hessian
-                        (zeros(0,0), x->x), # hessian_parameters
-                        (zeros(0,0), x->x), # hessian_SS_and_pars
-                        (zeros(0,0), x->x), # third_order_derivatives
-                        (zeros(0,0), x->x), # third_order_derivatives_parameters
-                        (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                        caches(
+                            outdated_caches(
+                                true, # non_stochastic_steady_state
+                                true, # jacobian
+                                true, # hessian
+                                true, # third_order_derivatives
+                                true, # first_order_solution
+                                true, # second_order_solution
+                                true, # pruned_second_order_solution
+                                true, # third_order_solution
+                                true, # pruned_third_order_solution
+                            ),
+                            zeros(0,0), # jacobian
+                            zeros(0,0), # jacobian_parameters
+                            zeros(0,0), # jacobian_SS_and_pars
+                            zeros(0,0), # hessian
+                            zeros(0,0), # hessian_parameters
+                            zeros(0,0), # hessian_SS_and_pars
+                            zeros(0,0), # third_order_derivatives
+                            zeros(0,0), # third_order_derivatives_parameters
+                            zeros(0,0), # third_order_derivatives_SS_and_pars
+                            zeros(0,0), # first_order_solution_matrix
+                            zeros(0,0), # qme_solution
+                            Float64[],  # second_order_stochastic_steady_state
+                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # second_order_solution
+                            Float64[],  # pruned_second_order_stochastic_steady_state
+                            Float64[],  # third_order_stochastic_steady_state
+                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
+                            Float64[],  # pruned_third_order_stochastic_steady_state
+                            Float64[],  # non_stochastic_steady_state
+                            $NSSS_solver_cache,  # solver_cache
+                            $NSSS_∂equations_∂parameters,  # ∂equations_∂parameters
+                            $NSSS_∂equations_∂SS_and_pars,  # ∂equations_∂SS_and_pars
+                        ),
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         # ([], Int[], zeros(1,1)), # model_jacobian
@@ -924,67 +918,35 @@ macro model(𝓂,ex...)
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
 
-                        $T,
+                        # $T,
 
                         $ℂ,
+                        $𝓦,
 
-                        Expr[],
-                        # $obc_shock_bounds,
-                        $max_obc_horizon,
-                        x->x,
-                        # see here for tolerances: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/#function-value-and-parameter-tolerances
-                        [
-                            solver_parameters(1.0242323883590136, 0.58927243157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657, 
-                            1, 0.0, 2),
-
-                            solver_parameters(1.2472903868878749, 0.7149401846020106, 0.0034717544971213966, 0.0008409477479813854, 0.24599133854242075, 1.7996260724902138, 0.2399133704286251, 0.728108158144521, 0.03250298738504968, 0.003271716521926188, 0.5319194600339338, 2.1541622462034, 7.751722474870615, 0.08193253023289011, 1.52607969046303, 0.0002086811131899754, 0.005611466658864538, 0.018304952326087726, 0.0024888171138406773, 0.9061879299736817, 
-                            1, 0.0, 2),
-
-                            solver_parameters(1.9479518608134938, 0.02343520604394183, 5.125002799990568, 0.02387522857907376, 0.2239226474715968, 4.889172213411495, 1.747880258818237, 2.8683242331457, 0.938229356687311, 1.4890887655876235, 1.6261504814901664, 11.26863249187599, 36.05486169712279, 6.091535897587629, 11.73936761697657, 3.189349432626493, 0.21045178305336348, 0.17122196312330415, 13.251662547139363, 5.282429995876679, 
-                            1, 0.0, 2),
-
-                            solver_parameters(2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688, 
-                            1, 0.0, 2),
-
-                            solver_parameters(2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.897,
-                            1, 0.0, 2),
-
-                            solver_parameters(6.8658210317889115, 3.054280631509596, 9.239560890529688, 5.0330393159601705, 4.619974181880515, 2.130665389110862, 13.395678237998878, 8.95412704048986, 16.67031860308238, 4.1686309854116175, 7.193385978766233, 6.284359482297452, 1.6025436780830082, 4.080789181245917, 11.237586964445232, 0.9812514892088027, 10.182504561803604, 2.2723756926184744, 5.580529028552923, 4.761189900509761, 
-                            1, 0.0, 2),
-
-                            solver_parameters(0.29645150804713516, 0.15969019747689142, 0.2693496924553368, 0.0034970496426367293, 0.5008694464959978, 0.6699637884425756, 1.611285608601616, 0.6899397454094642, 0.029431947073776017, 0.3142583183135748, 0.42018256598233805, 0.06924215548968618, 0.7804883376691316, 0.06394988937558344, 0.15004023218157433, 1.1769307574775534, 1.262653860526411, 0.029216109042280492, 0.5838043687191993, -6.690519495126307, 
-                            1, 0.0, 2),
-
-                            solver_parameters(86.68744085399935, 44.356034936019704, 3.0248550511209418, 2.5434387875674105, 0.44177199922855287, 11.258039640546523, 59.1538457315958, 50.22390673260303, 45.699696761126376, 76.139237123852, 7.474593067106561, 95.69459863829196, 6.651922334973468, 18.01104269012316, 7.843038549255355, 42.350869207246724, 12.544216405091063, 64.54315767944557, 11.098496176990707, 0.7910630794135145, 
-                            1, 0.0, 2),
-
-                            solver_parameters(4.1784912636092235, 1.8166012668623566, 0.5168801279930487, 78.18194336881028, 2.139580134601701, 0.4617967010780055, 33.95219683424897, 17.315839925955242, 2.220446049250313e-16, 12.287343174930065, 2.220446049250313e-16, 6.185479065850274, 88.3014875814592, 36.31304631280673, 5.262437586106421, 2.220446049250313e-16, 2.220446049250313e-16, 6.347784900438273, 0.7130503478600859, 0.6594888633818169, 1, 0.0, 2),
-
-                            solver_parameters(75.41767502114854, 48.44868207231484, 66.70557675476336, 17.001461658038423, 2.715293366195093, 1.2745896783633328, 37.70721763849395, 50.739875243093444, 66.72525429469775, 54.137861579508154, 12.078847271504216, 19.723433260864525, 2.2648933923720476, 54.735557478829, 98.94783074858547, 17.863177309960086, 85.97559329517274, 64.79678330684743, 26.59975637589043, 24.72319192940016, 1, 0.0, 2)
-
-                        ],
-
-                        solution(
-                            perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, (x,y)->nothing),
-                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
-                                            zeros(0,0),                                 # 1st order sol
-                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
-                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
-                                            auxiliary_indices(Int[],Int[],Int[],Int[],Int[]),
-                                            second_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
-                            ),
-                            Float64[], 
-                            # Set([:first_order]),
-                            Set(all_available_algorithms),
-                            true,
-                            false
+                        model_functions(
+                            $NSSS_solve_func,
+                            $NSSS_check_func,
+                            $NSSS_custom_function,
+                            $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
+                            $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
+                            jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
+                            hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
+                            third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
+                            (x,y)->nothing, # first_order_state_update
+                            (x,y)->nothing, # first_order_state_update_obc
+                            (x,y)->nothing, # second_order_state_update
+                            (x,y)->nothing, # second_order_state_update_obc
+                            (x,y)->nothing, # pruned_second_order_state_update
+                            (x,y)->nothing, # pruned_second_order_state_update_obc
+                            (x,y)->nothing, # third_order_state_update
+                            (x,y)->nothing, # third_order_state_update_obc
+                            (x,y)->nothing, # pruned_third_order_state_update
+                            (x,y)->nothing, # pruned_third_order_state_update_obc
+                            x->x, # obc_violation
+                            false # functions_written
                         ),
 
-                        Dict{Vector{Symbol}, timings}() # estimation_helper
+                        # Dict{Vector{Symbol}, timings}() # estimation_helper
                     );
     end
 end
@@ -1477,14 +1439,14 @@ macro parameters(𝓂,ex...)
     return quote
         mod = @__MODULE__
 
-        if any(contains.(string.(mod.$𝓂.var), "ᵒᵇᶜ"))
+        if any(contains.(string.(mod.$𝓂.constants.post_model_macro.var), "ᵒᵇᶜ"))
             push!($calib_parameters, :activeᵒᵇᶜshocks)
             push!($calib_values, 0)
         end
 
-        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
+        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
+        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
         
         # Calculate missing parameters instead of asserting
         # Include parameters from:
@@ -1499,7 +1461,7 @@ macro parameters(𝓂,ex...)
         all_required_params = union(
             reduce(union, par_calib_list, init = Set{Symbol}()),
             reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
-            Set{Symbol}(mod.$𝓂.parameters_in_equations)
+            Set{Symbol}(mod.$𝓂.constants.post_model_macro.parameters_in_equations)
         )
         
         # Add parameters from parameter definitions, but only if the target parameter is needed
@@ -1522,46 +1484,11 @@ macro parameters(𝓂,ex...)
 
         missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
         missing_params = sort(missing_params_unsorted)
-        mod.$𝓂.missing_parameters = missing_params
         
         has_missing_parameters = length(missing_params) > 0
 
-        for (k,v) in $bounds
-            mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
-        end
-        
-        invalid_bounds = Symbol[]
-
-        for (k,v) in mod.$𝓂.bounds
-            if v[1] >= v[2]
-                push!(invalid_bounds, k)
-            end
-        end
-
-        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
-        
-        mod.$𝓂.ss_calib_list = ss_calib_list
-        mod.$𝓂.par_calib_list = par_calib_list
-    
-        mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
-        mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
-    
-        # Keep calib_parameters in declaration order, append missing_params at end
-        # This preserves declaration order for estimation and method of moments
-        all_params = vcat(calib_parameters, missing_params)
-        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
-
-        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
-
-        mod.$𝓂.parameters = all_params[defined_params_idx]
-        mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        mod.$𝓂.calibration_equations = calib_equations_list
-        mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
-        mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
-        mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
-        # mod.$𝓂.solution.outdated_NSSS = true
-        
-        if isa($guess, Dict{String, <:Real}) 
+        guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
+        if isa($guess, Dict{String, <:Real})
             guess_dict = Dict{Symbol, Float64}()
             for (key, value) in $guess
                 if key isa String
@@ -1573,18 +1500,61 @@ macro parameters(𝓂,ex...)
             guess_dict = $guess
         end
 
-        mod.$𝓂.guess = guess_dict
+        bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
+        for (k,v) in $bounds
+            bounds_dict[k] = haskey(bounds_dict, k) ? (max(bounds_dict[k][1], v[1]), min(bounds_dict[k][2], v[2])) : (v[1], v[2])
+        end
+        
+        invalid_bounds = Symbol[]
+
+        for (k,v) in bounds_dict
+            if v[1] >= v[2]
+                push!(invalid_bounds, k)
+            end
+        end
+
+        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+        
+        mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
+            calib_parameters_no_var,
+            $precompile,
+            $simplify,
+            guess_dict,
+            ss_calib_list,
+            par_calib_list,
+            # $ss_no_var_calib_list,
+            # $par_no_var_calib_list,
+            bounds_dict,
+        )
+
+        # Update equations struct with calibration fields
+        mod.$𝓂.equations.calibration = calib_equations_list
+        mod.$𝓂.equations.calibration_no_var = calib_equations_no_var_list
+        mod.$𝓂.equations.calibration_parameters = calib_eq_parameters
+    
+        # Keep calib_parameters in declaration order, append missing_params at end
+        # This preserves declaration order for estimation and method of moments
+        all_params = vcat(calib_parameters, missing_params)
+        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+
+        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+        mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            mod.$𝓂.constants.post_complete_parameters;
+            parameters = all_params[defined_params_idx],
+            missing_parameters = missing_params,
+        )
+        mod.$𝓂.parameter_values = all_values[defined_params_idx]
+        # mod.$𝓂.caches.outdated_NSSS = true
         
         # Store precompile and simplify flag in model container
-        mod.$𝓂.precompile = $precompile
-        mod.$𝓂.simplify = $simplify
         
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
         # end
 
-        mod.$𝓂.solution.functions_written = false
+        mod.$𝓂.functions.functions_written = false
 
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed
@@ -1603,7 +1573,7 @@ macro parameters(𝓂,ex...)
             
             write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
 
-            mod.$𝓂.solution.functions_written = true
+            mod.$𝓂.functions.functions_written = true
         end
 
         if has_missing_parameters && $report_missing_parameters
