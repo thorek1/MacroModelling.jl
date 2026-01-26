@@ -1,6 +1,108 @@
 # Agent Progress Log
 
-## Current Session (2026-01-26) - Added Kalman Filter Workspace Caching
+## Current Session (2026-01-26) - Added Workspace Caching to moments.jl
+
+### Summary
+
+Analyzed `moments.jl` for workspace caching opportunities and implemented caching for model-constant matrices. The key insight is that `nᵉ` (number of exogenous shocks) is model-constant, so expressions like `vec(ℒ.I(nᵉ))`, `reshape(e⁴, nᵉ², nᵉ²)`, and `reshape(e⁶, nᵉ³, nᵉ³)` can be computed once and cached.
+
+### Changes Made
+
+1. **Added cached fields to `second_order_constants` struct in structures.jl:**
+   - `vec_Iₑ::Vector{Float64}` - cached `vec(I(nExo))`
+   - `e4_nᵉ²_nᵉ²::Matrix{Float64}` - cached `reshape(e4, nᵉ², nᵉ²)`
+   - `e4_nᵉ_nᵉ³::Matrix{Float64}` - cached `reshape(e4, nᵉ, nᵉ³)`
+   - `e4_minus_vecIₑ_outer::Matrix{Float64}` - cached `e4_nᵉ²_nᵉ² - vec_Iₑ * vec_Iₑ'`
+
+2. **Added cached field to `third_order_constants` struct in structures.jl:**
+   - `e6_nᵉ³_nᵉ³::Matrix{Float64}` - cached `reshape(e6, nᵉ³, nᵉ³)`
+
+3. **Updated struct constructors in options_and_caches.jl:**
+   - `Second_order_cache()` - added 4 new empty matrix/vector fields
+   - `Third_order_cache()` - added 1 new empty matrix field
+
+4. **Updated `ensure_moments_cache!` in options_and_caches.jl to initialize new caches:**
+   - `so.vec_Iₑ = vec(collect(Float64, ℒ.I(nᵉ)))`
+   - `so.e4_nᵉ²_nᵉ² = reshape(so.e4, nᵉ^2, nᵉ^2)`
+   - `so.e4_nᵉ_nᵉ³ = reshape(so.e4, nᵉ, nᵉ^3)`
+   - `so.e4_minus_vecIₑ_outer = so.e4_nᵉ²_nᵉ² - so.vec_Iₑ * so.vec_Iₑ'`
+   - `to.e6_nᵉ³_nᵉ³ = reshape(to.e6, nᵉ^3, nᵉ^3)`
+
+5. **Updated functions in moments.jl to use cached values:**
+   - `calculate_mean` - uses `so.vec_Iₑ` instead of `vec(ℒ.I(T.nExo))`
+   - `calculate_second_order_moments` - uses `vec_Iₑ` for ŝv₂, yv₂, Δμˢ₂ calculations
+   - `calculate_second_order_moments_with_covariance` - uses `vec_Iₑ` and `so.e4_minus_vecIₑ_outer` for Γ₂ matrix
+   - `calculate_third_order_moments_with_autocorrelation` - added cached variable extraction at loop start
+
+### Tests Verified
+
+✅ Simple RBC model test passed:
+- Second order moments computation works
+- Covariance matrix computation works  
+- First order mean computation works
+- All cached constants initialized correctly:
+  - `vec_Iₑ size: 1`
+  - `e4_nᵉ²_nᵉ² size: (1, 1)`
+  - `e4_nᵉ_nᵉ³ size: (1, 1)`
+  - `e4_minus_vecIₑ_outer size: (1, 1)`
+  - `e6_nᵉ³_nᵉ³ size: (1, 1)`
+
+### Remaining Work
+
+The third-order moment functions (`calculate_third_order_moments`, `calculate_third_order_moments_with_autocorrelation`) still use the original `reshape(e⁴, ...)` and `reshape(e⁶, ...)` code in the Γ₃ and Eᴸᶻ matrix constructions. The cached variables are extracted at the top of the loop but not yet used in the matrix construction code. This is due to text matching issues with Unicode characters in the file. The code still works correctly - it just allocates fresh reshapes instead of using the cached versions.
+
+---
+
+## Previous Session (2026-01-26) - Analyzed perturbation.jl for Workspace Opportunities
+
+### Summary
+
+Analyzed `perturbation.jl` for workspace caching opportunities. Found that the file is **already well-optimized** with existing workspace infrastructure.
+
+### Analysis Findings
+
+1. **First Order Solution (`calculate_first_order_solution`):**
+   - Already uses `qme_workspace` for quadratic matrix equation solver
+   - Already uses `sylvester_workspace` for sylvester equation solver
+   - Already uses `idx_cache` (first_order_index_cache) for indices
+   - Uses in-place operations: `ℒ.mul!`, `ℒ.ldiv!`, `ℒ.rmul!`, `ℒ.lu!`, `ℒ.qr!`
+   - Intermediate matrices depend on parameter-varying inputs (can't be cached)
+
+2. **Second Order Solution (`calculate_second_order_solution`):**
+   - Already uses `higher_order_workspace` (`workspaces.second_order`)
+   - Uses `mat_mult_kron` for efficient Kronecker product multiplication
+   - Uses `sylvester_workspace` for sylvester equation
+   - Uses `choose_matrix_format` for adaptive sparse/dense selection
+
+3. **Third Order Solution (`calculate_third_order_solution`):**
+   - Already uses `higher_order_workspace` (`workspaces.third_order`)
+   - Caches Kronecker product buffers: `tmpkron0`, `tmpkron1`, `tmpkron11`, `tmpkron12`, `tmpkron2`, `tmpkron22`
+   - Caches sparse preallocation tuples: `tmp_sparse_prealloc1` through `tmp_sparse_prealloc6`
+   - Uses `compressed_kron³` with preallocated sparse storage
+
+4. **rrule Functions (gradient computation):**
+   - Compute transposed constant matrices: `𝛔t`, `𝐂₂t`, `𝐔₂t`, `𝐂₃t`, `𝐔₃t`, `𝐏t`, etc.
+   - These could theoretically be cached in constants struct
+   - **Decision:** Not implemented because:
+     - rrules only called during gradient computation (rare use case)
+     - Existing Kronecker product caching is more impactful
+     - Implementation complexity vs. benefit ratio unfavorable
+
+### Existing Workspace Infrastructure in perturbation.jl
+
+| Workspace | Purpose | Location |
+|-----------|---------|----------|
+| `qme_workspace` | Quadratic matrix equation solver buffers | 1st order |
+| `sylvester_workspace` | Sylvester equation solver buffers | 1st, 2nd, 3rd order |
+| `higher_order_workspace` | Kronecker products, sparse prealloc | 2nd, 3rd order |
+
+### Conclusion
+
+No changes needed - perturbation.jl workspace caching is already comprehensive.
+
+---
+
+## Previous Session (2026-01-26) - Added Kalman Filter Workspace Caching
 
 ### Summary
 

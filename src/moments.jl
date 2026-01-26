@@ -143,11 +143,12 @@ function calculate_mean(parameters::Vector{R},
 
                 pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
 
+                vec_Iₑ = so.vec_Iₑ
                 pruned_states_vol_and_shock_effect = [  zeros(R,n_sts) 
-                                                        vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(T.nExo))
-                                                        kron_shocks_to_states¹ * vec(ℒ.I(T.nExo))]
+                                                        vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec_Iₑ
+                                                        kron_shocks_to_states¹ * vec_Iₑ]
 
-                variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(T.nExo))) / 2
+                variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec_Iₑ) / 2
 
                 ## First-order moments, ie mean of variables
                 mean_of_pruned_states   = (ℒ.I(size(pruned_states_to_pruned_states, 1)) - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
@@ -244,15 +245,16 @@ function calculate_second_order_moments(parameters::Vector{R},
 
             ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
 
-            ŝv₂ = [ zeros(nˢ) 
-                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
-                    e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
+            vec_Iₑ = so.vec_Iₑ
+            ŝv₂ = [ zeros(nˢ) 
+                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec_Iₑ
+                    e_to_s₁_by_e_to_s₁ * vec_Iₑ]
 
-            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
+            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
-            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
+            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
+            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
             μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             slvd = solved && solved2
@@ -365,20 +367,21 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
             ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
 
-            ŝv₂ = [ zeros(nˢ) 
-                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
-                    e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
+            vec_Iₑ = so.vec_Iₑ
+            ŝv₂ = [ zeros(nˢ) 
+                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec_Iₑ
+                    e_to_s₁_by_e_to_s₁ * vec_Iₑ]
 
-            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
+            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
-            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
+            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
+            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             # Covariance
             Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
-                    zeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     zeros(nᵉ^2, nᵉ * nˢ)
+                    zeros(nᵉ^2, nᵉ)    so.e4_minus_vecIₑ_outer     zeros(nᵉ^2, nᵉ * nˢ)
                     zeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))]
 
             C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
@@ -515,6 +518,13 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     # precalc third order
     e⁶ = to.e6
+
+    # cached reshaped matrices and vec(I)
+    vec_Iₑ = so.vec_Iₑ
+    e4_nᵉ²_nᵉ² = so.e4_nᵉ²_nᵉ²
+    e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
+    e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
+    e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 

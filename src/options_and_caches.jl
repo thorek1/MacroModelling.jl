@@ -2,6 +2,7 @@
 function Second_order_cache()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
+    empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_constants(
         empty_sparse_int,
         empty_sparse_int,
@@ -28,11 +29,16 @@ function Second_order_cache()
         BitVector(),
         empty_sparse_float,
         Float64[],
+        Float64[],           # vec_Iₑ
+        empty_matrix_float,  # e4_nᵉ²_nᵉ²
+        empty_matrix_float,  # e4_nᵉ_nᵉ³
+        empty_matrix_float,  # e4_minus_vecIₑ_outer
     )
 end
 
 function Third_order_cache()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return third_order_constants(
         empty_sparse_int,
         empty_sparse_int,
@@ -60,6 +66,7 @@ function Third_order_cache()
         Int[],
         Float64[],
         BitVector(),
+        empty_matrix_float,  # e6_nᵉ³_nᵉ³
         Dict{Int, moments_substate_indices}(),
         Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_indices}(),
     )
@@ -1315,6 +1322,7 @@ function ensure_moments_cache!(𝓂)
     to = constants.third_order
     # Use timings from constants if available, otherwise from model
     T = constants.post_model_macro
+    nᵉ = T.nExo
     
     if isempty(so.kron_states)
         so.kron_states = ℒ.kron(so.s_in_s, so.s_in_s)
@@ -1327,13 +1335,32 @@ function ensure_moments_cache!(𝓂)
         so.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
     end
     if isempty(so.e4)
-        so.e4 = compute_e4(T.nExo)
+        so.e4 = compute_e4(nᵉ)
+    end
+    # Cache vec(I(nᵉ)) - used repeatedly in moments calculations
+    if isempty(so.vec_Iₑ)
+        so.vec_Iₑ = vec(collect(Float64, ℒ.I(nᵉ)))
+    end
+    # Cache reshaped e4 matrices - used repeatedly in moments calculations
+    if isempty(so.e4_nᵉ²_nᵉ²)
+        so.e4_nᵉ²_nᵉ² = reshape(so.e4, nᵉ^2, nᵉ^2)
+    end
+    if isempty(so.e4_nᵉ_nᵉ³)
+        so.e4_nᵉ_nᵉ³ = reshape(so.e4, nᵉ, nᵉ^3)
+    end
+    # Cache e4 minus outer product of vec(I) - used in Γ₂ and Γ₃ matrices
+    if isempty(so.e4_minus_vecIₑ_outer)
+        so.e4_minus_vecIₑ_outer = so.e4_nᵉ²_nᵉ² - so.vec_Iₑ * so.vec_Iₑ'
     end
     if isempty(to.e6)
-        to.e6 = compute_e6(T.nExo)
+        to.e6 = compute_e6(nᵉ)
     end
     if isempty(to.kron_e_v)
         to.kron_e_v = ℒ.kron(so.e_in_s⁺, so.v_in_s⁺)
+    end
+    # Cache reshaped e6 matrix - used in third order moments calculations
+    if isempty(to.e6_nᵉ³_nᵉ³)
+        to.e6_nᵉ³_nᵉ³ = reshape(to.e6, nᵉ^3, nᵉ^3)
     end
     return so
 end

@@ -241,6 +241,11 @@ mutable struct second_order_constants
     kron_states::BitVector
     I_plus_s_s::SparseMatrixCSC{Float64, Int}
     e4::Vector{Float64}
+    # Cached derived values from e4 and nExo (model-constant)
+    vec_Iₑ::Vector{Float64}              # vec(I(nExo))
+    e4_nᵉ²_nᵉ²::Matrix{Float64}          # reshape(e4, nᵉ², nᵉ²)
+    e4_nᵉ_nᵉ³::Matrix{Float64}           # reshape(e4, nᵉ, nᵉ³)
+    e4_minus_vecIₑ_outer::Matrix{Float64} # e4_nᵉ²_nᵉ² - vec_Iₑ * vec_Iₑ'
 end
 
 mutable struct third_order_constants
@@ -278,6 +283,8 @@ mutable struct third_order_constants
     # ← triggered by: calculate_third_order_moments* (moments.jl)
     e6::Vector{Float64}
     kron_e_v::BitVector
+    # Cached derived value from e6 and nExo (model-constant)
+    e6_nᵉ³_nᵉ³::Matrix{Float64}          # reshape(e6, nᵉ³, nᵉ³)
 
     # Dict caches filled by ensure_moments_substate_indices! and ensure_moments_dependency_kron_indices! (options_and_caches.jl)
     # ← triggered by: calculate_third_order_moments* (moments.jl)
