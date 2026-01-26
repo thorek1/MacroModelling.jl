@@ -3594,7 +3594,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     filter, _, algorithm, _, _, warmup_iterations = @ignore_derivatives normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
-    observables = @ignore_derivatives get_and_check_observables(𝓂, data)
+    observables = @ignore_derivatives get_and_check_observables(𝓂.constants.post_model_macro, data)
 
     @ignore_derivatives solve!(𝓂, 
                                 opts = opts,

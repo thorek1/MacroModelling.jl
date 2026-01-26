@@ -73,7 +73,7 @@ function calculate_mean(parameters::Vector{R},
 
         solved = solution_error < opts.tol.NSSS_acceptance_tol
     else
-        ensure_moments_cache!(𝓂)
+        ensure_moments_cache!(constants)
         so = constants.second_order
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
         
@@ -171,7 +171,7 @@ function calculate_second_order_moments(parameters::Vector{R},
     if solved
         # Initialize constants at entry point
         constants = initialise_constants!(𝓂)
-        ensure_moments_cache!(𝓂)
+        ensure_moments_cache!(constants)
         so = constants.second_order
         T = constants.post_model_macro
         nᵉ = T.nExo
@@ -294,7 +294,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     if solved
-        ensure_moments_cache!(𝓂)
+        ensure_moments_cache!(𝓂.constants)
         so = 𝓂.constants.second_order
         nᵉ = 𝓂.constants.post_model_macro.nExo
 
@@ -478,7 +478,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
 
-    ensure_moments_cache!(𝓂)
+    ensure_moments_cache!(𝓂.constants)
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
@@ -732,7 +732,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
 
-    ensure_moments_cache!(𝓂)
+    ensure_moments_cache!(𝓂.constants)
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 

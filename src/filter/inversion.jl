@@ -3574,7 +3574,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    observables = get_and_check_observables(𝓂, data_in_deviations)
+    observables = get_and_check_observables(T, data_in_deviations)
 
     cond_var_idx = indexin(observables, sort(union(T.aux,T.var,T.exo_present)))
 
@@ -3687,11 +3687,12 @@ function filter_data_with_model(𝓂::ℳ,
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     full_state = collect(sss) - all_SS
 
-    observables = get_and_check_observables(𝓂, data_in_deviations)
+    observables = get_and_check_observables(T, data_in_deviations)
 
     precision_factor = 1.0
 
@@ -3892,12 +3893,13 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
+    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
     decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
 
-    observables = get_and_check_observables(𝓂, data_in_deviations)
+    observables = get_and_check_observables(T, data_in_deviations)
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts)
 
@@ -3908,7 +3910,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     𝐒 = [𝐒₁, 𝐒₂]
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
      
@@ -4162,11 +4164,12 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
+    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
     
-    observables = get_and_check_observables(𝓂, data_in_deviations)
+    observables = get_and_check_observables(T, data_in_deviations)
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
@@ -4177,7 +4180,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
     
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
 
@@ -4474,12 +4477,13 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
+    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
     decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
     
-    observables = get_and_check_observables(𝓂, data_in_deviations)
+    observables = get_and_check_observables(T, data_in_deviations)
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer,
 
@@ -4490,9 +4494,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
+    state = [zeros(T.nVars), collect(sss) - all_SS, zeros(T.nVars)]
 
     precision_factor = 1.0
 

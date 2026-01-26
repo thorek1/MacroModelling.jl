@@ -1301,8 +1301,6 @@ function ensure_model_structure_cache!(constants::constants, calibration_paramet
     return constants.post_complete_parameters
 end
 
-ensure_model_structure_cache!(𝓂) = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
-
 function compute_e4(nᵉ::Int)
     if nᵉ == 0
         return Float64[]
@@ -1378,8 +1376,6 @@ function ensure_moments_cache!(constants::constants)
     end
     return so
 end
-
-ensure_moments_cache!(𝓂) = ensure_moments_cache!(𝓂.constants)
 
 function ensure_moments_substate_indices!(𝓂, nˢ::Int)
     constants = 𝓂.constants
