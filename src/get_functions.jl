@@ -3642,8 +3642,11 @@ function get_loglikelihood(𝓂::ℳ,
     # Ensure inversion workspace if using inversion filter
     third_order = algorithm in (:pruned_third_order, :third_order)
     inv_ws = @ignore_derivatives ensure_inversion_workspace!(𝓂; third_order = third_order)
+    
+    # Ensure kalman workspace for Kalman filter iterations
+    kalman_ws = @ignore_derivatives ensure_kalman_workspace!(𝓂)
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, lyap_ws, inv_ws) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, lyap_ws, inv_ws, kalman_ws) # timer = timer
 
     # end # timeit_debug
 

@@ -610,6 +610,31 @@ mutable struct inversion_workspace{T <: Real}
 end
 
 
+"""  
+Workspace for Kalman filter computations.
+Contains pre-allocated buffers for state estimates, covariances, and matrix operations.
+Buffers are lazily allocated and resized as needed via ensure_kalman_buffers!.
+"""
+mutable struct kalman_workspace{T <: Real}
+    # Dimensions (for reallocation checks)
+    n_obs::Int
+    n_states::Int
+    
+    # State and observation vectors
+    u::Vector{T}             # n_states - state estimate
+    z::Vector{T}             # n_obs - predicted observation
+    ztmp::Vector{T}          # n_obs - temp for observation
+    utmp::Vector{T}          # n_states - temp for state
+    
+    # Matrix buffers
+    Ctmp::Matrix{T}          # (n_obs, n_states) - C*P buffer
+    F::Matrix{T}             # (n_obs, n_obs) - innovation covariance
+    K::Matrix{T}             # (n_states, n_obs) - Kalman gain
+    tmp::Matrix{T}           # (n_states, n_states) - temp for P
+    Ptmp::Matrix{T}          # (n_states, n_states) - temp for P
+end
+
+
 mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
@@ -638,6 +663,7 @@ mutable struct workspaces
     sylvester_1st_order::sylvester_workspace{Float64}
     find_shocks::find_shocks_workspace{Float64}
     inversion::inversion_workspace{Float64}
+    kalman::kalman_workspace{Float64}
 end
 
 

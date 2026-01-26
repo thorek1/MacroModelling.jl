@@ -22,7 +22,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                 opts,
                                 on_failure_loglikelihood,
                                 lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace) #; 
+                                inv_ws::inversion_workspace,
+                                kalman_ws::kalman_workspace) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 

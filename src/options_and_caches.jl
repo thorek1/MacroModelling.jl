@@ -468,6 +468,76 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
 end
 
 
+"""
+    Kalman_workspace(;T::Type = Float64)
+
+Create a workspace for Kalman filter computations with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_buffers!.
+"""
+function Kalman_workspace(;T::Type = Float64)
+    kalman_workspace{T}(
+        0, 0,                   # n_obs, n_states dimensions
+        zeros(T, 0),            # u (n_states)
+        zeros(T, 0),            # z (n_obs)
+        zeros(T, 0),            # ztmp (n_obs)
+        zeros(T, 0),            # utmp (n_states)
+        zeros(T, 0, 0),         # Ctmp (n_obs × n_states)
+        zeros(T, 0, 0),         # F (n_obs × n_obs)
+        zeros(T, 0, 0),         # K (n_states × n_obs)
+        zeros(T, 0, 0),         # tmp (n_states × n_states)
+        zeros(T, 0, 0))         # Ptmp (n_states × n_states)
+end
+
+
+"""
+    ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+
+Ensure the Kalman workspace buffers are allocated for the given dimensions.
+"""
+function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+    # Check if dimensions changed
+    if ws.n_obs == n_obs && ws.n_states == n_states
+        return ws
+    end
+    
+    ws.n_obs = n_obs
+    ws.n_states = n_states
+    
+    # State and observation vectors
+    if length(ws.u) != n_states
+        ws.u = zeros(T, n_states)
+    end
+    if length(ws.z) != n_obs
+        ws.z = zeros(T, n_obs)
+    end
+    if length(ws.ztmp) != n_obs
+        ws.ztmp = zeros(T, n_obs)
+    end
+    if length(ws.utmp) != n_states
+        ws.utmp = zeros(T, n_states)
+    end
+    
+    # Matrix buffers
+    if size(ws.Ctmp, 1) != n_obs || size(ws.Ctmp, 2) != n_states
+        ws.Ctmp = zeros(T, n_obs, n_states)
+    end
+    if size(ws.F, 1) != n_obs || size(ws.F, 2) != n_obs
+        ws.F = zeros(T, n_obs, n_obs)
+    end
+    if size(ws.K, 1) != n_states || size(ws.K, 2) != n_obs
+        ws.K = zeros(T, n_states, n_obs)
+    end
+    if size(ws.tmp, 1) != n_states || size(ws.tmp, 2) != n_states
+        ws.tmp = zeros(T, n_states, n_states)
+    end
+    if size(ws.Ptmp, 1) != n_states || size(ws.Ptmp, 2) != n_states
+        ws.Ptmp = zeros(T, n_states, n_states)
+    end
+    
+    return ws
+end
+
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
@@ -478,7 +548,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
-                Inversion_workspace(T = T))  # inversion filter - will be resized
+                Inversion_workspace(T = T),  # inversion filter - will be resized
+                Kalman_workspace(T = T))  # Kalman filter - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -1122,6 +1193,17 @@ function ensure_inversion_workspace!(𝓂; third_order::Bool = false)
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(𝓂.workspaces.inversion, n_exo, n_past; third_order = third_order)
     return 𝓂.workspaces.inversion
+end
+
+
+"""
+    ensure_kalman_workspace!(𝓂)
+
+Ensure the Kalman filter workspace is available. Returns the workspace for use.
+Actual buffer resizing happens lazily in ensure_kalman_buffers! when dimensions are known.
+"""
+function ensure_kalman_workspace!(𝓂)
+    return 𝓂.workspaces.kalman
 end
 
 

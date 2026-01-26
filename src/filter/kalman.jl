@@ -15,13 +15,15 @@ function calculate_loglikelihood(::Val{:kalman},
                                 opts,
                                 on_failure_loglikelihood,
                                 lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace) #; 
+                                inv_ws::inversion_workspace,
+                                kalman_ws::kalman_workspace) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
                                                 constants_obj,
                                                 lyap_ws,
+                                                kalman_ws,
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
@@ -33,7 +35,8 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace; 
+                                                lyap_ws::lyapunov_workspace,
+                                                kalman_ws::kalman_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
@@ -42,7 +45,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
     T = constants.post_model_macro
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -50,7 +53,8 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace; 
+                                                lyap_ws::lyapunov_workspace,
+                                                kalman_ws::kalman_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 on_failure_loglikelihood::U = -Inf,
@@ -59,7 +63,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
     T = constants.post_model_macro
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -67,7 +71,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace; 
+                                                lyap_ws::lyapunov_workspace,
+                                                kalman_ws::kalman_workspace; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
@@ -88,7 +93,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
     # timer = timer, 
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -125,32 +130,35 @@ function run_kalman_iterations(A::Matrix{S},
                                 𝐁::Matrix{S},
                                 C::Matrix{Float64}, 
                                 P::Matrix{S}, 
-                                data_in_deviations::Matrix{S}; 
+                                data_in_deviations::Matrix{S},
+                                ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
-    u = zeros(S, size(C,2))
-
-    z = C * u
-
-    ztmp = similar(z)
+    # Ensure workspace buffers are properly sized
+    n_obs = size(C, 1)
+    n_states = size(C, 2)
+    @ignore_derivatives ensure_kalman_buffers!(ws, n_obs, n_states)
+    
+    # Use workspace buffers
+    u = ws.u
+    z = ws.z
+    ztmp = ws.ztmp
+    utmp = ws.utmp
+    Ctmp = ws.Ctmp
+    F = ws.F
+    K = ws.K
+    tmp = ws.tmp
+    Ptmp = ws.Ptmp
+    
+    # Initialize state estimate to zero
+    fill!(u, zero(S))
+    ℒ.mul!(z, C, u)
 
     loglik = S(0.0)
-
-    utmp = similar(u)
-
-    Ctmp = similar(C)
-
-    F = similar(C * C')
-
-    K = similar(C')
-    # Ktmp = similar(C')
-
-    tmp = similar(P)
-    Ptmp = similar(P)
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
@@ -235,12 +243,14 @@ function run_kalman_iterations(A::Matrix{S},
                                 𝐁::Matrix{S}, 
                                 C::Matrix{Float64}, 
                                 P::Matrix{S}, 
-                                data_in_deviations::Matrix{S}; 
+                                data_in_deviations::Matrix{S},
+                                ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
+    # ForwardDiff requires fresh allocations - workspace not used here
     u = zeros(S, size(C,2))
 
     z = C * u
@@ -303,12 +313,15 @@ function rrule(::typeof(run_kalman_iterations),
                     𝐁, 
                     C, 
                     P, 
-                    data_in_deviations; 
+                    data_in_deviations,
+                    ws::kalman_workspace; 
                     presample_periods = 0,
                     on_failure_loglikelihood = -Inf,
                     # timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
     # @timeit_debug timer "Calculate Kalman filter - forward" begin
+    # Note: The rrule requires time-indexed arrays for the backward pass that depend on data length,
+    # so we cannot cache them in the workspace. Only small fixed-size buffers could potentially be cached.
     T = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
@@ -342,7 +355,7 @@ function rrule(::typeof(run_kalman_iterations),
     for t in 2:T
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
         end
 
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
@@ -357,7 +370,7 @@ function rrule(::typeof(run_kalman_iterations),
     
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         Fdet = ℒ.det(luF)
@@ -365,7 +378,7 @@ function rrule(::typeof(run_kalman_iterations),
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
         # invF[t] .= inv(luF)
@@ -565,7 +578,7 @@ function rrule(::typeof(run_kalman_iterations),
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂A, ∂𝐁, NoTangent(), ∂P, ∂data_in_deviations, NoTangent()
+        return NoTangent(), ∂A, ∂𝐁, NoTangent(), ∂P, ∂data_in_deviations, NoTangent(), NoTangent()
     end
     
     return llh, kalman_pullback
