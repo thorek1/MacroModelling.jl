@@ -49,7 +49,15 @@ Analyzed `moments.jl` for workspace caching opportunities and implemented cachin
 
 ### Remaining Work
 
-The third-order moment functions (`calculate_third_order_moments`, `calculate_third_order_moments_with_autocorrelation`) still use the original `reshape(e⁴, ...)` and `reshape(e⁶, ...)` code in the Γ₃ and Eᴸᶻ matrix constructions. The cached variables are extracted at the top of the loop but not yet used in the matrix construction code. This is due to text matching issues with Unicode characters in the file. The code still works correctly - it just allocates fresh reshapes instead of using the cached versions.
+All third-order moment functions (`calculate_third_order_moments`, `calculate_third_order_moments_with_autocorrelation`) have been fully updated to use cached matrices:
+- `vec_Iₑ` instead of `vec(ℒ.I(nᵉ))`
+- `e4_nᵉ_nᵉ³` instead of `reshape(e⁴, nᵉ, nᵉ³)`
+- `e4_nᵉ_nᵉ³'` instead of `reshape(e⁴, nᵉ³, nᵉ)`
+- `e4_nᵉ²_nᵉ²` instead of `reshape(e⁴, nᵉ², nᵉ²)`
+- `e4_minus_vecIₑ_outer` instead of `reshape(e⁴, nᵉ², nᵉ²) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'`
+- `e6_nᵉ³_nᵉ³` instead of `reshape(e⁶, nᵉ³, nᵉ³)`
+
+All changes verified with third-order moment tests on RBC model.
 
 ---
 
