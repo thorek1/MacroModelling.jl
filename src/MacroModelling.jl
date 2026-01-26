@@ -1491,12 +1491,18 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        if multithreaded
-            a = sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            droptol!(a, tol)
-        else
-            a = convert(SparseMatrixCSC{S}, A)
-            droptol!(a, tol)
+        try
+            if multithreaded
+                a = sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+                droptol!(a, tol)
+            else
+                a = convert(SparseMatrixCSC{S}, A)
+                droptol!(a, tol)
+            end
+            return a
+        catch e
+            # Fall back to dense format if sparse conversion fails (e.g., Julia 1.12 SparseArrays bug)
+            return convert(Matrix, A)
         end
     else
         a = convert(Matrix, A)
