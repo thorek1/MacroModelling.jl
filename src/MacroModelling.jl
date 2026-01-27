@@ -6436,7 +6436,8 @@ end
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false) where M 
+                                                        pruning::Bool = false,
+                                                        estimation::Bool = false) where M 
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
     # @timeit_debug timer "Calculate NSSS" begin
@@ -6444,7 +6445,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation) # , timer = timer)
 
     # end # timeit_debug
     
@@ -6476,7 +6477,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if solved 𝓂.caches.qme_solution = qme_sol end
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     # end # timeit_debug
 
@@ -6500,7 +6501,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
@@ -6791,14 +6792,15 @@ end
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false) where M <: Real
+                                                        pruning::Bool = false,
+                                                        estimation::Bool = false) where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
     
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation) # , timer = timer)
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("NSSS not found") end
@@ -6822,7 +6824,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     if solved 𝓂.caches.qme_solution = qme_sol end
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         if opts.verbose println("1st order solution not found") end
@@ -6836,7 +6838,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     # timer = timer,
                                                     opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
@@ -6856,7 +6858,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 # timer = timer, 
                                                 opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
     
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -7290,7 +7292,7 @@ function solve!(𝓂::ℳ;
     
             if solved 𝓂.caches.qme_solution = qme_sol end
             
-            update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+            update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
             # end # timeit_debug
 
@@ -7315,7 +7317,7 @@ function solve!(𝓂::ℳ;
                                                                     initial_guess = 𝓂.caches.qme_solution)
                 if solved 𝓂.caches.qme_solution = qme_sol end
                 
-                update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+                update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -10225,67 +10227,67 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
 end
 
 """
-    update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false, order::Int = 1)
+    update_perturbation_counter!(counters::SolveCounters, solved::Bool; estimation::Bool = false, order::Int = 1)
 
 Updates the perturbation solve counters based on whether the solve was successful and the perturbation order.
 Always increments the total counter, and increments the failed counter if the solve failed.
 """
-function update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false, order::Int = 1)
+function update_perturbation_counter!(counters::SolveCounters, solved::Bool; estimation::Bool = false, order::Int = 1)
     if order == 1
         if estimation
-            𝓂.counters.first_order_solves_total_estimation += 1
+            counters.first_order_solves_total_estimation += 1
             if !solved
-                𝓂.counters.first_order_solves_failed_estimation += 1
+                counters.first_order_solves_failed_estimation += 1
             end
         else
-            𝓂.counters.first_order_solves_total += 1
+            counters.first_order_solves_total += 1
             if !solved
-                𝓂.counters.first_order_solves_failed += 1
+                counters.first_order_solves_failed += 1
             end
         end
     elseif order == 2
         if estimation
-            𝓂.counters.second_order_solves_total_estimation += 1
+            counters.second_order_solves_total_estimation += 1
             if !solved
-                𝓂.counters.second_order_solves_failed_estimation += 1
+                counters.second_order_solves_failed_estimation += 1
             end
         else
-            𝓂.counters.second_order_solves_total += 1
+            counters.second_order_solves_total += 1
             if !solved
-                𝓂.counters.second_order_solves_failed += 1
+                counters.second_order_solves_failed += 1
             end
         end
     elseif order == 3
         if estimation
-            𝓂.counters.third_order_solves_total_estimation += 1
+            counters.third_order_solves_total_estimation += 1
             if !solved
-                𝓂.counters.third_order_solves_failed_estimation += 1
+                counters.third_order_solves_failed_estimation += 1
             end
         else
-            𝓂.counters.third_order_solves_total += 1
+            counters.third_order_solves_total += 1
             if !solved
-                𝓂.counters.third_order_solves_failed += 1
+                counters.third_order_solves_failed += 1
             end
         end
     end
 end
 
 """
-    update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+    update_ss_counter!(counters::SolveCounters, solved::Bool; estimation::Bool = false)
 
 Updates the steady state solve counters based on whether the solve was successful.
 Always increments the total counter, and increments the failed counter if the solve failed.
 """
-function update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+function update_ss_counter!(counters::SolveCounters, solved::Bool; estimation::Bool = false)
     if estimation
-        𝓂.counters.ss_solves_total_estimation += 1
+        counters.ss_solves_total_estimation += 1
         if !solved
-            𝓂.counters.ss_solves_failed_estimation += 1
+            counters.ss_solves_failed_estimation += 1
         end
     else
-        𝓂.counters.ss_solves_total += 1
+        counters.ss_solves_total += 1
         if !solved
-            𝓂.counters.ss_solves_failed += 1
+            counters.ss_solves_failed += 1
         end
     end
 end
@@ -10293,7 +10295,8 @@ end
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
-                                    cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    cold_start::Bool = false,
+                                    estimation::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
     ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -10329,7 +10332,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     # Update counters
     solved = !(solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error))
-    update_ss_counter!(𝓂, solved, estimation = opts.estimation)
+    update_ss_counter!(𝓂.counters, solved, estimation = estimation)
     
     if !solved
         if opts.verbose 
@@ -10348,7 +10351,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
                 opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
+                cold_start::Bool = false,
+                estimation::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
     ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -10386,12 +10390,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # Update failed counter
-        update_ss_counter!(𝓂, false, estimation = opts.estimation)
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # Update success counter
-    update_ss_counter!(𝓂, true, estimation = opts.estimation)
+    update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
@@ -10469,7 +10473,8 @@ end
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                cold_start::Bool = false,
+                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -10508,12 +10513,12 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         if opts.verbose println("Failed to find NSSS") end
 
         # Update failed counter
-        update_ss_counter!(𝓂, false, estimation = opts.estimation)
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
 
         solution_error = S(10.0)
     else
         # Update success counter
-        update_ss_counter!(𝓂, true, estimation = opts.estimation)
+        update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
         SS_and_pars_names = ms.SS_and_pars_names
         SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
@@ -10608,9 +10613,10 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options()) where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false) where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer, 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
     
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
@@ -10630,9 +10636,10 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts, estimation = estimation) # timer = timer, 
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
@@ -10652,9 +10659,10 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer,  
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer,  
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
@@ -10674,9 +10682,10 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts, estimation = estimation) # timer = timer, 
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
@@ -10695,12 +10704,13 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     # Initialize constants at entry point
     constants_obj = initialise_constants!(𝓂)
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts) # timer = timer, 
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts, estimation = estimation) # timer = timer, 
 
     state = zeros(𝓂.constants.post_model_macro.nVars)
 
@@ -10724,7 +10734,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     if solved 𝓂.caches.qme_solution = qme_sol end
 
-    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         # println("NSSS not found")
