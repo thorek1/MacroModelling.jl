@@ -1951,9 +1951,9 @@ function get_solution(𝓂::ℳ,
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
-        if algorithm == :second_order
+        if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm == :third_order
+        elseif algorithm in [:third_order, :pruned_third_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         else
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), false
@@ -1978,16 +1978,16 @@ function get_solution(𝓂::ℳ,
     if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
-        if algorithm == :second_order
+        if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm == :third_order
+        elseif algorithm in [:third_order, :pruned_third_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         else
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, false
         end
     end
 
-    if algorithm == :second_order
+    if algorithm in [:second_order, :pruned_second_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
@@ -2005,7 +2005,7 @@ function get_solution(𝓂::ℳ,
         end
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
-    elseif algorithm == :third_order
+    elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
