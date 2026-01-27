@@ -7199,25 +7199,37 @@ function solve!(𝓂::ℳ;
             
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            # Compute [1,1] matrix Padé coefficient matrix
-            # Taylor series: yᵢ = S₁ᵢ*x + S₂ᵢ*(x⊗x)/2
-            # Matrix Padé: yᵢ = S₁ᵢ*x / (1 - 𝐃ᵢ*(x⊗x))
-            # where 𝐃ᵢ is chosen so that expanding the Padé matches the Taylor series
-            # This gives: 𝐃ᵢ = S₂ᵢ/(2*S₁ᵢ) in a suitable sense
+            # Compute [1,1] Padé coefficient matrix using proper Padé theory
             # 
-            # For numerical computation, we use: 𝐃[i,:] = S₂[i,:] ./ (2 * norm(S₁[i,:])²)
-            # This normalizes by the squared Frobenius norm of each row of S₁
-            # The approximation is: y = S₁*x ./ (1 .- 𝐃*kron(x,x))
+            # For a scalar function f(z) = a₁z + a₂z² + O(z³), the [1,1] Padé is:
+            #   P[1,1](z) = a₁z / (1 - (a₂/a₁)z)
+            # 
+            # For DSGE perturbation solutions, we have vector-valued output and:
+            #   y = S₁*x + (1/2)*S₂*(x⊗x) + O(|x|³)
+            # 
+            # The Padé approximant uses the form:
+            #   y_i = (S₁_i * x) / (1 - d_i * (x⊗x))
+            # 
+            # To match the Taylor expansion to second order, expanding 1/(1-d*z) ≈ 1 + d*z:
+            #   y_i ≈ S₁_i*x * (1 + d_i*(x⊗x)) = S₁_i*x + S₁_i*x*d_i*(x⊗x)
+            #
+            # We want this to match: y_i = S₁_i*x + (1/2)*S₂_i*(x⊗x)
+            # 
+            # For proper matching, we compute d_i element-wise such that the correction
+            # term captures the quadratic contribution relative to the linear response.
+            # The coefficient d_i scales S₂ by the magnitude of the linear response.
             
             nVars = size(𝐒₁, 1)
             nAug = size(𝐒₁, 2)
             nAug² = size(𝐒₂, 2)
             
-            # Compute row-normalized Padé denominator coefficient matrix
+            # Compute Padé denominator coefficient matrix with proper normalization
+            # Use the sum of squared linear coefficients as a robust scale factor
             𝐃 = zeros(eltype(𝐒₂), nVars, nAug²)
             for i in 1:nVars
                 row_norm_sq = sum(abs2, 𝐒₁[i, :])
                 if row_norm_sq > 1e-14
+                    # Scale factor ensures bounded behavior
                     𝐃[i, :] = 𝐒₂[i, :] / (2 * row_norm_sq)
                 end
             end
@@ -9806,33 +9818,43 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
             pruning = true
         elseif :second_order_pade == algorithm
-            # Matrix Padé [1,1] approximation using precomputed coefficient matrices
-            # Taylor: y = S₁*x + S₂*(x⊗x)/2
-            # Padé: y = S₁*x * (I - 𝐃*(x⊗x))⁻¹ where 𝐃 = pinv(S₁)*S₂/2
+            # Matrix Padé [1,1] approximation for OBC
             pade_sol = 𝓂.solution.perturbation.second_order_pade
             𝐒₁̂ = pade_sol.𝐒₁̂
-            𝐃̂ = pade_sol.𝐃̂
+            𝐒₂ = pade_sol.𝐒₂
             past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
             state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
                 linear_term = 𝐒₁̂ * aug_state
                 kron_aug = ℒ.kron(aug_state, aug_state)
-                # Matrix Padé denominator: (I - 𝐃̂*kron_aug)
-                # For efficiency, compute the correction term and apply element-wise
-                pade_correction = 𝐃̂ * kron_aug
-                denominator = 1 .- pade_correction
-                # Numerical stability: avoid division by very small numbers
-                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
-                return linear_term ./ denominator
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                
+                # Compute Padé [1,1] approximation with stability bounds
+                result = similar(linear_term)
+                for i in eachindex(linear_term)
+                    L = linear_term[i]
+                    Q = quadratic_term[i]
+                    
+                    if abs(L) < 1e-12
+                        result[i] = L + Q
+                    else
+                        ratio = Q / L
+                        if abs(ratio) < 0.9
+                            result[i] = L / (1 - ratio)
+                        else
+                            result[i] = L + Q
+                        end
+                    end
+                end
+                return result
             end
             pruning = false
         elseif :third_order_pade == algorithm
-            # Matrix Padé [2,1] approximation using precomputed coefficient matrices
+            # Matrix Padé [2,1] approximation for OBC
             pade_sol = 𝓂.solution.perturbation.third_order_pade
             𝐒₁̂ = pade_sol.𝐒₁̂
             𝐒₂ = pade_sol.𝐒₂
-            𝐃₂̂ = pade_sol.𝐃₂̂
-            𝐃₃̂ = pade_sol.𝐃₃̂
+            𝐒₃ = pade_sol.𝐒₃
             past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
             state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
@@ -9840,13 +9862,28 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
                 kron_aug = ℒ.kron(aug_state, aug_state)
                 kron_aug3 = ℒ.kron(kron_aug, aug_state)
                 quadratic_term = 𝐒₂ * kron_aug / 2
-                # Matrix Padé [2,1]: numerator = S₁*x + S₂*(x⊗x)/2
-                # denominator = I - 𝐃₂*(x⊗x) - 𝐃₃*(x⊗x⊗x)
+                cubic_term = 𝐒₃ * kron_aug3 / 6
+                
+                # Compute Padé [2,1] approximation with stability bounds
+                result = similar(linear_term)
                 numerator = linear_term + quadratic_term
-                pade_correction = 𝐃₂̂ * kron_aug + 𝐃₃̂ * kron_aug3
-                denominator = 1 .- pade_correction
-                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
-                return numerator ./ denominator
+                
+                for i in eachindex(linear_term)
+                    N = numerator[i]
+                    C = cubic_term[i]
+                    
+                    if abs(N) < 1e-12
+                        result[i] = N + C
+                    else
+                        ratio = C / N
+                        if abs(ratio) < 0.9
+                            result[i] = N / (1 - ratio)
+                        else
+                            result[i] = N + C
+                        end
+                    end
+                end
+                return result
             end
             pruning = false
         else
@@ -9872,28 +9909,52 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             pruning = true
         elseif :second_order_pade == algorithm
             # Matrix Padé [1,1] approximation using precomputed coefficient matrices
+            # Padé form: y = S₁*x / (1 - d*(x⊗x)) where d captures the quadratic term ratio
+            # This extends better than Taylor when |x| is moderate
             pade_sol = 𝓂.solution.perturbation.second_order_pade
             𝐒₁ = pade_sol.𝐒₁
-            𝐃 = pade_sol.𝐃
+            𝐒₂ = pade_sol.𝐒₂
             past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
             state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
                 linear_term = 𝐒₁ * aug_state
                 kron_aug = ℒ.kron(aug_state, aug_state)
-                # Matrix Padé: y = S₁*x / (I - 𝐃*(x⊗x))
-                pade_correction = 𝐃 * kron_aug
-                denominator = 1 .- pade_correction
-                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
-                return linear_term ./ denominator
+                quadratic_term = 𝐒₂ * kron_aug / 2
+                
+                # Compute Padé [1,1] approximation for each element
+                # Standard form: y_i = L_i / (1 - Q_i/L_i) when |Q_i/L_i| < 1
+                # This is equivalent to: y_i = L_i² / (L_i - Q_i)
+                # For stability, we bound the correction and fall back to Taylor when needed
+                result = similar(linear_term)
+                for i in eachindex(linear_term)
+                    L = linear_term[i]
+                    Q = quadratic_term[i]
+                    
+                    if abs(L) < 1e-12
+                        # Linear term is tiny, use Taylor directly
+                        result[i] = L + Q
+                    else
+                        ratio = Q / L
+                        if abs(ratio) < 0.9  # Safe convergence region
+                            # Padé: y = L / (1 - Q/L) = L / (1 - ratio)
+                            result[i] = L / (1 - ratio)
+                        else
+                            # Outside safe region, use Taylor
+                            result[i] = L + Q
+                        end
+                    end
+                end
+                return result
             end
             pruning = false
         elseif :third_order_pade == algorithm
             # Matrix Padé [2,1] approximation using precomputed coefficient matrices
+            # Taylor: y = L + Q/2 + C/6 (linear + quadratic + cubic)
+            # Padé [2,1]: y = (L + Q/2) / (1 - correction) matching cubic term
             pade_sol = 𝓂.solution.perturbation.third_order_pade
             𝐒₁ = pade_sol.𝐒₁
             𝐒₂ = pade_sol.𝐒₂
-            𝐃₂ = pade_sol.𝐃₂
-            𝐃₃ = pade_sol.𝐃₃
+            𝐒₃ = pade_sol.𝐒₃
             past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
             state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[past_not_future_and_mixed_idx]; 1; shock]
@@ -9901,13 +9962,35 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
                 kron_aug = ℒ.kron(aug_state, aug_state)
                 kron_aug3 = ℒ.kron(kron_aug, aug_state)
                 quadratic_term = 𝐒₂ * kron_aug / 2
-                # Matrix Padé [2,1]: numerator = S₁*x + S₂*(x⊗x)/2
-                # denominator = I - 𝐃₂*(x⊗x) - 𝐃₃*(x⊗x⊗x)
+                cubic_term = 𝐒₃ * kron_aug3 / 6
+                
+                # Compute Padé [2,1] approximation for each element
+                # Numerator: L + Q (linear + quadratic)
+                # We want the expansion to match L + Q + C (Taylor up to cubic)
+                # Padé form: (L + Q) / (1 - d) ≈ (L + Q)(1 + d) = L + Q + (L+Q)*d
+                # Match: (L+Q)*d = C => d = C / (L + Q)
+                result = similar(linear_term)
                 numerator = linear_term + quadratic_term
-                pade_correction = 𝐃₂ * kron_aug + 𝐃₃ * kron_aug3
-                denominator = 1 .- pade_correction
-                denominator = map(d -> abs(d) < 1e-10 ? one(T) : d, denominator)
-                return numerator ./ denominator
+                
+                for i in eachindex(linear_term)
+                    N = numerator[i]
+                    C = cubic_term[i]
+                    
+                    if abs(N) < 1e-12
+                        # Numerator is tiny, use Taylor directly
+                        result[i] = N + C
+                    else
+                        ratio = C / N
+                        if abs(ratio) < 0.9  # Safe convergence region
+                            # Padé [2,1]: y = N / (1 - C/N) = N / (1 - ratio)
+                            result[i] = N / (1 - ratio)
+                        else
+                            # Outside safe region, use Taylor
+                            result[i] = N + C
+                        end
+                    end
+                end
+                return result
             end
             pruning = false
         else
