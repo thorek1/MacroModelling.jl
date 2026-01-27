@@ -1,9 +1,108 @@
-- if you need to run julia use: 'curl -fsSL https://install.julialang.org -o juliaup.sh\nsh juliaup.sh --yes --default-channel release\nexport PATH="$HOME/.juliaup/bin:$PATH"' to install it
-- dont use the test suite to test changes. just pick a few models from the test_models.jl and run those commands
-- use the package "BenchmarkTools" to run benchmarks
-- if asked to benchmark different implementation have a look at the benchmarks.jl script in the benchmark folder
-- for benchmarks have a look at the benchmarks.jl script in the benchmark folder
-- try first to install R packages with micromamba and then using install.packages()
-- when implementing new functionality for the MacroModelling.jl package try to test it by writing a bespoke script for that functionality only, and avoid precomiling the whole MacroModelling package
-- run julia with -t auto
-- use this to install micromamba: "curl -Ls https://micro.mamba.pm/install.sh | MAMBA_NO_BANNER=1 MAMBA_NO_PROMPT=1 bash -s -- -b -u -p ~/micromamba"
+# Agent Guide for MacroModelling.jl
+
+This file summarizes repository-specific guidance for automated agents.
+
+## Project Overview
+
+MacroModelling.jl is a Julia package for building and solving DSGE models.
+Models are defined with `@model` and `@parameters` macros and use time indices
+like `[0]` (present), `[1]` (future), `[-1]` (past), and `[x]` (shock).
+
+## Repository Layout
+
+- `src/`: core package code and algorithms
+- `models/`: example DSGE models used by tests and docs
+- `test/`: targeted tests and model runners
+- `benchmark/`: benchmark scripts
+- `docs/`: documentation sources
+- `ext/`: optional dependency integrations
+
+## Development Setup
+
+- Julia 1.10+ is required (see `README.md` and `docs/src/tutorials/install.md`).
+- Typical REPL setup:
+
+  ```julia
+  using Pkg
+  Pkg.activate(".")
+  using MacroModelling
+  ```
+
+## Tests
+
+Before running tests, activate the test environment and instantiate dependencies:
+
+```julia
+using Pkg
+Pkg.activate("test")
+Pkg.instantiate()
+```
+
+Tests are organized by test sets specified via `TEST_SET`:
+
+```bash
+TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'
+TEST_SET=estimation julia --project -e 'using Pkg; Pkg.test()'
+```
+
+See `test/runtests.jl`, `test/functionality_tests.jl`, and `test/test_models.jl`
+for model-level checks and examples.
+
+## Documentation
+
+Build docs with:
+
+```bash
+julia --project=docs docs/make.jl
+```
+
+## Benchmarks
+
+Benchmarks are defined in `benchmark/benchmarks.jl` using BenchmarkTools.
+Typical run:
+
+```bash
+julia --project -e 'using BenchmarkTools; include("benchmark/benchmarks.jl"); run(SUITE)'
+```
+
+## Code Map and Conventions
+
+- `src/MacroModelling.jl`: main module, exports, and reserved names list
+- `src/macros.jl`: `@model` and `@parameters` macros
+- `src/get_functions.jl`: public API functions (`get_irf`, `simulate`, etc.)
+- `src/perturbation.jl`: perturbation solution algorithms (1st to 3rd order)
+- `src/structures.jl`: core model data structures
+- `src/algorithms/`: matrix equation solvers and nonlinear solver
+- `src/filter/`: Kalman and inversion filters
+- `ext/`: optional integrations (Optim, StatsPlots, Turing)
+
+## Writing Style
+
+- Avoid second-person phrasing (“you”) in docs and docstrings.
+
+## Caching Guidance
+
+- For constant calculations that can be computed once and reused, compute lazily on first use and store in the model struct cache; subsequent use must read from the cache.
+
+## Session Progress Log
+
+- Always take stock of what was done and what remains, and save it in `AGENT_PROGRESS.md`.
+- At the start of a new session, always read `AGENT_PROGRESS.md` before making changes.
+
+## Common Change Points
+
+- New API: add in `src/get_functions.jl` and export from `src/MacroModelling.jl`.
+- New model: add a file under `models/` using the model macros.
+- Solver changes: look in `src/perturbation.jl` and `src/algorithms/`.
+
+## CRITICAL WORKFLOW REQUIREMENTS
+
+**YOU MUST FOLLOW THESE RULES. THEY ARE NON-NEGOTIABLE.**
+
+1. **NEVER claim something works without running a test to prove it.** After writing any code, immediately write and run a test. If you cannot test it, say so explicitly.
+
+2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results.
+
+3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
+
+4. **Be explicit about unknowns.** If you're uncertain about something, say so. Don't guess.

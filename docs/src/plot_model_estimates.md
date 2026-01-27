@@ -289,6 +289,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversi
 
 Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting `smooth = true`) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.
 
+The inversion filter has no guarantee to find the global minimum-norm shocks for higher-order solutions. Finding the global minimum-norm shocks is NP-hard because the number of feasible roots grows exponentially with the dimensionality of the problem. Any gradient-based solver started at the origin (including the default LagrangeNewton) returns the root whose basin of attraction contains the origin rather than guaranteeing the global optimum.
+
 ## Smooth
 
 The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing (only available for the Kalman filter and set to `true` by default for the Kalman filter) or filtering (available for both and set to `true` in case the inversion filter is used). If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.

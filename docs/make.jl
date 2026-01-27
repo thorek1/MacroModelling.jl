@@ -6,7 +6,7 @@
 
 using Documenter
 using MacroModelling
-import Turing, StatsPlots
+import Optim, StatsPlots, Turing
 using DocumenterCitations
 
 bib = CitationBibliography(
@@ -23,7 +23,12 @@ makedocs(
     # doctest = false,
     # draft = true,
     format = Documenter.HTML(size_threshold = 204800*10),
-    modules = [MacroModelling],
+    modules = [
+        MacroModelling,
+        Base.get_extension(MacroModelling, :OptimExt),
+        Base.get_extension(MacroModelling, :StatsPlotsExt),
+        Base.get_extension(MacroModelling, :TuringExt),
+    ],
     pages = [
         "Introduction" => "index.md",
         "Tutorials" => [
@@ -41,6 +46,7 @@ makedocs(
             "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
             "Model Estimates" => "plot_model_estimates.md",
         ],
+        "Steady State" => "steady_state.md",
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
