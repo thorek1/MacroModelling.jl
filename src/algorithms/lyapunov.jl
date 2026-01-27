@@ -87,76 +87,9 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64},
-                workspace::lyapunov_workspace;
-                lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
-                # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
-
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    # pullback 
-    # https://arxiv.org/abs/2011.11430  
-    function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
-
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], workspace, lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
-    
-        solved = solved && slvd
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), ∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
 
 @stable default_mode = "disable" begin
 
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    workspace::lyapunov_workspace;
-                                    lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
-
-        if ℒ.norm(X) < eps() continue end
-
-        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-        
-        solved = solved && slvd
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
 
 
 
