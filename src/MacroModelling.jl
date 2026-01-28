@@ -596,6 +596,8 @@ end
 
 # end # dispatch_doctor
 
+@stable default_mode = "disable" begin
+
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
                                 shock_size::Real,
@@ -660,6 +662,8 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
+
+end # dispatch_doctor
 
 # @stable default_mode = "disable" begin
 
