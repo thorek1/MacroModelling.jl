@@ -223,7 +223,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                 opts::CalculationOptions = merge_calculation_options(),
                                 cold_start::Bool = false,
-                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N, TW <: Real, FW <: AbstractFloat}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
