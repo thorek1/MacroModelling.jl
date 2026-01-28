@@ -455,6 +455,7 @@ function check_for_dynamic_variables(ex::Expr)
     any(dynamic_indicator)
 end
 
+end # dispatch_doctor
 
 function transform_expression(expr::Expr)
     # Dictionary to store the transformations for reversing
@@ -524,7 +525,7 @@ function transform_expression(expr::Expr)
     return transformed_expr, reverse_transformations
 end
 
-# @stable default_mode = "disable" begin
+@stable default_mode = "disable" begin
 
 function normalize_filtering_options(filter::Symbol,
                                       smooth::Bool,
@@ -3170,6 +3171,8 @@ function contains_equation(expr)
     return found
 end
 
+end # dispatch_doctor
+
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
         # Only consider call-expressions
@@ -3194,7 +3197,7 @@ function remove_nothing(ex::Expr)
     end
 end
 
-# @stable default_mode = "disable" begin
+@stable default_mode = "disable" begin
     
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
@@ -9555,7 +9558,7 @@ end
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{<:Function, Bool}
     if occasionally_binding_constraints
         if algorithm == :first_order
             state_update = 𝓂.functions.first_order_state_update_obc
@@ -9600,7 +9603,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         end
     end
 
-    return state_update, pruning
+    return (state_update, pruning)
 end
 
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
