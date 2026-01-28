@@ -348,7 +348,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
                 opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
+                cold_start::Bool = false,
+                estimation::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -385,8 +386,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # end # timeit_debug
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        # Update failed counter
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
+
+    # Update success counter
+    update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 

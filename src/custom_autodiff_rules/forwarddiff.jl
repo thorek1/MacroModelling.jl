@@ -222,7 +222,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                 opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N, TW <: Real, FW <: AbstractFloat}
+                                cold_start::Bool = false,
+                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
 
@@ -265,8 +267,14 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
 
+        # Update failed counter
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
+
         solution_error = S(10.0)
     else
+        # Update success counter
+        update_ss_counter!(𝓂.counters, true, estimation = estimation)
+
         SS_and_pars_names = ms.SS_and_pars_names
         SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
