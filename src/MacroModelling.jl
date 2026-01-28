@@ -9558,48 +9558,39 @@ end
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{<:Function, Bool}
+noop_state_update(::Float64, ::Float64) = nothing
+
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+    state_update::Function = noop_state_update
+    pruning::Bool = false
+
     if occasionally_binding_constraints
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update_obc::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update_obc::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update_obc
+            state_update = 𝓂.functions.pruned_second_order_state_update_obc::Function
             pruning = true
         elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update_obc::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update_obc
+            state_update = 𝓂.functions.pruned_third_order_state_update_obc::Function
             pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
         end
     else
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update
+            state_update = 𝓂.functions.pruned_second_order_state_update::Function
             pruning = true
         elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update
+            state_update = 𝓂.functions.pruned_third_order_state_update::Function
             pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
         end
     end
 
