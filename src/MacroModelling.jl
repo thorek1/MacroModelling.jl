@@ -594,9 +594,7 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-# end # dispatch_doctor
-
-@stable default_mode = "disable" begin
+end # dispatch_doctor
 
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
@@ -663,9 +661,7 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-end # dispatch_doctor
-
-# @stable default_mode = "disable" begin
+@stable default_mode = "disable" begin
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
@@ -3164,6 +3160,8 @@ end
 #     end
 # end
 
+end # dispatch_doctor
+
 function contains_equation(expr)
     found = false
     postwalk(expr) do x
@@ -3175,7 +3173,7 @@ function contains_equation(expr)
     return found
 end
 
-end # dispatch_doctor
+@stable default_mode = "disable" begin
 
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
@@ -3201,8 +3199,6 @@ function remove_nothing(ex::Expr)
     end
 end
 
-@stable default_mode = "disable" begin
-    
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
