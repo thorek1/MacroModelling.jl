@@ -9558,11 +9558,13 @@ end
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
+end # dispatch_doctor
+
 noop_state_update(::Float64, ::Float64) = nothing
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update
-    pruning::Bool = false
+    pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
 
     if occasionally_binding_constraints
         if algorithm == :first_order
@@ -9571,12 +9573,10 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.functions.second_order_state_update_obc::Function
         elseif :pruned_second_order == algorithm
             state_update = 𝓂.functions.pruned_second_order_state_update_obc::Function
-            pruning = true
         elseif :third_order == algorithm
             state_update = 𝓂.functions.third_order_state_update_obc::Function
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.functions.pruned_third_order_state_update_obc::Function
-            pruning = true
         end
     else
         if algorithm == :first_order
@@ -9585,17 +9585,17 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.functions.second_order_state_update::Function
         elseif :pruned_second_order == algorithm
             state_update = 𝓂.functions.pruned_second_order_state_update::Function
-            pruning = true
         elseif :third_order == algorithm
             state_update = 𝓂.functions.third_order_state_update::Function
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.functions.pruned_third_order_state_update::Function
-            pruning = true
         end
     end
 
     return (state_update, pruning)
 end
+
+@stable default_mode = "disable" begin
 
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
     buffer = 𝓂.workspaces.custom_steady_state_buffer
