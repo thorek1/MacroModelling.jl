@@ -9619,6 +9619,8 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
+        get_custom_steady_state_buffer!(𝓂, expected_length)
+        
         output = Vector{S}(undef, expected_length)
         try 
             𝓂.functions.NSSS_custom(output, parameter_values)
