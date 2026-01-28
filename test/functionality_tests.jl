@@ -2231,6 +2231,46 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         end
     end
 
+    @testset "solve counters" begin
+        m.counters = MacroModelling.SolveCounters()
+        clear_solution_caches!(m, algorithm)
+
+        get_solution(m, m.parameter_values, algorithm = algorithm)
+
+        counts = get_solution_counts(m)
+
+        @test counts.ss_solves_total == 0
+        @test counts.ss_solves_failed == 0
+        @test counts.ss_solves_total_estimation == 1
+        @test counts.ss_solves_failed_estimation == 0
+
+        @test counts.first_order_solves_total == 0
+        @test counts.first_order_solves_failed == 0
+        @test counts.first_order_solves_total_estimation == 1
+        @test counts.first_order_solves_failed_estimation == 0
+
+        if algorithm in [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
+            @test counts.second_order_solves_total_estimation == 1
+            @test counts.second_order_solves_failed_estimation == 0
+        else
+            @test counts.second_order_solves_total_estimation == 0
+            @test counts.second_order_solves_failed_estimation == 0
+        end
+
+        if algorithm in [:pruned_third_order, :third_order]
+            @test counts.third_order_solves_total_estimation == 1
+            @test counts.third_order_solves_failed_estimation == 0
+        else
+            @test counts.third_order_solves_total_estimation == 0
+            @test counts.third_order_solves_failed_estimation == 0
+        end
+
+        @test counts.second_order_solves_total == 0
+        @test counts.second_order_solves_failed == 0
+        @test counts.third_order_solves_total == 0
+        @test counts.third_order_solves_failed == 0
+    end
+
 
     @testset "get_irf with parameter input" begin
         if algorithm == :first_order

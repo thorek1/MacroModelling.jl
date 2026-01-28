@@ -1446,6 +1446,8 @@ function filter_data_with_model(𝓂::ℳ,
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
     
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
+
     if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved 

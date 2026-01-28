@@ -1,5 +1,27 @@
 # Agent Progress Log
 
+## Current Session (2026-01-27) - Merge Main & Restore Counters
+
+### Summary
+
+Merged `origin/main` into `copilot/add-counters-for-solves`, resolved all merge conflicts, and re-applied the solve counters feature on top of the updated `structures.jl` layout. Counter updates now align with cache-based solution storage from `main`.
+
+### Key Actions
+
+1. Restored `structures.jl` to the `main` layout, added the `SolveCounters` type, and appended a `counters` field to `ℳ`.
+2. Updated `macros.jl` so the model constructor passes `SolveCounters()` in the correct argument position.
+3. Resolved conflicts in `MacroModelling.jl`, `get_functions.jl`, `moments.jl`, `filter/kalman.jl`, and `filter/inversion.jl` to keep cache assignments (`𝓂.caches.qme_solution`, etc.) while calling `update_ss_counter!`/`update_perturbation_counter!` with order and estimation flags.
+4. Preserved the `estimation = true` flag in `get_loglikelihood` while using `constants.post_model_macro` dimensions for Sylvester selection.
+
+### Testing
+
+- Could not run a smoke test because `julia` is not installed in this environment (`bash: julia: command not found`).
+
+### Next Steps
+
+- Install Julia and run a simple RBC solve to confirm counters increment (e.g., `solve!` with `algorithm = :first_order` and inspect `𝓂.counters`).
+- Recheck other pre-existing modified files in `git status` before committing, as many unrelated changes were present prior to this merge.
+
 ## Current Session (2026-01-26) - Struct Naming and Documentation
 
 ### Summary

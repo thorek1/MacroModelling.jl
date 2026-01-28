@@ -1008,6 +1008,41 @@ mutable struct solver_parameters
 end
 
 """
+Counters for steady state and perturbation solves.
+
+Each counter tracks total attempts and failed attempts, with separate tallies
+for estimation routines. Perturbation counters are split by order (1, 2, 3).
+"""
+mutable struct SolveCounters
+    # Steady state solve counters (total = all attempts, failed = only failures)
+    ss_solves_total::Int
+    ss_solves_failed::Int
+    ss_solves_total_estimation::Int
+    ss_solves_failed_estimation::Int
+    
+    # First order perturbation solve counters
+    first_order_solves_total::Int
+    first_order_solves_failed::Int
+    first_order_solves_total_estimation::Int
+    first_order_solves_failed_estimation::Int
+    
+    # Second order perturbation solve counters
+    second_order_solves_total::Int
+    second_order_solves_failed::Int
+    second_order_solves_total_estimation::Int
+    second_order_solves_failed_estimation::Int
+    
+    # Third order perturbation solve counters
+    third_order_solves_total::Int
+    third_order_solves_failed::Int
+    third_order_solves_total_estimation::Int
+    third_order_solves_failed_estimation::Int
+end
+
+# Constructor with default values
+SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+"""
 The main model struct containing all model data, organized into four categories:
 
 1. **User-facing data**:
@@ -1066,4 +1101,6 @@ mutable struct ℳ
     constants::constants                      # Model structure (never changes after init)
     workspaces::workspaces                    # Temporary buffers (reused, no state)
     functions::model_functions                # Compiled model functions
+
+    counters::SolveCounters                   # Solve counters (steady state and perturbation)
 end

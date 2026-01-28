@@ -298,6 +298,8 @@ function filter_and_smooth(𝓂::ℳ,
                                                             opts = opts)
 
     if solved 𝓂.caches.qme_solution = qme_sol end
+    
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
     # Direct constants access
     A = @views sol[:,1:T.nPast_not_future_and_mixed] * idx_constants.diag_nVars[T.past_not_future_and_mixed_idx,:]

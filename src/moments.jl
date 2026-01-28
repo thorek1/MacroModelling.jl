@@ -27,6 +27,8 @@ function calculate_covariance(parameters::Vector{R},
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, order = 1)
+
     if solved 𝓂.caches.qme_solution = qme_sol end
 
     # Direct constants access instead of model access
@@ -88,6 +90,8 @@ function calculate_mean(parameters::Vector{R},
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
         
+        update_perturbation_counter!(𝓂.counters, solved, order = 1)
+
         if !solved 
             mean_of_variables = SS_and_pars[1:T.nVars]
         else
@@ -97,6 +101,8 @@ function calculate_mean(parameters::Vector{R},
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                         opts = opts)
+
+            update_perturbation_counter!(𝓂.counters, solved, order = 2)
 
             if !solved 
                 mean_of_variables = SS_and_pars[1:T.nVars]
@@ -194,6 +200,8 @@ function calculate_second_order_moments(parameters::Vector{R},
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
+        
+        update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
@@ -317,6 +325,8 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     opts = opts)
 
+        update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+        
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
 
@@ -396,10 +406,6 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                     verbose = opts.verbose)
 
             if info
-                # if Σᶻ₂ isa DenseMatrix
-                #     Σᶻ₂ = sparse(Σᶻ₂)
-                # end
-
                 Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
                 autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
@@ -413,13 +419,6 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 autocorr_tmp = zeros(R,0,0)
                 ŝ_to_ŝ₂ = zeros(R,0,0)
                 ŝ_to_y₂ = zeros(R,0,0)
-                # Σʸ₁ = zeros(R,0,0)
-                # Σᶻ₁ = zeros(R,0,0)
-                # SS_and_pars = zeros(R,0)
-                # 𝐒₁ = zeros(R,0,0)
-                # ∇₁ = zeros(R,0,0)
-                # 𝐒₂ = spzeros(R,0,0)
-                # ∇₂ = spzeros(R,0,0)
                 slvd = info
             end
         else
@@ -430,13 +429,6 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             autocorr_tmp = zeros(R,0,0)
             ŝ_to_ŝ₂ = zeros(R,0,0)
             ŝ_to_y₂ = zeros(R,0,0)
-            # Σʸ₁ = zeros(R,0,0)
-            # Σᶻ₁ = zeros(R,0,0)
-            # SS_and_pars = zeros(R,0)
-            # 𝐒₁ = zeros(R,0,0)
-            # ∇₁ = zeros(R,0,0)
-            # 𝐒₂ = spzeros(R,0,0)
-            # ∇₂ = spzeros(R,0,0)
             slvd = solved2
         end
     else
@@ -489,6 +481,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                                     𝓂.workspaces;
 	                                                initial_guess = 𝓂.caches.third_order_solution,
 	                                                opts = opts)
+
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
@@ -744,6 +738,8 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 initial_guess = 𝓂.caches.third_order_solution,
                                                 opts = opts)
 
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
+    
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
@@ -944,4 +940,4 @@ function calculate_third_order_moments(parameters::Vector{T},
     return Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && solved_lyapunov
 end
 
-end # dispatch_doctor
+end
