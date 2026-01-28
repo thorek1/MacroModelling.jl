@@ -1,25 +1,21 @@
 # Zygote/ChainRulesCore rrule definitions for reverse-mode automatic differentiation
 #
-# This file centralizes all rrule definitions for computing gradients via reverse-mode AD.
-# rrules specify how to propagate gradients backward through custom functions.
+# This file centralizes rrule definitions for computing gradients via reverse-mode AD.
+# Each rrule specifies how to propagate gradients backward through custom functions.
 #
-# Each rrule returns:
-#   1. The function result (forward pass)
-#   2. A pullback function that computes gradients given upstream derivatives
+# Strategy for each rrule:
+#   1. Compute the forward pass and store necessary intermediate values
+#   2. Return the result and a pullback function
+#   3. The pullback computes gradients w.r.t. inputs given upstream gradients
+#   4. Use implicit differentiation for iterative solvers and matrix equations
 #
 # Functions covered:
-#   - Basic matrix operations: mul_reverse_AD!, mat_mult_kron
-#   - Sparse operations: sparse_preallocated!
-#   - NSSS solver: get_NSSS_and_parameters
-#   - Derivative calculations: calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
-#   - Solution methods: calculate_first/second/third_order_solution
-#   - Stochastic steady state: calculate_second/third_order_stochastic_steady_state
+#   - Basic operations: mul_reverse_AD!, mat_mult_kron, sparse_preallocated!
+#   - Steady states: get_NSSS_and_parameters, calculate_second/third_order_stochastic_steady_state
+#   - Derivatives: calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
+#   - Solutions: calculate_first/second/third_order_solution
 #   - Matrix equations: solve_sylvester_equation, solve_lyapunov_equation
 #   - Filters: calculate_inversion_filter_loglikelihood, run_kalman_iterations, find_shocks
-
-# =============================================================================
-# Basic matrix operations
-# =============================================================================
 
 function rrule(::typeof(mul_reverse_AD!),
                 C::Matrix{S},
@@ -37,11 +33,6 @@ function rrule(::typeof(mul_reverse_AD!),
 
     return ℒ.mul!(C,A,B), times_pullback
 end
-
-
-# =============================================================================
-# mat_mult_kron - Sparse matrix multiplication with Kronecker product
-# =============================================================================
 
 function rrule(::typeof(mat_mult_kron),
                                 A::AbstractSparseMatrix{R},
@@ -127,9 +118,6 @@ function rrule(::typeof(mat_mult_kron),
 end
 
 
-# =============================================================================
-# sparse_preallocated! - Sparse matrix preallocation
-# =============================================================================
 
 function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
     project_Ŝ = ProjectTo(Ŝ)
@@ -142,11 +130,6 @@ function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_
 
     return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
 end
-
-
-# =============================================================================
-# calculate_second_order_stochastic_steady_state
-# =============================================================================
 
 function rrule(::typeof(calculate_second_order_stochastic_steady_state),
                                                         ::Val{:newton}, 
@@ -228,10 +211,6 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
 end
 
 
-# =============================================================================
-# calculate_third_order_stochastic_steady_state
-# =============================================================================
-
 function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         ::Val{:newton}, 
                                                         𝐒₁::Matrix{Float64}, 
@@ -304,10 +283,6 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
 end
 
 
-# =============================================================================
-# calculate_jacobian
-# =============================================================================
-
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
                 SS_and_pars, 
@@ -321,17 +296,12 @@ function rrule(::typeof(calculate_jacobian),
 
         ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
         ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
-
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
 end
 
-
-# =============================================================================
-# calculate_hessian
-# =============================================================================
 
 function rrule(::typeof(calculate_hessian), 
                 parameters, 
@@ -344,7 +314,6 @@ function rrule(::typeof(calculate_hessian),
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
         ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
@@ -353,10 +322,6 @@ function rrule(::typeof(calculate_hessian),
     return hessian, calculate_hessian_pullback
 end
 
-
-# =============================================================================
-# calculate_third_order_derivatives
-# =============================================================================
 
 function rrule(::typeof(calculate_third_order_derivatives), 
                 parameters, 
@@ -377,11 +342,6 @@ function rrule(::typeof(calculate_third_order_derivatives),
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
 end
-
-
-# =============================================================================
-# get_NSSS_and_parameters
-# =============================================================================
 
 function rrule(::typeof(get_NSSS_and_parameters), 
                 𝓂::ℳ, 
@@ -498,21 +458,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
 
-
-# =============================================================================
-# Note: Other rrules remain in their respective source files
-# =============================================================================
-# The following rrules are kept in their original locations for organizational reasons:
-# - perturbation.jl: calculate_first/second/third_order_solution rrules
-# - kalman.jl: run_kalman_iterations rrule  
-# - inversion.jl: calculate_inversion_filter_loglikelihood rrules
-# - find_shocks.jl: find_shocks rrules
-# - sylvester.jl: solve_sylvester_equation rrule
-# - lyapunov.jl: solve_lyapunov_equation rrule
-
-# =============================================================================
-# calculate_first_order_solution (from src/perturbation.jl, lines 120-275)
-# =============================================================================
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
@@ -670,10 +615,6 @@ function rrule(::typeof(calculate_first_order_solution),
 
     return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
 end
-
-# =============================================================================
-# calculate_second_order_solution (from src/perturbation.jl, lines 502-791)
-# =============================================================================
 
 function rrule(::typeof(calculate_second_order_solution), 
                     ∇₁::AbstractMatrix{S}, #first order derivatives
@@ -965,10 +906,6 @@ function rrule(::typeof(calculate_second_order_solution),
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂, solved), second_order_solution_pullback
 end
-
-# =============================================================================
-# calculate_third_order_solution (from src/perturbation.jl, lines 1040-1619)
-# =============================================================================
 
 function rrule(::typeof(calculate_third_order_solution), 
                 ∇₁::AbstractMatrix{S}, #first order derivatives
@@ -1551,10 +1488,6 @@ function rrule(::typeof(calculate_third_order_solution),
     return (𝐒₃, solved), third_order_solution_pullback
 end
 
-# =============================================================================
-# solve_sylvester_equation (from src/algorithms/sylvester.jl, lines 233-271)
-# =============================================================================
-
 function rrule(::typeof(solve_sylvester_equation),
     A::M,
     B::N,
@@ -1595,10 +1528,6 @@ function rrule(::typeof(solve_sylvester_equation),
     return (P, solved), solve_sylvester_equation_pullback
 end
 
-# =============================================================================
-# solve_lyapunov_equation (from src/algorithms/lyapunov.jl, lines 90-117)
-# =============================================================================
-
 function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64},
@@ -1627,10 +1556,6 @@ function rrule(::typeof(solve_lyapunov_equation),
     
     return (P, solved), solve_lyapunov_equation_pullback
 end
-
-# =============================================================================
-# find_shocks (2nd order) (from src/filter/find_shocks.jl, lines 1026-1084)
-# =============================================================================
 
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
@@ -1691,10 +1616,6 @@ function rrule(::typeof(find_shocks),
 
     return (x, matched), find_shocks_pullback
 end
-
-# =============================================================================
-# find_shocks (3rd order) (from src/filter/find_shocks.jl, lines 1259-1322)
-# =============================================================================
 
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
@@ -1761,9 +1682,6 @@ function rrule(::typeof(find_shocks),
     return (x, matched), find_shocks_pullback
 end
 
-# =============================================================================
-# calculate_inversion_filter_loglikelihood (first_order) (from src/filter/inversion.jl, lines 171-341)
-# =============================================================================
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
                 ::Val{:first_order}, 
@@ -1937,9 +1855,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_pullback
 end
 
-# =============================================================================
-# calculate_inversion_filter_loglikelihood (pruned_second_order) (from src/filter/inversion.jl, lines 593-1062)
-# =============================================================================
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:pruned_second_order},
@@ -2412,10 +2327,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# =============================================================================
-# calculate_inversion_filter_loglikelihood (second_order) (from src/filter/inversion.jl, lines 1306-1745)
-# =============================================================================
-
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:second_order},
                 state::Vector{Float64}, 
@@ -2856,10 +2767,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     return llh, inversion_filter_loglikelihood_pullback
 end
-
-# =============================================================================
-# calculate_inversion_filter_loglikelihood (pruned_third_order) (from src/filter/inversion.jl, lines 2181-2730)
-# =============================================================================
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:pruned_third_order},
@@ -3412,10 +3319,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# =============================================================================
-# calculate_inversion_filter_loglikelihood (third_order) (from src/filter/inversion.jl, lines 3067-3522)
-# =============================================================================
-
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:third_order},
                 state::Vector{Float64}, 
@@ -3872,10 +3775,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     return llh, inversion_filter_loglikelihood_pullback
 end
-# =============================================================================
-# run_kalman_iterations (from src/filter/kalman.jl, lines 311-585)
-# =============================================================================
-
 
 function rrule(::typeof(run_kalman_iterations), 
                     A, 

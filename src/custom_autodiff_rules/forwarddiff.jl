@@ -19,9 +19,6 @@
 #   - solve_sylvester_equation
 #   - solve_lyapunov_equation
 
-# =============================================================================
-# sparse_preallocated! - Pass-through for Dual matrices
-# =============================================================================
 
 function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {Z,S,N,T <: Real, F <: AbstractFloat}
     sparse(Ŝ)
@@ -100,10 +97,6 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(x̂)), solved
 end
-
-# =============================================================================
-# calculate_third_order_stochastic_steady_state - Dual version
-# =============================================================================
 
 function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
@@ -185,9 +178,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(x̂)), solved
 end
-# =============================================================================
-# separate_values_and_partials_from_sparsevec_dual - Helper for sparse Dual vectors
-# =============================================================================
+
 function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     nrows = length(V)
     ncols = length(V.nzval[1].partials)
@@ -212,10 +203,6 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 
     return vvals, ps
 end
-
-# =============================================================================
-# get_NSSS_and_parameters - Dual version for NSSS computation
-# =============================================================================
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
@@ -330,10 +317,6 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end, size(SS_and_pars)), (solution_error, iters)
 end
 
-# =============================================================================
-# calculate_first_order_solution - Dual version for first-order perturbation
-# =============================================================================
-
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
                                         qme_ws::qme_workspace,
@@ -428,10 +411,6 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     return hcat(x, B), qme_sol, solved
 end
 
-# =============================================================================
-# solve_quadratic_matrix_equation - Dual version
-# =============================================================================
-
 function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
@@ -494,10 +473,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     end, size(X)), solved
 end
 
-# =============================================================================
-# solve_sylvester_equation - Dual version
-# =============================================================================
-
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
@@ -547,10 +522,6 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(P̂)), solved
 end
-
-# =============================================================================
-# solve_lyapunov_equation - Dual version
-# =============================================================================
 
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
