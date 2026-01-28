@@ -314,6 +314,7 @@ function rrule(::typeof(calculate_hessian),
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
+        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
         ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
