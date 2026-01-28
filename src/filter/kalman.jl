@@ -238,12 +238,6 @@ function run_kalman_iterations(A::Matrix{S},
 end
 
 
-
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
-
 function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo

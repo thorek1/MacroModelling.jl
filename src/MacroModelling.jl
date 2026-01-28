@@ -374,7 +374,7 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
@@ -524,7 +524,7 @@ function transform_expression(expr::Expr)
     return transformed_expr, reverse_transformations
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function normalize_filtering_options(filter::Symbol,
                                       smooth::Bool,
@@ -593,7 +593,7 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
@@ -660,7 +660,7 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
@@ -1857,13 +1857,6 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} =
 
     return out
 end
-
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
-
 
 
 function compressed_kron³(a::AbstractMatrix{T};
@@ -3086,7 +3079,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function evaluate_conditions(cond)
     if cond isa Bool
@@ -3201,7 +3194,7 @@ function remove_nothing(ex::Expr)
     end
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
     
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
@@ -6519,12 +6512,6 @@ end
 
 
 
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
-
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
@@ -6723,12 +6710,6 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 end
 
 
-
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
     if !𝓂.constants.post_parameters_macro.precompile
@@ -8508,11 +8489,6 @@ function calculate_jacobian(parameters::Vector{M},
     return jac_buffer
 end
 
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
-
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
@@ -8533,11 +8509,6 @@ function calculate_hessian(parameters::Vector{M},
     return hes_buffer
 end
 
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
@@ -8558,11 +8529,6 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     
     return third_buffer
 end
-
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
 
 
 
@@ -9528,7 +9494,7 @@ end
 
 
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 # function Stateupdate(::Val{:first_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
 #     return [P.first_order.solution_matrix * [states[1][T.past_not_future_and_mixed_idx]; shocks]]
@@ -9689,7 +9655,7 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     return result
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
@@ -9770,13 +9736,6 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     # end # timeit_debug
     return SS_and_pars, (solution_error, iters)
 end
-
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
-
-
 
 
 

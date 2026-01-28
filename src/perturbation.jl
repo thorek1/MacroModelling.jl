@@ -115,12 +115,6 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     return hcat(A, ∇ₑ), sol, true
 end
 
-end # dispatch_doctor 
-
-
-@stable default_mode = "disable" begin
-
-
 
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
@@ -247,10 +241,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     return 𝐒₂, solved
 end
 
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives

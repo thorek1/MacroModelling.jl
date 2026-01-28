@@ -85,12 +85,6 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     return X, reached_tol < acceptance_tol
 end
 
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
-
-
 
 
 function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},

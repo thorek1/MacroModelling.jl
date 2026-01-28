@@ -166,11 +166,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     state::Vector{Vector{R}}, 
@@ -417,11 +412,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-end # dispatch_doctor
-
-
-@stable default_mode = "disable" begin
-
 
 function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     state::Vector{R}, 
@@ -659,12 +649,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
-
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     state::Vector{Vector{R}}, 
@@ -1094,13 +1078,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-end # dispatch_doctor
-
-
-
-
-@stable default_mode = "disable" begin
-
 
 function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     state::Vector{R}, 
@@ -1429,13 +1406,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
-
-
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},

@@ -227,13 +227,6 @@ function solve_sylvester_equation(A::M,
     return X, reached_tol < acceptance_tol
 end
 
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
-
-
 
 
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},

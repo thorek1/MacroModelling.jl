@@ -873,11 +873,7 @@ end
 
 #     return x[free_shock_idx], matched
 # end
-end # dispatch_doctor
 
-
-
-@stable default_mode = "disable" begin
 """
 Solve for minimum-norm shocks that satisfy linear and quadratic constraints using a
 Lagrange-Newton stepper. For higher-order solutions the global minimum-norm problem is
@@ -1021,11 +1017,6 @@ function find_shocks(::Val{:LagrangeNewton},
     return x, matched
 end
 
-end # dispatch_doctor
-
-
-
-@stable default_mode = "disable" begin
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
