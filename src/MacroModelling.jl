@@ -3173,8 +3173,6 @@ function contains_equation(expr)
     return found
 end
 
-@stable default_mode = "disable" begin
-
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
         # Only consider call-expressions
@@ -3198,6 +3196,8 @@ function remove_nothing(ex::Expr)
         return node
     end
 end
+
+@stable default_mode = "disable" begin
 
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
