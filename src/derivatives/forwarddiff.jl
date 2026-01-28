@@ -591,3 +591,70 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     end, size(P̂)), solved
 end
 
+
+function run_kalman_iterations(A::Matrix{S}, 
+                                𝐁::Matrix{S}, 
+                                C::Matrix{Float64}, 
+                                P::Matrix{S}, 
+                                data_in_deviations::Matrix{S},
+                                ws::kalman_workspace; 
+                                presample_periods::Int = 0,
+                                on_failure_loglikelihood::U = -Inf,
+                                # timer::TimerOutput = TimerOutput(),
+                                verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
+    # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
+    # ForwardDiff requires fresh allocations - workspace not used here
+    u = zeros(S, size(C,2))
+
+    z = C * u
+
+    loglik = S(0.0)
+
+    F = similar(C * C')
+
+    K = similar(C')
+
+    for t in 1:size(data_in_deviations, 2)
+        if !all(isfinite.(z)) 
+            if verbose println("KF not finite at step $t") end
+            return on_failure_loglikelihood 
+        end
+
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        invF = inv(luF) ###
+
+        if t > presample_periods
+            loglik += log(Fdet) + ℒ.dot(v, invF, v)###
+        end
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
+    end
+
+    # end # timeit_debug
+
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+end
