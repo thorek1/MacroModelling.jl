@@ -834,12 +834,12 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         initial_guess = zero(C)
     end
     
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
     
-    # Use workspace buffers
+    # Use workspaces
     𝐀  = 𝕊ℂ.𝐀
     𝐀¹ = 𝕊ℂ.𝐀¹
     𝐁  = 𝕊ℂ.𝐁
@@ -942,12 +942,12 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
     
-    # Ensure workspace buffers are allocated (reuse Krylov buffers for tmp and 𝐂¹)
+    # Ensure workspaces are allocated (reuse Krylov buffers for tmp and 𝐂¹)
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
     
-    # Use workspace buffers
+    # Use workspaces
     𝐂¹ = 𝕊ℂ.𝐂
     tmp̄ = 𝕊ℂ.tmp
       
@@ -1005,7 +1005,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
@@ -1157,7 +1157,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
@@ -1309,7 +1309,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)

@@ -243,7 +243,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
     initial_guess = copy(all_shocks)
     
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     third_order = !isnothing(𝐒ⁱ³ᵉ)
     ensure_find_shocks_buffers!(ws, n_exo; third_order = third_order)
 

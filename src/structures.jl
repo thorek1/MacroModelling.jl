@@ -761,6 +761,18 @@ mutable struct inversion_workspace{T <: Real}
     state_vol::Vector{T}             # n_past+1
     aug_state₁::Vector{T}            # n_past+1+n_exo
     aug_state₂::Vector{T}            # n_past+1+n_exo
+    
+    # Pullback buffers (for reverse-mode AD in rrule)
+    ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
+    ∂_tmp2::Matrix{T}                # (n_past, n_past + n_exo)
+    ∂_tmp3::Vector{T}                # n_past + n_exo
+    ∂𝐒t⁻::Matrix{T}                  # (n_past, n_past + n_exo)
+    ∂data::Matrix{T}                 # (n_past, n_periods)
+    # Pullback buffers for pruned second order inversion filter
+    ∂𝐒ⁱ²ᵉtmp::Matrix{T}              # (n_exo, n_exo * n_obs)
+    ∂𝐒ⁱ²ᵉtmp2::Matrix{T}             # (n_obs, n_exo^2)
+    kronSλ::Vector{T}                # n_obs * n_exo
+    kronxS::Vector{T}                # n_exo * n_obs
 end
 
 
@@ -817,6 +829,19 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
+    # ForwardDiff partials buffers (for forward-mode AD)
+    ∂x_second_order::Matrix{F}     # For second order SSS partials
+    ∂x_third_order::Matrix{F}      # For third order SSS partials
+    ∂SS_and_pars::Matrix{F}        # For NSSS partials
+    X̃_first_order::Matrix{F}       # For first order solution partials
+    X̃_qme::Matrix{F}               # For QME solution partials
+    P̃_sylvester::Matrix{F}         # For sylvester equation partials
+    P̃_lyapunov::Matrix{F}          # For lyapunov equation partials
+    # Temporary matrices for sylvester/lyapunov (to avoid copy allocations)
+    Ã_tmp::Matrix{F}
+    B̃_tmp::Matrix{F}
+    C̃_tmp::Matrix{F}
+    p_tmp::Matrix{F}               # For calculate_first_order_solution
 end
 
 

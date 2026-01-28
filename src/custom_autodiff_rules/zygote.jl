@@ -732,7 +732,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # end # timeit_debug
 
-    # Ensure pullback workspace buffers are properly sized
+    # Ensure pullback workspaces are properly sized
     if size(ℂ.∂∇₂) != size(∇₂)
         ℂ.∂∇₂ = zeros(S, size(∇₂))
     end
@@ -759,7 +759,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Second order solution - pullback" begin
             
         # @timeit_debug timer "Preallocate" begin
-        # Use workspace buffers and fill with zeros instead of allocating new arrays
+        # Use workspaces and fill with zeros instead of allocating new arrays
         ∂∇₂ = ℂ.∂∇₂; fill!(∂∇₂, zero(S))
         ∂∇₁ = ℂ.∂∇₁; fill!(∂∇₁, zero(S))
         ∂𝐒₁ = ℂ.∂𝐒₁; fill!(∂𝐒₁, zero(S))
@@ -1208,7 +1208,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     
-    # Ensure pullback workspace buffers are properly sized (for dense matrices only)
+    # Ensure pullback workspaces are properly sized (for dense matrices only)
     if size(ℂ.∂∇₁_3rd) != size(∇₁)
         ℂ.∂∇₁_3rd = zeros(S, size(∇₁))
     end
@@ -1220,7 +1220,7 @@ function rrule(::typeof(calculate_third_order_solution),
     end
 
     function third_order_solution_pullback(∂𝐒₃_solved) 
-        # Use workspace buffers for dense matrices, zero() for sparse
+        # Use workspaces for dense matrices, zero() for sparse
         ∂∇₁ = ℂ.∂∇₁_3rd; fill!(∂∇₁, zero(S))
         ∂∇₂ = zero(∇₂)  # sparse
         # ∂𝐔∇₃ = zero(𝐔∇₃)
@@ -1780,7 +1780,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     ∂data_in_deviations = zero(data_in_deviations)
     
-    ∂data = zeros(length(t⁻), size(data_in_deviations,2) - 1)
+    # Allocate or reuse workspaces for pullback
+    n_periods = size(data_in_deviations,2) - 1
+    if size(ws.∂data) != (length(t⁻), n_periods)
+        ws.∂data = zeros(length(t⁻), n_periods)
+    else
+        fill!(ws.∂data, zero(eltype(ws.∂data)))
+    end
+    ∂data = ws.∂data
 
     ∂state = zero(state[1])
 
@@ -1796,11 +1803,34 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # ∂Stmp[t] = M² * ∂Stmp[t-1]
     end
 
-    tmp1 = zeros(Float64, T.nExo, length(t⁻) + T.nExo)
-    tmp2 = zeros(Float64, length(t⁻), length(t⁻) + T.nExo)
-    tmp3 = zeros(Float64, length(t⁻) + T.nExo)
+    # Allocate or reuse workspaces for temporary matrices
+    if size(ws.∂_tmp1) != (T.nExo, length(t⁻) + T.nExo)
+        ws.∂_tmp1 = zeros(Float64, T.nExo, length(t⁻) + T.nExo)
+    else
+        fill!(ws.∂_tmp1, zero(Float64))
+    end
+    tmp1 = ws.∂_tmp1
+    
+    if size(ws.∂_tmp2) != (length(t⁻), length(t⁻) + T.nExo)
+        ws.∂_tmp2 = zeros(Float64, length(t⁻), length(t⁻) + T.nExo)
+    else
+        fill!(ws.∂_tmp2, zero(Float64))
+    end
+    tmp2 = ws.∂_tmp2
+    
+    if size(ws.∂_tmp3) != (length(t⁻) + T.nExo,)
+        ws.∂_tmp3 = zeros(Float64, length(t⁻) + T.nExo)
+    else
+        fill!(ws.∂_tmp3, zero(Float64))
+    end
+    tmp3 = ws.∂_tmp3
 
-    ∂𝐒t⁻        = copy(tmp2)
+    if size(ws.∂𝐒t⁻) != size(tmp2)
+        ws.∂𝐒t⁻ = copy(tmp2)
+    else
+        fill!(ws.∂𝐒t⁻, zero(Float64))
+    end
+    ∂𝐒t⁻ = ws.∂𝐒t⁻
     # ∂𝐒obs_idx   = copy(tmp1)
 
     # end # timeit_debug
@@ -2582,8 +2612,21 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ∂𝐒ⁱ = zero(𝐒ⁱ)
         ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
-        ∂𝐒ⁱ²ᵉtmp = zeros(T.nExo, T.nExo * length(λ[1]))    
-        ∂𝐒ⁱ²ᵉtmp2 = zeros(length(λ[1]), T.nExo * T.nExo)    
+        
+        # Allocate or reuse workspaces for pullback temps
+        if size(ws.∂𝐒ⁱ²ᵉtmp) != (T.nExo, T.nExo * length(λ[1]))
+            ws.∂𝐒ⁱ²ᵉtmp = zeros(T.nExo, T.nExo * length(λ[1]))
+        else
+            fill!(ws.∂𝐒ⁱ²ᵉtmp, zero(eltype(ws.∂𝐒ⁱ²ᵉtmp)))
+        end
+        ∂𝐒ⁱ²ᵉtmp = ws.∂𝐒ⁱ²ᵉtmp
+        
+        if size(ws.∂𝐒ⁱ²ᵉtmp2) != (length(λ[1]), T.nExo * T.nExo)
+            ws.∂𝐒ⁱ²ᵉtmp2 = zeros(length(λ[1]), T.nExo * T.nExo)
+        else
+            fill!(ws.∂𝐒ⁱ²ᵉtmp2, zero(eltype(ws.∂𝐒ⁱ²ᵉtmp2)))
+        end
+        ∂𝐒ⁱ²ᵉtmp2 = ws.∂𝐒ⁱ²ᵉtmp2
 
         ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
         ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
@@ -2600,8 +2643,20 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
-        kronSλ = zeros(length(cond_var_idx) * T.nExo)
-        kronxS = zeros(T.nExo * length(cond_var_idx))
+        # Allocate or reuse workspaces for kron products
+        if length(ws.kronSλ) != length(cond_var_idx) * T.nExo
+            ws.kronSλ = zeros(length(cond_var_idx) * T.nExo)
+        else
+            fill!(ws.kronSλ, zero(eltype(ws.kronSλ)))
+        end
+        kronSλ = ws.kronSλ
+        
+        if length(ws.kronxS) != T.nExo * length(cond_var_idx)
+            ws.kronxS = zeros(T.nExo * length(cond_var_idx))
+        else
+            fill!(ws.kronxS, zero(eltype(ws.kronxS)))
+        end
+        kronxS = ws.kronxS
         
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin

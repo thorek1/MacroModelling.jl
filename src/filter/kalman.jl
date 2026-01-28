@@ -138,12 +138,12 @@ function run_kalman_iterations(A::Matrix{S},
                                 verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
-    # Ensure workspace buffers are properly sized
+    # Ensure workspaces are properly sized
     n_obs = size(C, 1)
     n_states = size(C, 2)
     @ignore_derivatives ensure_kalman_buffers!(ws, n_obs, n_states)
     
-    # Use workspace buffers
+    # Use workspaces
     u = ws.u
     z = ws.z
     ztmp = ws.ztmp

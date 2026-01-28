@@ -291,7 +291,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     # Ensure doubling buffers are allocated
     ensure_lyapunov_doubling_buffers!(workspace)
     
-    # Use workspace buffers for dense-dense case
+    # Use workspaces for dense-dense case
     𝐂  = workspace.𝐂
     𝐂¹ = workspace.𝐂¹
     𝐀  = workspace.𝐀
@@ -356,7 +356,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # Ensure Krylov buffers and bicgstab solver are allocated
     ensure_lyapunov_bicgstab_solver!(workspace)
     
-    # Use workspace buffers
+    # Use workspaces
     tmp̄ = workspace.tmp̄
     𝐗 = workspace.𝐗
     b = workspace.b
@@ -406,7 +406,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # Ensure Krylov buffers and gmres solver are allocated
     ensure_lyapunov_gmres_solver!(workspace)
     
-    # Use workspace buffers
+    # Use workspaces
     tmp̄ = workspace.tmp̄
     𝐗 = workspace.𝐗
     b = workspace.b

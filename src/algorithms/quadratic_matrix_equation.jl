@@ -240,7 +240,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         initial_guess = zero(A)
     end
 
-    # Extract workspace buffers
+    # Extract workspaces
     E = workspace.E
     F = workspace.F
     X = workspace.X

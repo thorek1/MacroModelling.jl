@@ -195,7 +195,20 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         # Third order pullback gradient buffers (only dense matrices)
                         zeros(T,0,0),  # ∂∇₁_3rd
                         zeros(T,0,0),  # ∂𝐒₁_3rd
-                        zeros(T,0,0))  # ∂spinv_3rd
+                        zeros(T,0,0),  # ∂spinv_3rd
+                        # ForwardDiff partials buffers (for forward-mode AD)
+                        zeros(T,0,0),  # ∂x_second_order
+                        zeros(T,0,0),  # ∂x_third_order
+                        zeros(T,0,0),  # ∂SS_and_pars
+                        zeros(T,0,0),  # X̃_first_order
+                        zeros(T,0,0),  # X̃_qme
+                        zeros(T,0,0),  # P̃_sylvester
+                        zeros(T,0,0),  # P̃_lyapunov
+                        # Temporary matrices for sylvester/lyapunov
+                        zeros(T,0,0),  # Ã_tmp
+                        zeros(T,0,0),  # B̃_tmp
+                        zeros(T,0,0),  # C̃_tmp
+                        zeros(T,0,0))  # p_tmp
 end
 
 """
@@ -387,7 +400,7 @@ end
 """
     ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
 
-Ensure the find_shocks workspace buffers are allocated for the given number of shocks.
+Ensure the find_shocks workspaces are allocated for the given number of shocks.
 Only allocates 3rd order buffers if third_order=true.
 Buffer sizes: kron_buffer (n_exo^2), kron_buffer2 (n_exo^2 × n_exo), 
               kron_buffer² (n_exo^3), kron_buffer3 (n_exo^3 × n_exo), kron_buffer4 (n_exo^3 × n_exo^2)
@@ -443,14 +456,25 @@ function Inversion_workspace(;T::Type = Float64)
         zeros(T, 0),            # kron_kron_aug_state ((n_past+1+n_exo)^3)
         zeros(T, 0),            # state_vol (n_past+1)
         zeros(T, 0),            # aug_state₁ (n_past+1+n_exo)
-        zeros(T, 0))            # aug_state₂ (n_past+1+n_exo)
+        zeros(T, 0),            # aug_state₂ (n_past+1+n_exo)
+        # Pullback buffers (for reverse-mode AD)
+        zeros(T, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
+        zeros(T, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
+        zeros(T, 0),            # ∂_tmp3 (n_past+n_exo)
+        zeros(T, 0, 0),         # ∂𝐒t⁻ (n_past × n_past+n_exo)
+        zeros(T, 0, 0),         # ∂data (n_past × n_periods)
+        # Pullback buffers for pruned second order
+        zeros(T, 0, 0),         # ∂𝐒ⁱ²ᵉtmp (n_exo × n_exo*n_obs)
+        zeros(T, 0, 0),         # ∂𝐒ⁱ²ᵉtmp2 (n_obs × n_exo^2)
+        zeros(T, 0),            # kronSλ (n_obs * n_exo)
+        zeros(T, 0))            # kronxS (n_exo * n_obs)
 end
 
 
 """
     ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
 
-Ensure the inversion workspace buffers are allocated for the given dimensions.
+Ensure the inversion workspaces are allocated for the given dimensions.
 Only allocates 3rd order buffers if third_order=true.
 """
 function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
@@ -539,7 +563,7 @@ end
 """
     ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
 
-Ensure the Kalman workspace buffers are allocated for the given dimensions.
+Ensure the Kalman workspaces are allocated for the given dimensions.
 """
 function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
     # Check if dimensions changed
