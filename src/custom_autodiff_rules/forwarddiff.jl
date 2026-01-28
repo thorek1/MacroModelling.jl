@@ -20,7 +20,7 @@
 #   - solve_lyapunov_equation
 
 
-function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {Z,S,N,T <: Real, F <: AbstractFloat}
+function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace()) where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     sparse(Ŝ)
 end
 
@@ -29,9 +29,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
-                                                        ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                                        ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,TW <: Real, FW <: AbstractFloat}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -111,8 +111,8 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
-                                                        ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                                        ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
@@ -220,9 +220,9 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                 opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N, T <: Real, F <: AbstractFloat}
+                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N, TW <: Real, FW <: AbstractFloat}
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
 
@@ -342,9 +342,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
                                         qme_ws::qme_workspace,
                                         sylv_ws::sylvester_workspace;
-                                        ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                        ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
@@ -450,11 +450,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         constants::constants,
                                         workspace::qme_workspace;
-                                        ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                        ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        verbose::Bool = false) where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                        verbose::Bool = false) where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
@@ -518,12 +518,12 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     𝕊ℂ::sylvester_workspace;
-                                    ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                    ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
@@ -592,11 +592,11 @@ end
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     workspace::lyapunov_workspace;
-                                    ℂ::higher_order_workspace{T,F} = Higher_order_workspace(),
+                                    ℂ::higher_order_workspace{TW,FW} = Higher_order_workspace(),
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-14,
                                     acceptance_tol::AbstractFloat = 1e-12,
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,T <: Real, F <: AbstractFloat}
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N,TW <: Real, FW <: AbstractFloat}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
