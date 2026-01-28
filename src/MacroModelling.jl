@@ -9611,42 +9611,43 @@ end
 function evaluate_custom_steady_state_function(𝓂::ℳ,
                                                 parameter_values::AbstractVector{S},
                                                 expected_length::Int,
-                                                expected_parameter_length::Int) where {S <: Real}
+                                                expected_parameter_length::Int)::Vector{S} where {S <: Real}
     if length(parameter_values) != expected_parameter_length
         throw(ArgumentError("Custom steady state function expected $expected_parameter_length parameters, got $(length(parameter_values))."))
     end
 
-    result = nothing
     has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
-        output = get_custom_steady_state_buffer!(𝓂, expected_length)
-
+        output = Vector{S}(undef, expected_length)
         try 
             𝓂.functions.NSSS_custom(output, parameter_values)
         catch
         end
-        
-        result = output
+        return output
     elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
-        result = try
+        raw_result = try
             𝓂.functions.NSSS_custom(parameter_values)
         catch
-            fill(NaN, expected_length)
+            nothing
         end
         
-        if !(result isa AbstractVector)
-            throw(ArgumentError("Custom steady state function returned $(typeof(result)); expected an AbstractVector."))
+        if raw_result === nothing
+            return Vector{S}(fill(NaN, expected_length))
         end
+        
+        if !(raw_result isa AbstractVector)
+            throw(ArgumentError("Custom steady state function returned $(typeof(raw_result)); expected an AbstractVector."))
+        end
+        
+        if length(raw_result) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(raw_result)) values, expected $expected_length."))
+        end
+        
+        return Vector{S}(raw_result)
     else
         throw(ArgumentError("Custom steady state function must accept either (parameters) or (out, parameters)."))
     end
-
-    if length(result) != expected_length
-        throw(ArgumentError("Custom steady state function returned $(length(result)) values, expected $expected_length."))
-    end
-    
-    return result
 end
 
 # @stable default_mode = "disable" begin
