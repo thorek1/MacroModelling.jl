@@ -830,7 +830,7 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
 end
 
 function set_up_obc_violation_function!(𝓂)
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -3007,7 +3007,7 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
@@ -3552,12 +3552,12 @@ end
 Return cached second-order computational constants (BitVectors and index patterns).
 """
 function get_computational_constants(𝓂::ℳ)
-    ensure_computational_constants_cache!(𝓂)
+    ensure_computational_constants!(𝓂)
     return 𝓂.constants.second_order
 end
 
 function get_computational_constants(constants::constants)
-    ensure_computational_constants_cache!(constants)
+    ensure_computational_constants!(constants)
     return constants.second_order
 end
 
@@ -6337,7 +6337,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    ms = @ignore_derivatives ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     # @timeit_debug timer "Calculate Jacobian" begin
@@ -6529,7 +6529,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
-    ms = @ignore_derivatives ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
@@ -6622,7 +6622,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         s_in_s⁺ = @ignore_derivatives so.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
         
-        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+        kron_s⁺_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺_s⁺
         
         A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
@@ -6665,7 +6665,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants!(𝓂)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
@@ -6675,9 +6675,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     kron_s⁺_s = so.kron_s⁺_s
     
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
     
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
     
     A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -9284,7 +9284,7 @@ end
 
 
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     if variables == :all_excluding_auxiliary_and_obc
         return ms.vars_idx_excluding_aux_obc
     elseif variables == :all_excluding_obc
@@ -9694,7 +9694,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -9767,7 +9767,7 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -9789,7 +9789,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
@@ -9811,7 +9811,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -9833,7 +9833,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]

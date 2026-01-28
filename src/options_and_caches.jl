@@ -3,7 +3,7 @@
     Second_order_indices()
 
 Create an empty `second_order_indices` struct with all fields initialized to empty/zero values.
-These will be lazily populated by various ensure_*_cache! functions as needed.
+These will be lazily populated by various ensure_*! functions as needed.
 
 See [`second_order_indices`](@ref) for field documentation.
 """
@@ -29,6 +29,8 @@ function Second_order_indices()
         BitVector(),         # kron_v_v
         BitVector(),         # kron_s_e
         BitVector(),         # kron_e_s
+        BitVector(),         # kron_s⁺_s⁺_s⁺
+        BitVector(),         # kron_s_s⁺_s⁺
         # Index arrays
         Int[],               # shockvar_idxs
         Int[],               # shock_idxs
@@ -53,7 +55,7 @@ end
     Third_order_indices()
 
 Create an empty `third_order_indices` struct with all fields initialized to empty/zero values.
-These will be lazily populated by various ensure_*_cache! functions as needed.
+These will be lazily populated by various ensure_*! functions as needed.
 
 See [`third_order_indices`](@ref) for field documentation.
 """
@@ -740,15 +742,15 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
 end
 
 # Initialize all commonly used constants at once (call at entry points)
-# This reduces repeated ensure_*_cache! calls throughout the codebase
+# This reduces repeated ensure_*! calls throughout the codebase
 function initialise_constants!(𝓂)
-    ensure_computational_constants_cache!(𝓂)
-    ensure_name_display_cache!(𝓂)
-    ensure_first_order_index_cache!(𝓂)
+    ensure_computational_constants!(𝓂)
+    ensure_name_display_constants!(𝓂)
+    ensure_first_order_constants!(𝓂)
     return 𝓂.constants
 end
 
-function ensure_name_display_cache!(𝓂)
+function ensure_name_display_constants!(𝓂)
     constants = 𝓂.constants
     # Use model from constants
     T = constants.post_model_macro
@@ -829,7 +831,7 @@ function set_up_name_display_cache(T::post_model_macro, calibration_equations_pa
 end
 
 
-function ensure_computational_constants_cache!(𝓂)
+function ensure_computational_constants!(𝓂)
     constants = 𝓂.constants
     so = constants.second_order
     if isempty(so.s_in_s⁺)
@@ -844,6 +846,9 @@ function ensure_computational_constants_cache!(𝓂)
         kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
 
+        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+        kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
@@ -863,6 +868,8 @@ function ensure_computational_constants_cache!(𝓂)
         so.s_in_s = s_in_s
         so.kron_s⁺_s⁺ = kron_s⁺_s⁺
         so.kron_s⁺_s = kron_s⁺_s
+        so.kron_s⁺_s⁺_s⁺ = kron_s⁺_s⁺_s⁺
+        so.kron_s_s⁺_s⁺ = kron_s_s⁺_s⁺
         so.e_in_s⁺ = e_in_s⁺
         so.v_in_s⁺ = v_in_s⁺
         so.kron_s_s = kron_s_s
@@ -879,7 +886,7 @@ function ensure_computational_constants_cache!(𝓂)
     return constants.second_order
 end
 
-function ensure_computational_constants_cache!(constants::constants)
+function ensure_computational_constants!(constants::constants)
     so = constants.second_order
     if isempty(so.s_in_s⁺)
         # Use timings from constants
@@ -893,6 +900,9 @@ function ensure_computational_constants_cache!(constants::constants)
         kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
 
+        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+        kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
@@ -912,6 +922,8 @@ function ensure_computational_constants_cache!(constants::constants)
         so.s_in_s = s_in_s
         so.kron_s⁺_s⁺ = kron_s⁺_s⁺
         so.kron_s⁺_s = kron_s⁺_s
+        so.kron_s⁺_s⁺_s⁺ = kron_s⁺_s⁺_s⁺
+        so.kron_s_s⁺_s⁺ = kron_s_s⁺_s⁺
         so.e_in_s⁺ = e_in_s⁺
         so.v_in_s⁺ = v_in_s⁺
         so.kron_s_s = kron_s_s
@@ -928,9 +940,9 @@ function ensure_computational_constants_cache!(constants::constants)
     return constants.second_order
 end
 
-function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = false)
+function ensure_conditional_forecast_constants!(𝓂; third_order::Bool = false)
     constants = 𝓂.constants
-    so = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants!(𝓂)
 
     if isempty(so.var²_idxs)
         s_in_s⁺ = so.s_in_s
@@ -978,8 +990,8 @@ function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = fals
     return so
 end
 
-function ensure_conditional_forecast_index_cache!(constants::constants; third_order::Bool = false)
-    so = ensure_computational_constants_cache!(constants)
+function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
+    so = ensure_computational_constants!(constants)
 
     if isempty(so.var²_idxs)
         s_in_s⁺ = so.s_in_s
@@ -1082,7 +1094,7 @@ function build_first_order_index_cache(T, I_nVars)
     )
 end
 
-function ensure_first_order_index_cache!(𝓂)
+function ensure_first_order_constants!(𝓂)
     constants = 𝓂.constants
     if !constants.post_complete_parameters.initialized
         # Use timings from constants if available, otherwise from model
@@ -1112,7 +1124,7 @@ function ensure_first_order_index_cache!(𝓂)
     return constants.post_complete_parameters
 end
 
-function ensure_first_order_index_cache!(constants::constants)
+function ensure_first_order_constants!(constants::constants)
     if !constants.post_complete_parameters.initialized
         # Use timings from constants if available
         T = constants.post_model_macro
@@ -1263,7 +1275,7 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     return selector
 end
 
-function ensure_model_structure_cache!(constants::constants, calibration_parameters::Vector{Symbol})
+function ensure_model_structure_constants!(constants::constants, calibration_parameters::Vector{Symbol})
     T = constants.post_model_macro
     if isempty(constants.post_complete_parameters.SS_and_pars_names)
         SS_and_pars_names = vcat(
@@ -1354,8 +1366,8 @@ function compute_e6(nᵉ::Int)
     return sextup * E_e6
 end
 
-function ensure_moments_cache!(constants::constants)
-    so = ensure_computational_constants_cache!(constants)
+function ensure_moments_constants!(constants::constants)
+    so = ensure_computational_constants!(constants)
     to = constants.third_order
     # Use timings from constants
     T = constants.post_model_macro
@@ -1424,7 +1436,7 @@ function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symb
     to = constants.third_order
     key = Tuple(dependencies)
     if !haskey(to.dependency_kron_indices, key)
-        so = ensure_computational_constants_cache!(𝓂)
+        so = ensure_computational_constants!(𝓂)
         to.dependency_kron_indices[key] = moments_dependency_kron_indices(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, so.e_in_s⁺),

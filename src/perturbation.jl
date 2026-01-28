@@ -10,19 +10,19 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_cache = ensure_first_order_index_cache!(constants)
+    idx_constants = ensure_first_order_constants!(constants)
 
-    dynIndex = idx_cache.dyn_index
-    reverse_dynamic_order = idx_cache.reverse_dynamic_order
-    comb = idx_cache.comb
-    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
-    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
-    Ir = idx_cache.Ir
+    dynIndex = idx_constants.dyn_index
+    reverse_dynamic_order = idx_constants.reverse_dynamic_order
+    comb = idx_constants.comb
+    future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    Ir = idx_constants.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
-    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -95,7 +95,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    M = A[T.future_not_past_and_mixed_idx,:] * idx_cache.expand_past
+    M = A[T.future_not_past_and_mixed_idx,:] * idx_constants.expand_past
 
     ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
 

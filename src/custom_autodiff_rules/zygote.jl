@@ -220,7 +220,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants!(𝓂)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
@@ -230,9 +230,9 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     
     kron_s⁺_s = so.kron_s⁺_s
     
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
     
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
     
     A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -350,7 +350,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 cold_start::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -471,19 +471,19 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_cache = ensure_first_order_index_cache!(constants)
+    idx_constants = ensure_first_order_constants!(constants)
 
-    dynIndex = idx_cache.dyn_index
-    reverse_dynamic_order = idx_cache.reverse_dynamic_order
-    comb = idx_cache.comb
-    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
-    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
-    Ir = idx_cache.Ir
+    dynIndex = idx_constants.dyn_index
+    reverse_dynamic_order = idx_constants.reverse_dynamic_order
+    comb = idx_constants.comb
+    future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    Ir = idx_constants.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
-    ∇̂ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇̂ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -552,8 +552,8 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    expand_future = idx_cache.expand_future
-    expand_past = idx_cache.expand_past
+    expand_future = idx_constants.expand_future
+    expand_past = idx_constants.expand_past
 
     𝐒ᵗ = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
 
@@ -578,7 +578,7 @@ function rrule(::typeof(calculate_first_order_solution),
     tmp2 = -M' * (∇₊ * expand_future)'
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
+    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
         ∂∇₁ = zero(∇₁)
@@ -586,9 +586,9 @@ function rrule(::typeof(calculate_first_order_solution),
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
         ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
 
-        ∂∇₁[:,idx_cache.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
+        ∂∇₁[:,idx_constants.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
 
-        ∂∇₁[:,idx_cache.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+        ∂∇₁[:,idx_constants.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
 
@@ -607,8 +607,8 @@ function rrule(::typeof(calculate_first_order_solution),
         end
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,idx_cache.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
-        ∂∇₁[:,idx_cache.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
+        ∂∇₁[:,idx_constants.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
+        ∂∇₁[:,idx_constants.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
         return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent()
     end
@@ -1883,7 +1883,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -2355,7 +2355,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -2793,7 +2793,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -3346,7 +3346,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺

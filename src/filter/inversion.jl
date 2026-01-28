@@ -196,7 +196,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants_cache!(constants)
+    cc = @ignore_derivatives ensure_computational_constants!(constants)
     s_in_s⁺  = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺  = cc.e_in_s⁺
@@ -445,7 +445,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     logabsdets = 0.0
 
     # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
     
@@ -680,7 +680,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants_cache!(constants)
+    cc = @ignore_derivatives ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1110,7 +1110,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants_cache!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1570,7 +1570,7 @@ function filter_data_with_model(𝓂::ℳ,
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
-    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     full_state = collect(sss) - all_SS
@@ -1776,7 +1776,7 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2047,7 +2047,7 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2360,7 +2360,7 @@ function filter_data_with_model(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))

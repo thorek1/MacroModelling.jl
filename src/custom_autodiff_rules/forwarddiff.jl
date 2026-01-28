@@ -111,7 +111,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants!(𝓂)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
@@ -121,9 +121,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     kron_s⁺_s = so.kron_s⁺_s
     
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
     
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
     
     A = 𝐒₁̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B = 𝐒₂̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -209,7 +209,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options(),
                                 cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
     parameter_values = ℱ.value.(parameter_values_dual)
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
 
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
@@ -325,13 +325,13 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
-    idx_cache = ensure_first_order_index_cache!(constants)
+    idx_constants = ensure_first_order_constants!(constants)
 
-    expand_future = idx_cache.expand_future
-    expand_past = idx_cache.expand_past
+    expand_future = idx_constants.expand_future
+    expand_past = idx_constants.expand_past
 
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    B = ∇̂₁[:,idx_cache.nabla_zero_cols]
+    B = ∇̂₁[:,idx_constants.nabla_zero_cols]
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws; opts = opts, initial_guess = initial_guess)
 
@@ -366,8 +366,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         p .= ℱ.partials.(∇₁, i)
 
         dA = p[:,1:T.nFuture_not_past_and_mixed] * expand_future
-        dB = p[:,idx_cache.nabla_zero_cols]
-        dC = p[:,idx_cache.nabla_minus_cols] * expand_past
+        dB = p[:,idx_constants.nabla_zero_cols]
+        dC = p[:,idx_constants.nabla_minus_cols] * expand_past
         
         CC = invAXB * (dA * X² + dC + dB * X)
 
@@ -403,8 +403,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     Jm = expand_past
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
-    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 

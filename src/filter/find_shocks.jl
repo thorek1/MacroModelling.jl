@@ -41,7 +41,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
 
-    ensure_conditional_forecast_index_cache!(constants; third_order = third_order)
+    ensure_conditional_forecast_constants!(constants; third_order = third_order)
 
     shock_idxs = so.shock_idxs
     shock²_idxs = so.shock²_idxs

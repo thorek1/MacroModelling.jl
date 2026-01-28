@@ -69,8 +69,8 @@
 #    - post_model_macro: Variable/shock counts, indices, timing info
 #    - post_parameters_macro: Parameter configuration from @parameters
 #    - post_complete_parameters: Computed indices, display names, etc.
-#    - second_order_indices: Perturbation auxiliary matrices and index caches
-#    - third_order_indices: Third order perturbation auxiliary matrices and indices
+#    - second_order_indices: Perturbation auxiliary matrices and computational constants
+#    - third_order_indices: Third order perturbation auxiliary matrices and computational constants
 #
 # 2. WORKSPACES (𝓂.workspaces) - Pre-allocated temporary buffers that are 
 #    reused across function calls to avoid repeated allocations:
@@ -257,12 +257,12 @@ Contains three categories of data:
    perturbation solution. Populated by `create_second_order_auxiliary_matrices` during
    `write_functions_mapping!`.
 
-2. **Index caches** (s_in_s⁺, kron_*, etc.): BitVectors and index arrays indicating
+2. **Computational constants** (s_in_s⁺, kron_*, etc.): BitVectors and index arrays indicating
    which elements are non-zero in Kronecker products and state vectors. Populated by
-   `ensure_computational_constants_cache!` on first use.
+   `ensure_computational_constants!` on first use.
 
-3. **Moment computation caches** (e4, vec_Iₑ, etc.): Pre-computed values for efficient
-   moment calculations. Populated by `ensure_moments_cache!` on first use.
+3. **Moment computation constants** (e4, vec_Iₑ, etc.): Pre-computed values for efficient
+   moment calculations. Populated by `ensure_moments_constants!` on first use.
 """
 mutable struct second_order_indices
     # =========================================================================
@@ -276,8 +276,8 @@ mutable struct second_order_indices
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
 
     # =========================================================================
-    # COMPUTATIONAL INDEX CACHES (for efficient sparse operations)
-    # Filled by ensure_computational_constants_cache! (options_and_caches.jl)
+    # COMPUTATIONAL CONSTANTS (for efficient sparse operations)
+    # Filled by ensure_computational_constants! (options_and_caches.jl)
     # Triggered by: solve!, calculate_* (perturbation.jl), inversion filter
     # =========================================================================
     # State vector element membership (BitVectors for fast indexing)
@@ -292,6 +292,8 @@ mutable struct second_order_indices
     kron_v_v::BitVector                  # Non-zeros in kron(v, v)
     kron_s_e::BitVector                  # Non-zeros in kron(s, e)
     kron_e_s::BitVector                  # Non-zeros in kron(e, s)
+    kron_s⁺_s⁺_s⁺::BitVector             # Non-zeros in kron(s⁺, kron(s⁺, s⁺))
+    kron_s_s⁺_s⁺::BitVector              # Non-zeros in kron(kron(s⁺, s⁺), s)
     # Index arrays for solution matrix slicing
     shockvar_idxs::Vector{Int}           # Shock-variable cross indices
     shock_idxs::Vector{Int}              # Shock indices in state
@@ -300,16 +302,16 @@ mutable struct second_order_indices
     var_vol²_idxs::Vector{Int}           # Variable × volatility² indices
 
     # =========================================================================
-    # CONDITIONAL FORECAST INDEX CACHES
-    # Filled by ensure_conditional_forecast_index_cache! (options_and_caches.jl)
+    # CONDITIONAL FORECAST CONSTANTS
+    # Filled by ensure_conditional_forecast_constants! (options_and_caches.jl)
     # Triggered by: get_conditional_forecast, find_shocks
     # =========================================================================
     var²_idxs::Vector{Int}               # Variable² indices
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
 
     # =========================================================================
-    # MOMENT COMPUTATION CACHES (model-constant values for moments.jl)
-    # Filled by ensure_moments_cache! (options_and_caches.jl)
+    # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
+    # Filled by ensure_moments_constants! (options_and_caches.jl)
     # Triggered by: calculate_mean, calculate_*_order_moments*
     # =========================================================================
     kron_states::BitVector               # Kronecker product state mask
@@ -323,7 +325,7 @@ mutable struct second_order_indices
 end
 
 """
-Third-order perturbation auxiliary matrices and index caches.
+Third-order perturbation auxiliary matrices and computational constants.
 
 These are computed once when the model structure is known and reused across solutions.
 Contains three categories of data:
@@ -332,11 +334,11 @@ Contains three categories of data:
    perturbation solution. Populated by `create_third_order_auxiliary_matrices` during
    `write_functions_mapping!`.
 
-2. **Index caches** (var_vol³_idxs, shock_idxs*, etc.): Index arrays for slicing
-   solution matrices. Populated by `ensure_conditional_forecast_index_cache!`.
+2. **Computational constants** (var_vol³_idxs, shock_idxs*, etc.): Index arrays for slicing
+   solution matrices. Populated by `ensure_conditional_forecast_constants!`.
 
-3. **Moment computation caches** (e6, substate_indices, etc.): Pre-computed values
-   for efficient third-order moment calculations. Populated by `ensure_moments_cache!`.
+3. **Moment computation constants** (e6, substate_indices, etc.): Pre-computed values
+   for efficient third-order moment calculations. Populated by `ensure_moments_constants!`.
 """
 mutable struct third_order_indices
     # =========================================================================
@@ -361,8 +363,8 @@ mutable struct third_order_indices
     𝐒𝐏::SparseMatrixCSC{Int}             # Combined selection-permutation
 
     # =========================================================================
-    # CONDITIONAL FORECAST INDEX CACHES
-    # Filled by ensure_conditional_forecast_index_cache! (options_and_caches.jl)
+    # CONDITIONAL FORECAST CONSTANTS
+    # Filled by ensure_conditional_forecast_constants! (options_and_caches.jl)
     # Triggered by: get_conditional_forecast, find_shocks
     # =========================================================================
     var_vol³_idxs::Vector{Int}           # Variable × volatility³ indices
@@ -376,9 +378,9 @@ mutable struct third_order_indices
     shockvar³_idxs::Vector{Int}          # Shock × var³ indices
 
     # =========================================================================
-    # MOMENT COMPUTATION CACHES (model-constant values for moments.jl)
-    # Filled by ensure_moments_cache! (options_and_caches.jl)
-    # Triggered by: calculate_third_order_moments*
+    # MOMENT COMPUTATION CONSTANTS
+    # Filled by ensure_moments_constants! (options_and_caches.jl)
+    # Triggered by: calculate_*_order_moments*
     # =========================================================================
     e6::Vector{Float64}                  # 6th moment of standard normal (E[ε⁶])
     kron_e_v::BitVector                  # Kronecker shock × volatility mask
@@ -386,7 +388,7 @@ mutable struct third_order_indices
     e6_nᵉ³_nᵉ³::Matrix{Float64}          # reshape(e6, nᵉ³, nᵉ³)
 
     # =========================================================================
-    # MOMENT SUBSTATE INDEX CACHES (Dict caches for autocorrelation)
+    # MOMENT SUBSTATE CONSTANTS (Dict constants for autocorrelation)
     # Filled by ensure_moments_substate_indices! (options_and_caches.jl)
     # Triggered by: calculate_third_order_moments_with_autocorrelation
     # =========================================================================
@@ -929,8 +931,8 @@ Fields:
 - `post_model_macro`: Variable/shock counts, indices, timing info from @model
 - `post_parameters_macro`: Parameter configuration from @parameters
 - `post_complete_parameters`: Computed indices, display axes, expansion matrices
-- `second_order`: Auxiliary matrices and index caches for 2nd order perturbation
-- `third_order`: Auxiliary matrices and index caches for 3rd order perturbation
+- `second_order`: Auxiliary matrices and computational constants for 2nd order perturbation
+- `third_order`: Auxiliary matrices and computational constants for 3rd order perturbation
 
 Relationship to other structs:
 - Constants are populated during macro expansion and early solve!() calls
