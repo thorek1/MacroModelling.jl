@@ -41,7 +41,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
 
-    ensure_conditional_forecast_index_cache!(constants; third_order = third_order)
+    ensure_conditional_forecast_constants!(constants; third_order = third_order)
 
     shock_idxs = so.shock_idxs
     shock²_idxs = so.shock²_idxs
@@ -243,7 +243,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
     initial_guess = copy(all_shocks)
     
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     third_order = !isnothing(𝐒ⁱ³ᵉ)
     ensure_find_shocks_buffers!(ws, n_exo; third_order = third_order)
 
@@ -873,11 +873,7 @@ end
 
 #     return x[free_shock_idx], matched
 # end
-end # dispatch_doctor
 
-
-
-@stable default_mode = "disable" begin
 """
 Solve for minimum-norm shocks that satisfy linear and quadratic constraints using a
 Lagrange-Newton stepper. For higher-order solutions the global minimum-norm problem is
@@ -1021,70 +1017,6 @@ function find_shocks(::Val{:LagrangeNewton},
     return x, matched
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(find_shocks),
-                ::Val{:LagrangeNewton},
-                initial_guess::Vector{Float64},
-                kron_buffer::Vector{Float64},
-                kron_buffer2::AbstractMatrix{Float64},
-                J::ℒ.Diagonal{Bool, Vector{Bool}},
-                𝐒ⁱ::AbstractMatrix{Float64},
-                𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                shock_independent::Vector{Float64};
-                max_iter::Int = 1000,
-                tol::Float64 = 1e-13)
-
-    x, matched = find_shocks(Val(:LagrangeNewton),
-                            initial_guess,
-                            kron_buffer,
-                            kron_buffer2,
-                            J,
-                            𝐒ⁱ,
-                            𝐒ⁱ²ᵉ,
-                            shock_independent,
-                            max_iter = max_iter,
-                            tol = tol)
-
-    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x)
-
-    λ = tmp' \ x * 2
-
-    fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
-    -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
-
-    ℒ.kron!(kron_buffer, x, x)
-
-    xλ = ℒ.kron(x,λ)
-
-
-    ∂shock_independent = similar(shock_independent)
-
-    # ∂𝐒ⁱ = similar(𝐒ⁱ)
-
-    # ∂𝐒ⁱ²ᵉ = similar(𝐒ⁱ²ᵉ)
-
-    function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
-
-        S = -fXλp' \ ∂x
-
-        copyto!(∂shock_independent, S[length(initial_guess)+1:end])
-        
-        # copyto!(∂𝐒ⁱ, ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end]))
-        ∂𝐒ⁱ = S[1:length(initial_guess)] * λ' - S[length(initial_guess)+1:end] * x'
-        
-        # copyto!(∂𝐒ⁱ²ᵉ, 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end]))
-        ∂𝐒ⁱ²ᵉ = 2 * S[1:length(initial_guess)] * xλ' - S[length(initial_guess)+1:end] * kron_buffer'
-
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
-    end
-
-    return (x, matched), find_shocks_pullback
-end
-
-
-@stable default_mode = "disable" begin
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
@@ -1256,70 +1188,6 @@ end
 end # dispatch_doctor
 
 
-function rrule(::typeof(find_shocks),
-                ::Val{:LagrangeNewton},
-                initial_guess::Vector{Float64},
-                kron_buffer::Vector{Float64},
-                kron_buffer²::Vector{Float64},
-                kron_buffer2::AbstractMatrix{Float64},
-                kron_buffer3::AbstractMatrix{Float64},
-                kron_buffer4::AbstractMatrix{Float64},
-                J::ℒ.Diagonal{Bool, Vector{Bool}},
-                𝐒ⁱ::AbstractMatrix{Float64},
-                𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
-                shock_independent::Vector{Float64};
-                max_iter::Int = 1000,
-                tol::Float64 = 1e-13)
-
-    x, matched = find_shocks(Val(:LagrangeNewton),
-                            initial_guess,
-                            kron_buffer,
-                            kron_buffer²,
-                            kron_buffer2,
-                            kron_buffer3,
-                            kron_buffer4,
-                            J,
-                            𝐒ⁱ,
-                            𝐒ⁱ²ᵉ,
-                            𝐒ⁱ³ᵉ,
-                            shock_independent,
-                            max_iter = max_iter,
-                            tol = tol)
-
-    ℒ.kron!(kron_buffer, x, x)
-
-    ℒ.kron!(kron_buffer², x, kron_buffer)
-
-    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer)
-
-    λ = tmp' \ x * 2
-
-    fXλp = [reshape((2 * 𝐒ⁱ²ᵉ + 6 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
-    -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
-
-    xλ = ℒ.kron(x,λ)
-
-    xxλ = ℒ.kron(x,xλ)
-
-    function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
-
-        S = -fXλp' \ ∂x
-
-        ∂shock_independent = S[length(initial_guess)+1:end]
-        
-        ∂𝐒ⁱ = ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
-
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
-        
-        ∂𝐒ⁱ³ᵉ = 3 * ℒ.kron(S[1:length(initial_guess)], xxλ) - ℒ.kron(kron_buffer²,S[length(initial_guess)+1:end])
-
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂𝐒ⁱ³ᵉ, ∂shock_independent, NoTangent(), NoTangent()
-    end
-
-    return (x, matched), find_shocks_pullback
-end
 
 
 

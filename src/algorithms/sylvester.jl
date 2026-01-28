@@ -227,102 +227,6 @@ function solve_sylvester_equation(A::M,
     return X, reached_tol < acceptance_tol
 end
 
-end # dispatch_doctor
-
-
-function rrule(::typeof(solve_sylvester_equation),
-    A::M,
-    B::N,
-    C::O,
-    𝕊ℂ::sylvester_workspace;
-    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-    sylvester_algorithm::Symbol = :doubling,
-    acceptance_tol::AbstractFloat = 1e-10,
-    tol::AbstractFloat = 1e-14,
-    # timer::TimerOutput = TimerOutput(),
-    verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
-
-    P, solved = solve_sylvester_equation(A, B, C, 𝕊ℂ,
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        tol = tol, 
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
-
-                                        println("C norm: $(ℒ.norm(C))")
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
-
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
-                                            sylvester_algorithm = sylvester_algorithm, 
-                                            tol = tol, 
-                                            verbose = verbose)
-
-        solved = solved && slvd
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    𝕊ℂ::sylvester_workspace;
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
-                                    tol::AbstractFloat = 1e-14,
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 𝕊ℂ,
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        tol = tol, 
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(S, length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
-        
-        if ℒ.norm(X) < eps() continue end
-
-        P, slvd = solve_sylvester_equation(Â, B̂, X, 𝕊ℂ,
-                                            sylvester_algorithm = sylvester_algorithm, 
-                                            tol = tol, 
-                                            verbose = verbose)
-
-        solved = solved && slvd
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
 
 
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
@@ -930,12 +834,12 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         initial_guess = zero(C)
     end
     
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
     
-    # Use workspace buffers
+    # Use workspaces
     𝐀  = 𝕊ℂ.𝐀
     𝐀¹ = 𝕊ℂ.𝐀¹
     𝐁  = 𝕊ℂ.𝐁
@@ -1038,12 +942,12 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
     
-    # Ensure workspace buffers are allocated (reuse Krylov buffers for tmp and 𝐂¹)
+    # Ensure workspaces are allocated (reuse Krylov buffers for tmp and 𝐂¹)
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
     
-    # Use workspace buffers
+    # Use workspaces
     𝐂¹ = 𝕊ℂ.𝐂
     tmp̄ = 𝕊ℂ.tmp
       
@@ -1101,7 +1005,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
@@ -1253,7 +1157,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
@@ -1405,7 +1309,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # Ensure workspace buffers are allocated
+    # Ensure workspaces are allocated
     n = size(C, 1)
     m = size(C, 2)
     ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)

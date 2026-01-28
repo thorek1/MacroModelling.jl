@@ -374,7 +374,7 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
@@ -433,22 +433,7 @@ function mul_reverse_AD!(   C::Matrix{S},
     ℒ.mul!(C,A,B)
 end
 
-function rrule( ::typeof(mul_reverse_AD!),
-                C::Matrix{S},
-                A::AbstractMatrix{M},
-                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
-    project_A = ProjectTo(A)
-    project_B = ProjectTo(B)
 
-    function times_pullback(ȳ)
-        Ȳ = unthunk(ȳ)
-        dA = @thunk(project_A(Ȳ * B'))
-        dB = @thunk(project_B(A' * Ȳ))
-        return (NoTangent(), NoTangent(), dA, dB)
-    end
-
-    return ℒ.mul!(C,A,B), times_pullback
-end
 
 
 function check_for_dynamic_variables(ex::Expr)
@@ -470,6 +455,7 @@ function check_for_dynamic_variables(ex::Expr)
     any(dynamic_indicator)
 end
 
+end # dispatch_doctor
 
 function transform_expression(expr::Expr)
     # Dictionary to store the transformations for reversing
@@ -608,7 +594,7 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
@@ -675,7 +661,7 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
@@ -845,7 +831,7 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
 end
 
 function set_up_obc_violation_function!(𝓂)
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -1604,88 +1590,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     # end
 end
 
-function rrule(::typeof(mat_mult_kron),
-                                A::AbstractSparseMatrix{R},
-                                B::AbstractMatrix{T},
-                                C::AbstractMatrix{T},
-                                D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
-    Y = mat_mult_kron(A, B, C, D)
 
-    function mat_mult_kron_pullback(Ȳ)
-        if Ȳ isa AbstractZero
-            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-        end
-
-        Ȳdense = Matrix(Ȳ)
-
-        n_rowB = size(B, 1)
-        n_colB = size(B, 2)
-        n_rowC = size(C, 1)
-        n_colC = size(C, 2)
-
-        G = promote_type(eltype(B), eltype(C), eltype(D), Float64)
-
-        ∂B = zeros(G, size(B))
-        ∂C = zeros(G, size(C))
-        ∂D = zeros(G, size(D))
-
-        A_csc = A isa SparseMatrixCSC ? A : A.A
-        nnzA = nnz(A_csc)
-        nz_col = Vector{Int}(undef, nnzA)
-        row_to_nzinds = Dict{Int, Vector{Int}}()
-
-        for col in 1:size(A_csc, 2)
-            for k in A_csc.colptr[col]:(A_csc.colptr[col + 1] - 1)
-                nz_col[k] = col
-                r = A_csc.rowval[k]
-                push!(get!(row_to_nzinds, r, Int[]), k)
-            end
-        end
-
-        ∂A_nz = zeros(G, nnzA)
-        Abar_vec = zeros(G, size(A_csc, 2))
-
-        for (r, ks) in row_to_nzinds
-            fill!(Abar_vec, zero(G))
-            @inbounds for k in ks
-                Abar_vec[nz_col[k]] = A_csc.nzval[k]
-            end
-
-            Abar = reshape(Abar_vec, n_rowC, n_rowB)
-            AbarB = Abar * B
-            CAbarB = C' * AbarB
-            vCAbarB = vec(CAbarB)
-
-            g_row = collect(@view Ȳdense[r, :])
-
-            ∂D .+= vCAbarB * g_row'
-
-            vCAbarB̄ = D * g_row
-            CAbarB̄ = reshape(vCAbarB̄, n_colC, n_colB)
-
-            ∂C .+= AbarB * CAbarB̄'
-
-            AbarB̄ = C * CAbarB̄
-            ∂B .+= Abar' * AbarB̄
-
-            Abar̄ = AbarB̄ * B'
-            vecAbar̄ = vec(Abar̄)
-            @inbounds for k in ks
-                ∂A_nz[k] += vecAbar̄[nz_col[k]]
-            end
-        end
-
-        ∂A_csc = SparseMatrixCSC(size(A_csc, 1), size(A_csc, 2), copy(A_csc.colptr), copy(A_csc.rowval), ∂A_nz)
-
-        return NoTangent(),
-                ProjectTo(A)(∂A_csc),
-                ProjectTo(B)(∂B),
-                ProjectTo(C)(∂C),
-                ProjectTo(D)(∂D)
-    end
-
-    return Y, mat_mult_kron_pullback
-end
 
 
 function mat_mult_kron(A::DenseMatrix{R},
@@ -1952,26 +1857,6 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} =
     out = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
 
     return out
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
-    project_Ŝ = ProjectTo(Ŝ)
-
-    function sparse_preallocated_pullback(Ω̄)
-        ΔΩ = unthunk(Ω̄)
-        ΔŜ = project_Ŝ(ΔΩ)
-        return NoTangent(), ΔŜ, NoTangent()
-    end
-
-    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {Z,S,N,T <: Real, F <: AbstractFloat}
-    sparse(Ŝ)
 end
 
 
@@ -3123,7 +3008,7 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
@@ -3195,7 +3080,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function evaluate_conditions(cond)
     if cond isa Bool
@@ -3285,6 +3170,8 @@ function contains_equation(expr)
     end
     return found
 end
+
+end # dispatch_doctor
 
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
@@ -3668,12 +3555,12 @@ end
 Return cached second-order computational constants (BitVectors and index patterns).
 """
 function get_computational_constants(𝓂::ℳ)
-    ensure_computational_constants_cache!(𝓂)
+    ensure_computational_constants!(𝓂)
     return 𝓂.constants.second_order
 end
 
 function get_computational_constants(constants::constants)
-    ensure_computational_constants_cache!(constants)
+    ensure_computational_constants!(constants)
     return constants.second_order
 end
 
@@ -6454,7 +6341,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    ms = @ignore_derivatives ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     # @timeit_debug timer "Calculate Jacobian" begin
@@ -6632,162 +6519,6 @@ end
 
 
 
-function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    x̂ = ℱ.value.(x)
-    
-    # Get cached computational constants
-    constants = initialise_constants!(𝓂)
-    so = constants.second_order
-    T = constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    A = 𝐒₁̂[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
- 
-    ∂x̄  = zeros(S, length(x̂), N)
-    
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast)
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            break
-        end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 - x̂)
-
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
-            break
-        end
-        
-        # x̂ += Δx
-        ℒ.axpy!(-1, Δx, x̂)
-    end
-
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
-
-    if solved
-        for i in 1:N
-            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-
-            ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast
-
-            ∂x̄[:,i] = -TMP \ tmp
-        end
-    end
-    
-    return reshape(map(x̂, eachrow(∂x̄)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), solved
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_second_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)
-    # @timeit_debug timer "Calculate SSS - forward" begin
-    # @timeit_debug timer "Setup indices" begin
-
-    # Get cached computational constants
-    constants = initialise_constants!(𝓂)
-    so = constants.second_order
-    T = constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    
-    # end # timeit_debug
-      
-    # @timeit_debug timer "Iterations" begin
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
-
-    # println(x)
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    function second_order_stochastic_steady_state_pullback(∂x)
-        # @timeit_debug timer "Calculate SSS - pullback" begin
-
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        # end # timeit_debug
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), second_order_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
@@ -6807,7 +6538,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
-    ms = @ignore_derivatives ensure_model_structure_cache!(constants, 𝓂.equations.calibration_parameters)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
@@ -6906,7 +6637,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         s_in_s⁺ = @ignore_derivatives so.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
         
-        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+        kron_s⁺_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺_s⁺
         
         A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
@@ -6949,7 +6680,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
+    so = ensure_computational_constants!(𝓂)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
@@ -6959,9 +6690,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     
     kron_s⁺_s = so.kron_s⁺_s
     
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
     
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
     
     A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -6994,161 +6725,6 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 end
 
 
-function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    𝐒₃̂ = ℱ.value.(𝐒₃)
-    x̂ = ℱ.value.(x)
-    
-    # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-    ∂x̄  = zeros(S, length(x̂), N)
-    
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast)
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            break
-        end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
-
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-            break
-        end
-        
-        # x̂ += Δx
-        ℒ.axpy!(-1, Δx, x̂)
-    end
-
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-    
-    if solved
-        for i in 1:N
-            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-            ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
-
-            ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-            ∂Ĉ = ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast
-
-            ∂x̄[:,i] = -TMP \ tmp
-        end
-    end
-    
-    return reshape(map(x̂, eachrow(∂x̄)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), solved
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_third_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        𝐒₃::AbstractSparseMatrix{Float64},
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)
-    # Get cached computational constants
-    so = ensure_computational_constants_cache!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
-        
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)         
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-    ∂𝐒₃ =  zero(𝐒₃)
-
-    function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), third_order_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
     if !𝓂.constants.post_parameters_macro.precompile
@@ -8932,30 +8508,6 @@ function calculate_jacobian(parameters::Vector{M},
     return jac_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_jacobian), 
-                parameters, 
-                SS_and_pars, 
-                caches_obj::caches,
-                jacobian_funcs::jacobian_functions)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
-
-    function calculate_jacobian_pullback(∂∇₁)
-        jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
-        jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
-
-        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
-        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
-    end
-
-    return jacobian, calculate_jacobian_pullback
-end
-
-@stable default_mode = "disable" begin
-
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
@@ -8976,29 +8528,6 @@ function calculate_hessian(parameters::Vector{M},
     return hes_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_hessian), 
-                parameters, 
-                SS_and_pars, 
-                caches_obj::caches,
-                hessian_funcs::hessian_functions)
-    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
-
-    function calculate_hessian_pullback(∂∇₂)
-        hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
-        hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
-
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
-        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
-    end
-
-    return hessian, calculate_hessian_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
@@ -9020,54 +8549,6 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     return third_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_third_order_derivatives), 
-                parameters, 
-                SS_and_pars, 
-                caches_obj::caches,
-                third_order_derivatives_funcs::third_order_derivatives_functions)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
-
-    function calculate_third_order_derivatives_pullback(∂∇₃)
-        third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
-        third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
-
-        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
-        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
-    end
-
-    return third_order_derivatives, calculate_third_order_derivatives_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
-    nrows = length(V)
-    ncols = length(V.nzval[1].partials)
-
-    rows = Int[]
-    cols = Int[]
-
-    prtls = Float64[]
-
-    for (i,v) in enumerate(V.nzind)
-        for (k,w) in enumerate(V.nzval[i].partials)
-            if abs(w) > tol
-                push!(rows,v)
-                push!(cols,k)
-                push!(prtls,w)
-            end
-        end
-    end
-
-    vvals = sparsevec(V.nzind,[i.value for i in V.nzval],nrows)
-    ps = sparse(rows,cols,prtls,nrows,ncols)
-
-    return vvals, ps
-end
 
 
 function compute_irf_responses(𝓂::ℳ,
@@ -9822,7 +9303,7 @@ end
 
 
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     if variables == :all_excluding_auxiliary_and_obc
         return ms.vars_idx_excluding_aux_obc
     elseif variables == :all_excluding_obc
@@ -10032,7 +9513,7 @@ end
 
 
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 # function Stateupdate(::Val{:first_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
 #     return [P.first_order.solution_matrix * [states[1][T.past_not_future_and_mixed_idx]; shocks]]
@@ -10093,53 +9574,44 @@ end # dispatch_doctor
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
+end # dispatch_doctor
+
+noop_state_update(::Float64, ::Float64) = nothing
+
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+    state_update::Function = noop_state_update
+    pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
+
     if occasionally_binding_constraints
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update_obc::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update_obc::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update_obc
-            pruning = true
+            state_update = 𝓂.functions.pruned_second_order_state_update_obc::Function
         elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update_obc::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update_obc
-            pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
+            state_update = 𝓂.functions.pruned_third_order_state_update_obc::Function
         end
     else
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update
-            pruning = true
+            state_update = 𝓂.functions.pruned_second_order_state_update::Function
         elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update
-            pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
+            state_update = 𝓂.functions.pruned_third_order_state_update::Function
         end
     end
 
-    return state_update, pruning
+    return (state_update, pruning)
 end
+
+@stable default_mode = "disable" begin
 
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
     buffer = 𝓂.workspaces.custom_steady_state_buffer
@@ -10155,45 +9627,48 @@ end
 function evaluate_custom_steady_state_function(𝓂::ℳ,
                                                 parameter_values::AbstractVector{S},
                                                 expected_length::Int,
-                                                expected_parameter_length::Int) where {S <: Real}
+                                                expected_parameter_length::Int)::Vector{S} where {S <: Real}
     if length(parameter_values) != expected_parameter_length
         throw(ArgumentError("Custom steady state function expected $expected_parameter_length parameters, got $(length(parameter_values))."))
     end
 
-    result = nothing
     has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
-        output = get_custom_steady_state_buffer!(𝓂, expected_length)
-
+        get_custom_steady_state_buffer!(𝓂, expected_length)
+        
+        output = Vector{S}(undef, expected_length)
         try 
             𝓂.functions.NSSS_custom(output, parameter_values)
         catch
         end
-        
-        result = output
+        return output
     elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
-        result = try
+        raw_result = try
             𝓂.functions.NSSS_custom(parameter_values)
         catch
-            fill(NaN, expected_length)
+            nothing
         end
         
-        if !(result isa AbstractVector)
-            throw(ArgumentError("Custom steady state function returned $(typeof(result)); expected an AbstractVector."))
+        if raw_result === nothing
+            return Vector{S}(fill(NaN, expected_length))
         end
+        
+        if !(raw_result isa AbstractVector)
+            throw(ArgumentError("Custom steady state function returned $(typeof(raw_result)); expected an AbstractVector."))
+        end
+        
+        if length(raw_result) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(raw_result)) values, expected $expected_length."))
+        end
+        
+        return Vector{S}(raw_result)
     else
         throw(ArgumentError("Custom steady state function must accept either (parameters) or (out, parameters)."))
     end
-
-    if length(result) != expected_length
-        throw(ArgumentError("Custom steady state function returned $(length(result)) values, expected $expected_length."))
-    end
-    
-    return result
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
@@ -10299,7 +9774,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     estimation::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -10345,253 +9820,6 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     return SS_and_pars, (solution_error, iters)
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂::ℳ, 
-                parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false,
-                estimation::Bool = false) where S <: Real
-                # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS - forward" begin
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
-
-    # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.functions.NSSS_custom isa Function
-        vars_in_ss_equations = ms.vars_in_ss_equations
-        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
-
-        SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
-            parameter_values,
-            expected_length,
-            length(𝓂.constants.post_complete_parameters.parameters),
-        )
-
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
-        
-        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
-        
-        solution_error = ℒ.norm(residual)
-
-        iters = 0
-
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
-        SS_and_pars = X * SS_and_pars_tmp
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
-    end
-
-    # end # timeit_debug
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        # Update failed counter
-        update_ss_counter!(𝓂.counters, false, estimation = estimation)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # Update success counter
-    update_ss_counter!(𝓂.counters, true, estimation = estimation)
-
-    # @timeit_debug timer "Calculate NSSS - pullback" begin
-
-    SS_and_pars_names = ms.SS_and_pars_names
-    SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
-
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
-
-    ∂ = parameter_values
-    C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
-
-    if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-        if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
-        end
-    else
-        jac_buffer = 𝓂.caches.∂equations_∂parameters
-    end
-
-    𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
-
-    ∂SS_equations_∂parameters = jac_buffer
-
-    
-    if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
-        if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
-        end
-    else
-        jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
-    end
-
-    𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
-
-    ∂SS_equations_∂SS_and_pars = jac_buffer
-
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
-    
-    for (i,v) in enumerate(SS_and_pars_names)
-        if v in unknowns
-            jvp[i,:] = JVP[indexin([v], unknowns),:]
-        end
-    end
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # try block-gmres here
-    function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
-        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
-    end
-
-
-    return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function get_NSSS_and_parameters(𝓂::ℳ, 
-                                parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false,
-                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
-                                # timer::TimerOutput = TimerOutput(),
-    parameter_values = ℱ.value.(parameter_values_dual)
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
-
-    if 𝓂.functions.NSSS_custom isa Function
-        vars_in_ss_equations = ms.vars_in_ss_equations
-        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
-
-        SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
-            parameter_values,
-            expected_length,
-            length(𝓂.constants.post_complete_parameters.parameters),
-        )
-
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
-        
-        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
-        
-        solution_error = ℒ.norm(residual)
-
-        iters = 0
-
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
-        SS_and_pars = X * SS_and_pars_tmp
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
-    end
-    
-    ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        if opts.verbose println("Failed to find NSSS") end
-
-        # Update failed counter
-        update_ss_counter!(𝓂.counters, false, estimation = estimation)
-
-        solution_error = S(10.0)
-    else
-        # Update success counter
-        update_ss_counter!(𝓂.counters, true, estimation = estimation)
-
-        SS_and_pars_names = ms.SS_and_pars_names
-        SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
-
-        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
-        
-
-        ∂ = parameter_values
-        C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
-
-        if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
-                jac_buffer.nzval .= 0
-            else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
-            end
-        else
-            jac_buffer = 𝓂.caches.∂equations_∂parameters
-        end
-
-        𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
-
-        ∂SS_equations_∂parameters = jac_buffer
-
-        
-        if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
-                jac_buffer.nzval .= 0
-            else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
-            end
-        else
-            jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
-        end
-
-        𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
-
-        ∂SS_equations_∂SS_and_pars = jac_buffer
-
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-            if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-            
-            solution_error = S(10.0)
-        else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-            jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
-            
-            for (i,v) in enumerate(SS_and_pars_names)
-                if v in unknowns
-                    jvp[i,:] = JVP[indexin([v], unknowns),:]
-                end
-            end
-
-            for i in 1:N
-                parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
-
-                ∂SS_and_pars[:,i] = jvp * parameter_values_partials
-            end
-        end
-    end
-    
-    return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(SS_and_pars)), (solution_error, iters)
-end
-
-
 
 
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
@@ -10623,7 +9851,7 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -10646,7 +9874,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
@@ -10669,7 +9897,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -10692,7 +9920,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_cache!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
@@ -10820,5 +10048,13 @@ end # dispatch_doctor
 #         # plot_conditional_variance_decomposition(FS2000)
 #     end
 # end
+
+# Include ForwardDiff Dual specializations for forward-mode AD
+# Must be at the end of the module because they depend on function definitions
+include("./custom_autodiff_rules/forwarddiff.jl")
+
+# Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
+# Must be at the end of the module because rrules depend on function definitions
+include("./custom_autodiff_rules/zygote.jl")
 
 end

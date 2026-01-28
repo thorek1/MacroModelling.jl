@@ -240,7 +240,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         initial_guess = zero(A)
     end
 
-    # Extract workspace buffers
+    # Extract workspaces
     E = workspace.E
     F = workspace.F
     X = workspace.X
@@ -530,67 +530,5 @@ end
 
 
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        constants::constants,
-                                        workspace::qme_workspace;
-                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
-                                        # timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false) where {Z,S,N}
-    T = constants.post_model_macro
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
-                                                Val(quadratic_matrix_equation_algorithm), 
-                                                constants,
-                                                workspace;
-                                                tol = tol,
-                                                initial_guess = initial_guess,
-                                                # timer = timer,
-                                                verbose = verbose)
-
-    AXB = Â * X + B̂
-    
-    AXBfact = ℒ.lu(AXB, check = false)
-
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
-    end
-
-    invAXB = inv(AXBfact)
-
-    AA = invAXB * Â
-
-    X² = X * X
-
-    X̃ = zeros(length(X), N)
-
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        dA = ℱ.partials.(A, i)
-        dB = ℱ.partials.(B, i)
-        dC = ℱ.partials.(C, i)
-    
-        CC = invAXB * (dA * X² + dB * X + dC)
-
-        if ℒ.norm(CC) < eps() continue end
-    
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, workspace.sylvester_ws, sylvester_algorithm = :doubling)
-
-        solved = Bool(solved) && Bool(slvd)
-
-        X̃[:,i] = vec(dX)
-    end
-    
-    return reshape(map(X, eachrow(X̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(X)), solved
-end
 
 end # dispatch_doctor

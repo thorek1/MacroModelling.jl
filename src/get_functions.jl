@@ -128,7 +128,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
@@ -257,7 +257,7 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
@@ -381,7 +381,7 @@ function get_estimated_variables(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
@@ -607,7 +607,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                                                     smooth = smooth, 
                                                                                     opts = opts)
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
@@ -868,7 +868,7 @@ function get_conditional_forecast(𝓂::ℳ,
             S₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
         end
 
-        ensure_conditional_forecast_index_cache!(𝓂; third_order = !isnothing(S₃))
+        ensure_conditional_forecast_constants!(𝓂; third_order = !isnothing(S₃))
 
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
@@ -1538,7 +1538,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     var_axis = 𝓂.constants.post_complete_parameters.var_axis
     calib_axis = 𝓂.constants.post_complete_parameters.calib_axis
     axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
@@ -2216,7 +2216,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     axis1 = 𝓂.constants.post_model_macro.var
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
@@ -2374,7 +2374,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     axis1 = 𝓂.constants.post_model_macro.var
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
@@ -2487,7 +2487,7 @@ function get_correlation(𝓂::ℳ;
     
     axis1 = 𝓂.constants.post_model_macro.var
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
@@ -2623,7 +2623,7 @@ function get_autocorrelation(𝓂::ℳ;
     
     axis1 = 𝓂.constants.post_model_macro.var
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
@@ -2804,7 +2804,7 @@ function get_moments(𝓂::ℳ;
 
     axis1 = 𝓂.constants.post_model_macro.var
 
-    ensure_name_display_cache!(𝓂)
+    ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
