@@ -10002,10 +10002,10 @@ end # dispatch_doctor
 
 # Include ForwardDiff Dual specializations for forward-mode AD
 # Must be at the end of the module because they depend on function definitions
-include("./derivatives/forwarddiff.jl")
+include("./custom_autodiff_rules/forwarddiff.jl")
 
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions
-include("./derivatives/zygote.jl")
+include("./custom_autodiff_rules/zygote.jl")
 
 end
