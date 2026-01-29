@@ -96,7 +96,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Note: workspace is unused by schur algorithm but accepted for API consistency
     T = constants.post_model_macro
     # @timeit_debug timer "Prepare indice" begin
-   
+    I_nPast = workspace.I_nPast
+
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
@@ -113,13 +114,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     Ã₀₊ =  B[:,future_not_past_and_mixed_in_comb]
 
-    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:]
+    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
 
     Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
     I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
     
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = ℒ.I(T.nPast_not_future_and_mixed)[T.mixed_in_past_idx,:]
+    I₋ = I_nPast[T.mixed_in_past_idx,:]
     
     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
     
@@ -282,7 +283,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Prellocate" begin
 
-    II = ℒ.I(n)  # Identity matrix reference
+    II = workspace.I_n  # Pre-computed identity matrix reference
 
     Xtol = 1.0
     Ytol = 1.0

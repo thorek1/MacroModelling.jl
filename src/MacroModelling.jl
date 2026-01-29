@@ -6407,7 +6407,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
 
-    tmp = (ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
+    I_nPast = qme_ws.I_nPast
+
+    tmp = (I_nPast - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -6475,7 +6477,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -6619,7 +6621,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
     
-    tmp = (ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
+    I_nPast = qme_ws.I_nPast
+
+    tmp = (I_nPast - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -6686,7 +6690,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     

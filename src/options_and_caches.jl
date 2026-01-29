@@ -231,7 +231,10 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, 0, 0),  # X̃
                     zeros(T, 0, 0),  # X̃_first_order
                     zeros(T, 0, 0),  # p_tmp
-                    zeros(T, 0, 0))  # ∂SS_and_pars
+                    zeros(T, 0, 0),  # ∂SS_and_pars
+                    # Pre-computed identity matrices (UniformScaling - dimension independent)
+                    ℒ.I(0),             # I_n
+                    ℒ.I(0))             # I_nPast
 end
 
 """

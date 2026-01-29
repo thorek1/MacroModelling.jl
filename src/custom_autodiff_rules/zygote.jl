@@ -148,7 +148,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -196,7 +196,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
 
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -224,7 +224,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -268,7 +268,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         

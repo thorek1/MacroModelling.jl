@@ -487,6 +487,8 @@ Pre-allocated workspace matrices for the quadratic matrix equation doubling algo
 All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
 
 Used by `solve_quadratic_matrix_equation` with `Val{:doubling}` in quadratic_matrix_equation.jl.
+Also used by stochastic steady state calculations in `calculate_second_order_stochastic_steady_state`
+and `calculate_third_order_stochastic_steady_state`.
 Avoids per-call allocations for temporary matrices in the iterative doubling algorithm.
 
 Fields:
@@ -496,6 +498,8 @@ Fields:
 - `temp1`, `temp2`, `temp3`: Temporary matrices for intermediate computations
 - `B̄`: Copy of B for LU factorization (modified in-place)
 - `AXX`: Temporary for residual computation (A * X² + B * X + C)
+- `I_n`: Pre-computed identity matrix for QME doubling (UniformScaling)
+- `I_nPast`: Pre-computed identity matrix for stochastic steady state (UniformScaling)
 """
 mutable struct qme_workspace{T <: Real}
     # Doubling algorithm working matrices
@@ -527,6 +531,10 @@ mutable struct qme_workspace{T <: Real}
     X̃_first_order::Matrix{T}   # For first order solution partials
     p_tmp::Matrix{T}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{T}     # For NSSS partials in get_NSSS_and_parameters
+    
+    # Pre-computed identity matrices
+    I_n::ℒ.UniformScaling{Bool}     # Identity for QME doubling (dimension n = nVars - nPresent_only)
+    I_nPast::ℒ.UniformScaling{Bool} # Identity for stochastic steady state (dimension nPast_not_future_and_mixed)
 end
 
 
