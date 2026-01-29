@@ -6326,9 +6326,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
                                                         pruning::Bool = false,
-                                                        estimation::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}} where M 
+                                                        estimation::Bool = false) where M 
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+                                                        # tol::AbstractFloat = 1e-12)
     # @timeit_debug timer "Calculate NSSS" begin
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -6528,7 +6528,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
                                                         pruning::Bool = false,
-                                                        estimation::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
+                                                        estimation::Bool = false)where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
     # Initialize constants at entry point
@@ -6594,7 +6594,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
-    
+
     if !solved3
         if opts.verbose println("3rd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
@@ -6640,10 +6640,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     else
         # Get cached computational constants
         so = 𝓂.constants.second_order
-        s_in_s⁺ = @ignore_derivatives so.s_in_s⁺
-        kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
+        s_in_s⁺ = so.s_in_s⁺
+        kron_s⁺_s⁺ = so.kron_s⁺_s⁺
         
-        kron_s⁺_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺_s⁺
+        kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
         
         A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]

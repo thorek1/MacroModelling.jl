@@ -30,7 +30,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -111,7 +111,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
