@@ -6326,9 +6326,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
                                                         pruning::Bool = false,
-                                                        estimation::Bool = false) where M 
+                                                        estimation::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}} where M 
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)
+                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -6528,7 +6528,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
                                                         pruning::Bool = false,
-                                                        estimation::Bool = false) where M <: Real
+                                                        estimation::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)
     # Initialize constants at entry point
