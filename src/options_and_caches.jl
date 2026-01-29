@@ -212,7 +212,7 @@ end
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_workspace(n::Int; T::Type = Float64)
+function Qme_workspace(n::Int; T::Type = Float64, nPast::Int = 0)
     qme_workspace(  zeros(T, n, n),  # E
                     zeros(T, n, n),  # F
                     zeros(T, n, n),  # X
@@ -232,9 +232,9 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, 0, 0),  # X̃_first_order
                     zeros(T, 0, 0),  # p_tmp
                     zeros(T, 0, 0),  # ∂SS_and_pars
-                    # Pre-computed identity matrices (UniformScaling - dimension independent)
-                    ℒ.I(0),             # I_n
-                    ℒ.I(0))             # I_nPast
+                    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
+                    ℒ.I(n),             # I_n
+                    ℒ.I(nPast))         # I_nPast
 end
 
 """
@@ -1196,13 +1196,15 @@ If the workspace is the wrong size, it will be reallocated.
 function ensure_qme_workspace!(𝓂)
     T = 𝓂.constants.post_model_macro
     n = T.nVars - T.nPresent_only
-    return ensure_qme_workspace!(𝓂.workspaces, n)
+    nPast = T.nPast_not_future_and_mixed
+    return ensure_qme_workspace!(𝓂.workspaces, n, nPast)
 end
 
-function ensure_qme_workspace!(workspaces::workspaces, n::Int)
+function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
     ws = workspaces.qme
-    if size(ws.E, 1) != n
-        workspaces.qme = Qme_workspace(n)
+    # Check if workspace needs to be resized (either n or nPast changed)
+    if size(ws.E, 1) != n || size(ws.I_nPast, 1) != nPast
+        workspaces.qme = Qme_workspace(n, nPast = nPast)
     end
     return workspaces.qme
 end

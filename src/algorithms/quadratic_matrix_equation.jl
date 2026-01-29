@@ -93,7 +93,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    # Note: workspace is unused by schur algorithm but accepted for API consistency
+    # Use cached identity matrix from workspace (Diagonal{Bool} supports indexing)
     T = constants.post_model_macro
     # @timeit_debug timer "Prepare indice" begin
     I_nPast = workspace.I_nPast

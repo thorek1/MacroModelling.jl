@@ -532,9 +532,9 @@ mutable struct qme_workspace{T <: Real}
     p_tmp::Matrix{T}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{T}     # For NSSS partials in get_NSSS_and_parameters
     
-    # Pre-computed identity matrices
-    I_n::ℒ.UniformScaling{Bool}     # Identity for QME doubling (dimension n = nVars - nPresent_only)
-    I_nPast::ℒ.UniformScaling{Bool} # Identity for stochastic steady state (dimension nPast_not_future_and_mixed)
+    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
+    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
+    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}   # Identity for schur & stochastic steady state (dimension nPast_not_future_and_mixed)
 end
 
 
