@@ -485,7 +485,7 @@ if test_set == "plots_5"
 
         plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], negative_shock = true, plot_type = :stack)
         
-        shock_mat = randn(Smets_Wouters_2007.timings.nExo,3)
+        shock_mat = randn(Smets_Wouters_2007.constants.post_model_macro.nExo,3)
 
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
@@ -532,7 +532,7 @@ if test_set == "plots_5"
         plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         # conditons on #3 is nothing which makes sense since it is not showing
 
-        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.constants.post_model_macro.nExo, 10, .1)
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
         cndtns_lvl[1,4] = 2
@@ -544,7 +544,7 @@ if test_set == "plots_5"
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.4
         
-        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.constants.post_model_macro.nExo, 10, .1)
 
         plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
 
@@ -552,7 +552,7 @@ if test_set == "plots_5"
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
-        shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
+        shock_mat = sprandn(FS2000.constants.post_model_macro.nExo, 10, .1)
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
@@ -818,6 +818,104 @@ if test_set == "basic"
         return ss, calls
     end
 
+    @testset verbose = true "FS2000 precompile = true" begin
+        @model FS2000_pre precompile = true begin
+            dA[0] = exp(gam + z_e_a  *  e_a[x])
+            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+            W[0] = l[0] / n[0]
+            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+            P[0] * c[0] = m[0]
+            m[0] - 1 + d[0] = l[0]
+            e[0] = exp(z_e_a  *  e_a[x])
+            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+            gy_obs[0] = dA[0] * y[0] / y[-1]
+            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+            log_gy_obs[0] = log(gy_obs[0])
+            log_gp_obs[0] = log(gp_obs[0])
+        end
+        
+        @parameters FS2000_pre silent = true precompile = true begin  
+            alp     = 0.356
+            bet     = 0.993
+            gam     = 0.0085
+            mst     = 1.0002
+            rho     = 0.129
+            psi     = 0.65
+            del     = 0.01
+            z_e_a   = 0.035449
+            z_e_m   = 0.008862
+        end
+        
+        
+        SS_pre =    get_SS(FS2000_pre, silent = true)
+        SS_change_pre =    get_SS(FS2000_pre, parameters = :alp => 0.36, silent = true)
+        solution_pre =  get_solution(FS2000_pre, silent = true)
+        solution_change_pre =  get_solution(FS2000_pre, parameters = :alp => 0.35)
+        standard_deviation_pre =    get_standard_deviation(FS2000_pre)
+        correlation_pre =   get_correlation(FS2000_pre)
+        autocorrelation_pre =   get_autocorrelation(FS2000_pre)
+        variance_decomposition_pre =    get_variance_decomposition(FS2000_pre)
+        conditional_variance_decomposition_pre =    get_conditional_variance_decomposition(FS2000_pre)
+        irf_pre =   get_irf(FS2000_pre)  
+        
+        @model FS2000 begin
+            dA[0] = exp(gam + z_e_a  *  e_a[x])
+            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+            W[0] = l[0] / n[0]
+            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+            P[0] * c[0] = m[0]
+            m[0] - 1 + d[0] = l[0]
+            e[0] = exp(z_e_a  *  e_a[x])
+            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+            gy_obs[0] = dA[0] * y[0] / y[-1]
+            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+            log_gy_obs[0] = log(gy_obs[0])
+            log_gp_obs[0] = log(gp_obs[0])
+        end
+        
+        @parameters FS2000 begin  
+            alp     = 0.356
+            bet     = 0.993
+            gam     = 0.0085
+            mst     = 1.0002
+            rho     = 0.129
+            psi     = 0.65
+            del     = 0.01
+            z_e_a   = 0.035449
+            z_e_m   = 0.008862
+        end
+        
+        SS_nopre =    get_SS(FS2000, silent = true)
+        SS_change_nopre =    get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+        solution_nopre =  get_solution(FS2000, silent = true)
+        solution_change_nopre =  get_solution(FS2000, parameters = :alp => 0.35)
+        standard_deviation_nopre =    get_standard_deviation(FS2000)
+        correlation_nopre =   get_correlation(FS2000)
+        autocorrelation_nopre =   get_autocorrelation(FS2000)
+        variance_decomposition_nopre =    get_variance_decomposition(FS2000)
+        conditional_variance_decomposition_nopre =    get_conditional_variance_decomposition(FS2000)
+        irf_nopre =   get_irf(FS2000)  
+        
+        @test isapprox(SS_nopre, SS_pre)
+        @test isapprox(SS_change_nopre, SS_change_pre)
+        @test isapprox(solution_nopre, solution_pre)
+        @test isapprox(solution_change_nopre, solution_change_pre)
+        @test isapprox(standard_deviation_nopre, standard_deviation_pre)
+        @test isapprox(correlation_nopre, correlation_pre)
+        @test isapprox(autocorrelation_nopre, autocorrelation_pre)
+        @test isapprox(variance_decomposition_nopre, variance_decomposition_pre)
+        @test isapprox(conditional_variance_decomposition_nopre, conditional_variance_decomposition_pre)
+        @test isapprox(irf_nopre, irf_pre)
+    end
+
     @testset "Custom steady state assignment" begin
         @model RBC_switch begin
             1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
@@ -857,10 +955,8 @@ if test_set == "basic"
         inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
         @test inplace_calls[] > 0
         @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union, MacroModelling.get_symbols.(RBC_switch.ss_aux_equations)),
-                                                    union(RBC_switch.parameters_in_equations, RBC_switch.➕_vars))))
-        expected_cache_length = length(vars_in_ss_equations) + length(RBC_switch.calibration_equations_parameters)
-        @test length(RBC_switch.caches.custom_steady_state_buffer) == expected_cache_length
+        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.equations.calibration_parameters)
+        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
 
         # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
         # @test bad_calls[] > 0
@@ -868,7 +964,7 @@ if test_set == "basic"
         calls_before = custom_calls[]
         _ = get_steady_state(RBC_switch, steady_state_function = nothing)
         @test custom_calls[] == calls_before
-        @test isnothing(RBC_switch.custom_steady_state_function)
+        @test isnothing(RBC_switch.functions.NSSS_custom)
 
         MacroModelling.set_custom_steady_state_function!(RBC_switch, custom_ss)
         calls_before = custom_calls[]
@@ -899,16 +995,16 @@ if test_set == "basic"
             beta = 0.95
         end
 
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
 
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] > 0
-        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
 
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
-        @test isnothing(RBC_macro_switch.custom_steady_state_function)
-        @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
+        @test isnothing(RBC_macro_switch.functions.NSSS_custom)
+        @test RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
@@ -965,7 +1061,7 @@ if test_set == "basic"
 
         # Steady state should still work after clearing
         after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
-        @test isnothing(RBC_custom_ss.custom_steady_state_function)
+        @test isnothing(RBC_custom_ss.functions.NSSS_custom)
         @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
 
         irf_after_clear = get_irf(RBC_custom_ss, levels = true)
@@ -973,7 +1069,7 @@ if test_set == "basic"
         
         # Test with verbose option (internal function still available but not exported)
         MacroModelling.set_custom_steady_state_function!(RBC_custom_ss, my_steady_state_rbc)
-        @test !isnothing(RBC_custom_ss.custom_steady_state_function)
+        @test !isnothing(RBC_custom_ss.functions.NSSS_custom)
         
         
         @model RBC_macro_ss begin
@@ -992,7 +1088,7 @@ if test_set == "basic"
         end
         
         # Verify macro-defined SS function is set
-        @test isapprox(RBC_macro_ss.custom_steady_state_function(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
+        @test isapprox(RBC_macro_ss.functions.NSSS_custom(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
         
         macro_ss = get_steady_state(RBC_macro_ss)
         @test isapprox(default_ss, macro_ss, rtol = 1e-10)
@@ -1001,6 +1097,78 @@ if test_set == "basic"
         RBC_macro_ss = nothing
         RBC_func_arg = nothing
     end
+
+    @testset verbose = true "Non-stochastic steady state guess" begin
+        @model RBC_CME begin
+            y[0]=A[0]*k[-1]^alpha
+            1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+            1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+            R[0] * beta =(Pi[0]/Pibar)^phi_pi
+            # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
+            A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+            z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+            # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
+            # A[0]=exp(z[0])
+            A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+            # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
+        end
+
+
+        @parameters RBC_CME verbose = true guess = Dict(:alpha => .2, :beta => .99) begin
+            alpha | k[ss] / (4 * y[ss]) = cap_share
+            cap_share = 1.66
+            # alpha = .157
+
+            beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
+            R_ss = 1.0035
+            # beta = .999
+
+            # delta | c[ss]/y[ss] = 1 - I_K_ratio
+            delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
+            I_K_ratio = .15
+            # delta = .0226
+
+            Pibar | Pi[ss] = Pi_ss
+            Pi_ss = 1.0025
+            # Pibar = 1.0008
+
+            phi_pi = 1.5
+            rhoz = .9
+            std_eps = .0068
+            rho_z_delta = .9
+            std_z_delta = .005
+
+            
+            # cap_share > 0
+            # R_ss > 0
+            # Pi_ss > 0
+            # I_K_ratio > 0 
+
+            # 0 < alpha < 1 
+            # 0 < beta < 1
+            # 0 < delta < 1
+            # 0 < Pibar
+            # 0 <= rhoz < 1
+            # phi_pi > 0
+
+            # 0 < A < 1
+            # 0 < k < 50
+            # 0 < y < 10
+            # 0 < c < 10
+        end
+        
+        @test RBC_CME.constants.post_parameters_macro.guess == Dict(:alpha => .2, :beta => .99)
+
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+
+        RBC_CME = nothing
+    end
+    GC.gc()
+
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
 
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
     
@@ -1097,7 +1265,7 @@ if test_set == "basic"
 
         # Steady state should still work after clearing
         after_clear_ss = get_steady_state(model, steady_state_function = nothing)
-        @test isnothing(model.custom_steady_state_function)
+        @test isnothing(model.functions.NSSS_custom)
         @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
 
         std_after_clear = get_std(model)
@@ -1995,7 +2163,7 @@ if test_set == "basic"
         using CSV
         using DataFrames
 
-        df = DataFrame(Parameter = NAWM_EAUS_2008.parameters, Value = NAWM_EAUS_2008.parameter_values)
+        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_complete_parameters.parameters, Value = NAWM_EAUS_2008.parameter_values)
         CSV.write("NAWM_EAUS_2008_parameters.csv", df)
 
         # read the parameters from the csv file as a Dict and update NAWM_EAUS_2008_incomplete
@@ -2005,7 +2173,7 @@ if test_set == "basic"
         sol1 = get_solution(NAWM_EAUS_2008_incomplete, parameters = param_dict)
         sol2 = get_solution(NAWM_EAUS_2008)
 
-        @test sol1 ≈ sol2
+        @test isapprox(sol1, sol2, rtol = 1e-7)
     end
 
     @testset verbose = true "Code quality (Aqua.jl)" begin
@@ -2039,109 +2207,6 @@ if test_set == "basic"
         common_keys2 = intersect(std1.keys[2], std2.keys[2])
 
         @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
-    end
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
-    end
-    GC.gc()
-
-    @testset verbose = true "FS2000 precompile = true" begin
-        @model FS2000_pre precompile = true begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
-        
-        @parameters FS2000_pre silent = true precompile = true begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
-        
-        
-        SS_pre =    get_SS(FS2000_pre, silent = true)
-        SS_change_pre =    get_SS(FS2000_pre, parameters = :alp => 0.36, silent = true)
-        solution_pre =  get_solution(FS2000_pre, silent = true)
-        solution_change_pre =  get_solution(FS2000_pre, parameters = :alp => 0.35)
-        standard_deviation_pre =    get_standard_deviation(FS2000_pre)
-        correlation_pre =   get_correlation(FS2000_pre)
-        autocorrelation_pre =   get_autocorrelation(FS2000_pre)
-        variance_decomposition_pre =    get_variance_decomposition(FS2000_pre)
-        conditional_variance_decomposition_pre =    get_conditional_variance_decomposition(FS2000_pre)
-        irf_pre =   get_irf(FS2000_pre)  
-        
-        @model FS2000 begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
-        
-        @parameters FS2000 begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
-        
-        SS_nopre =    get_SS(FS2000, silent = true)
-        SS_change_nopre =    get_SS(FS2000, parameters = :alp => 0.36, silent = true)
-        solution_nopre =  get_solution(FS2000, silent = true)
-        solution_change_nopre =  get_solution(FS2000, parameters = :alp => 0.35)
-        standard_deviation_nopre =    get_standard_deviation(FS2000)
-        correlation_nopre =   get_correlation(FS2000)
-        autocorrelation_nopre =   get_autocorrelation(FS2000)
-        variance_decomposition_nopre =    get_variance_decomposition(FS2000)
-        conditional_variance_decomposition_nopre =    get_conditional_variance_decomposition(FS2000)
-        irf_nopre =   get_irf(FS2000)  
-        
-        @test isapprox(SS_nopre, SS_pre)
-        @test isapprox(SS_change_nopre, SS_change_pre)
-        @test isapprox(solution_nopre, solution_pre)
-        @test isapprox(solution_change_nopre, solution_change_pre)
-        @test isapprox(standard_deviation_nopre, standard_deviation_pre)
-        @test isapprox(correlation_nopre, correlation_pre)
-        @test isapprox(autocorrelation_nopre, autocorrelation_pre)
-        @test isapprox(variance_decomposition_nopre, variance_decomposition_pre)
-        @test isapprox(conditional_variance_decomposition_nopre, conditional_variance_decomposition_pre)
-        @test isapprox(irf_nopre, irf_pre)
     end
 
     @testset verbose = true "Model without shocks" begin
@@ -2179,72 +2244,6 @@ if test_set == "basic"
     m = nothing
 
 
-
-    @testset verbose = true "Non-stochastic steady state guess" begin
-        @model RBC_CME begin
-            y[0]=A[0]*k[-1]^alpha
-            1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
-            1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
-            R[0] * beta =(Pi[0]/Pibar)^phi_pi
-            # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
-            A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
-            z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-            # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
-            # A[0]=exp(z[0])
-            A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
-            # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
-        end
-
-
-        @parameters RBC_CME verbose = true guess = Dict(:alpha => .2, :beta => .99) begin
-            alpha | k[ss] / (4 * y[ss]) = cap_share
-            cap_share = 1.66
-            # alpha = .157
-
-            beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
-            R_ss = 1.0035
-            # beta = .999
-
-            # delta | c[ss]/y[ss] = 1 - I_K_ratio
-            delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
-            I_K_ratio = .15
-            # delta = .0226
-
-            Pibar | Pi[ss] = Pi_ss
-            Pi_ss = 1.0025
-            # Pibar = 1.0008
-
-            phi_pi = 1.5
-            rhoz = .9
-            std_eps = .0068
-            rho_z_delta = .9
-            std_z_delta = .005
-
-            
-            # cap_share > 0
-            # R_ss > 0
-            # Pi_ss > 0
-            # I_K_ratio > 0 
-
-            # 0 < alpha < 1 
-            # 0 < beta < 1
-            # 0 < delta < 1
-            # 0 < Pibar
-            # 0 <= rhoz < 1
-            # phi_pi > 0
-
-            # 0 < A < 1
-            # 0 < k < 50
-            # 0 < y < 10
-            # 0 < c < 10
-        end
-        
-        @test RBC_CME.guess == Dict(:alpha => .2, :beta => .99)
-
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
-
-        RBC_CME = nothing
-    end
 
     @testset verbose = true "Distribution functions, general and SS" begin
         
@@ -3314,7 +3313,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
         # irf(RBC_CME)
         
@@ -3382,7 +3381,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME,symbolic_SS = true)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
 
         RBC_CME = nothing
@@ -3454,7 +3453,7 @@ if test_set == "basic"
         # solve!(RBC_CME, verbose = true)
         # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
         # get_steady_state(RBC_CME)
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
         # get_moments(RBC_CME)[1]
 
         # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -3523,7 +3522,7 @@ if test_set == "basic"
         # # using NLopt
         # # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # # get_steady_state(RBC_CME)
-        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
+        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
         # get_moments(RBC_CME)[1]
         
         RBC_CME = nothing
@@ -3658,7 +3657,7 @@ if test_set == "basic"
         # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var,[:Steady_state]),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.constants.post_model_macro.var,[:Steady_state]),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
@@ -3923,7 +3922,7 @@ if test_set == "basic"
         end
 
         get_solution(RBC_CME)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -3932,7 +3931,7 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :I_K_ratio => .1)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -3941,7 +3940,7 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :cap_share => 1.5)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -3996,7 +3995,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
     #                                                                 6.73489e-6   0.000168887
     #                                                                 1.01124e-5   0.000253583
     #                                                                 -0.000365783  0.00217203
@@ -4007,7 +4006,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
     #         3.42408e-6   0.000111417
     #         5.14124e-6   0.000167292
     #     -0.000196196  0.00190741
@@ -4018,7 +4017,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
     #     4.00629e-6   0.000118171
     #     6.01543e-6   0.000177434
     # -0.000207089  0.00201698
@@ -4073,7 +4072,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -4084,7 +4083,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -4095,7 +4094,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698

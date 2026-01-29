@@ -30,6 +30,14 @@ like `[0]` (present), `[1]` (future), `[-1]` (past), and `[x]` (shock).
 
 ## Tests
 
+Before running tests, activate the test environment and instantiate dependencies:
+
+```julia
+using Pkg
+Pkg.activate("test")
+Pkg.instantiate()
+```
+
 Tests are organized by test sets specified via `TEST_SET`:
 
 ```bash

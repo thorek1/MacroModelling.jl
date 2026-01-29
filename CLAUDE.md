@@ -13,6 +13,14 @@ MacroModelling.jl is a Julia package for developing and solving Dynamic Stochast
 
 ### Running Tests
 
+Before running tests, activate the test environment and instantiate dependencies:
+
+```julia
+using Pkg
+Pkg.activate("test")
+Pkg.instantiate()
+```
+
 Tests are organized by test sets specified via the `TEST_SET` environment variable:
 
 ```bash

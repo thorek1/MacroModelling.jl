@@ -59,7 +59,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -160,8 +160,9 @@ using DispatchDoctor
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
-include("options_and_caches.jl")
 include("structures.jl")
+include("solver_parameters.jl")
+include("options_and_caches.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
@@ -346,34 +347,34 @@ end
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
-                "\n Total:       ", 𝓂.timings.nVars,
-                "\n  Auxiliary:  ", length(𝓂.exo_present) + length(𝓂.aux),
-                "\n States:      ", 𝓂.timings.nPast_not_future_and_mixed,
-                "\n  Auxiliary:  ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:     ", 𝓂.timings.nFuture_not_past_and_mixed, # 𝓂.timings.mixed, 
-                "\n  Auxiliary:  ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
-                "\nShocks:       ", 𝓂.timings.nExo,
-                "\nParameters:   ", length(𝓂.parameters_in_equations),
-                if isempty(𝓂.missing_parameters)
+                "\n Total:       ", 𝓂.constants.post_model_macro.nVars,
+                "\n  Auxiliary:  ", length(𝓂.constants.post_model_macro.exo_present) + length(𝓂.constants.post_model_macro.aux),
+                "\n States:      ", 𝓂.constants.post_model_macro.nPast_not_future_and_mixed,
+                "\n  Auxiliary:  ",  length(intersect(𝓂.constants.post_model_macro.past_not_future_and_mixed, 𝓂.constants.post_model_macro.aux_present)),
+                "\n Jumpers:     ", 𝓂.constants.post_model_macro.nFuture_not_past_and_mixed, # 𝓂.constants.post_model_macro.mixed, 
+                "\n  Auxiliary:  ", length(intersect(𝓂.constants.post_model_macro.future_not_past_and_mixed, union(𝓂.constants.post_model_macro.aux_present, 𝓂.constants.post_model_macro.aux_future))),
+                "\nShocks:       ", 𝓂.constants.post_model_macro.nExo,
+                "\nParameters:   ", length(𝓂.constants.post_model_macro.parameters_in_equations),
+                if isempty(𝓂.constants.post_complete_parameters.missing_parameters)
                     ""
                 else
-                    "\n Missing:     " * repr(length(𝓂.missing_parameters))
+                    "\n Missing:     " * repr(length(𝓂.constants.post_complete_parameters.missing_parameters))
                 end,
-                if 𝓂.calibration_equations == Expr[]
+                if 𝓂.equations.calibration == Expr[]
                     ""
                 else
-                    "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
+                    "\nCalibration\nequations:    " * repr(length(𝓂.equations.calibration))
                 end,
                 # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
-                # "\nNon-stochastic-steady-state found: ",!𝓂.solution.outdated_NSSS
+                # "\nNon-stochastic-steady-state found: ",!𝓂.caches.outdated_NSSS
                 )
 
 check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
@@ -432,22 +433,7 @@ function mul_reverse_AD!(   C::Matrix{S},
     ℒ.mul!(C,A,B)
 end
 
-function rrule( ::typeof(mul_reverse_AD!),
-                C::Matrix{S},
-                A::AbstractMatrix{M},
-                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
-    project_A = ProjectTo(A)
-    project_B = ProjectTo(B)
 
-    function times_pullback(ȳ)
-        Ȳ = unthunk(ȳ)
-        dA = @thunk(project_A(Ȳ * B'))
-        dB = @thunk(project_B(A' * Ȳ))
-        return NoTangent(), NoTangent(), dA, dB
-    end
-
-    return ℒ.mul!(C,A,B), times_pullback
-end
 
 
 function check_for_dynamic_variables(ex::Expr)
@@ -469,6 +455,7 @@ function check_for_dynamic_variables(ex::Expr)
     any(dynamic_indicator)
 end
 
+end # dispatch_doctor
 
 function transform_expression(expr::Expr)
     # Dictionary to store the transformations for reversing
@@ -607,7 +594,7 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
@@ -619,14 +606,14 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
     
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+    shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
 
     if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+        @assert size(shocks)[1] == 𝓂.constants.post_model_macro.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
         periods_extended = periods + size(shocks)[2]
         
-        shock_history = zeros(𝓂.timings.nExo, periods_extended)
+        shock_history = zeros(𝓂.constants.post_model_macro.nExo, periods_extended)
 
         shock_history[:,1:size(shocks)[2]] = shocks
         
@@ -638,23 +625,23 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
         shock_input = map(x->Symbol(replace(string(x), "₍ₓ₎" => "")), shocks_symbols)
 
-        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
+        @assert length(setdiff(shock_input, 𝓂.constants.post_model_macro.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
 
         periods_extended = periods + size(shocks)[2]
         
-        shock_history = zeros(𝓂.timings.nExo, periods_extended)
+        shock_history = zeros(𝓂.constants.post_model_macro.nExo, periods_extended)
         
-        shock_history[indexin(shock_input,𝓂.timings.exo), 1:size(shocks)[2]] = shocks
+        shock_history[indexin(shock_input,𝓂.constants.post_model_macro.exo), 1:size(shocks)[2]] = shocks
 
         shock_idx = 1
     elseif shocks isa Expr
         error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
     elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
-        shock_history = zeros(𝓂.timings.nExo, periods)
+        shock_history = zeros(𝓂.constants.post_model_macro.nExo, periods)
 
         periods_extended = periods
         
-        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.timings)
+        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.constants)
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64} || shocks == :none
@@ -674,20 +661,20 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
                                  𝓂::ℳ; 
                                  maxlog::Int = DEFAULT_MAXLOG)
-    stochastic_model = length(𝓂.timings.exo) > 0
-    obc_model = length(𝓂.obc_violation_equations) > 0
+    stochastic_model = length(𝓂.constants.post_model_macro.exo) > 0
+    obc_model = length(𝓂.equations.obc_violation) > 0
 
     obc_shocks_included = false
 
     if stochastic_model && obc_model
         if shocks isa Matrix{Float64}
-            obc_indices = contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")
+            obc_indices = contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")
             if any(obc_indices)
                 obc_shocks_included = sum(abs2, shocks[obc_indices, :]) > 1e-10
             end
@@ -695,22 +682,22 @@ function process_ignore_obc_flag(shocks,
             shock_axis = collect(axiskeys(shocks, 1))
             shock_axis = shock_axis isa Vector{String} ? shock_axis .|> Meta.parse .|> replace_indices : shock_axis
 
-            obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")]
+            obc_shocks = 𝓂.constants.post_model_macro.exo[contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")]
             relevant_shocks = intersect(obc_shocks, shock_axis)
 
             if !isempty(relevant_shocks)
                 obc_shocks_included = sum(abs2, shocks(relevant_shocks, :)) > 1e-10
             end
         else
-            shock_idx = parse_shocks_input_to_index(shocks, 𝓂.timings)
+            shock_idx = parse_shocks_input_to_index(shocks, 𝓂.constants)
 
             selected_shocks = if (shock_idx isa Vector) || (shock_idx isa UnitRange)
-                length(shock_idx) > 0 ? 𝓂.timings.exo[shock_idx] : Symbol[]
+                length(shock_idx) > 0 ? 𝓂.constants.post_model_macro.exo[shock_idx] : Symbol[]
             else
-                [𝓂.timings.exo[shock_idx]]
+                [𝓂.constants.post_model_macro.exo[shock_idx]]
             end
 
-            obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")]
+            obc_shocks = 𝓂.constants.post_model_macro.exo[contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")]
             obc_shocks_included = !isempty(intersect(selected_shocks, obc_shocks))
         end
     end
@@ -826,11 +813,11 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     𝓂 = p[4]
 
     if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
-        jac .= 𝒟.jacobian(xx -> 𝓂.obc_violation_function(xx, p), backend, X)'
+        # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.functions.obc_violation(xx, p), X)[1]'
+        jac .= 𝒟.jacobian(xx -> 𝓂.functions.obc_violation(xx, p), backend, X)'
     end
 
-    res .= 𝓂.obc_violation_function(X, p)
+    res .= 𝓂.functions.obc_violation(X, p)
 
 	return nothing
 end
@@ -844,16 +831,17 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
 end
 
 function set_up_obc_violation_function!(𝓂)
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
 
     # write indices in auxiliary objects
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
 
     dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = ms.SS_and_pars_names
 
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
 
@@ -867,7 +855,7 @@ function set_up_obc_violation_function!(𝓂)
     calc_obc_violation = :(function calculate_obc_violation(x, p)
         state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
 
-        T = 𝓂.timings
+        T = 𝓂.constants.post_model_macro
 
         Y = zeros(typeof(x[1]), T.nVars, periods+1)
 
@@ -899,12 +887,12 @@ function set_up_obc_violation_function!(𝓂)
 
         constraint_values = Vector[]
 
-        $(𝓂.obc_violation_equations...)
+        $(𝓂.equations.obc_violation...)
 
         return vcat(constraint_values...)
     end)
 
-    𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
+    𝓂.functions.obc_violation = @RuntimeGeneratedFunction(calc_obc_violation)
 
     return nothing
 end
@@ -932,7 +920,7 @@ end
 
 function write_obc_violation_equations(𝓂)
     eqs = Expr[]
-    for (i,eq) in enumerate(𝓂.dyn_equations)
+    for (i,eq) in enumerate(𝓂.equations.dynamic)
         if check_for_minmax(eq)
             minmax_fixed_eqs = postwalk(x -> 
                 x isa Expr ?
@@ -1020,18 +1008,24 @@ end
 
 
 function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    for i in [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
-        push!(𝓂.solution.outdated_algorithms, i)
+    # Mark all solutions as outdated
+    𝓂.caches.outdated.non_stochastic_steady_state = true
+    𝓂.caches.outdated.jacobian = true
+    𝓂.caches.outdated.hessian = true
+    𝓂.caches.outdated.third_order_derivatives = true
+    𝓂.caches.outdated.first_order_solution = true
+    𝓂.caches.outdated.second_order_solution = true
+    𝓂.caches.outdated.pruned_second_order_solution = true
+    𝓂.caches.outdated.third_order_solution = true
+    𝓂.caches.outdated.pruned_third_order_solution = true
+
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
-    end
-
-    𝓂.solution.outdated_NSSS = true
-    𝓂.solution.perturbation.qme_solution = zeros(0,0)
-    𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
-    𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
+    𝓂.caches.qme_solution = zeros(0,0)
+    𝓂.caches.second_order_solution = spzeros(0,0)
+    𝓂.caches.third_order_solution = spzeros(0,0)
 
     return nothing
 end
@@ -1069,7 +1063,7 @@ When both signatures are applicable, the in-place signature is used.
 
 Where:
 - Input: Parameter values in the declaration order (as defined in `@parameters`). Parameter order is available from `get_parameters(𝓂)`.
-- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any). For in-place functions, `out` is filled in this order.
+- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future))`, followed by calibrated parameters in `𝓂.equations.calibration_parameters` (if any). For in-place functions, `out` is filled in this order.
 
 # Examples
 ```julia
@@ -1117,25 +1111,35 @@ get_irf(RBC, steady_state_function = my_steady_state)
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
 function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType)
-    had_custom = !isnothing(𝓂.custom_steady_state_function)
+    had_custom = !isnothing(𝓂.functions.NSSS_custom)
 
     # Store the custom function
     if isnothing(f)
-        𝓂.custom_steady_state_function = nothing
+        𝓂.functions.NSSS_custom = nothing
         
         if had_custom
-            𝓂.solution.outdated_NSSS = true
-            for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-                push!(𝓂.solution.outdated_algorithms, alg)
-            end
+            𝓂.caches.outdated.non_stochastic_steady_state = true
+            𝓂.caches.outdated.jacobian = true
+            𝓂.caches.outdated.hessian = true
+            𝓂.caches.outdated.third_order_derivatives = true
+            𝓂.caches.outdated.first_order_solution = true
+            𝓂.caches.outdated.second_order_solution = true
+            𝓂.caches.outdated.pruned_second_order_solution = true
+            𝓂.caches.outdated.third_order_solution = true
+            𝓂.caches.outdated.pruned_third_order_solution = true
         end
-    elseif f isa Function && f !== 𝓂.custom_steady_state_function
-        𝓂.custom_steady_state_function = f 
+    elseif f isa Function && f !== 𝓂.functions.NSSS_custom
+        𝓂.functions.NSSS_custom = f 
 
-        𝓂.solution.outdated_NSSS = true
-        for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-            push!(𝓂.solution.outdated_algorithms, alg)
-        end
+        𝓂.caches.outdated.non_stochastic_steady_state = true
+        𝓂.caches.outdated.jacobian = true
+        𝓂.caches.outdated.hessian = true
+        𝓂.caches.outdated.third_order_derivatives = true
+        𝓂.caches.outdated.first_order_solution = true
+        𝓂.caches.outdated.second_order_solution = true
+        𝓂.caches.outdated.pruned_second_order_solution = true
+        𝓂.caches.outdated.third_order_solution = true
+        𝓂.caches.outdated.pruned_third_order_solution = true
     end
 
     return nothing
@@ -1467,24 +1471,41 @@ end
 #                         tol = tol)
 # end
 
+# Helper to convert dense matrix to sparse using I,J,V format (avoids Julia 1.12 SparseArrays bug)
+function dense_to_sparse(A::DenseMatrix{S}, tol::R) where {S <: Real, R <: AbstractFloat}
+    m, n = size(A)
+    I = Int[]
+    J = Int[]
+    V = S[]
+    @inbounds for j in 1:n
+        for i in 1:m
+            v = A[i,j]
+            if abs(v) > tol
+                push!(I, i)
+                push!(J, j)
+                push!(V, v)
+            end
+        end
+    end
+    return sparse(I, J, V, m, n)
+end
+
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
+        # Use dense_to_sparse to avoid Julia 1.12 SparseArrays bug in SparseMatrixCSC(::Matrix)
+        a = dense_to_sparse(A, tol)
         if multithreaded
-            a = sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            droptol!(a, tol)
+            return ThreadedSparseArrays.ThreadedSparseMatrixCSC(a)
         else
-            a = convert(SparseMatrixCSC{S}, A)
-            droptol!(a, tol)
+            return a
         end
     else
-        a = convert(Matrix, A)
+        return convert(Matrix, A)
     end
-
-    return a
 end
 
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
@@ -1570,6 +1591,8 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 end
 
 
+
+
 function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
@@ -1634,6 +1657,12 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
+
+    estimated_nnz = 0
+    I = Vector{Int}()
+    J = Vector{Int}()
+    V = Vector{T}()
+    X = zeros(T, 0, 0)
 
     if sparse
         nnzA = nnz(A)
@@ -1777,9 +1806,9 @@ function mat_mult_kron(A::DenseMatrix{R},
     # end
 end
 
-function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
-        ℂ.tmp_sparse_prealloc6 = Higher_order_caches(T = T, S = F)
+        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T = T, S = F)
     end
 
     I           = ℂ.tmp_sparse_prealloc6[1]
@@ -1828,26 +1857,6 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Hi
     out = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
 
     return out
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
-    project_Ŝ = ProjectTo(Ŝ)
-
-    function sparse_preallocated_pullback(Ω̄)
-        ΔΩ = unthunk(Ω̄)
-        ΔŜ = project_Ŝ(ΔΩ)
-        return NoTangent(), ΔŜ, NoTangent()
-    end
-
-    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
-    sparse(Ŝ)
 end
 
 
@@ -2094,7 +2103,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
-# function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxiliary_matrices) where T <: Real
+# function kron³(A::AbstractSparseMatrix{T}, M₃::third_order) where T <: Real
 #     rows, cols, vals = findnz(A)
 
 #     # Dictionary to accumulate sums of values for each coordinate
@@ -2275,10 +2284,13 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
 end
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
-                                    T::timings, 
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
+
+    T = constants.post_model_macro
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2287,7 +2299,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2315,7 +2327,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2371,10 +2383,13 @@ end
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
-                                    T::timings, 
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
+
+    T = constants.post_model_macro
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2384,7 +2399,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2448,7 +2463,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2525,10 +2540,13 @@ end
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
                                     𝐒₃::AbstractMatrix{<: Real},
-                                    T::timings, 
+                                    constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
+
+    T = constants.post_model_macro
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2538,7 +2556,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, constants) |> sort
         observables = T.var[var_idx]
     end
 
@@ -2620,7 +2638,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     
     # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
-        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, constants) |> sort
         covariance_vars = T.var[covar_var_idx]
         
         # Compute dependencies for covariance variables (if not already computed)
@@ -2715,8 +2733,8 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
 end
 
 
-function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
-    @assert size(data,1) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+function get_and_check_observables(T::post_model_macro, data::KeyedArray{Float64})::Vector{Symbol}
+    @assert size(data,1) <= T.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))
 
@@ -2724,7 +2742,7 @@ function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector
 
     observables_symbols = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
-    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
+    @assert length(setdiff(observables_symbols, T.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols, T.var))
 
     sort!(observables_symbols)
     
@@ -2990,14 +3008,8 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
+    ms = @ignore_derivatives ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
                                     stochastic = algorithm != :first_order,
@@ -3008,7 +3020,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -3019,7 +3031,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -3068,7 +3080,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-end # dispatch_doctor
+# end # dispatch_doctor
 
 function evaluate_conditions(cond)
     if cond isa Bool
@@ -3158,6 +3170,8 @@ function contains_equation(expr)
     end
     return found
 end
+
+end # dispatch_doctor
 
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
@@ -3254,6 +3268,92 @@ replace_indices_special(x::Symbol) = x
 replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
+
+
+"""
+    apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
+
+Apply custom name from dictionary if available, otherwise use default name.
+"""
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where {R <: Union{Symbol, String}, S, T}
+    # First, check for an exact match with the original symbol
+    if haskey(custom_names, symbol)
+        return R(custom_names[symbol])
+    end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
+        return R(custom_names[String(replace_indices_in_symbol(symbol))])
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return R(custom_names[Symbol(symbol)])
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return R(string(value) * lag_part)
+        end
+    end
+
+    return symbol
+end
+
+function normalize_superscript(x::Symbol)
+    return normalize_superscript(string(x))
+end
+
+function normalize_superscript(x::AbstractString)
+    sub_map = Dict(
+        '₀' => '0', '₁' => '1', '₂' => '2', '₃' => '3', '₄' => '4',
+        '₅' => '5', '₆' => '6', '₇' => '7', '₈' => '8', '₉' => '9',
+        '₊' => '+', '₋' => '-', '₌' => '=', '₍' => '(', '₎' => ')',
+        'ₐ' => 'a', 'ₑ' => 'e', 'ₕ' => 'h', 'ᵢ' => 'i', 'ⱼ' => 'j',
+        'ₖ' => 'k', 'ₗ' => 'l', 'ₘ' => 'm', 'ₙ' => 'n', 'ₒ' => 'o',
+        'ₚ' => 'p', 'ᵣ' => 'r', 'ₛ' => 's', 'ₜ' => 't', 'ᵤ' => 'u',
+        'ᵥ' => 'v', 'ₓ' => 'x'
+    )
+    super_map = Dict(
+        '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+        '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9',
+        '⁺' => '+', '⁻' => '-', '⁼' => '=', '⁽' => '(', '⁾' => ')',
+        'ᵃ' => 'a', 'ᵇ' => 'b', 'ᶜ' => 'c', 'ᵈ' => 'd', 'ᵉ' => 'e',
+        'ᶠ' => 'f', 'ᵍ' => 'g', 'ʰ' => 'h', 'ᶦ' => 'i', 'ʲ' => 'j',
+        'ᵏ' => 'k', 'ˡ' => 'l', 'ᵐ' => 'm', 'ⁿ' => 'n', 'ᵒ' => 'o',
+        'ᵖ' => 'p', 'ʳ' => 'r', 'ˢ' => 's', 'ᵗ' => 't', 'ᵘ' => 'u',
+        'ᵛ' => 'v', 'ʷ' => 'w', 'ˣ' => 'x', 'ʸ' => 'y', 'ᶻ' => 'z'
+    )
+
+    buf = IOBuffer()
+    for c in x
+        if haskey(sub_map, c)
+            write(buf, sub_map[c])
+        elseif haskey(super_map, c)
+            write(buf, super_map[c])
+        else
+            write(buf, c)
+        end
+    end
+    return String(take!(buf))
+end
 
 function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     postwalk(x -> begin
@@ -3449,6 +3549,29 @@ function decompose_name(name::Symbol)
     return result
 end
 
+"""
+    get_computational_constants(𝓂::ℳ)
+
+Return cached second-order computational constants (BitVectors and index patterns).
+"""
+function get_computational_constants(𝓂::ℳ)
+    ensure_computational_constants!(𝓂)
+    return 𝓂.constants.second_order
+end
+
+function get_computational_constants(constants::constants)
+    ensure_computational_constants!(constants)
+    return constants.second_order
+end
+
+"""
+    get_model_structure(𝓂::ℳ)
+
+Return cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
+"""
+function get_model_structure(𝓂::ℳ)
+    return 𝓂.constants.post_complete_parameters
+end
 
 
 function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
@@ -3550,24 +3673,8 @@ function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Ve
 end
 
 
-function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
-    all_variables = @ignore_derivatives sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    ignore_derivatives() do
-        all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    end
-
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    X = zeros(Int, length(all_variables), length(SS_and_pars))
-
-    ignore_derivatives() do
-        for (i,s) in enumerate(all_variables)
-            idx = indexin([s],NSSS_labels)
-            X[i,idx...] = 1
-        end
-    end
-    
+function expand_steady_state(SS_and_pars::Vector{M}, ms::post_complete_parameters) where M
+    X = ms.steady_state_expand_matrix
     return X * SS_and_pars
 end
 
@@ -3575,15 +3682,15 @@ end
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
-    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.dyn_equations))
+    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.equations.dynamic))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
 
-    symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
+    symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.equations.steady_state_aux))
 
-    symbols_in_equation = union(𝓂.parameters_in_equations, 
-                                𝓂.parameters, 
-                                𝓂.parameters_as_function_of_parameters,
+    symbols_in_equation = union(𝓂.constants.post_model_macro.parameters_in_equations, 
+                                𝓂.constants.post_complete_parameters.parameters, 
+                                𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters,
                                 symbols_in_dynamic_equations,
                                 symbols_in_dynamic_equations_wo_subscripts,
                                 symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
@@ -3593,10 +3700,10 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
     symbols_none = []
 
     for symb in symbols_in_equation
-        if haskey(𝓂.bounds, symb)
-            if 𝓂.bounds[symb][1] >= 0
+        if haskey(𝓂.constants.post_parameters_macro.bounds, symb)
+            if 𝓂.constants.post_parameters_macro.bounds[symb][1] >= 0
                 push!(symbols_pos, symb)
-            elseif 𝓂.bounds[symb][2] <= 0
+            elseif 𝓂.constants.post_parameters_macro.bounds[symb][2] <= 0
                 push!(symbols_neg, symb)
             else 
                 push!(symbols_none, symb)
@@ -3622,8 +3729,8 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         Core.eval(SymPyWorkspace, :($none = $sym_value))
     end
 
-    symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
+    symbolics(
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.steady_state_aux),
                 # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
@@ -3632,47 +3739,45 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_exo_list),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_present_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_past_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_future_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.ss_list_aux_SS),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_list_aux_SS),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.par_list_aux_SS),
 
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations_parameters),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.calibration),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.calibration_parameters),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_complete_parameters.parameters),
 
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_present...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_past...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_future...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.var...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_present...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_past...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_future...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.vars_in_ss_equations...)]))),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_calib_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.ss_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.par_calib_list),
 
-                [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)],
-                # [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                # [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)]
                 )
 end
@@ -3685,17 +3790,16 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(Symbolics.var_future_list, Symbolics.var_present_list),
-            intersect.(Symbolics.var_future_list, Symbolics.var_past_list),
-            intersect.(Symbolics.var_present_list, Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_present_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_future_list)
+            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_present_list_aux_SS),
+            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_past_list_aux_SS),
+            intersect.(Symbolics.var_present_list_aux_SS, Symbolics.var_past_list_aux_SS),
+            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_present_list_aux_SS),
+            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_past_list_aux_SS),
+            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_future_list_aux_SS)
         ),
-    Symbolics.var_list)
+    Symbolics.var_list_aux_SS)
 
-    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
-
+    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list_aux_SS) .> 1))
     for i in redundant_idx
         for var_to_solve_for in redundant_vars[i]            
             if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
@@ -3725,7 +3829,9 @@ function write_block_solution!(𝓂,
                                 relevant_pars_across,
                                 NSSS_solver_cache_init_tmp, 
                                 eq_idx_in_block_to_solve, 
-                                atoms_in_equations_list;
+                                atoms_in_equations_list,
+                                solved_vars,
+                                solved_vals;
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
@@ -3735,13 +3841,13 @@ function write_block_solution!(𝓂,
     # ➕_vars = Symbol[]
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
 
-    vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.➕_vars),Symbol[]]
+    vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.constants.post_model_macro.➕_vars),Symbol[]]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
 
 
-    push!(𝓂.solved_vars, Symbol.(vars_to_solve))
-    push!(𝓂.solved_vals, rewritten_eqs)
+    push!(solved_vars, Symbol.(vars_to_solve))
+    push!(solved_vals, rewritten_eqs)
 
 
     syms_in_eqs = Set{Symbol}()
@@ -3750,7 +3856,7 @@ function write_block_solution!(𝓂,
         push!(syms_in_eqs, get_symbols(i)...)
     end
 
-    setdiff!(syms_in_eqs,𝓂.➕_vars)
+    setdiff!(syms_in_eqs,𝓂.constants.post_model_macro.➕_vars)
 
     syms_in_eqs2 = Set{Symbol}()
 
@@ -3758,11 +3864,11 @@ function write_block_solution!(𝓂,
         push!(syms_in_eqs2, get_symbols(i)...)
     end
 
-    ➕_vars_alread_in_eqs = intersect(𝓂.➕_vars,reduce(union,get_symbols.(Meta.parse.(string.(eqs_to_solve)))))
+    ➕_vars_alread_in_eqs = intersect(𝓂.constants.post_model_macro.➕_vars,reduce(union,get_symbols.(Meta.parse.(string.(eqs_to_solve)))))
 
-    union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.➕_vars))
+    union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.constants.post_model_macro.➕_vars))
 
-    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
 
     # guess = Expr[]
     # untransformed_guess = Expr[]
@@ -3771,7 +3877,7 @@ function write_block_solution!(𝓂,
 
     calib_pars_input = Symbol[]
 
-    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
     
     union!(relevant_pars_across, relevant_pars)
 
@@ -3784,7 +3890,7 @@ function write_block_solution!(𝓂,
     end
 
     iii = 1
-    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+    for parss in union(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters)
         if :($parss) ∈ relevant_pars
             # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
             push!(calib_pars_input, :($parss))
@@ -3797,15 +3903,14 @@ function write_block_solution!(𝓂,
     # nnaux_linear = []
     # nnaux_error = []
     # push!(nnaux_error, :(aux_error = 0))
-    solved_vals = Expr[]
     # solved_vals_in_place = Expr[]
     # partially_solved_block = Expr[]
 
     other_vrs_eliminated_by_sympy = Set{Symbol}()
 
-    for (i,val) in enumerate(𝓂.solved_vals[end])
-        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-            val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+    for (i,val) in enumerate(solved_vals[end])
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
+            val = vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
             push!(other_vrs_eliminated_by_sympy, val.args[2])
             # push!(nnaux_linear,:($val))
@@ -3815,8 +3920,9 @@ function write_block_solution!(𝓂,
 
 
     
+    solved_vals_local = Expr[]
     for (i,val) in enumerate(rewritten_eqs)
-        push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+        push!(solved_vals_local, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
         # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
     end
 
@@ -3842,8 +3948,8 @@ function write_block_solution!(𝓂,
 
     # other_vars = Expr[]
     other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
-                                        sort(𝓂.solved_vars[end]) ),
+    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
+                                        sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
@@ -3894,7 +4000,7 @@ function write_block_solution!(𝓂,
     end
     # aux_replacements = Dict{Symbol,Any}(aux_vars .=> aux_expr)
 
-    replaced_solved_vals = solved_vals |> 
+    replaced_solved_vals = solved_vals_local |> 
         x -> replace_symbols.(x, Ref(aux_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
@@ -4033,7 +4139,7 @@ function write_block_solution!(𝓂,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
     
-    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
+    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.constants.post_parameters_macro.guess, v) ? 𝓂.constants.post_parameters_macro.guess[v] : Inf for v in sorted_vars])
     push!(NSSS_solver_cache_init_tmp, [Inf])
 
     # WARNING: infinite bounds are transformed to 1e12
@@ -4043,9 +4149,9 @@ function write_block_solution!(𝓂,
     limit_boundaries = 1e12
 
     for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-        if haskey(𝓂.bounds,i)
-            push!(lbs,𝓂.bounds[i][1])
-            push!(ubs,𝓂.bounds[i][2])
+        if haskey(𝓂.constants.post_parameters_macro.bounds,i)
+            push!(lbs,𝓂.constants.post_parameters_macro.bounds[i][1])
+            push!(ubs,𝓂.constants.post_parameters_macro.bounds[i][2])
         else
             push!(lbs,-limit_boundaries)
             push!(ubs, limit_boundaries)
@@ -4060,13 +4166,13 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(ubs = [$(ubs...)]))
             
     # n_block = length(𝓂.ss_solve_blocks) + 1 
-    n_block = length(𝓂.ss_solve_blocks_in_place) + 1   
+    n_block = length(𝓂.NSSS.solve_blocks_in_place) + 1   
         
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
     push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block), 
-                                                            𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                            𝓂.NSSS.solve_blocks_in_place[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                             # f, 
@@ -4094,10 +4200,13 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
+    # Create nonlinear solver workspaces for regular and extended problems
+    workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
+    ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
     
-    push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
-            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+    push!(𝓂.NSSS.solve_blocks_in_place, ss_solve_block(
+            function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
+            function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
         )
     )
     
@@ -4528,13 +4637,13 @@ function write_ss_check_function!(𝓂::ℳ;
                                     density_threshold::Float64 = .1,
                                     nnz_parallel_threshold::Int = 1000000,
                                     min_length::Int = 10000)
-    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    unknowns = union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)
 
-    ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+    ss_equations = vcat(𝓂.equations.steady_state, 𝓂.equations.calibration)
 
 
 
-    np = length(𝓂.parameters)
+    np = length(𝓂.constants.post_complete_parameters.parameters)
     nu = length(unknowns)
     # nc = length(𝓂.calibration_equations_no_var)
 
@@ -4546,7 +4655,7 @@ function write_ss_check_function!(𝓂::ℳ;
     calib_expr = []
 
 
-    for (i,v) in enumerate(𝓂.parameters)
+    for (i,v) in enumerate(𝓂.constants.post_complete_parameters.parameters)
         push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
     end
@@ -4556,7 +4665,7 @@ function write_ss_check_function!(𝓂::ℳ;
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
     end
 
-    for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+    for (i,v) in enumerate(𝓂.equations.calibration_no_var)
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
         # push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
@@ -4597,10 +4706,10 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
-    𝓂.SS_check_func = func_exprs
+    𝓂.functions.NSSS_check = func_exprs
 
 
-    # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.calibration_equations_parameters))
 
     # eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -4620,7 +4729,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
     # 𝓂.SS_calib_func(calib_vals, 𝔓)
 
-    # 𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
+    # 𝓂.functions.NSSS_check(ϵˢ, 𝔓, 𝔘, calib_vals)
 
     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ss_equations_sub, 𝔓) # nϵ x nx
 
@@ -4649,7 +4758,8 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+    𝓂.caches.∂equations_∂parameters = buffer
+    𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
 
@@ -4680,7 +4790,8 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    𝓂.caches.∂equations_∂SS_and_pars = buffer
+    𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
 
     return nothing
 end
@@ -4693,10 +4804,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
-    eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
-                                        Symbolics.ss_list),
+    eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list_aux_SS,
+                                        Symbolics.ss_list_aux_SS),
                                     Symbolics.var_redundant_list),
-                            Symbolics.par_list),
+                            Symbolics.par_list_aux_SS),
                     union.(Symbolics.ss_calib_list,
                             Symbolics.par_calib_list))
 
@@ -4730,6 +4841,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     atoms_in_equations_list = []
     relevant_pars_across = Symbol[]
     NSSS_solver_cache_init_tmp = []
+
+    solved_vars = []
+    solved_vals = []
 
     min_max_errors = []
 
@@ -4776,38 +4890,41 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                 # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
                 ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
                 
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(solved_vars,Symbol(var_to_solve_for))
+                push!(solved_vals,Meta.parse(string(soll[1])))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                if (solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars) 
+                    push!(SS_solve_func,:($(solved_vars[end]) = max(eps(),$(solved_vals[end]))))
                 else
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    push!(SS_solve_func,:($(solved_vars[end]) = $(solved_vals[end])))
                 end
 
                 push!(atoms_in_equations_list,[])
             else
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(solved_vars,Symbol(var_to_solve_for))
+                push!(solved_vals,Meta.parse(string(soll[1])))
                 
                 [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
-                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
+                if (solved_vars[end] ∈ 𝓂.constants.post_model_macro.➕_vars)
+                    push!(SS_solve_func,:($(solved_vars[end]) = begin
+                        _bounds = get($(𝓂.constants.post_parameters_macro.bounds), $(QuoteNode(solved_vars[end])), (eps(), 1e12))
+                        min(max(_bounds[1], $(solved_vals[end])), _bounds[2])
+                    end))
+                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, solved_vars[end], solved_vals[end])))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
-                    unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
+                    unique_➕_eqs[solved_vals[end]] = solved_vars[end]
                 else
-                    vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
+                    vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.constants.post_model_macro.➕_vars), Symbol[]]
                     
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([solved_vals[end]], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
     
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
@@ -4815,11 +4932,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                         push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     end
                     
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                    push!(SS_solve_func,:($(solved_vars[end]) = $(rewritten_eqs[1])))
                 end
 
-                if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
-                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
+                if haskey(𝓂.constants.post_parameters_macro.bounds, solved_vars[end]) && solved_vars[end] ∉ 𝓂.constants.post_model_macro.➕_vars
+                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.constants.post_parameters_macro.bounds[solved_vars[end]][1]), $(solved_vars[end])), $(𝓂.constants.post_parameters_macro.bounds[solved_vars[end]][2])) - $(solved_vars[end]))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for bounded variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                 end
             end
@@ -4849,11 +4966,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
                     for vars in vars_to_solve
-                        push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
+                        push!(solved_vars,Symbol(vars))
+                        push!(solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
-                        push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                        push!(SS_solve_func,:($(solved_vars[end]) = $(solved_vals[end])))
                     end
                 end
             end
@@ -4868,16 +4985,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 pe = sortperm(eqs_to_solve, by = string)
 
                 if length(pe) > 5
-                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                     # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
                     
                     # if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
                     #     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
-                    #     𝓂.➕_vars, unique_➕_eqs)  
+                    #     𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)  
                     # else
-                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)  
                         # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
                     # end
                 end
@@ -4890,15 +5007,15 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
         n -= 1
     end
 
-    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
-    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
+    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
+    push!(𝓂.caches.solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
-    if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
+    if length(𝓂.equations.calibration_no_var) > 0
+        atoms = reduce(union, get_symbols.(𝓂.equations.calibration_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -4907,7 +5024,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     parameters_in_equations = []
 
-    for (i, parss) in enumerate(𝓂.parameters) 
+    for (i, parss) in enumerate(𝓂.constants.post_complete_parameters.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
             push!(parameters_in_equations, :($parss = parameters[$i]))
         end
@@ -4915,17 +5032,17 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
     end
 
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
 
-    𝓂.SS_dependencies = dependencies
+    𝓂.NSSS.dependencies = dependencies
     
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past, 𝓂.exo_future)
+    for dex in union(𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -4937,30 +5054,30 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
 
-    # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+    # push!(SS_solve_func,:(for pars in 𝓂.caches.solver_cache
     #                             latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
     #                             if latest <= current_best
     #                                 current_best = latest
     #                             end
     #                         end))
         push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol) && (scale == 1)
-                                    reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                             end))
-    # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
+    # push!(SS_solve_func,:(if length(𝓂.caches.solver_cache) > 100 popfirst!(𝓂.caches.solver_cache) end))
     
-    # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
+    # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
 
     # push!(SS_solve_func,:(𝓂.SS_init_guess = typeof(SS_init_guess) == Vector{Float64} ? SS_init_guess : ℱ.value.(SS_init_guess)))
 
-    # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
+    # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...]))))
 
 
     # fix parameter bounds
     par_bounds = []
 
-    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
-        if haskey(𝓂.bounds, varpar)
-            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+    for varpar in intersect(𝓂.constants.post_complete_parameters.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.constants.post_parameters_macro.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.constants.post_parameters_macro.bounds[varpar][1])),$(𝓂.constants.post_parameters_macro.bounds[varpar][2]))))
         end
     end
 
@@ -4978,10 +5095,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.caches.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS_solver_cache
+                    for pars in 𝓂.caches.solver_cache
                         copy!(initial_parameters_tmp, pars[end])
 
                         ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
@@ -5053,7 +5170,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                             $(parameters_in_equations...)
                             $(par_bounds...)
-                            $(𝓂.calibration_equations_no_var...)
+                            $(𝓂.equations.calibration_no_var...)
                             NSSS_solver_cache_tmp = []
                             solution_error = 0.0
                             iters = 0
@@ -5063,10 +5180,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # return ComponentVector([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                     # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
                                 end
@@ -5082,16 +5199,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             #     scale  = (scale + solved_scale) / 2
                             #     println("scale $scale")
                             # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                             end
                     #     end
                     end
-                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
+                    return zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters))), (1, 0)
                 end)
 
 
-    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.SS_solve_func = eval(solve_exp)
+    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.functions.NSSS_solve = eval(solve_exp)
 
     return nothing
 end
@@ -5105,16 +5222,16 @@ function solve_steady_state!(𝓂::ℳ,
                             ss_solver_parameters_maxtime::Real;
                             silent::Bool = false)::Tuple{Vector{Float64}, Float64, Bool}
     """
-    Internal function to solve and cache the steady state.
+    Internal function to solve and constants the steady state.
     Returns: (SS_and_pars, solution_error, found_solution)
     """
     start_time = time()
     
-    if 𝓂.precompile
+    if 𝓂.constants.post_parameters_macro.precompile
         return Float64[], 0.0, false
     end
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.functions.NSSS_custom isa Function)
         if !silent 
             print("Find non-stochastic steady state:\t\t\t\t\t") 
         end
@@ -5124,7 +5241,7 @@ function solve_steady_state!(𝓂::ℳ,
     
     found_solution = true
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.functions.NSSS_custom isa Function)
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
         if solution_error > opts.tol.NSSS_acceptance_tol
@@ -5136,7 +5253,7 @@ function solve_steady_state!(𝓂::ℳ,
         end
     end
     
-    if !(𝓂.custom_steady_state_function isa Function)
+    if !(𝓂.functions.NSSS_custom isa Function)
         if !silent 
             println(round(time() - start_time, digits = 3), " seconds") 
         end
@@ -5146,8 +5263,8 @@ function solve_steady_state!(𝓂::ℳ,
         @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
     end
     
-    𝓂.solution.non_stochastic_steady_state = SS_and_pars
-    𝓂.solution.outdated_NSSS = false
+    𝓂.caches.non_stochastic_steady_state = SS_and_pars
+    𝓂.caches.outdated.non_stochastic_steady_state = !found_solution
     
     return SS_and_pars, solution_error, found_solution
 end
@@ -5167,9 +5284,15 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
     end
 
     write_auxiliary_indices!(𝓂)
+    
     write_functions_mapping!(𝓂, perturbation_order)
 
-    𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    # Mark all solutions as outdated when derivative functions are rewritten
+    𝓂.caches.outdated.first_order_solution = true
+    𝓂.caches.outdated.second_order_solution = true
+    𝓂.caches.outdated.pruned_second_order_solution = true
+    𝓂.caches.outdated.third_order_solution = true
+    𝓂.caches.outdated.pruned_third_order_solution = true
 
     if !silent
         println(round(time() - start_time, digits = 3), " seconds")
@@ -5186,17 +5309,17 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
-    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.equations.calibration_parameters)
 
-    @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
+    @assert length(unknowns) <= length(𝓂.equations.steady_state_aux) + length(𝓂.equations.calibration) "Unable to solve steady state. More unknowns than equations."
 
     incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
-    eq_list = vcat(union.(union.(𝓂.var_list_aux_SS,
-                                        𝓂.ss_list_aux_SS),
-                            𝓂.par_list_aux_SS),
-                    union.(𝓂.ss_calib_list,
-                            𝓂.par_calib_list))
+        eq_list = vcat(union.(union.(𝓂.constants.post_model_macro.var_list_aux_SS,
+                        𝓂.constants.post_model_macro.ss_list_aux_SS),
+                    𝓂.constants.post_model_macro.par_list_aux_SS),
+                union.(𝓂.constants.post_parameters_macro.ss_calib_list,
+                    𝓂.constants.post_parameters_macro.par_calib_list))
 
     for (i,u) in enumerate(unknowns)
         for (k,e) in enumerate(eq_list)
@@ -5218,7 +5341,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     n = n_blocks
 
-    ss_equations = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)
+    ss_equations = vcat(𝓂.equations.steady_state_aux,𝓂.equations.calibration)
 
     SS_solve_func = []
 
@@ -5226,6 +5349,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     atoms_in_equations_list = []
     relevant_pars_across = []
     NSSS_solver_cache_init_tmp = []
+
+    solved_vars = []
+    solved_vals = []
 
     n_block = 1
 
@@ -5239,8 +5365,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
             println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
         end
         
-        push!(𝓂.solved_vars,Symbol.(vars_to_solve))
-        push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
+        push!(solved_vars,Symbol.(vars_to_solve))
+        push!(solved_vals,Meta.parse.(string.(eqs_to_solve)))
 
         syms_in_eqs = Set()
 
@@ -5249,15 +5375,15 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         end
 
         # println(syms_in_eqs)
-        push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+        push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
 
         # calib_pars = []
         calib_pars_input = []
-        relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
+        relevant_pars = reduce(union,vcat(𝓂.constants.post_model_macro.par_list_aux_SS,𝓂.constants.post_parameters_macro.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
         
         iii = 1
-        for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+        for parss in union(𝓂.constants.post_complete_parameters.parameters,𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters)
             # valss   = 𝓂.parameter_values[i]
             if :($parss) ∈ relevant_pars
                 # push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
@@ -5270,8 +5396,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # guess = Expr[]
         # untransformed_guess = Expr[]
         result = Expr[]
-        sorted_vars = sort(𝓂.solved_vars[end])
-        # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
+        sorted_vars = sort(solved_vars[end])
+        # sorted_vars = sort(setdiff(solved_vars[end],𝓂.constants.post_model_macro.➕_vars))
         for (i, parss) in enumerate(sorted_vars) 
             # push!(guess,:($parss = guess[$i]))
             # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
@@ -5284,7 +5410,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # nnaux_linear = []
         # nnaux_error = []
         # push!(nnaux_error, :(aux_error = 0))
-        solved_vals = Expr[]
+        solved_vals_local = Expr[]
         # solved_vals_in_place = Expr[]
         
         eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
@@ -5292,21 +5418,21 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         other_vrs_eliminated_by_sympy = Set()
 
-        for (i,val) in enumerate(𝓂.solved_vals[end])
+        for (i,val) in enumerate(solved_vals[end])
             if typeof(val) ∈ [Symbol,Float64,Int]
-                push!(solved_vals,val)
+                push!(solved_vals_local,val)
                 # push!(solved_vals_in_place, :(ℰ[$i] = $val))
             else
-                if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-                    val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+                if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
+                    val = vcat(𝓂.equations.steady_state_aux,𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
                     # push!(nnaux_linear,:($val))
-                    push!(solved_vals,:($val))
+                    push!(solved_vals_local,:($val))
                     # push!(solved_vals_in_place,:(ℰ[$i] = $val))
                     # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                 else
-                    push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                    push!(solved_vals_local,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                     # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
                 end
             end
@@ -5338,12 +5464,12 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # other_vars = []
         other_vars_input = []
         # other_vars_inverse = []
-        other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
-                                            sort(𝓂.solved_vars[end]) ),
+        other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
+                                            sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
         for var in other_vrs
-            # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+            # var_idx = findfirst(x -> x == var, union(𝓂.constants.post_model_macro.var,𝓂.calibration_equations_parameters))
             # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
             push!(other_vars_input,:($(var)))
             iii += 1
@@ -5384,7 +5510,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
         # aux_replacements = Dict(aux_vars .=> aux_expr)
     
-        replaced_solved_vals = solved_vals |> 
+        replaced_solved_vals = solved_vals_local |> 
             # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
             x -> replace_symbols.(x, Ref(parameter_dict)) |> 
             x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
@@ -5534,9 +5660,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         limit_boundaries = 1e12
 
         for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-            if haskey(𝓂.bounds, i)
-                push!(lbs,𝓂.bounds[i][1] == -Inf ? -limit_boundaries+rand() : 𝓂.bounds[i][1])
-                push!(ubs,𝓂.bounds[i][2] ==  Inf ?  limit_boundaries-rand() : 𝓂.bounds[i][2])
+            if haskey(𝓂.constants.post_parameters_macro.bounds, i)
+                push!(lbs,𝓂.constants.post_parameters_macro.bounds[i][1] == -Inf ? -limit_boundaries+rand() : 𝓂.constants.post_parameters_macro.bounds[i][1])
+                push!(ubs,𝓂.constants.post_parameters_macro.bounds[i][2] ==  Inf ?  limit_boundaries-rand() : 𝓂.constants.post_parameters_macro.bounds[i][2])
             else
                 push!(lbs,-limit_boundaries+rand())
                 push!(ubs,limit_boundaries+rand())
@@ -5552,7 +5678,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
         push!(SS_solve_func,:(solution = block_solver(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
-                                                                𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                                𝓂.NSSS.solve_blocks_in_place[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                                 # f, 
@@ -5579,11 +5705,14 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
+        # Create nonlinear solver workspaces for regular and extended problems
+        workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
+        ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
 
-        push!(𝓂.ss_solve_blocks_in_place, 
+        push!(𝓂.NSSS.solve_blocks_in_place, 
             ss_solve_block(
-                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
-                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+                function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
+                function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
             )
         )
 
@@ -5593,15 +5722,15 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     end
 
     push!(NSSS_solver_cache_init_tmp,[Inf])
-    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
-    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
+    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.constants.post_complete_parameters.parameters)))
+    push!(𝓂.caches.solver_cache,NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
 
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
-    if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
+    if length(𝓂.equations.calibration_no_var) > 0
+        atoms = reduce(union, get_symbols.(𝓂.equations.calibration_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -5610,7 +5739,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     parameters_in_equations = []
 
-    for (i, parss) in enumerate(𝓂.parameters) 
+    for (i, parss) in enumerate(𝓂.constants.post_complete_parameters.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
             push!(parameters_in_equations, :($parss = parameters[$i]))
         end
@@ -5618,16 +5747,16 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
     end
 
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
 
-    𝓂.SS_dependencies = dependencies
+    𝓂.NSSS.dependencies = dependencies
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past,𝓂.exo_future)
+    for dex in union(𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -5636,9 +5765,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
-    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
+    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.caches.solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.caches.solver_cache[end][end]), sum(abs2,params_flt))))
 
-    push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+    push!(SS_solve_func,:(for pars in 𝓂.caches.solver_cache
                                 latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
                                 if latest <= current_best
                                     current_best = latest
@@ -5646,16 +5775,16 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             end))
 
     push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol)
-                                    reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
+                                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
 
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
-        if haskey(𝓂.bounds, varpar)
-            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+    for varpar in intersect(𝓂.constants.post_complete_parameters.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.constants.post_parameters_macro.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.constants.post_parameters_macro.bounds[varpar][1])),$(𝓂.constants.post_parameters_macro.bounds[varpar][2]))))
         end
     end
 
@@ -5671,10 +5800,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.caches.solver_cache[end]
                     
-                    for pars in 𝓂.NSSS_solver_cache
+                    for pars in 𝓂.caches.solver_cache
                         latest = sum(abs2,pars[end] - initial_parameters)
                         if latest <= current_best
                             current_best = latest
@@ -5702,10 +5831,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
                             # if scale <= solved_scale continue end
 
-                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                            closest_solution = 𝓂.NSSS_solver_cache[end]
+                            current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                            closest_solution = 𝓂.caches.solver_cache[end]
 
-                            for pars in 𝓂.NSSS_solver_cache
+                            for pars in 𝓂.caches.solver_cache
                                 latest = sum(abs2,pars[end] - initial_parameters)
                                 if latest <= current_best
                                     current_best = latest
@@ -5734,7 +5863,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
                             $(parameters_in_equations...)
                             $(par_bounds...)
-                            $(𝓂.calibration_equations_no_var...)
+                            $(𝓂.equations.calibration_no_var...)
                             NSSS_solver_cache_tmp = []
                             solution_error = 0.0
                             iters = 0
@@ -5744,10 +5873,10 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # return ComponentVector([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                     # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
                                 end
@@ -5763,15 +5892,15 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             #     scale  = (scale + solved_scale) / 2
                             #     println("scale $scale")
                             # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                             end
                     #     end
                     end
-                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
+                    return zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters))), (1, 0)
                 end)
 
-    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.SS_solve_func = eval(solve_exp)
+    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.functions.NSSS_solve = eval(solve_exp)
 
     return nothing
 end
@@ -5791,11 +5920,11 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
-    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
+    runtime = @elapsed outmodel = try 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > tol.NSSS_acceptance_tol) || !isfinite(outmodel[2][1]) ? 
@@ -5807,7 +5936,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 end
 
 """
-    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
 Find optimal steady state solver parameters using NLopt's ESCH algorithm.
 
@@ -5821,7 +5950,7 @@ It uses the ESCH global optimization algorithm from the NLopt package.
 - `tol`: Tolerance structure
 - `verbosity`: Verbosity level for output
 """
-function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
@@ -5851,10 +5980,10 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120,
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
-        push!(𝓂.solver_parameters, par_inputs)
+        push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
         return true
     else 
         return false
@@ -5863,25 +5992,25 @@ end
 
 
 function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Tolerances())
-    best_param = 𝓂.solver_parameters[1]
+    best_param = DEFAULT_SOLVER_PARAMETERS[1]
 
     best_time = Inf
 
     solved = false
 
-    solved_NSSS = 𝓂.NSSS_solver_cache[end]
+    solved_NSSS = 𝓂.caches.solver_cache[end]
 
-    for p in 𝓂.solver_parameters
+    for p in DEFAULT_SOLVER_PARAMETERS
         total_time = 0.0
         
         for _ in 1:100
             start_time = time()
 
-            while length(𝓂.NSSS_solver_cache) > 1
-                pop!(𝓂.NSSS_solver_cache)
+            while length(𝓂.caches.solver_cache) > 1
+                pop!(𝓂.caches.solver_cache)
             end
 
-            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
+            SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
             elapsed_time = time() - start_time
 
@@ -5901,14 +6030,14 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         solved = true
     end
 
-    while length(𝓂.NSSS_solver_cache) > 1
-        pop!(𝓂.NSSS_solver_cache)
+    while length(𝓂.caches.solver_cache) > 1
+        pop!(𝓂.caches.solver_cache)
     end
 
-    push!(𝓂.NSSS_solver_cache, solved_NSSS)
+    push!(𝓂.caches.solver_cache, solved_NSSS)
 
     if solved
-        pushfirst!(𝓂.solver_parameters, best_param)
+        pushfirst!(DEFAULT_SOLVER_PARAMETERS, best_param)
     end
 end
 
@@ -5991,9 +6120,9 @@ function solve_ss(SS_optimizer::Function,
 
     # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
     
-    max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
+    max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
 
     if sol_minimum < ftol && verbose
             println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
@@ -6036,9 +6165,9 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, guess, parameters_and_solved_vars)
 
-    res = SS_solve_block.ss_problem.func_buffer
+    res = SS_solve_block.ss_problem.workspace.func_buffer
 
     sol_minimum  = ℒ.norm(res)
 
@@ -6048,9 +6177,9 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             # ∇̂ = ℒ.lu!(∇, check = false)
 
-            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars)
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.workspace.jac_buffer, guess, parameters_and_solved_vars)
 
-            ∇ = SS_solve_block.ss_problem.jac_buffer
+            ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
 
             ∇̂ = ℒ.lu(∇, check = false)
             
@@ -6194,10 +6323,13 @@ end
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}} where M 
+                                                        pruning::Bool = false) where M 
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+                                                        # tol::AbstractFloat = 1e-12)
     # @timeit_debug timer "Calculate NSSS" begin
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    T = constants.post_model_macro
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
 
@@ -6205,98 +6337,97 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # if verbose println("NSSS not found") end # handled within solve function
-        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     # end # timeit_debug
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
+    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     # end # timeit_debug
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    T = 𝓂.timings, 
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
 
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
-
-    if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
-    end
+    𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     # end # timeit_debug
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     # @timeit_debug timer "Calculate SSS" begin
 
-    𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+    𝐒₁ = [𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) 𝐒₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
+    aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
 
-    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx])
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx])
 
     if pruning
-        state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
-        nᵉ = 𝓂.timings.nExo
-
-        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        # Get cached computational constants
+        so = 𝓂.constants.second_order
+        s_in_s⁺ = @ignore_derivatives so.s_in_s⁺
+        kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
         
-        A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
+        A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     
         SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, collect(SSSstates), 𝓂) # , timer = timer)
         
         if !converged
             if opts.verbose println("SSS not found") end
-            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
         end
 
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
@@ -6305,16 +6436,19 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # end # timeit_debug
 
-    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    # all_variables = sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present))
 
-    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables[indexin(𝓂.constants.post_model_macro.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.post_model_macro.aux)
     
-    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...]
     
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    # Ensure state is a Vector{M} for type stability
+    state_vec = Vector{M}(state)
+    
+    return all_SS + state_vec, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
@@ -6328,18 +6462,21 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
                                                         tol::AbstractFloat = 1e-14) where R <: AbstractFloat
     # @timeit_debug timer "Setup matrices" begin
 
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+    constants = initialise_constants!(𝓂)
+    so = constants.second_order
+    T = constants.post_model_macro
+    s_in_s⁺ = so.s_in_s⁺
+    s_in_s = so.s_in_s
+    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = so.kron_s⁺_s
     
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+    B = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -6349,7 +6486,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     # @timeit_debug timer "Iterations" begin
 
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6377,269 +6514,120 @@ end
 
 
 
-function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    x̂ = ℱ.value.(x)
-    
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
- 
-    ∂x̄  = zeros(S, length(x̂), N)
-    
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            break
-        end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 - x̂)
-
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
-            break
-        end
-        
-        # x̂ += Δx
-        ℒ.axpy!(-1, Δx, x̂)
-    end
-
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
-
-    if solved
-        for i in 1:N
-            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-
-            ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
-
-            ∂x̄[:,i] = -TMP \ tmp
-        end
-    end
-    
-    return reshape(map(x̂, eachrow(∂x̄)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), solved
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_second_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)
-    # @timeit_debug timer "Calculate SSS - forward" begin
-    # @timeit_debug timer "Setup indices" begin
-
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    
-    # end # timeit_debug
-      
-    # @timeit_debug timer "Iterations" begin
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
-
-    # println(x)
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    function second_order_stochastic_steady_state_pullback(∂x)
-        # @timeit_debug timer "Calculate SSS - pullback" begin
-
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        # end # timeit_debug
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), second_order_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
+                                                        pruning::Bool = false) where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+                                                        # tol::AbstractFloat = 1e-12)
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    T = constants.post_model_macro
+    
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("NSSS not found") end
-        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
+    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants,
+                                                        qme_ws,
+                                                        sylv_ws;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches;
-                                                    T = 𝓂.timings,
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+                                                    initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
     
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+    𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
-    end
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
-                                                𝓂.caches; 
-                                                T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                𝓂.constants,
+                                                𝓂.workspaces;
+                                                initial_guess = 𝓂.caches.third_order_solution,
                                                 # timer = timer, 
                                                 opts = opts)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
-    if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
-        𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+    if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
+        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.constants.third_order.𝐔₃
     else
-        mul_reverse_AD!(𝓂.caches.third_order_caches.Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+        mul_reverse_AD!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.constants.third_order.𝐔₃)
     end
 
-    Ŝ = 𝓂.caches.third_order_caches.Ŝ
+    Ŝ = 𝓂.workspaces.third_order.Ŝ
 
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
     
-    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
-    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.third_order_caches)
+    # 𝐒₃ *= 𝓂.constants.third_order.𝐔₃
+    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.workspaces.third_order)
     
-    # 𝐒₃ = sparse(Ŝ) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+    # 𝐒₃ = sparse(Ŝ) # * 𝓂.constants.third_order.𝐔₃)
 
-    𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+    𝐒₁ = [𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) 𝐒₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
+    aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
     
-    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed) - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx])
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx])
 
     if pruning
-        state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
-        nᵉ = 𝓂.timings.nExo
-
-        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        # Get cached computational constants
+        so = 𝓂.constants.second_order
+        s_in_s⁺ = @ignore_derivatives so.s_in_s⁺
+        kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
         
-        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+        kron_s⁺_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺_s⁺
         
-        A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
+        A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
         Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
     
@@ -6647,7 +6635,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         
         if !converged
             if opts.verbose println("SSS not found") end
-            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
         end
 
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1),  ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
@@ -6655,16 +6643,19 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         # state, converged = third_order_stochastic_steady_state_iterative_solution_forward([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
     end
 
-    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    # all_variables = sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present))
 
-    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables[indexin(𝓂.constants.post_model_macro.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.constants.post_model_macro.aux)
     
-    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...]
     
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    # Ensure state is a Vector{M} for type stability
+    state_vec = Vector{M}(state)
+
+    return all_SS + state_vec, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
@@ -6676,29 +6667,31 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         𝓂::ℳ;
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+    so = ensure_computational_constants!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    s_in_s⁺ = so.s_in_s⁺
+    s_in_s = so.s_in_s
+    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = so.kron_s⁺_s
     
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
     
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
     
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+    A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
         
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6720,160 +6713,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 end
 
 
-function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    𝐒₃̂ = ℱ.value.(𝐒₃)
-    x̂ = ℱ.value.(x)
-    
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-    ∂x̄  = zeros(S, length(x̂), N)
-    
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            break
-        end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
-
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-            break
-        end
-        
-        # x̂ += Δx
-        ℒ.axpy!(-1, Δx, x̂)
-    end
-
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-    
-    if solved
-        for i in 1:N
-            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-            ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
-
-            ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-            ∂Ĉ = ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
-
-            ∂x̄[:,i] = -TMP \ tmp
-        end
-    end
-    
-    return reshape(map(x̂, eachrow(∂x̄)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), solved
-end
-
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_third_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        𝐒₃::AbstractSparseMatrix{Float64},
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-        
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)         
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-    ∂𝐒₃ =  zero(𝐒₃)
-
-    function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), third_order_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
-    if !𝓂.precompile
+    if !𝓂.constants.post_parameters_macro.precompile
         start_time = time()
 
         if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -6892,7 +6734,7 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avo
 
         write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
-        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
         
         set_up_obc_violation_function!(𝓂)
 
@@ -6927,6 +6769,9 @@ function solve!(𝓂::ℳ;
 
     @assert algorithm ∈ all_available_algorithms
     
+    # Initialize constants at entry point
+    constants = initialise_constants!(𝓂)
+    
     # Handle steady_state_function argument
     set_custom_steady_state_function!(𝓂, steady_state_function)
     
@@ -6934,14 +6779,14 @@ function solve!(𝓂::ℳ;
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
     
-    if 𝓂.solution.functions_written &&
-        isnothing(𝓂.custom_steady_state_function) &&
-        !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+    if 𝓂.functions.functions_written &&
+        isnothing(𝓂.functions.NSSS_custom) &&
+        !(𝓂.functions.NSSS_solve isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
 
         set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
     end
     
-    if !𝓂.solution.functions_written
+    if !𝓂.functions.functions_written
         verbose = opts.verbose
         
         perturbation_order = 1
@@ -6952,23 +6797,23 @@ function solve!(𝓂::ℳ;
             
         write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
 
-        𝓂.solution.functions_written = true
+        𝓂.functions.functions_written = true
     end
 
     # Check for missing parameters after processing input
-    if !isempty(𝓂.missing_parameters)
-        error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
+    if !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+        error("Cannot solve model: missing parameter values for $(𝓂.constants.post_complete_parameters.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
     end
 
     # end # timeit_debug
 
-    if 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
+    if 𝓂.constants.second_order.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to second order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 2)
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
-    elseif 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
+    elseif 𝓂.constants.third_order.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to third order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 3)
@@ -6976,16 +6821,16 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
-        if  ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
+        if  ((:first_order         == algorithm) && (𝓂.caches.outdated.first_order_solution || (obc && obc_not_solved))) ||
+            ((:second_order        == algorithm) && (𝓂.caches.outdated.second_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_second_order == algorithm) && (𝓂.caches.outdated.pruned_second_order_solution || (obc && obc_not_solved))) ||
+            ((:third_order         == algorithm) && (𝓂.caches.outdated.third_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && (𝓂.caches.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.caches.outdated.non_stochastic_steady_state ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (𝓂.caches.non_stochastic_steady_state, (eps(), 0))
 
             # end # timeit_debug
 
@@ -6993,25 +6838,30 @@ function solve!(𝓂::ℳ;
             
             # @timeit_debug timer "Calculate Jacobian" begin
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
             
             # end # timeit_debug
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                                T = 𝓂.timings, 
+            qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
+            sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+            
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                                constants,
+                                                                qme_ws,
+                                                                sylv_ws;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                initial_guess = 𝓂.caches.qme_solution)
     
-            if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+            if solved 𝓂.caches.qme_solution = qme_sol end
 
             # end # timeit_debug
 
             @assert solved "Could not find stable first order solution."
 
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                             shock]
                 return S₁ * aug_state # return statement needed for forwarddiff to work
             end
@@ -7019,19 +6869,20 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
             
-                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
-                                                                    T = 𝓂.timings, 
+                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
+                                                                    constants,
+                                                                    qme_ws,
+                                                                    sylv_ws;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
-
-                if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+                                                                    initial_guess = 𝓂.caches.qme_solution)
+                if solved 𝓂.caches.qme_solution = qme_sol end
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
                 state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                                 shock]
                     return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
                 end
@@ -7039,16 +6890,18 @@ function solve!(𝓂::ℳ;
                 state_update₁̂ = (x,y)->nothing
             end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order])
+            𝓂.caches.first_order_solution_matrix = S₁
+            𝓂.functions.first_order_state_update = state_update₁
+            𝓂.functions.first_order_state_update_obc = state_update₁̂
+            𝓂.caches.outdated.first_order_solution = false
 
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
+            𝓂.caches.non_stochastic_steady_state = SS_and_pars
+            𝓂.caches.outdated.non_stochastic_steady_state = solution_error > opts.tol.NSSS_acceptance_tol
         end
 
-        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
-        if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        obc_not_solved = isnothing(𝓂.functions.second_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
+        if  ((:second_order  == algorithm) && (𝓂.caches.outdated.second_order_solution || (obc && obc_not_solved))) ||
+            ((:third_order  == algorithm) && (𝓂.caches.outdated.third_order_solution || (obc && obc_not_solved)))
             
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
@@ -7056,17 +6909,17 @@ function solve!(𝓂::ℳ;
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                             1
                             shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
             
                 state_update₂̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                                 1
                                 shock]
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
@@ -7075,32 +6928,34 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(stochastic_steady_state, state_update₂, state_update₂̂)
+            𝓂.caches.second_order_stochastic_steady_state = stochastic_steady_state
+            𝓂.functions.second_order_state_update = state_update₂
+            𝓂.functions.second_order_state_update_obc = state_update₂̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
+            𝓂.caches.outdated.second_order_solution = false
         end
         
-        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_second_order.state_update_obc([zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], zeros(𝓂.timings.nExo)))
-        if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        obc_not_solved = isnothing(𝓂.functions.pruned_second_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
+        if  ((:pruned_second_order  == algorithm) && (𝓂.caches.outdated.pruned_second_order_solution || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && (𝓂.caches.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts, pruning = true) # , timer = timer)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
             
                 state_update₂̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
                     return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
                 end
@@ -7108,29 +6963,31 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(stochastic_steady_state, state_update₂, state_update₂̂)
+            𝓂.caches.pruned_second_order_stochastic_steady_state = stochastic_steady_state
+            𝓂.functions.pruned_second_order_state_update = state_update₂
+            𝓂.functions.pruned_second_order_state_update_obc = state_update₂̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
+            𝓂.caches.outdated.pruned_second_order_solution = false
         end
         
-        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
-        if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        obc_not_solved = isnothing(𝓂.functions.third_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
+        if  ((:third_order  == algorithm) && (𝓂.caches.outdated.third_order_solution || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                                 1
                                 shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
             
                 state_update₃̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
                                     1
                                     shock]
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -7139,23 +6996,25 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(stochastic_steady_state, state_update₃, state_update₃̂)
+            𝓂.caches.third_order_stochastic_steady_state = stochastic_steady_state
+            𝓂.functions.third_order_state_update = state_update₃
+            𝓂.functions.third_order_state_update_obc = state_update₃̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
+            𝓂.caches.outdated.third_order_solution = false
         end
 
-        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc([zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], zeros(𝓂.timings.nExo)))
-        if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+        obc_not_solved = isnothing(𝓂.functions.pruned_third_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
+        if ((:pruned_third_order  == algorithm) && (𝓂.caches.outdated.pruned_third_order_solution || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts, pruning = true)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; shock]
+                aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
@@ -7163,13 +7022,13 @@ function solve!(𝓂::ℳ;
             end
 
             if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
             
                 state_update₃̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                    aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₁̂ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₃ = [pruned_states[3][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
                     kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                     
@@ -7179,9 +7038,11 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = (x,y)->nothing
             end
 
-            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(stochastic_steady_state, state_update₃, state_update₃̂)
+            𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
+            𝓂.functions.pruned_third_order_state_update = state_update₃
+            𝓂.functions.pruned_third_order_state_update_obc = state_update₃̂
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
+            𝓂.caches.outdated.pruned_third_order_solution = false
         end
     end
     
@@ -7191,7 +7052,10 @@ end
 
 
 
-function create_second_order_auxiliary_matrices(T::timings)
+function create_second_order_auxiliary_matrices(constants::constants)
+    T = constants.post_model_macro
+    
+
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
     nₑ = T.nExo
@@ -7213,7 +7077,12 @@ function create_second_order_auxiliary_matrices(T::timings)
     𝐂₂ = sparse(colls2, 1:length(colls2), 1)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
-    return second_order_auxiliary_matrices(𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
+    so = constants.second_order
+    so.𝛔 = 𝛔
+    so.𝐂₂ = 𝐂₂
+    so.𝐔₂ = 𝐔₂
+    so.𝐔∇₂ = 𝐔∇₂
+    return so
 end
 
 
@@ -7226,7 +7095,10 @@ function add_sparse_entries!(P, perm)
 end
 
 
-function create_third_order_auxiliary_matrices(T::timings, ∇₃_col_indices::Vector{Int})    
+function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_indices::Vector{Int})
+    T = constants.post_model_macro
+    
+
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
     n₊ = T.nFuture_not_past_and_mixed
@@ -7325,7 +7197,23 @@ function create_third_order_auxiliary_matrices(T::timings, ∇₃_col_indices::V
     
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
-    return third_order_auxiliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
+    to = constants.third_order
+    to.𝐂₃ = 𝐂₃
+    to.𝐔₃ = 𝐔₃
+    to.𝐈₃ = 𝐈₃
+    to.𝐂∇₃ = 𝐂∇₃
+    to.𝐔∇₃ = 𝐔∇₃
+    to.𝐏 = 𝐏
+    to.𝐏₁ₗ = 𝐏₁ₗ
+    to.𝐏₁ᵣ = 𝐏₁ᵣ
+    to.𝐏₁ₗ̂ = 𝐏₁ₗ̂
+    to.𝐏₂ₗ̂ = 𝐏₂ₗ̂
+    to.𝐏₁ₗ̄ = 𝐏₁ₗ̄
+    to.𝐏₂ₗ̄ = 𝐏₂ₗ̄
+    to.𝐏₁ᵣ̃ = 𝐏₁ᵣ̃
+    to.𝐏₂ᵣ̃ = 𝐏₂ᵣ̃
+    to.𝐒𝐏 = 𝐒𝐏
+    return to
 end
 
 function take_nth_order_derivatives(
@@ -7677,11 +7565,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     cse = true,
                                     skipzeros = true)
 
-    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
-    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
-    shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎$")))
-    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
+    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎$")))
+    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
+    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎$")))
+    shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎$")))
+    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎$")))
 
     sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>"")) #sort by name without time index because otherwise eps_zᴸ⁽⁻¹⁾₍₋₁₎ comes before eps_z₍₋₁₎
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -7689,11 +7577,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
 
-    dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
-    dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
-    dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
-    dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
-    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    dyn_future_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_future_list))
+    dyn_present_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_present_list))
+    dyn_past_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_past_list))
+    dyn_exo_list = collect(reduce(union,𝓂.constants.post_model_macro.dyn_exo_list))
+    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.constants.post_model_macro.dyn_ss_list))) .* "₍ₛₛ₎")
 
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
@@ -7706,20 +7594,20 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                     dyn_past_list[indexin(sort(past),past)],
                     dyn_exo_list[indexin(sort(exo),exo)])
 
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_ss_idx
+    dyn_var_future_idx = 𝓂.constants.post_complete_parameters.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.constants.post_complete_parameters.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.constants.post_complete_parameters.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.constants.post_complete_parameters.dyn_ss_idx
 
     dyn_var_idxs = vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)
 
-    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    pars_ext = vcat(𝓂.constants.post_complete_parameters.parameters, 𝓂.equations.calibration_parameters)
     parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst),stst)])
 
     np = length(parameters_and_SS)
     nv = length(vars_raw)
-    nc = length(𝓂.calibration_equations)
-    nps = length(𝓂.parameters)
+    nc = length(𝓂.equations.calibration)
+    nps = length(𝓂.constants.post_complete_parameters.parameters)
     nxs = maximum(dyn_var_idxs) + nc
 
     Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
@@ -7754,7 +7642,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
 
-    for v in 𝓂.calibration_equations_no_var
+    for v in 𝓂.equations.calibration_no_var
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
     end
@@ -7770,7 +7658,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
 
-    dyn_equations = 𝓂.dyn_equations |> 
+    dyn_equations = 𝓂.equations.dynamic |> 
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
@@ -7806,7 +7694,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian = buffer, func_exprs
+    𝓂.caches.jacobian = buffer
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
@@ -7836,7 +7724,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
+    𝓂.caches.jacobian_parameters = buffer_parameters
  
 
     ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
@@ -7866,13 +7754,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
+    𝓂.caches.jacobian_SS_and_pars = buffer_SS_and_pars
+    
+    # Create jacobian_functions struct with all three functions
+    𝓂.functions.jacobian = jacobian_functions(func_exprs, func_∇₁_parameters, func_∇₁_SS_and_pars)
 
 
 
 
     # if max_perturbation_order >= 1
-    #     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    #     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.calibration_equations_parameters))
 
     #     eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -7892,7 +7783,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     #     𝓂.SS_calib_func(calib_vals, 𝔛¹)
     
-    #     𝓂.SS_check_func(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
+    #     𝓂.functions.NSSS_check(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
     # println(ϵˢ)
     #     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
     
@@ -7921,7 +7812,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+    #     𝓂.caches.∂equations_∂parameters = buffer
+    #     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
 
@@ -7952,15 +7844,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    #     𝓂.caches.∂equations_∂SS_and_pars = buffer
+    #     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
     # end
         
     if max_perturbation_order >= 2
     # second order
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
 
-        if 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.second_order_auxiliary_matrices = create_second_order_auxiliary_matrices(𝓂.timings)
+        if 𝓂.constants.second_order.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
 
             ∇₂_dyn = derivatives[2][1]
 
@@ -7989,7 +7882,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian = buffer, func_exprs
+            𝓂.caches.hessian = buffer
 
 
             ∇₂_parameters = derivatives[2][2][:,1:nps]
@@ -8019,7 +7912,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
+            𝓂.caches.hessian_parameters = buffer_parameters
         
 
             ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
@@ -8049,16 +7942,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
+            𝓂.caches.hessian_SS_and_pars = buffer_SS_and_pars
+            
+            # Create hessian_functions struct with all three functions
+            𝓂.functions.hessian = hessian_functions(func_exprs, func_∇₂_parameters, func_∇₂_SS_and_pars)
         end
     end
 
     if max_perturbation_order == 3
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
-        if 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        if 𝓂.constants.third_order.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
-            𝓂.solution.perturbation.third_order_auxiliary_matrices = create_third_order_auxiliary_matrices(𝓂.timings, unique(J))
+            𝓂.constants.third_order = create_third_order_auxiliary_matrices(𝓂.constants, unique(J))
         
             ∇₃_dyn = derivatives[3][1]
 
@@ -8087,7 +7983,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives = buffer, func_exprs
+            𝓂.caches.third_order_derivatives = buffer
 
 
             ∇₃_parameters = derivatives[3][2][:,1:nps]
@@ -8117,7 +8013,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
+            𝓂.caches.third_order_derivatives_parameters = buffer_parameters
         
 
             ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
@@ -8147,7 +8043,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-            𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars
+            𝓂.caches.third_order_derivatives_SS_and_pars = buffer_SS_and_pars
+            
+            # Create third_order_derivatives_functions struct with all three functions
+            𝓂.functions.third_order_derivatives = third_order_derivatives_functions(func_exprs, func_∇₃_parameters, func_∇₃_SS_and_pars)
         end
     end
 
@@ -8157,11 +8056,11 @@ end
 
 function write_auxiliary_indices!(𝓂::ℳ)
     # write indices in auxiliary objects
-    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
-    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
-    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎")))
+    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎")))
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎")))
 
     dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
     dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
@@ -8169,7 +8068,7 @@ function write_auxiliary_indices!(𝓂::ℳ)
     dyn_exo         = Symbol.(string.(sort(collect(reduce(union,dyn_exo_list)))))
     dyn_ss          = Symbol.(string.(sort(collect(reduce(union,dyn_ss_list)))))
 
-    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)))), 𝓂.equations.calibration_parameters)
 
     dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
@@ -8178,7 +8077,14 @@ function write_auxiliary_indices!(𝓂::ℳ)
 
     shocks_ss = zeros(length(dyn_exo))
 
-    𝓂.solution.perturbation.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        dyn_var_future_idx = dyn_var_future_idx,
+        dyn_var_present_idx = dyn_var_present_idx,
+        dyn_var_past_idx = dyn_var_past_idx,
+        dyn_ss_idx = dyn_ss_idx,
+        shocks_ss = shocks_ss,
+    )
 
     return nothing
 end
@@ -8220,30 +8126,38 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::B
 
 function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true) where D <: AbstractDict{Symbol,Float64}
     # Handle missing parameters - add them if they are in the missing_parameters list
-    missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
+    p = 𝓂.constants.post_complete_parameters
+    missing_params_provided = intersect(collect(keys(parameters)), p.missing_parameters)
     
     if !isempty(missing_params_provided)
         
         # Remove the provided missing params from the missing list
-        setdiff!(𝓂.missing_parameters, missing_params_provided)
+        remaining_missing = setdiff(p.missing_parameters, missing_params_provided)
         
         # Mark that solution needs to be recomputed
-        𝓂.solution.outdated_NSSS = true
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        𝓂.caches.outdated.non_stochastic_steady_state = true
+        𝓂.caches.outdated.jacobian = true
+        𝓂.caches.outdated.hessian = true
+        𝓂.caches.outdated.third_order_derivatives = true
+        𝓂.caches.outdated.first_order_solution = true
+        𝓂.caches.outdated.second_order_solution = true
+        𝓂.caches.outdated.pruned_second_order_solution = true
+        𝓂.caches.outdated.third_order_solution = true
+        𝓂.caches.outdated.pruned_third_order_solution = true
         
         # If all missing parameters are now provided, print a message
-        if !isempty(𝓂.missing_parameters)
-            @info "Remaining missing parameters: ", 𝓂.missing_parameters
+        if !isempty(remaining_missing)
+            @info "Remaining missing parameters: ", remaining_missing
         end
 
         # Amend parameter order by provided missing params
         # declared_params = parameters that were never missing (have non-NaN values)
         # We identify them as parameters that are not in the union of missing_params_provided and still-missing params
-        all_missing = union(missing_params_provided, 𝓂.missing_parameters)
-        declared_params = setdiff(𝓂.parameters, all_missing)
+        all_missing = union(missing_params_provided, remaining_missing)
+        declared_params = setdiff(p.parameters, all_missing)
         
         # Get the current parameter values for declared params
-        declared_param_indices = indexin(declared_params, 𝓂.parameters)
+        declared_param_indices = indexin(declared_params, p.parameters)
         declared_values = 𝓂.parameter_values[declared_param_indices]
         
         # Get values for the newly provided missing params (currently NaN in parameter_values)
@@ -8251,23 +8165,29 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         missing_values = fill(NaN, length(missing_params_provided))
         
         # Get values for the remaining missing params (still NaN)
-        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
+        remaining_missing_values = fill(NaN, length(remaining_missing))
         
         # Reorder both parameters and parameter_values arrays
-        𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
+        new_parameters = vcat(declared_params, collect(missing_params_provided), remaining_missing)
+        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            p;
+            parameters = new_parameters,
+            missing_parameters = remaining_missing,
+        )
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
         
         # Clear the NSSS_solver_cache since parameter order/count has changed
         # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
-        while length(𝓂.NSSS_solver_cache) > 0
-            pop!(𝓂.NSSS_solver_cache)
+        while length(𝓂.caches.solver_cache) > 0
+            pop!(𝓂.caches.solver_cache)
         end
     end
     
     # Handle remaining parameters (not missing ones)
-    if length(setdiff(collect(keys(parameters)), 𝓂.parameters))>0
-        @warn("Parameters not part of the model are ignored: $(setdiff(collect(keys(parameters)),𝓂.parameters))")
-        for kk in setdiff(collect(keys(parameters)), 𝓂.parameters)
+    p = 𝓂.constants.post_complete_parameters
+    if length(setdiff(collect(keys(parameters)), p.parameters))>0
+        @warn("Parameters not part of the model are ignored: $(setdiff(collect(keys(parameters)),p.parameters))")
+        for kk in setdiff(collect(keys(parameters)), p.parameters)
             delete!(parameters,kk)
         end
     end
@@ -8275,14 +8195,14 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
     bounds_broken = false
 
     for (par,val) in parameters
-        if haskey(𝓂.bounds,par)
-            if val > 𝓂.bounds[par][2]
-                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+        if haskey(𝓂.constants.post_parameters_macro.bounds,par)
+            if val > 𝓂.constants.post_parameters_macro.bounds[par][2]
+                @warn("Calibration is out of bounds for $par < $(𝓂.constants.post_parameters_macro.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if val < 𝓂.bounds[par][1]
-                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+            if val < 𝓂.constants.post_parameters_macro.bounds[par][1]
+                @warn("Calibration is out of bounds for $par > $(𝓂.constants.post_parameters_macro.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -8292,29 +8212,36 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
     if bounds_broken
         @warn("Parameters unchanged.")
     else
-        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1], collect(keys(parameters)))
-        # ntrsct_idx = indexin(collect(keys(parameters)), 𝓂.parameters)
+        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values), p.parameters .== x)[1], collect(keys(parameters)))
+        # ntrsct_idx = indexin(collect(keys(parameters)), p.parameters)
         
-        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
+        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(p.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
-            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            𝓂.caches.outdated.jacobian = true
+            𝓂.caches.outdated.hessian = true
+            𝓂.caches.outdated.third_order_derivatives = true
+            𝓂.caches.outdated.first_order_solution = true
+            𝓂.caches.outdated.second_order_solution = true
+            𝓂.caches.outdated.pruned_second_order_solution = true
+            𝓂.caches.outdated.third_order_solution = true
+            𝓂.caches.outdated.pruned_third_order_solution = true
         end
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if isnothing(𝓂.SS_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
-                # if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true
+                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
+                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false
+                    𝓂.caches.outdated.non_stochastic_steady_state = true
                 end
                 
-                if verbose println("\t",𝓂.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
+                if verbose println("\t",p.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
 
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
         end
     end
 
-    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+    if 𝓂.caches.outdated.non_stochastic_steady_state == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
 end
@@ -8340,15 +8267,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 
     bounds_broken = false
 
-    for (par,val) in Dict(𝓂.parameters .=> parameters)
-        if haskey(𝓂.bounds,par)
-            if val > 𝓂.bounds[par][2]
-                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+    for (par,val) in Dict(𝓂.constants.post_complete_parameters.parameters .=> parameters)
+        if haskey(𝓂.constants.post_parameters_macro.bounds,par)
+            if val > 𝓂.constants.post_parameters_macro.bounds[par][2]
+                @warn("Calibration is out of bounds for $par < $(𝓂.constants.post_parameters_macro.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if val < 𝓂.bounds[par][1]
-                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+            if val < 𝓂.constants.post_parameters_macro.bounds[par][1]
+                @warn("Calibration is out of bounds for $par > $(𝓂.constants.post_parameters_macro.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -8359,7 +8286,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         @warn("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
-            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            𝓂.caches.outdated.non_stochastic_steady_state = true
+            𝓂.caches.outdated.jacobian = true
+            𝓂.caches.outdated.hessian = true
+            𝓂.caches.outdated.third_order_derivatives = true
+            𝓂.caches.outdated.first_order_solution = true
+            𝓂.caches.outdated.second_order_solution = true
+            𝓂.caches.outdated.pruned_second_order_solution = true
+            𝓂.caches.outdated.third_order_solution = true
+            𝓂.caches.outdated.pruned_third_order_solution = true
 
             match_idx = []
             for (i, v) in enumerate(parameters)
@@ -8369,14 +8304,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             end
             
             changed_vals = parameters[match_idx]
-            changed_pars = 𝓂.parameters[match_idx]
-
-            # for p in changes_pars
-            #     if p ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true # fix the SS_dependencies
-                    # println("SS outdated.")
-            #     end
-            # end
+            changed_pars = 𝓂.constants.post_complete_parameters.parameters[match_idx]
 
             if verbose 
                 println("Parameter changes: ")
@@ -8389,324 +8317,222 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         end
     end
 
-    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+    if 𝓂.caches.outdated.non_stochastic_steady_state == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
 end
 
 
-function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
-    dyn_equations = 𝓂.dyn_equations
+# function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
+#     dyn_equations = 𝓂.dyn_equations
 
-    vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+#     vars_to_exclude = setdiff(𝓂.constants.post_model_macro.present_only, observables)
 
-    # Mapping variables to their equation index
-    variable_to_equation = Dict{Symbol, Vector{Int}}()
-    for var in vars_to_exclude
-        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
-        # for var in vars_set
-            if var in vars_set
-                if haskey(variable_to_equation, var)
-                    push!(variable_to_equation[var],eq_idx)
-                else
-                    variable_to_equation[var] = [eq_idx]
-                end
-            end
-        end
-    end
+#     # Mapping variables to their equation index
+#     variable_to_equation = Dict{Symbol, Vector{Int}}()
+#     for var in vars_to_exclude
+#         for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+#         # for var in vars_set
+#             if var in vars_set
+#                 if haskey(variable_to_equation, var)
+#                     push!(variable_to_equation[var],eq_idx)
+#                 else
+#                     variable_to_equation[var] = [eq_idx]
+#                 end
+#             end
+#         end
+#     end
 
-    # cols_to_exclude = indexin(𝓂.timings.var, setdiff(𝓂.timings.present_only, observables))
-    cols_to_exclude = indexin(setdiff(𝓂.timings.present_only, observables), 𝓂.timings.var)
+#     # cols_to_exclude = indexin(𝓂.constants.post_model_macro.var, setdiff(𝓂.constants.post_model_macro.present_only, observables))
+#     cols_to_exclude = indexin(setdiff(𝓂.constants.post_model_macro.present_only, observables), 𝓂.constants.post_model_macro.var)
 
-    present_idx = 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
+#     present_idx = 𝓂.constants.post_model_macro.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.constants.post_model_macro.nVars), cols_to_exclude))
 
-    dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
-    dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
-    dyn_var_past_list    = deepcopy(𝓂.dyn_var_past_list)
-    dyn_exo_list         = deepcopy(𝓂.dyn_exo_list)
-    dyn_ss_list          = deepcopy(𝓂.dyn_ss_list)
+#     dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
+#     dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
+#     dyn_var_past_list    = deepcopy(𝓂.dyn_var_past_list)
+#     dyn_exo_list         = deepcopy(𝓂.dyn_exo_list)
+#     dyn_ss_list          = deepcopy(𝓂.dyn_ss_list)
 
-    rows_to_exclude = Int[]
+#     rows_to_exclude = Int[]
 
-    for vidx in values(variable_to_equation)
-        for v in vidx
-            if v ∉ rows_to_exclude
-                push!(rows_to_exclude, v)
+#     for vidx in values(variable_to_equation)
+#         for v in vidx
+#             if v ∉ rows_to_exclude
+#                 push!(rows_to_exclude, v)
 
-                for vv in vidx
-                    dyn_var_future_list[vv] = union(dyn_var_future_list[vv], dyn_var_future_list[v])
-                    dyn_var_present_list[vv] = union(dyn_var_present_list[vv], dyn_var_present_list[v])
-                    dyn_var_past_list[vv] = union(dyn_var_past_list[vv], dyn_var_past_list[v])
-                    dyn_exo_list[vv] = union(dyn_exo_list[vv], dyn_exo_list[v])
-                    dyn_ss_list[vv] = union(dyn_ss_list[vv], dyn_ss_list[v])
-                end
+#                 for vv in vidx
+#                     dyn_var_future_list[vv] = union(dyn_var_future_list[vv], dyn_var_future_list[v])
+#                     dyn_var_present_list[vv] = union(dyn_var_present_list[vv], dyn_var_present_list[v])
+#                     dyn_var_past_list[vv] = union(dyn_var_past_list[vv], dyn_var_past_list[v])
+#                     dyn_exo_list[vv] = union(dyn_exo_list[vv], dyn_exo_list[v])
+#                     dyn_ss_list[vv] = union(dyn_ss_list[vv], dyn_ss_list[v])
+#                 end
 
-                break
-            end
-        end
-    end
+#                 break
+#             end
+#         end
+#     end
 
-    rows_to_include = setdiff(1:𝓂.timings.nVars, rows_to_exclude)
+#     rows_to_include = setdiff(1:𝓂.constants.post_model_macro.nVars, rows_to_exclude)
 
-    all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
-    parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
+#     all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
+#     parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
     
-    dyn_var_future  =  sort(setdiff(collect(reduce(union,dyn_var_future_list[rows_to_include])), vars_to_exclude))
-    dyn_var_present =  sort(setdiff(collect(reduce(union,dyn_var_present_list[rows_to_include])), vars_to_exclude))
-    dyn_var_past    =  sort(setdiff(collect(reduce(union,dyn_var_past_list[rows_to_include])), vars_to_exclude))
-    dyn_var_ss      =  sort(setdiff(collect(reduce(union,dyn_ss_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_future  =  sort(setdiff(collect(reduce(union,dyn_var_future_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_present =  sort(setdiff(collect(reduce(union,dyn_var_present_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_past    =  sort(setdiff(collect(reduce(union,dyn_var_past_list[rows_to_include])), vars_to_exclude))
+#     dyn_var_ss      =  sort(setdiff(collect(reduce(union,dyn_ss_list[rows_to_include])), vars_to_exclude))
 
-    all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
+#     all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
 
-    @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
+#     @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
 
-    all_vars = union(all_dyn_vars, dyn_var_ss)
+#     all_vars = union(all_dyn_vars, dyn_var_ss)
 
-    present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
-    future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
-    past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
-    mixed                     = sort(setdiff(dyn_var_present, union(present_only, future_not_past, past_not_future)))
-    future_not_past_and_mixed = sort(union(future_not_past,mixed))
-    past_not_future_and_mixed = sort(union(past_not_future,mixed))
-    present_but_not_only      = sort(setdiff(dyn_var_present,present_only))
-    mixed_in_past             = sort(intersect(dyn_var_past, mixed))
-    not_mixed_in_past         = sort(setdiff(dyn_var_past,mixed_in_past))
-    mixed_in_future           = sort(intersect(dyn_var_future, mixed))
-    exo                       = sort(collect(reduce(union,dyn_exo_list)))
-    var                       = sort(dyn_var_present)
-    aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
-    exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
-    exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
-    exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
+#     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
+#     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
+#     past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
+#     mixed                     = sort(setdiff(dyn_var_present, union(present_only, future_not_past, past_not_future)))
+#     future_not_past_and_mixed = sort(union(future_not_past,mixed))
+#     past_not_future_and_mixed = sort(union(past_not_future,mixed))
+#     present_but_not_only      = sort(setdiff(dyn_var_present,present_only))
+#     mixed_in_past             = sort(intersect(dyn_var_past, mixed))
+#     not_mixed_in_past         = sort(setdiff(dyn_var_past,mixed_in_past))
+#     mixed_in_future           = sort(intersect(dyn_var_future, mixed))
+#     exo                       = sort(collect(reduce(union,dyn_exo_list)))
+#     var                       = sort(dyn_var_present)
+#     aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
+#     aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
+#     exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
+#     exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
+#     exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
 
-    nPresent_only              = length(present_only)
-    nMixed                     = length(mixed)
-    nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
-    nPast_not_future_and_mixed = length(past_not_future_and_mixed)
-    nPresent_but_not_only      = length(present_but_not_only)
-    nVars                      = length(all_vars)
-    nExo                       = length(collect(exo))
+#     nPresent_only              = length(present_only)
+#     nMixed                     = length(mixed)
+#     nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
+#     nPast_not_future_and_mixed = length(past_not_future_and_mixed)
+#     nPresent_but_not_only      = length(present_but_not_only)
+#     nVars                      = length(all_vars)
+#     nExo                       = length(collect(exo))
 
-    present_only_idx              = indexin(present_only,var)
-    present_but_not_only_idx      = indexin(present_but_not_only,var)
-    future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
-    past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
-    mixed_in_future_idx           = indexin(mixed_in_future,dyn_var_future)
-    mixed_in_past_idx             = indexin(mixed_in_past,dyn_var_past)
-    not_mixed_in_past_idx         = indexin(not_mixed_in_past,dyn_var_past)
-    past_not_future_idx           = indexin(past_not_future,var)
+#     present_only_idx              = indexin(present_only,var)
+#     present_but_not_only_idx      = indexin(present_but_not_only,var)
+#     future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
+#     past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
+#     mixed_in_future_idx           = indexin(mixed_in_future,dyn_var_future)
+#     mixed_in_past_idx             = indexin(mixed_in_past,dyn_var_past)
+#     not_mixed_in_past_idx         = indexin(not_mixed_in_past,dyn_var_past)
+#     past_not_future_idx           = indexin(past_not_future,var)
 
-    reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
-    dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
+#     reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
+#     dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
 
-    @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
+#     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
-    T = timings(present_only,
-                future_not_past,
-                past_not_future,
-                mixed,
-                future_not_past_and_mixed,
-                past_not_future_and_mixed,
-                present_but_not_only,
-                mixed_in_past,
-                not_mixed_in_past,
-                mixed_in_future,
-                exo,
-                var,
-                aux,
-                exo_present,
+#     T = timings(present_only,
+#                 future_not_past,
+#                 past_not_future,
+#                 mixed,
+#                 future_not_past_and_mixed,
+#                 past_not_future_and_mixed,
+#                 present_but_not_only,
+#                 mixed_in_past,
+#                 not_mixed_in_past,
+#                 mixed_in_future,
+#                 exo,
+#                 var,
+#                 aux,
+#                 exo_present,
 
-                nPresent_only,
-                nMixed,
-                nFuture_not_past_and_mixed,
-                nPast_not_future_and_mixed,
-                nPresent_but_not_only,
-                nVars,
-                nExo,
+#                 nPresent_only,
+#                 nMixed,
+#                 nFuture_not_past_and_mixed,
+#                 nPast_not_future_and_mixed,
+#                 nPresent_but_not_only,
+#                 nVars,
+#                 nExo,
 
-                present_only_idx,
-                present_but_not_only_idx,
-                future_not_past_and_mixed_idx,
-                not_mixed_in_past_idx,
-                past_not_future_and_mixed_idx,
-                mixed_in_past_idx,
-                mixed_in_future_idx,
-                past_not_future_idx,
+#                 present_only_idx,
+#                 present_but_not_only_idx,
+#                 future_not_past_and_mixed_idx,
+#                 not_mixed_in_past_idx,
+#                 past_not_future_and_mixed_idx,
+#                 mixed_in_past_idx,
+#                 mixed_in_future_idx,
+#                 past_not_future_idx,
 
-                reorder,
-                dynamic_order)
+#                 reorder,
+#                 dynamic_order)
 
-    push!(𝓂.estimation_helper, observables => T)
+#     push!(𝓂.estimation_helper, observables => T)
 
-    return nothing
-end
+#     return nothing
+# end
 
 
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
-                            𝓂::ℳ)::Matrix{M} where {M,N}
-                            # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    if eltype(𝓂.jacobian[1]) != M
-        if 𝓂.jacobian[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.jacobian[1],M)
+                            caches_obj::caches,
+                            jacobian_funcs::jacobian_functions)::Matrix{M} where {M,N}
+    if eltype(caches_obj.jacobian) != M
+        if caches_obj.jacobian isa SparseMatrixCSC
+            jac_buffer = similar(caches_obj.jacobian,M)
             jac_buffer.nzval .= 0
         else
-            jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+            jac_buffer = zeros(M, size(caches_obj.jacobian))
         end
     else
-        jac_buffer = 𝓂.jacobian[1]
+        jac_buffer = caches_obj.jacobian
     end
     
-    𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
+    jacobian_funcs.f(jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_jacobian), 
-                parameters, 
-                SS_and_pars, 
-                𝓂)#;
-                # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "Calculate jacobian - forward" begin
-
-    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-
-    function calculate_jacobian_pullback(∂∇₁)
-        # @timeit_debug timer "Calculate jacobian - reverse" begin
-
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
-        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return jacobian, calculate_jacobian_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.hessian[1]) != M
-        if 𝓂.hessian[1] isa SparseMatrixCSC
-            hes_buffer = similar(𝓂.hessian[1],M)
+function calculate_hessian(parameters::Vector{M}, 
+                            SS_and_pars::Vector{N}, 
+                            caches_obj::caches,
+                            hessian_funcs::hessian_functions)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(caches_obj.hessian) != M
+        if caches_obj.hessian isa SparseMatrixCSC
+            hes_buffer = similar(caches_obj.hessian,M)
             hes_buffer.nzval .= 0
         else
-            hes_buffer = zeros(M, size(𝓂.hessian[1]))
+            hes_buffer = zeros(M, size(caches_obj.hessian))
         end
     else
-        hes_buffer = 𝓂.hessian[1]
+        hes_buffer = caches_obj.hessian
     end
 
-    𝓂.hessian[2](hes_buffer, parameters, SS_and_pars)
+    hessian_funcs.f(hes_buffer, parameters, SS_and_pars)
     
     return hes_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
-    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
-
-    function calculate_hessian_pullback(∂∇₂)
-        # @timeit_debug timer "Calculate hessian - reverse" begin
-
-        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
-        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
-        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return hessian, calculate_hessian_pullback
-end
-
-@stable default_mode = "disable" begin
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
-                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    if eltype(𝓂.third_order_derivatives[1]) != M
-        if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
-            third_buffer = similar(𝓂.third_order_derivatives[1],M)
+                                            caches_obj::caches,
+                                            third_order_derivatives_funcs::third_order_derivatives_functions)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(caches_obj.third_order_derivatives) != M
+        if caches_obj.third_order_derivatives isa SparseMatrixCSC
+            third_buffer = similar(caches_obj.third_order_derivatives,M)
             third_buffer.nzval .= 0
         else
-            third_buffer = zeros(M, size(𝓂.third_order_derivatives[1]))
+            third_buffer = zeros(M, size(caches_obj.third_order_derivatives))
         end
     else
-        third_buffer = 𝓂.third_order_derivatives[1]
+        third_buffer = caches_obj.third_order_derivatives
     end
 
-    𝓂.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
+    third_order_derivatives_funcs.f(third_buffer, parameters, SS_and_pars)
     
     return third_buffer
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
-    # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "3rd order derivatives - forward" begin
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
-    # end # timeit_debug
-
-    function calculate_third_order_derivatives_pullback(∂∇₃)
-        # @timeit_debug timer "3rd order derivatives - pullback" begin
-        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
-        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
-        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return third_order_derivatives, calculate_third_order_derivatives_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
-    nrows = length(V)
-    ncols = length(V.nzval[1].partials)
-
-    rows = Int[]
-    cols = Int[]
-
-    prtls = Float64[]
-
-    for (i,v) in enumerate(V.nzind)
-        for (k,w) in enumerate(V.nzval[i].partials)
-            if abs(w) > tol
-                push!(rows,v)
-                push!(cols,k)
-                push!(prtls,w)
-            end
-        end
-    end
-
-    vvals = sparsevec(V.nzind,[i.value for i in V.nzval],nrows)
-    ps = sparse(rows,cols,prtls,nrows,ncols)
-
-    return vvals, ps
-end
 
 
 function compute_irf_responses(𝓂::ℳ,
@@ -8726,19 +8552,19 @@ function compute_irf_responses(𝓂::ℳ,
 
     if enforce_obc
         function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
-            unconditional_forecast_horizon = 𝓂.max_obc_horizon
+            unconditional_forecast_horizon = 𝓂.constants.post_model_macro.max_obc_horizon
 
-            reference_ss = 𝓂.solution.non_stochastic_steady_state
+            reference_ss = 𝓂.caches.non_stochastic_steady_state
 
-            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+            obc_shock_idx = contains.(string.(𝓂.constants.post_model_macro.exo),"ᵒᵇᶜ")
 
-            periods_per_shock = 𝓂.max_obc_horizon + 1
+            periods_per_shock = 𝓂.constants.post_model_macro.max_obc_horizon + 1
 
             num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
 
             p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
-            constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+            constraints_violated = any(𝓂.functions.obc_violation(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
             if constraints_violated
                 opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
@@ -8755,9 +8581,9 @@ function compute_irf_responses(𝓂::ℳ,
 
                 (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
 
-                present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
+                present_shocks[contains.(string.(𝓂.constants.post_model_macro.exo),"ᵒᵇᶜ")] .= x
 
-                constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+                constraints_violated = any(𝓂.functions.obc_violation(x, p) .> eps(Float32))
 
                 solved = !constraints_violated
             else
@@ -8774,7 +8600,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.timings;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -8787,7 +8613,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.timings;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -8799,7 +8625,7 @@ function compute_irf_responses(𝓂::ℳ,
             return girf(state_update,
                         initial_state,
                         level,
-                        𝓂.timings;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -8811,7 +8637,7 @@ function compute_irf_responses(𝓂::ℳ,
             return irf(state_update,
                         initial_state,
                         level,
-                        𝓂.timings;
+                        𝓂.constants;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -8826,12 +8652,13 @@ function irf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    T::timings; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = constants.post_model_macro
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -8862,10 +8689,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -8967,12 +8794,13 @@ end
 function irf(state_update::Function, 
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    T::timings; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = constants.post_model_macro
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9003,10 +8831,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -9091,7 +8919,7 @@ end
 function girf(state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    T::timings; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9099,6 +8927,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = constants.post_model_macro
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9133,10 +8962,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9272,7 +9101,7 @@ function girf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    T::timings; 
+    constants::constants; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9280,6 +9109,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = constants.post_model_macro
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9316,10 +9146,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,constants)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, constants) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9456,7 +9286,21 @@ function girf(state_update::Function,
 end
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    if variables == :all_excluding_auxiliary_and_obc
+        return ms.vars_idx_excluding_aux_obc
+    elseif variables == :all_excluding_obc
+        return ms.vars_idx_excluding_obc
+    end
+
+    return parse_variables_input_to_index(variables, 𝓂.constants)
+end
+
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
+    T = constants.post_model_macro
+    
+
     # Handle nested vector conversion separately
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
@@ -9525,6 +9369,8 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
     end
 end
 
+
+
 # Helper function to check if input is grouped covariance format
 function is_grouped_covariance_input(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}})::Bool
     # Check if it's a nested structure (vector of vectors, vector of tuples, or tuple of tuples)
@@ -9535,7 +9381,10 @@ function is_grouped_covariance_input(variables::Union{Symbol_input,String_input,
 end
 
 # Function to parse grouped covariance input into groups of indices
-function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Vector{Vector{Int}}
+function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Vector{Vector{Int}}
+    T = constants.post_model_macro
+    
+
     # Convert String_input to Symbol_input for nested structures
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
@@ -9547,7 +9396,7 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
     
     if !is_grouped_covariance_input(variables)
         # Not grouped, return single group
-        idx = parse_variables_input_to_index(variables, T)
+        idx = parse_variables_input_to_index(variables, constants)
         return [collect(idx)]
     end
     
@@ -9567,7 +9416,39 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
 end
 
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
+
+
+function parse_shocks_input_to_index(shocks::Expr, constants::constants)
+    parsed = replace_indices(shocks)
+    if parsed isa Symbol
+        return parse_shocks_input_to_index(parsed, constants)
+    end
+    @warn "Invalid `shocks` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
+    return Int[]
+end
+
+function parse_shocks_input_to_index(shocks::BitVector, constants::constants)
+    T = constants.post_model_macro
+    if length(shocks) != T.nExo
+        @warn "Invalid `shocks` argument. BitVector length does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, shocks)
+end
+
+function parse_shocks_input_to_index(shocks::BitMatrix, constants::constants)
+    T = constants.post_model_macro
+    if size(shocks, 1) != T.nExo
+        @warn "Invalid `shocks` argument. BitMatrix row count does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
+end
+
+function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
+    T = constants.post_model_macro
+    
+
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks == :all
@@ -9614,7 +9495,9 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, 
     return shock_idx
 end
 
-end # dispatch_doctor
+
+
+# end # dispatch_doctor
 
 # function Stateupdate(::Val{:first_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
 #     return [P.first_order.solution_matrix * [states[1][T.past_not_future_and_mixed_idx]; shocks]]
@@ -9675,60 +9558,51 @@ end # dispatch_doctor
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
+end # dispatch_doctor
+
+noop_state_update(::Float64, ::Float64) = nothing
+
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+    state_update::Function = noop_state_update
+    pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
+
     if occasionally_binding_constraints
         if algorithm == :first_order
-            state_update = 𝓂.solution.perturbation.first_order.state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update_obc::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.solution.perturbation.second_order.state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update_obc::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update_obc
-            pruning = true
+            state_update = 𝓂.functions.pruned_second_order_state_update_obc::Function
         elseif :third_order == algorithm
-            state_update = 𝓂.solution.perturbation.third_order.state_update_obc
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update_obc::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
-            pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
+            state_update = 𝓂.functions.pruned_third_order_state_update_obc::Function
         end
     else
         if algorithm == :first_order
-            state_update = 𝓂.solution.perturbation.first_order.state_update
-            pruning = false
+            state_update = 𝓂.functions.first_order_state_update::Function
         elseif :second_order == algorithm
-            state_update = 𝓂.solution.perturbation.second_order.state_update
-            pruning = false
+            state_update = 𝓂.functions.second_order_state_update::Function
         elseif :pruned_second_order == algorithm
-            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
-            pruning = true
+            state_update = 𝓂.functions.pruned_second_order_state_update::Function
         elseif :third_order == algorithm
-            state_update = 𝓂.solution.perturbation.third_order.state_update
-            pruning = false
+            state_update = 𝓂.functions.third_order_state_update::Function
         elseif :pruned_third_order == algorithm
-            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
-            pruning = true
-        else
-            # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
-            state_update = (x,y)->nothing
-            pruning = false
+            state_update = 𝓂.functions.pruned_third_order_state_update::Function
         end
     end
 
-    return state_update, pruning
+    return (state_update, pruning)
 end
 
+@stable default_mode = "disable" begin
+
 function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
-    buffer = 𝓂.caches.custom_steady_state_buffer
+    buffer = 𝓂.workspaces.custom_steady_state_buffer
 
     if length(buffer) != expected_length
         buffer = Vector{Float64}(undef, expected_length)
-        𝓂.caches.custom_steady_state_buffer = buffer
+        𝓂.workspaces.custom_steady_state_buffer = buffer
     end
 
     return buffer
@@ -9737,54 +9611,57 @@ end
 function evaluate_custom_steady_state_function(𝓂::ℳ,
                                                 parameter_values::AbstractVector{S},
                                                 expected_length::Int,
-                                                expected_parameter_length::Int) where {S <: Real}
+                                                expected_parameter_length::Int)::Vector{S} where {S <: Real}
     if length(parameter_values) != expected_parameter_length
         throw(ArgumentError("Custom steady state function expected $expected_parameter_length parameters, got $(length(parameter_values))."))
     end
 
-    result = nothing
-    has_inplace = hasmethod(𝓂.custom_steady_state_function, Tuple{typeof(parameter_values), typeof(parameter_values)})
+    has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
-        output = get_custom_steady_state_buffer!(𝓂, expected_length)
-
+        get_custom_steady_state_buffer!(𝓂, expected_length)
+        
+        output = Vector{S}(undef, expected_length)
         try 
-            𝓂.custom_steady_state_function(output, parameter_values)
+            𝓂.functions.NSSS_custom(output, parameter_values)
         catch
         end
-        
-        result = output
-    elseif applicable(𝓂.custom_steady_state_function, parameter_values)
-        result = try
-            𝓂.custom_steady_state_function(parameter_values)
+        return output
+    elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
+        raw_result = try
+            𝓂.functions.NSSS_custom(parameter_values)
         catch
-            fill(NaN, expected_length)
+            nothing
         end
         
-        if !(result isa AbstractVector)
-            throw(ArgumentError("Custom steady state function returned $(typeof(result)); expected an AbstractVector."))
+        if raw_result === nothing
+            return Vector{S}(fill(NaN, expected_length))
         end
+        
+        if !(raw_result isa AbstractVector)
+            throw(ArgumentError("Custom steady state function returned $(typeof(raw_result)); expected an AbstractVector."))
+        end
+        
+        if length(raw_result) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(raw_result)) values, expected $expected_length."))
+        end
+        
+        return Vector{S}(raw_result)
     else
         throw(ArgumentError("Custom steady state function must accept either (parameters) or (out, parameters)."))
     end
-
-    if length(result) != expected_length
-        throw(ArgumentError("Custom steady state function returned $(length(result)) values, expected $expected_length."))
-    end
-    
-    return result
 end
 
-@stable default_mode = "disable" begin
+# @stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
-    vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+    vars_to_exclude = setdiff(𝓂.constants.post_model_macro.present_only, observables)
 
     # Mapping variables to their equation index
     variable_to_equation = Dict{Symbol, Vector{Int}}()
     for var in vars_to_exclude
-        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+        for (eq_idx, vars_set) in enumerate(𝓂.constants.post_model_macro.dyn_var_present_list)
         # for var in vars_set
             if var in vars_set
                 if haskey(variable_to_equation, var)
@@ -9814,23 +9691,23 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
     # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+    if 𝓂.functions.NSSS_custom isa Function
+        vars_in_ss_equations = ms.vars_in_ss_equations
+        expected_length = length(vars_in_ss_equations) + length(𝓂.equations.calibration_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
             𝓂,
             parameter_values,
             expected_length,
-            length(𝓂.parameters),
+            length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
+        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
         
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
+        𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
         solution_error = ℒ.norm(residual)
 
@@ -9839,20 +9716,10 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
+        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
@@ -9867,275 +9734,15 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     return SS_and_pars, (solution_error, iters)
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂::ℳ, 
-                parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
-                # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS - forward" begin
-
-    # Use custom steady state function if available, otherwise use default solver
-    if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
-            parameter_values,
-            expected_length,
-            length(𝓂.parameters),
-        )
-
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
-        
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
-        
-        solution_error = ℒ.norm(residual)
-
-        iters = 0
-
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
-          
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-        
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
-    end
-
-    # end # timeit_debug
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # @timeit_debug timer "Calculate NSSS - pullback" begin
-
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    ∂ = parameter_values
-    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
-
-    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
-        end
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
-    end
-
-    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
-
-    ∂SS_equations_∂parameters = jac_buffer
-
-    
-    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
-        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
-        end
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
-    end
-
-    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
-
-    ∂SS_equations_∂SS_and_pars = jac_buffer
-
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
-    
-    for (i,v) in enumerate(SS_and_pars_names)
-        if v in unknowns
-            jvp[i,:] = JVP[indexin([v], unknowns),:]
-        end
-    end
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # try block-gmres here
-    function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
-        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
-    end
-
-
-    return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function get_NSSS_and_parameters(𝓂::ℳ, 
-                                parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options(),
-                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
-                                # timer::TimerOutput = TimerOutput(),
-    parameter_values = ℱ.value.(parameter_values_dual)
-
-    if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        SS_and_pars_tmp = evaluate_custom_steady_state_function(
-            𝓂,
-            parameter_values,
-            expected_length,
-            length(𝓂.parameters),
-        )
-
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
-        
-        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
-        
-        solution_error = ℒ.norm(residual)
-
-        iters = 0
-
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
-        # end
-          
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-        
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
-    end
-    
-    ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        if opts.verbose println("Failed to find NSSS") end
-
-        solution_error = S(10.0)
-    else
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-            
-        SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-        
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-        
-
-        ∂ = parameter_values
-        C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
-
-        if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-            if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
-                jac_buffer.nzval .= 0
-            else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
-            end
-        else
-            jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
-        end
-
-        𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
-
-        ∂SS_equations_∂parameters = jac_buffer
-
-        
-        if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
-            if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
-                jac_buffer.nzval .= 0
-            else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
-            end
-        else
-            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
-        end
-
-        𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
-
-        ∂SS_equations_∂SS_and_pars = jac_buffer
-
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-            if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-            
-            solution_error = S(10.0)
-        else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-            jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
-            
-            for (i,v) in enumerate(SS_and_pars_names)
-                if v in unknowns
-                    jvp[i,:] = JVP[indexin([v], unknowns),:]
-                end
-            end
-
-            for i in 1:N
-                parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
-
-                ∂SS_and_pars[:,i] = jvp * parameter_values_partials
-            end
-        end
-    end
-    
-    return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(SS_and_pars)), (solution_error, iters)
-end
-
-
 
 
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
     if !all(isfinite,parameter_values) return true end
 
-    if length(𝓂.bounds) > 0 
-        for (k,v) in 𝓂.bounds
-            if k ∈ 𝓂.parameters
-                if min(max(parameter_values[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.parameters)][1]
+    if length(𝓂.constants.post_parameters_macro.bounds) > 0 
+        for (k,v) in 𝓂.constants.post_parameters_macro.bounds
+            if k ∈ 𝓂.constants.post_complete_parameters.parameters
+                if min(max(parameter_values[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
                     return true
                 end
             end
@@ -10152,18 +9759,17 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer, 
     
-    TT = 𝓂.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10171,22 +9777,21 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
-    TT = 𝓂.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10194,22 +9799,21 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer,  
 
-    TT = 𝓂.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
@@ -10217,57 +9821,62 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
-    TT = 𝓂.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
 function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
+    # Initialize constants at entry point
+    constants_obj = initialise_constants!(𝓂)
+
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts) # timer = timer, 
 
-    state = zeros(𝓂.timings.nVars)
-
-    TT = 𝓂.timings
+    state = zeros(𝓂.constants.post_model_macro.nVars)
 
     if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = TT, 
-                                                        # timer = timer, 
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
+    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
+    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants_obj,
+                                                        qme_ws,
+                                                        sylv_ws;
+                                                        # timer = timer,
+                                                        initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], solved
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solved
     end
 
-    return TT, SS_and_pars, 𝐒₁, [state], solved
+    return 𝓂.constants, SS_and_pars, 𝐒₁, [state], solved
 end
 
 end # dispatch_doctor
@@ -10346,5 +9955,13 @@ end # dispatch_doctor
 #         # plot_conditional_variance_decomposition(FS2000)
 #     end
 # end
+
+# Include ForwardDiff Dual specializations for forward-mode AD
+# Must be at the end of the module because they depend on function definitions
+include("./custom_autodiff_rules/forwarddiff.jl")
+
+# Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
+# Must be at the end of the module because rrules depend on function definitions
+include("./custom_autodiff_rules/zygote.jl")
 
 end

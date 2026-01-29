@@ -1,6 +1,6 @@
 module OptimExt
 
-import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters
+import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters, find_shocks_workspace
 import Optim
 
 # Helper function for LBFGS optimization objective
@@ -24,8 +24,8 @@ end
                                     conditions::Vector{Float64},
                                     cond_var_idx::Vector{Int},
                                     free_shock_idx::Vector{Int},
-                                    pruning::Bool,
-                                    S₁, S₂, S₃, timings; verbose::Bool = false)
+                                    state_update::Function,
+                                    S₁, S₂, S₃, constants, ws; verbose::Bool = false)
 
 Find shocks that satisfy conditional forecast constraints using LBFGS optimizer.
 
@@ -37,10 +37,11 @@ Note: This is the Optim-based implementation. It requires the Optim.jl extension
 - `conditions`: Target values for conditioned variables
 - `cond_var_idx`: Indices of conditioned variables
 - `free_shock_idx`: Indices of free shocks to be determined
-- `pruning`: Whether pruning is used
+- `state_update`: State update function for the selected algorithm
 - `S₁`: First-order solution matrix
 - `S₂`, `S₃`: Higher-order perturbation matrices (not used in LBFGS, for compatibility only)
-- `timings`: Model timings structure
+- `constants`: Model constants (unused for LBFGS)
+- `ws`: Find shocks workspace (unused for LBFGS)
 
 # Returns
 - `x`: Vector of optimal shock values
@@ -55,7 +56,9 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
                                         #  pruning::Bool,
-                                         S₁, S₂, S₃, timings; verbose::Bool = false)
+                                         S₁, S₂, S₃, constants, 
+                                         ws::find_shocks_workspace{Float64}; 
+                                         verbose::Bool = false)
                                          
     pruning = typeof(initial_state) <: Vector{Vector{Float64}}
     precision_factor = 1.0
@@ -94,7 +97,7 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
 end
 
 """
-    find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+    find_SS_solver_parameters!(::Val{:SAMIN}, 𝒂::ℳ; maxtime::Real = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
 Find optimal steady state solver parameters using Optim's SAMIN algorithm.
 
@@ -109,7 +112,7 @@ It uses Simulated Annealing with Metropolis acceptance (SAMIN) from Optim.jl.
 - `verbosity`: Verbosity level for output
 """
 function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; 
-                                                    maxtime::Int = 120, 
+                                                    maxtime::Real = 120, 
                                                     maxiter::Int = 2500000, 
                                                     tol::Tolerances = Tolerances(), 
                                                     verbosity = 0)
@@ -131,10 +134,10 @@ function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ;
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
-        push!(𝓂.solver_parameters, par_inputs)
+        push!(MacroModelling.DEFAULT_SOLVER_PARAMETERS, par_inputs)
         return true
     else 
         return false
