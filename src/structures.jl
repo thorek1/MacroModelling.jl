@@ -452,7 +452,7 @@ Workspace for the Sylvester equation solver (A * X * B + C = X).
 All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
 Sylvester has two independent dimensions: n (rows of A/C) and m (cols of B/C).
 """
-mutable struct sylvester_workspace{G <: AbstractFloat}
+mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     # Dimensions (stored for reallocation checks)
     n::Int  # rows of A, rows of C
     m::Int  # cols of B, cols of C
@@ -475,10 +475,10 @@ mutable struct sylvester_workspace{G <: AbstractFloat}
     krylov_workspace::krylov_workspace{G}
     
     # ForwardDiff partials buffers (for forward-mode AD)
-    P̃::Matrix{G}       # For sylvester equation partials
-    Ã_fd::Matrix{G}    # Temporary for ForwardDiff partials of A
-    B̃_fd::Matrix{G}    # Temporary for ForwardDiff partials of B
-    C̃_fd::Matrix{G}    # Temporary for ForwardDiff partials of C
+    P̃::Matrix{H}       # For sylvester equation partials
+    Ã_fd::Matrix{H}    # Temporary for ForwardDiff partials of A
+    B̃_fd::Matrix{H}    # Temporary for ForwardDiff partials of B
+    C̃_fd::Matrix{H}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -501,7 +501,7 @@ Fields:
 - `I_n`: Pre-computed identity matrix for QME doubling (UniformScaling)
 - `I_nPast`: Pre-computed identity matrix for stochastic steady state (UniformScaling)
 """
-mutable struct qme_workspace{T <: Real}
+mutable struct qme_workspace{T <: Real, R <: Real}
     # Doubling algorithm working matrices
     E::Matrix{T}
     F::Matrix{T}
@@ -524,13 +524,13 @@ mutable struct qme_workspace{T <: Real}
     AXX::Matrix{T}
     
     # Sylvester workspace for ForwardDiff path
-    sylvester_ws::sylvester_workspace{T}
+    sylvester_ws::sylvester_workspace{T, R}
     
     # ForwardDiff partials buffers (for forward-mode AD)
-    X̃::Matrix{T}               # For QME solution partials
-    X̃_first_order::Matrix{T}   # For first order solution partials
-    p_tmp::Matrix{T}            # For calculate_first_order_solution
-    ∂SS_and_pars::Matrix{T}     # For NSSS partials in get_NSSS_and_parameters
+    X̃::Matrix{R}               # For QME solution partials
+    X̃_first_order::Matrix{R}   # For first order solution partials
+    p_tmp::Matrix{R}            # For calculate_first_order_solution
+    ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
     
     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
     I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
@@ -560,7 +560,7 @@ Fields for Krylov methods (bicgstab, gmres):
 
 All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
 """
-mutable struct lyapunov_workspace{T <: Real}
+mutable struct lyapunov_workspace{T <: Real, R <: Real}
     # Dimension (stored for reallocation checks)
     n::Int
     
@@ -581,9 +581,9 @@ mutable struct lyapunov_workspace{T <: Real}
     gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
     
     # ForwardDiff partials buffers (for forward-mode AD)
-    P̃::Matrix{T}       # For lyapunov equation partials
-    Ã_fd::Matrix{T}    # Temporary for ForwardDiff partials of A
-    C̃_fd::Matrix{T}    # Temporary for ForwardDiff partials of C
+    P̃::Matrix{R}       # For lyapunov equation partials
+    Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
+    C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -826,7 +826,7 @@ mutable struct kalman_workspace{T <: Real}
 end
 
 
-mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
+mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
     tmpkron11::SparseMatrixCSC{F, Int}
@@ -840,7 +840,7 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
-    sylvester_workspace::sylvester_workspace{G}
+    sylvester_workspace::sylvester_workspace{G, H}
     # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
     # Second order pullback buffers
     ∂∇₂::Matrix{F}
@@ -855,8 +855,8 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
-    ∂x_second_order::Matrix{F}     # For second order SSS partials
-    ∂x_third_order::Matrix{F}      # For third order SSS partials
+    ∂x_second_order::Matrix{H}     # For second order SSS partials
+    ∂x_third_order::Matrix{H}      # For third order SSS partials
 end
 
 
@@ -891,11 +891,11 @@ mutable struct workspaces
     # Steady state buffer
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
-    qme::qme_workspace{Float64}                 # Quadratic matrix equation (1st order)
-    lyapunov_1st_order::lyapunov_workspace{Float64}  # Covariance (1st order moments)
-    lyapunov_2nd_order::lyapunov_workspace{Float64}  # Covariance (2nd order moments)
-    lyapunov_3rd_order::lyapunov_workspace{Float64}  # Covariance (3rd order moments)
-    sylvester_1st_order::sylvester_workspace{Float64} # Sylvester equation
+    qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
+    lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
+    lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
+    lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
+    sylvester_1st_order::sylvester_workspace{Float64, Float64} # Sylvester equation
     # Filter workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter

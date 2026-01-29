@@ -137,7 +137,7 @@ function Krylov_workspace(;S::Type = Float64)
                     BicgstabWorkspace(0,0,Vector{S}))
 end
 
-function Sylvester_workspace(;S::Type = Float64)
+function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
     sylvester_workspace(
         0, 0,                   # n, m dimensions
         zeros(S,0,0),           # tmp (Krylov)
@@ -152,10 +152,10 @@ function Sylvester_workspace(;S::Type = Float64)
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
         # ForwardDiff partials buffers
-        zeros(S,0,0),           # P̃
-        zeros(S,0,0),           # Ã_fd
-        zeros(S,0,0),           # B̃_fd
-        zeros(S,0,0))           # C̃_fd
+        zeros(T,0,0),           # P̃
+        zeros(T,0,0),           # Ã_fd
+        zeros(T,0,0),           # B̃_fd
+        zeros(T,0,0))           # C̃_fd
 end
 
 """
@@ -202,8 +202,8 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂𝐒₁_3rd
                         zeros(T,0,0),  # ∂spinv_3rd
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
-                        zeros(T,0,0),  # ∂x_second_order
-                        zeros(T,0,0))  # ∂x_third_order
+                        zeros(S,0,0),  # ∂x_second_order
+                        zeros(S,0,0))  # ∂x_third_order
 end
 
 """
@@ -212,7 +212,7 @@ end
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_workspace(n::Int; T::Type = Float64, nPast::Int = 0)
+function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
     qme_workspace(  zeros(T, n, n),  # E
                     zeros(T, n, n),  # F
                     zeros(T, n, n),  # X
@@ -228,10 +228,10 @@ function Qme_workspace(n::Int; T::Type = Float64, nPast::Int = 0)
                     zeros(T, n, n),  # AXX
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
-                    zeros(T, 0, 0),  # X̃
-                    zeros(T, 0, 0),  # X̃_first_order
-                    zeros(T, 0, 0),  # p_tmp
-                    zeros(T, 0, 0),  # ∂SS_and_pars
+                    zeros(S, 0, 0),  # X̃
+                    zeros(S, 0, 0),  # X̃_first_order
+                    zeros(S, 0, 0),  # p_tmp
+                    zeros(S, 0, 0),  # ∂SS_and_pars
                     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
                     ℒ.I(n),             # I_n
                     ℒ.I(nPast))         # I_nPast
@@ -245,7 +245,7 @@ Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
 Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
 """
 function Lyapunov_workspace(n::Int; T::Type = Float64)
-    lyapunov_workspace{T}(
+    lyapunov_workspace{T, T}(
         n,                      # dimension
         zeros(T, 0, 0),         # 𝐂 (doubling)
         zeros(T, 0, 0),         # 𝐂¹ (doubling)

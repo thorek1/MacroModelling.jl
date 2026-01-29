@@ -119,7 +119,7 @@ end
 
 
 
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
+function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     project_Ŝ = ProjectTo(Ŝ)
 
     function sparse_preallocated_pullback(Ω̄)
@@ -469,10 +469,10 @@ end
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
                 constants::constants,
-                qme_ws::qme_workspace{R},
-                sylv_ws::sylvester_workspace{R};
+                qme_ws::qme_workspace{R,S},
+                sylv_ws::sylvester_workspace{R,S};
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin

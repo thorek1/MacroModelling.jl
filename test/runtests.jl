@@ -796,6 +796,11 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
+
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
@@ -1162,11 +1167,6 @@ if test_set == "basic"
         @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
 
         RBC_CME = nothing
-    end
-    GC.gc()
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
     end
     GC.gc()
 

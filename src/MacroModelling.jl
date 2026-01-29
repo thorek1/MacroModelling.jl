@@ -180,7 +180,7 @@ include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 
 
-# end # DispatchDoctor
+# end # dispatch_doctor
 
 
 export @model, @parameters, solve!
@@ -1806,7 +1806,7 @@ function mat_mult_kron(A::DenseMatrix{R},
     # end
 end
 
-function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
+function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
         ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T = T, S = F)
     end

@@ -2,10 +2,10 @@
 
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
-                                        qme_ws::qme_workspace{R},
-                                        sylv_ws::sylvester_workspace{R};
+                                        qme_ws::qme_workspace{R,S},
+                                        sylv_ws::sylvester_workspace{R,S};
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
