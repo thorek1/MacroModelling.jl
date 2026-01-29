@@ -3080,7 +3080,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-# end # dispatch_doctor
+end # dispatch_doctor
 
 function evaluate_conditions(cond)
     if cond isa Bool
@@ -3113,6 +3113,8 @@ function evaluate_conditions(cond)
     end
     return nothing
 end
+
+@stable default_mode = "disable" begin
 
 function resolve_if_expr(ex::Expr)
     prewalk(ex) do node
