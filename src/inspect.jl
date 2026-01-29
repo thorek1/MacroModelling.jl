@@ -29,6 +29,44 @@ end
 
 
 """
+    parse_filter_term(term::Union{Symbol, String}) -> (Symbol, Union{Expr, Nothing})
+
+Parse a filter term into (base_symbol, pattern_expr).
+- `:k` or `"k"` → `(:k, nothing)` matches variable at any timing
+- `"k[-1]"` → `(:k, :(k[-1]))` matches exact timing
+- `"eps[x]"` → `(:eps, :(eps[x]))` matches shock at exact timing
+"""
+function parse_filter_term(term::Union{Symbol, String})
+    term_str = replace(string(term), "{" => "◖", "}" => "◗")
+    m = match(r"^(.+)\[(.+)\]$", term_str)
+    m === nothing && return (Symbol(term_str), nothing)
+    return (Symbol(m.captures[1]), Meta.parse(term_str))
+end
+
+"""
+    expr_contains(expr, sym::Symbol, pattern) -> Bool
+
+Check if `expr` contains `sym` matching `pattern` (nothing = any timing).
+"""
+function expr_contains(expr, sym::Symbol, pattern)
+    found = Ref(false)
+    postwalk(expr) do x
+        if pattern === nothing
+            # Match symbol anywhere (as ref base or standalone)
+            if x === sym || (x isa Expr && x.head == :ref && x.args[1] === sym)
+                found[] = true
+            end
+        else
+            # Match exact expression pattern
+            x == pattern && (found[] = true)
+        end
+        x
+    end
+    found[]
+end
+
+
+"""
 $(SIGNATURES)
 Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in `Examples`).
 
@@ -75,8 +113,12 @@ get_equations(RBC)
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
 ```
 """
-function get_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.equations.original), "◖" => "{", "◗" => "}")
+function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.original), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+    
+    sym, pattern = parse_filter_term(filter)
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.original) if expr_contains(expr, sym, pattern)]
 end
 
 
@@ -244,8 +286,12 @@ get_calibration_equations(RBC)
  "k / (q * 4) - capital_to_output"
 ```
 """
-function get_calibration_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
+function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+    
+    sym, pattern = parse_filter_term(filter)
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, pattern)]
 end
 
 
