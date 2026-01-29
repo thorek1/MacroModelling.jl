@@ -1,6 +1,44 @@
 # Agent Progress Log
 
-## Current Session (2026-01-27) - Merge Main & Restore Counters
+## Current Session (2026-01-27) - Fix Zygote Gradient Bug
+
+### Summary
+
+Fixed a critical bug in `src/custom_autodiff_rules/zygote.jl` where ChainRulesCore rrule pullback functions were returning incorrect values due to missing parentheses around tuple returns.
+
+### Root Cause
+
+In Julia, the expression `x -> NoTangent(), NoTangent(), ...` returns only the first `NoTangent()` value (due to comma operator precedence), while `x -> (NoTangent(), NoTangent(), ...)` returns the full tuple. The rrule pullbacks must return a tuple with one tangent per input argument.
+
+### Changes Made
+
+Fixed all occurrences (approximately 12 lines) of the buggy pattern in `src/custom_autodiff_rules/zygote.jl`:
+- Lines with 5-argument returns (first order solution early exits)
+- Lines with 8-argument returns (Kalman filter early exits)  
+- Lines with 10-argument returns (inversion filter early exits)
+
+Pattern changed: `x -> NoTangent(), NoTangent(), ...` → `x -> (NoTangent(), NoTangent(), ...)`
+
+### Testing
+
+Verified fix with local test:
+```julia
+using MacroModelling, Zygote
+# ... RBC model ...
+grad = Zygote.gradient(x -> get_loglikelihood(RBC, data, x), RBC.parameter_values)
+# Result: ([-765.93..., -4.35..., -3007.26..., 2119.31..., 3331.72...],)
+# SUCCESS: Gradient computed correctly (was returning Nothing before fix)
+```
+
+### CI Impact
+
+This fix resolves the test failures at lines 1756 and 1771 of `test/functionality_tests.jl`:
+- `isapprox(::Nothing, ::Nothing)` errors
+- `-Inf` loglikelihood comparison failures
+
+---
+
+## Previous Session (2026-01-27) - Merge Main & Restore Counters
 
 ### Summary
 
@@ -22,7 +60,7 @@ Merged `origin/main` into `copilot/add-counters-for-solves`, resolved all merge 
 - Install Julia and run a simple RBC solve to confirm counters increment (e.g., `solve!` with `algorithm = :first_order` and inspect `𝓂.counters`).
 - Recheck other pre-existing modified files in `git status` before committing, as many unrelated changes were present prior to this merge.
 
-## Current Session (2026-01-26) - Struct Naming and Documentation
+## Previous Session (2026-01-26) - Struct Naming and Documentation
 
 ### Summary
 
