@@ -31,18 +31,18 @@ end
 """
     parse_filter_term(term::Union{Symbol, String})
 
-Parse a filter term and return a tuple of (base_symbol, timing, exact_timing_str).
+Parse a filter term and return a tuple of (base_symbol, timing, exact_timing_value).
 - `:a` or `"a"` returns `(:a, :any, nothing)` - matches variable `a` at any time
-- `"a[0]"` returns `(:a, :present, "0")` - matches variable `a` in the present only
-- `"a[1]"` or `"a[+1]"` returns `(:a, :future, "1")` - matches variable `a` in the future only
-- `"a[-1]"` returns `(:a, :past, "-1")` - matches variable `a` at exactly lag -1
-- `"a[-4]"` returns `(:a, :past, "-4")` - matches variable `a` at exactly lag -4
-- `"a[ss]"` returns `(:a, :ss, "ss")` - matches variable `a` at steady state
-- `"eps[x]"` returns `(:eps, :shock, "x")` - matches shock `eps` in the present only
-- `"eps[x-1]"` returns `(:eps, :shock_past, "x-1")` - matches shock `eps` in the past
-- `"eps[x+1]"` returns `(:eps, :shock_future, "x+1")` - matches shock `eps` in the future
+- `"a[0]"` returns `(:a, :present, 0)` - matches variable `a` in the present only
+- `"a[1]"` or `"a[+1]"` returns `(:a, :future, 1)` - matches variable `a` in the future only
+- `"a[-1]"` returns `(:a, :past, -1)` - matches variable `a` at exactly lag -1
+- `"a[-4]"` returns `(:a, :past, -4)` - matches variable `a` at exactly lag -4
+- `"a[ss]"` returns `(:a, :ss, nothing)` - matches variable `a` at steady state
+- `"eps[x]"` returns `(:eps, :shock, 0)` - matches shock `eps` in the present only
+- `"eps[x-1]"` returns `(:eps, :shock_past, -1)` - matches shock `eps` in the past
+- `"eps[x+1]"` returns `(:eps, :shock_future, 1)` - matches shock `eps` in the future
 
-The exact_timing_str is used for precise matching when a specific timing is given.
+The exact_timing_value is an Int used for precise matching when a specific timing is given.
 """
 function parse_filter_term(term::Union{Symbol, String})
     term_str = string(term)
@@ -61,43 +61,45 @@ function parse_filter_term(term::Union{Symbol, String})
     
     base = m.captures[1]
     timing_str = strip(m.captures[2])
-    timing_str_original = timing_str  # Keep original for exact matching
     
     # Handle steady state
     if occursin(r"^(ss|stst|steady|steadystate|steady_state)$"i, timing_str)
-        return (Symbol(base), :ss, timing_str_original)
+        return (Symbol(base), :ss, nothing)
     end
     
     # Handle shocks: x, ex, exo, exogenous (with optional +/- offset)
     if occursin(r"^(x|ex|exo|exogenous)$"i, timing_str)
-        return (Symbol(base), :shock, timing_str_original)
+        return (Symbol(base), :shock, 0)
     end
     
     # Handle shock with lag: x-1, ex-1, etc.
-    if occursin(r"^(x|ex|exo|exogenous)\s*-\s*\d+$"i, timing_str)
-        return (Symbol(base), :shock_past, timing_str_original)
+    shock_lag_match = match(r"^(x|ex|exo|exogenous)\s*-\s*(\d+)$"i, timing_str)
+    if shock_lag_match !== nothing
+        lag_val = parse(Int, shock_lag_match.captures[2])
+        return (Symbol(base), :shock_past, -lag_val)
     end
     
     # Handle shock with lead: x+1, ex+1, etc.
-    if occursin(r"^(x|ex|exo|exogenous)\s*\+\s*\d+$"i, timing_str)
-        return (Symbol(base), :shock_future, timing_str_original)
+    shock_lead_match = match(r"^(x|ex|exo|exogenous)\s*\+\s*(\d+)$"i, timing_str)
+    if shock_lead_match !== nothing
+        lead_val = parse(Int, shock_lead_match.captures[2])
+        return (Symbol(base), :shock_future, lead_val)
     end
     
     # Handle numeric time subscripts
     timing_str_clean = replace(timing_str, " " => "")
     if timing_str_clean == "0"
-        return (Symbol(base), :present, timing_str_original)
-    elseif timing_str_clean == "1" || timing_str_clean == "+1"
-        return (Symbol(base), :future, timing_str_original)
-    elseif occursin(r"^-?\d+$", timing_str_clean)
-        val = parse(Int, timing_str_clean)
-        if val < 0
-            return (Symbol(base), :past, timing_str_original)
-        elseif val > 0
-            return (Symbol(base), :future, timing_str_original)
+        return (Symbol(base), :present, 0)
+    elseif occursin(r"^[+]?\d+$", timing_str_clean)
+        val = parse(Int, replace(timing_str_clean, "+" => ""))
+        if val > 0
+            return (Symbol(base), :future, val)
         else
-            return (Symbol(base), :present, timing_str_original)
+            return (Symbol(base), :present, 0)
         end
+    elseif occursin(r"^-\d+$", timing_str_clean)
+        val = parse(Int, timing_str_clean)
+        return (Symbol(base), :past, val)
     end
     
     # Default: treat as any
@@ -134,31 +136,86 @@ end
 
 
 """
-    escape_for_regex(str::AbstractString)
+    extract_ref_timing(ref_expr::Expr)
 
-Escape special regex characters in a string, preserving word matching capability.
+Extract the base symbol and numeric timing from a reference expression like `k[0]` or `k[-1]`.
+Returns `(base_symbol, timing_value)` where timing_value is an Int for numeric timings,
+or a special symbol for shocks (:x, :x_past, :x_future with offset).
+
+For expressions like `k[0]` returns `(:k, 0)`
+For expressions like `k[-1]` returns `(:k, -1)`
+For expressions like `eps[x]` returns `(:eps, (:x, 0))`
+For expressions like `eps[x - 1]` returns `(:eps, (:x, -1))`
 """
-function escape_for_regex(str::AbstractString)
-    # Escape special regex characters
-    escaped = replace(str, r"([{}()\[\].*+?^$|\\])" => s"\\\1")
-    return escaped
+function extract_ref_timing(ref_expr::Expr)
+    if ref_expr.head != :ref || length(ref_expr.args) < 2
+        return nothing
+    end
+    
+    base_sym = ref_expr.args[1]
+    timing_expr = ref_expr.args[2]
+    
+    # Handle numeric timing: k[0], k[-1], k[1]
+    if timing_expr isa Int
+        return (base_sym, timing_expr)
+    end
+    
+    # Handle negative timing as expression: k[-1] might be parsed as :(call, -, 1)
+    if timing_expr isa Expr && timing_expr.head == :call && 
+       length(timing_expr.args) >= 2 && timing_expr.args[1] == :-
+        if length(timing_expr.args) == 2 && timing_expr.args[2] isa Int
+            # Unary minus: -1
+            return (base_sym, -timing_expr.args[2])
+        elseif length(timing_expr.args) == 3
+            # Binary minus: x - 1 (for shocks)
+            left = timing_expr.args[2]
+            right = timing_expr.args[3]
+            if left == :x && right isa Int
+                return (base_sym, (:x, -right))
+            end
+        end
+    end
+    
+    # Handle positive timing as expression: k[+1] might be parsed as :(call, +, 1)
+    if timing_expr isa Expr && timing_expr.head == :call && timing_expr.args[1] == :+
+        if length(timing_expr.args) == 2 && timing_expr.args[2] isa Int
+            # Unary plus: +1
+            return (base_sym, timing_expr.args[2])
+        elseif length(timing_expr.args) == 3
+            # Binary plus: x + 1 (for shocks)
+            left = timing_expr.args[2]
+            right = timing_expr.args[3]
+            if left == :x && right isa Int
+                return (base_sym, (:x, right))
+            end
+        end
+    end
+    
+    # Handle shock timing: eps[x]
+    if timing_expr == :x
+        return (base_sym, (:x, 0))
+    end
+    
+    # Handle steady state: var[ss]
+    if timing_expr == :ss
+        return (base_sym, :ss)
+    end
+    
+    return nothing
 end
 
 
 """
-    equation_string_contains_symbol(eq_str::String, filter_symbol::Symbol, timing::Symbol, 𝓂::ℳ; exact_timing::Union{String, Nothing}=nothing)
+    expression_contains_symbol(eq_expr::Expr, filter_symbol::Symbol, timing::Symbol, 𝓂::ℳ; exact_timing::Union{Int, Nothing}=nothing)
 
-Check if the equation string contains the filter symbol with the specified timing.
-Uses string pattern matching on the human-readable equation format.
-
-If `exact_timing` is provided, it matches exactly that timing (e.g., "-1" matches only `k[-1]`, not `k[-4]`).
-If `exact_timing` is nothing, timing categories are used for matching.
+Check if the equation expression contains the filter symbol with the specified timing.
+Uses MacroTools postwalk to traverse the expression tree directly.
 
 For variables:
 - `:any` matches the variable at any time index
 - `:present` matches `var[0]`
-- `:future` matches `var[1]` or `var[+1]` or higher positive indices (unless exact_timing specified)
-- `:past` matches `var[-1]` or lower negative indices (unless exact_timing specified)
+- `:future` matches `var[1]` or higher (unless exact_timing specified)
+- `:past` matches `var[-1]` or lower (unless exact_timing specified)
 - `:ss` matches `var[ss]`
 
 For shocks:
@@ -168,26 +225,22 @@ For shocks:
 - `:shock_future` matches `eps[x+1]` etc. (unless exact_timing specified)
 
 For parameters:
-- `:any` matches if the parameter name appears
+- `:any` matches if the parameter symbol appears directly
 - Other timings do not apply to parameters
 """
-function equation_string_contains_symbol(eq_str::String, filter_symbol::Symbol, timing::Symbol, 𝓂::ℳ; exact_timing::Union{AbstractString, Nothing}=nothing)
-    # Convert symbol to human-readable format (◖ → {, ◗ → })
-    sym_str = replace(string(filter_symbol), "◖" => "{", "◗" => "}")
-    escaped = escape_for_regex(sym_str)
+function expression_contains_symbol(eq_expr::Expr, filter_symbol::Symbol, timing::Symbol, 𝓂::ℳ; exact_timing::Union{Int, Nothing}=nothing)
+    found = Ref(false)
     
-    # Check if this is a parameter (parameters don't have time subscripts)
+    # Check if this is a parameter (parameters appear as standalone symbols)
     if is_parameter_symbol(filter_symbol, 𝓂)
         if timing == :any
-            # For parameters, check if the symbol appears as a standalone identifier
-            # Parameters should not be preceded/followed by alphanumeric chars or underscore
-            # But word boundaries (\b) don't work well with unicode (e.g., Greek letters)
-            # Use negative lookbehind/lookahead for non-word characters
-            # Match: at start or after non-word char, param, at end or before non-word char (not [)
-            # The pattern avoids matching z{δ} when looking for δ by checking that the character
-            # before is not { (which would mean it's a subscript to another symbol)
-            pattern = Regex("(?<![{α-ωΑ-Ω\\w])" * escaped * "(?![α-ωΑ-Ω\\w\\[])")
-            return occursin(pattern, eq_str)
+            postwalk(eq_expr) do x
+                if x === filter_symbol
+                    found[] = true
+                end
+                x
+            end
+            return found[]
         else
             # Parameters don't have time dimensions
             return false
@@ -195,83 +248,75 @@ function equation_string_contains_symbol(eq_str::String, filter_symbol::Symbol, 
     end
     
     # Check if this is a shock
-    if is_shock_symbol(filter_symbol, 𝓂)
-        if timing == :any
-            # Match shock with any timing: sym[x...] pattern
-            # Matches: eps[x], eps[x - 1], eps[x + 1], etc.
-            return occursin(Regex(escaped * "\\[x[^\\]]*\\]"), eq_str)
-        elseif timing == :shock
-            # Match shock at present: sym[x]
-            return occursin(Regex(escaped * "\\[x\\]"), eq_str)
-        elseif timing == :shock_past
-            # Match shock in past: sym[x - n]
-            if exact_timing !== nothing
-                # Exact matching for the specific offset
-                escaped_timing = escape_for_regex(exact_timing)
-                # Allow flexible whitespace: "x-1" should match "x - 1"
-                timing_pattern = replace(escaped_timing, r"-" => "\\s*-\\s*")
-                return occursin(Regex(escaped * "\\[" * timing_pattern * "\\]"), eq_str)
-            else
-                return occursin(Regex(escaped * "\\[x\\s*-\\s*\\d+\\]"), eq_str)
+    is_shock = is_shock_symbol(filter_symbol, 𝓂)
+    
+    postwalk(eq_expr) do x
+        if x isa Expr && x.head == :ref
+            ref_info = extract_ref_timing(x)
+            if ref_info !== nothing
+                base_sym, timing_val = ref_info
+                
+                # Check if base symbol matches
+                if base_sym === filter_symbol
+                    if is_shock
+                        # Handle shock timing
+                        if timing_val isa Tuple && timing_val[1] == :x
+                            shock_offset = timing_val[2]
+                            if timing == :any
+                                found[] = true
+                            elseif timing == :shock && shock_offset == 0
+                                if exact_timing === nothing || exact_timing == 0
+                                    found[] = true
+                                end
+                            elseif timing == :shock_past && shock_offset < 0
+                                if exact_timing === nothing || exact_timing == shock_offset
+                                    found[] = true
+                                end
+                            elseif timing == :shock_future && shock_offset > 0
+                                if exact_timing === nothing || exact_timing == shock_offset
+                                    found[] = true
+                                end
+                            end
+                        end
+                    else
+                        # Handle variable timing
+                        if timing_val isa Int
+                            if timing == :any
+                                found[] = true
+                            elseif timing == :present && timing_val == 0
+                                found[] = true
+                            elseif timing == :future && timing_val > 0
+                                if exact_timing === nothing || exact_timing == timing_val
+                                    found[] = true
+                                end
+                            elseif timing == :past && timing_val < 0
+                                if exact_timing === nothing || exact_timing == timing_val
+                                    found[] = true
+                                end
+                            end
+                        elseif timing_val == :ss && timing == :ss
+                            found[] = true
+                        end
+                    end
+                end
             end
-        elseif timing == :shock_future
-            # Match shock in future: sym[x + n]
-            if exact_timing !== nothing
-                escaped_timing = escape_for_regex(exact_timing)
-                timing_pattern = replace(escaped_timing, r"\+" => "\\s*\\+\\s*")
-                return occursin(Regex(escaped * "\\[" * timing_pattern * "\\]"), eq_str)
-            else
-                return occursin(Regex(escaped * "\\[x\\s*\\+\\s*\\d+\\]"), eq_str)
-            end
-        else
-            return false
         end
+        x
     end
     
-    # Handle variables (not shocks, not parameters)
-    if timing == :any
-        # Match variable with any timing: sym[...]
-        return occursin(Regex(escaped * "\\[[^\\]]+\\]"), eq_str)
-    elseif timing == :present
-        # Match sym[0]
-        return occursin(Regex(escaped * "\\[0\\]"), eq_str)
-    elseif timing == :future
-        if exact_timing !== nothing
-            # Exact matching for the specific future period
-            escaped_timing = escape_for_regex(exact_timing)
-            return occursin(Regex(escaped * "\\[" * escaped_timing * "\\]"), eq_str)
-        else
-            # Match sym[1], sym[+1], sym[2], etc.
-            return occursin(Regex(escaped * "\\[\\+?[1-9]\\d*\\]"), eq_str)
-        end
-    elseif timing == :past
-        if exact_timing !== nothing
-            # Exact matching for the specific past period
-            escaped_timing = escape_for_regex(exact_timing)
-            return occursin(Regex(escaped * "\\[" * escaped_timing * "\\]"), eq_str)
-        else
-            # Match sym[-1], sym[-2], etc.
-            return occursin(Regex(escaped * "\\[-\\d+\\]"), eq_str)
-        end
-    elseif timing == :ss
-        # Match sym[ss]
-        return occursin(Regex(escaped * "\\[ss\\]", "i"), eq_str)
-    else
-        return false
-    end
+    return found[]
 end
 
 
 """
-    equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol; exact_timing::Union{String, Nothing}=nothing)
+    equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol; exact_timing::Union{Int, Nothing}=nothing)
 
 Check if equation at index `eq_idx` contains the filter symbol with the specified timing.
-Uses string-based pattern matching on the original equation for reliability.
+Uses MacroTools postwalk to traverse the original equation expression directly.
 """
-function equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol; exact_timing::Union{AbstractString, Nothing}=nothing)
-    # Get the original equation string
-    eq_str = replace(string(𝓂.equations.original[eq_idx]), "◖" => "{", "◗" => "}")
-    return equation_string_contains_symbol(eq_str, filter_symbol, timing, 𝓂; exact_timing=exact_timing)
+function equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol; exact_timing::Union{Int, Nothing}=nothing)
+    eq_expr = 𝓂.equations.original[eq_idx]
+    return expression_contains_symbol(eq_expr, filter_symbol, timing, 𝓂; exact_timing=exact_timing)
 end
 
 
@@ -282,19 +327,16 @@ Check if calibration equation at index `eq_idx` contains the filter symbol.
 For calibration equations, timing is mostly ignored since they are steady-state equations,
 but we still support filtering by symbol.
 
-Uses string-based pattern matching for reliability. Calibration equations don't have
-time subscripts on variables (they are implicitly at steady state).
+Uses MacroTools postwalk to traverse the calibration equation expression directly.
+Calibration equations don't have time subscripts on variables (they are implicitly at steady state).
 
 For parameters: `:any` timing matches if the parameter appears in the equation.
 For variables: `:any` or `:ss` timing matches if the variable appears (since calibration 
 equations are at steady state). Other timings don't match.
 """
 function calibration_equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol)
-    # Get the calibration equation string
-    eq_str = replace(string(𝓂.equations.calibration[eq_idx]), "◖" => "{", "◗" => "}")
-    
-    # Convert symbol to human-readable format
-    sym_str = replace(string(filter_symbol), "◖" => "{", "◗" => "}")
+    eq_expr = 𝓂.equations.calibration[eq_idx]
+    found = Ref(false)
     
     # Check if this is a shock - shocks don't appear in calibration equations
     if is_shock_symbol(filter_symbol, 𝓂)
@@ -304,8 +346,13 @@ function calibration_equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_sym
     # Check if this is a parameter
     if is_parameter_symbol(filter_symbol, 𝓂)
         if timing == :any
-            # Parameters in calibration equations appear without subscripts
-            return contains(eq_str, sym_str)
+            postwalk(eq_expr) do x
+                if x === filter_symbol
+                    found[] = true
+                end
+                x
+            end
+            return found[]
         else
             # Parameters don't have time dimensions
             return false
@@ -313,10 +360,16 @@ function calibration_equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_sym
     end
     
     # For variables: calibration equations have variables at steady state (no time subscript)
+    # Variables appear as plain symbols in calibration equations
     # Accept :any or :ss timing
     if timing == :any || timing == :ss
-        # Variables in calibration equations appear without time subscripts
-        return contains(eq_str, sym_str)
+        postwalk(eq_expr) do x
+            if x === filter_symbol
+                found[] = true
+            end
+            x
+        end
+        return found[]
     else
         # Other timings (:present, :future, :past) don't apply to calibration equations
         return false
