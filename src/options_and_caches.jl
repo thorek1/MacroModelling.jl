@@ -150,7 +150,12 @@ function Sylvester_workspace(;S::Type = Float64)
         zeros(S,0,0),           # 𝐂_dbl (doubling)
         zeros(S,0,0),           # 𝐂¹ (doubling)
         zeros(S,0,0),           # 𝐂B (doubling)
-        Krylov_workspace(S = S))
+        Krylov_workspace(S = S),
+        # ForwardDiff partials buffers
+        zeros(S,0,0),           # P̃
+        zeros(S,0,0),           # Ã_fd
+        zeros(S,0,0),           # B̃_fd
+        zeros(S,0,0))           # C̃_fd
 end
 
 """
@@ -196,19 +201,9 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂∇₁_3rd
                         zeros(T,0,0),  # ∂𝐒₁_3rd
                         zeros(T,0,0),  # ∂spinv_3rd
-                        # ForwardDiff partials buffers (for forward-mode AD)
+                        # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(T,0,0),  # ∂x_second_order
-                        zeros(T,0,0),  # ∂x_third_order
-                        zeros(T,0,0),  # ∂SS_and_pars
-                        zeros(T,0,0),  # X̃_first_order
-                        zeros(T,0,0),  # X̃_qme
-                        zeros(T,0,0),  # P̃_sylvester
-                        zeros(T,0,0),  # P̃_lyapunov
-                        # Temporary matrices for sylvester/lyapunov
-                        zeros(T,0,0),  # Ã_tmp
-                        zeros(T,0,0),  # B̃_tmp
-                        zeros(T,0,0),  # C̃_tmp
-                        zeros(T,0,0))  # p_tmp
+                        zeros(T,0,0))  # ∂x_third_order
 end
 
 """
@@ -231,7 +226,12 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
-                    Sylvester_workspace(S = T))  # sylvester_ws
+                    Sylvester_workspace(S = T),  # sylvester_ws
+                    # ForwardDiff partials buffers
+                    zeros(T, 0, 0),  # X̃
+                    zeros(T, 0, 0),  # X̃_first_order
+                    zeros(T, 0, 0),  # p_tmp
+                    zeros(T, 0, 0))  # ∂SS_and_pars
 end
 
 """
@@ -253,7 +253,11 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0, 0),         # 𝐗 (Krylov)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20)  # gmres_workspace
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
+        # ForwardDiff partials buffers
+        zeros(T, 0, 0),         # P̃
+        zeros(T, 0, 0),         # Ã_fd
+        zeros(T, 0, 0)          # C̃_fd
     )
 end
 

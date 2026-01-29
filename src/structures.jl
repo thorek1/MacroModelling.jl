@@ -473,6 +473,12 @@ mutable struct sylvester_workspace{G <: AbstractFloat}
     
     # Krylov solver state (lazily allocated)
     krylov_workspace::krylov_workspace{G}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    P̃::Matrix{G}       # For sylvester equation partials
+    Ã_fd::Matrix{G}    # Temporary for ForwardDiff partials of A
+    B̃_fd::Matrix{G}    # Temporary for ForwardDiff partials of B
+    C̃_fd::Matrix{G}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -515,6 +521,12 @@ mutable struct qme_workspace{T <: Real}
     
     # Sylvester workspace for ForwardDiff path
     sylvester_ws::sylvester_workspace{T}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    X̃::Matrix{T}               # For QME solution partials
+    X̃_first_order::Matrix{T}   # For first order solution partials
+    p_tmp::Matrix{T}            # For calculate_first_order_solution
+    ∂SS_and_pars::Matrix{T}     # For NSSS partials in get_NSSS_and_parameters
 end
 
 
@@ -559,6 +571,11 @@ mutable struct lyapunov_workspace{T <: Real}
     # Krylov solver state (lazily allocated, can be reused across calls)
     bicgstab_workspace::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    P̃::Matrix{T}       # For lyapunov equation partials
+    Ã_fd::Matrix{T}    # Temporary for ForwardDiff partials of A
+    C̃_fd::Matrix{T}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -829,19 +846,9 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
-    # ForwardDiff partials buffers (for forward-mode AD)
+    # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{F}     # For second order SSS partials
     ∂x_third_order::Matrix{F}      # For third order SSS partials
-    ∂SS_and_pars::Matrix{F}        # For NSSS partials
-    X̃_first_order::Matrix{F}       # For first order solution partials
-    X̃_qme::Matrix{F}               # For QME solution partials
-    P̃_sylvester::Matrix{F}         # For sylvester equation partials
-    P̃_lyapunov::Matrix{F}          # For lyapunov equation partials
-    # Temporary matrices for sylvester/lyapunov (to avoid copy allocations)
-    Ã_tmp::Matrix{F}
-    B̃_tmp::Matrix{F}
-    C̃_tmp::Matrix{F}
-    p_tmp::Matrix{F}               # For calculate_first_order_solution
 end
 
 
