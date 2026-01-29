@@ -1,6 +1,66 @@
 # Agent Progress Log
 
-## Current Session (2026-01-26) - Struct Naming and Documentation
+## Current Session (2026-01-27) - Fix Zygote Gradient Bug
+
+### Summary
+
+Fixed a critical bug in `src/custom_autodiff_rules/zygote.jl` where ChainRulesCore rrule pullback functions were returning incorrect values due to missing parentheses around tuple returns.
+
+### Root Cause
+
+In Julia, the expression `x -> NoTangent(), NoTangent(), ...` returns only the first `NoTangent()` value (due to comma operator precedence), while `x -> (NoTangent(), NoTangent(), ...)` returns the full tuple. The rrule pullbacks must return a tuple with one tangent per input argument.
+
+### Changes Made
+
+Fixed all occurrences (approximately 12 lines) of the buggy pattern in `src/custom_autodiff_rules/zygote.jl`:
+- Lines with 5-argument returns (first order solution early exits)
+- Lines with 8-argument returns (Kalman filter early exits)  
+- Lines with 10-argument returns (inversion filter early exits)
+
+Pattern changed: `x -> NoTangent(), NoTangent(), ...` → `x -> (NoTangent(), NoTangent(), ...)`
+
+### Testing
+
+Verified fix with local test:
+```julia
+using MacroModelling, Zygote
+# ... RBC model ...
+grad = Zygote.gradient(x -> get_loglikelihood(RBC, data, x), RBC.parameter_values)
+# Result: ([-765.93..., -4.35..., -3007.26..., 2119.31..., 3331.72...],)
+# SUCCESS: Gradient computed correctly (was returning Nothing before fix)
+```
+
+### CI Impact
+
+This fix resolves the test failures at lines 1756 and 1771 of `test/functionality_tests.jl`:
+- `isapprox(::Nothing, ::Nothing)` errors
+- `-Inf` loglikelihood comparison failures
+
+---
+
+## Previous Session (2026-01-27) - Merge Main & Restore Counters
+
+### Summary
+
+Merged `origin/main` into `copilot/add-counters-for-solves`, resolved all merge conflicts, and re-applied the solve counters feature on top of the updated `structures.jl` layout. Counter updates now align with cache-based solution storage from `main`.
+
+### Key Actions
+
+1. Restored `structures.jl` to the `main` layout, added the `SolveCounters` type, and appended a `counters` field to `ℳ`.
+2. Updated `macros.jl` so the model constructor passes `SolveCounters()` in the correct argument position.
+3. Resolved conflicts in `MacroModelling.jl`, `get_functions.jl`, `moments.jl`, `filter/kalman.jl`, and `filter/inversion.jl` to keep cache assignments (`𝓂.caches.qme_solution`, etc.) while calling `update_ss_counter!`/`update_perturbation_counter!` with order and estimation flags.
+4. Preserved the `estimation = true` flag in `get_loglikelihood` while using `constants.post_model_macro` dimensions for Sylvester selection.
+
+### Testing
+
+- Could not run a smoke test because `julia` is not installed in this environment (`bash: julia: command not found`).
+
+### Next Steps
+
+- Install Julia and run a simple RBC solve to confirm counters increment (e.g., `solve!` with `algorithm = :first_order` and inspect `𝓂.counters`).
+- Recheck other pre-existing modified files in `git status` before committing, as many unrelated changes were present prior to this merge.
+
+## Previous Session (2026-01-26) - Struct Naming and Documentation
 
 ### Summary
 

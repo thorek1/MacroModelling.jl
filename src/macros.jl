@@ -946,7 +946,7 @@ macro model(𝓂,ex...)
                             false # functions_written
                         ),
 
-                        # Dict{Vector{Symbol}, timings}() # estimation_helper
+                        SolveCounters()
                     );
     end
 end

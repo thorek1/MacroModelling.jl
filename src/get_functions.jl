@@ -1068,6 +1068,8 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
+    estimation = true
+
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
@@ -1083,7 +1085,7 @@ function get_irf(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
-    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
     
     if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
@@ -1102,6 +1104,8 @@ function get_irf(𝓂::ℳ,
                                                             opts = opts,
                                                             initial_guess = 𝓂.caches.qme_solution)
     
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
     if solved 
         𝓂.caches.qme_solution = qme_sol
     else
@@ -1923,6 +1927,8 @@ function get_solution(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
+    estimation = true
+
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
@@ -1942,12 +1948,12 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
-        if algorithm == :second_order
+        if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm == :third_order
+        elseif algorithm in [:third_order, :pruned_third_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         else
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), false
@@ -1967,24 +1973,28 @@ function get_solution(𝓂::ℳ,
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
     if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
-        if algorithm == :second_order
+        if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm == :third_order
+        elseif algorithm in [:third_order, :pruned_third_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         else
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, false
         end
     end
 
-    if algorithm == :second_order
+    if algorithm in [:second_order, :pruned_second_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                                     opts = opts)
+
+        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
@@ -1995,13 +2005,15 @@ function get_solution(𝓂::ℳ,
         end
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
-    elseif algorithm == :third_order
+    elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                                     opts = opts)
     
+        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
         if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
@@ -2012,12 +2024,14 @@ function get_solution(𝓂::ℳ,
 
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
                 
-	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-	                                                    𝐒₁, 𝐒₂,
-	                                                    𝓂.constants,
-                                                        𝓂.workspaces;
-	                                                    initial_guess = 𝓂.caches.third_order_solution,
-	                                                    opts = opts)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
+                            𝐒₁, 𝐒₂,
+                            𝓂.constants,
+                            𝓂.workspaces;
+                            initial_guess = 𝓂.caches.third_order_solution,
+                            opts = opts)
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
         
@@ -2158,6 +2172,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
+
     if solved 𝓂.caches.qme_solution = qme_sol end
 
     A = @views 𝑺₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[indexin(𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nVars),:]
@@ -2324,6 +2340,8 @@ function get_variance_decomposition(𝓂::ℳ;
                                                         sylv_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
+
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
     
     if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -3583,6 +3601,8 @@ function get_loglikelihood(𝓂::ℳ,
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
+    estimation = true
+
     # if algorithm ∈ [:third_order,:pruned_third_order]
     #     sylvester_algorithm = :bicgstab
     # end
@@ -3615,7 +3635,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts)
+    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = estimation)
                                                                                     # timer = timer,
 
     # end # timeit_debug

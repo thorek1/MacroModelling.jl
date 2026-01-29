@@ -119,7 +119,7 @@ end
 
 
 
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat}
+function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     project_Ŝ = ProjectTo(Ŝ)
 
     function sparse_preallocated_pullback(Ω̄)
@@ -148,7 +148,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -196,7 +196,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
 
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -224,7 +224,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast = 𝓂.workspaces.qme.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -268,7 +268,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.constants.post_model_macro.nPast_not_future_and_mixed))
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -348,7 +348,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
                 opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
+                cold_start::Bool = false,
+                estimation::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -385,8 +386,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # end # timeit_debug
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        # Update failed counter
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
+
+    # Update success counter
+    update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
@@ -463,10 +469,10 @@ end
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
                 constants::constants,
-                qme_ws::qme_workspace{R},
-                sylv_ws::sylvester_workspace{R};
+                qme_ws::qme_workspace{R,S},
+                sylv_ws::sylvester_workspace{R,S};
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -513,7 +519,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     verbose = opts.verbose)
 
     if !solved
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -537,7 +543,7 @@ function rrule(::typeof(calculate_first_order_solution),
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -565,7 +571,7 @@ function rrule(::typeof(calculate_first_order_solution),
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
     
     ℒ.ldiv!(C, ∇̂ₑ)
@@ -714,7 +720,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "Post-process" begin
 
     if !solved
-        return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (𝐒₂, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -777,7 +783,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # @timeit_debug timer "Sylvester" begin
         if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
-            return (𝐒₂, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return (𝐒₂, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
@@ -787,7 +793,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return (𝐒₂, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         # end # timeit_debug
@@ -965,7 +971,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
@@ -1149,7 +1155,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end
 
     if !solved
-        return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (𝐒₃, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     𝐒₃ = choose_matrix_format(𝐒₃, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
@@ -1259,7 +1265,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return (𝐒₃, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0, min_length = 0)
@@ -1734,7 +1740,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         invjac = inv(jacdecomp)
@@ -1747,7 +1753,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     logabsdets *= size(data_in_deviations,2) - presample_periods
 
     if !isfinite(logabsdets) 
-        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
@@ -1761,7 +1767,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         if i > presample_periods
             shocks² += sum(abs2,x[i])
             if !isfinite(shocks²) 
-                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
         end
 
@@ -1772,7 +1778,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
     if llh < -1e12
-        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     ∂𝐒 = zero(𝐒)
@@ -2054,7 +2060,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
 
         # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
@@ -2070,14 +2076,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                         ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
                     catch
                         if opts.verbose println("Inversion filter failed at step $i") end
-                        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
                     end
 
         try
             ℒ.ldiv!(λ[i], jacc_fact, x[i])
         catch
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
 
         ℒ.rmul!(λ[i], 2)
@@ -2106,7 +2112,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
             end
         end
     
@@ -2520,7 +2526,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
         
         ℒ.kron!(kron_buffer2, J, x[i])
@@ -2536,14 +2542,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                         ℒ.factorize(jacct)
                     catch
                         if opts.verbose println("Inversion filter failed at step $i") end
-                        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
                     end
 
         try
             ℒ.ldiv!(λ[i], jacc_fact, x[i])
         catch
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
 
         # ℒ.ldiv!(λ[i], jacc_fact', x[i])
@@ -2574,7 +2580,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2, x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
             end
         end
         
@@ -3046,7 +3052,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end 
         
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
@@ -3076,7 +3082,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
 
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
             end
         end
     
@@ -3569,7 +3575,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
 
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
@@ -3599,7 +3605,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
             end
         end
     
@@ -3879,7 +3885,7 @@ function rrule(::typeof(run_kalman_iterations),
     for t in 2:T
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()) 
         end
 
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
@@ -3894,7 +3900,7 @@ function rrule(::typeof(run_kalman_iterations),
     
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         Fdet = ℒ.det(luF)
@@ -3902,7 +3908,7 @@ function rrule(::typeof(run_kalman_iterations),
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         # invF[t] .= inv(luF)

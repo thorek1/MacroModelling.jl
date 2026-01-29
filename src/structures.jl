@@ -452,7 +452,7 @@ Workspace for the Sylvester equation solver (A * X * B + C = X).
 All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
 Sylvester has two independent dimensions: n (rows of A/C) and m (cols of B/C).
 """
-mutable struct sylvester_workspace{G <: AbstractFloat}
+mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     # Dimensions (stored for reallocation checks)
     n::Int  # rows of A, rows of C
     m::Int  # cols of B, cols of C
@@ -473,6 +473,12 @@ mutable struct sylvester_workspace{G <: AbstractFloat}
     
     # Krylov solver state (lazily allocated)
     krylov_workspace::krylov_workspace{G}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    P̃::Matrix{H}       # For sylvester equation partials
+    Ã_fd::Matrix{H}    # Temporary for ForwardDiff partials of A
+    B̃_fd::Matrix{H}    # Temporary for ForwardDiff partials of B
+    C̃_fd::Matrix{H}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -481,6 +487,8 @@ Pre-allocated workspace matrices for the quadratic matrix equation doubling algo
 All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
 
 Used by `solve_quadratic_matrix_equation` with `Val{:doubling}` in quadratic_matrix_equation.jl.
+Also used by stochastic steady state calculations in `calculate_second_order_stochastic_steady_state`
+and `calculate_third_order_stochastic_steady_state`.
 Avoids per-call allocations for temporary matrices in the iterative doubling algorithm.
 
 Fields:
@@ -490,8 +498,10 @@ Fields:
 - `temp1`, `temp2`, `temp3`: Temporary matrices for intermediate computations
 - `B̄`: Copy of B for LU factorization (modified in-place)
 - `AXX`: Temporary for residual computation (A * X² + B * X + C)
+- `I_n`: Pre-computed identity matrix for QME doubling (UniformScaling)
+- `I_nPast`: Pre-computed identity matrix for stochastic steady state (UniformScaling)
 """
-mutable struct qme_workspace{T <: Real}
+mutable struct qme_workspace{T <: Real, R <: Real}
     # Doubling algorithm working matrices
     E::Matrix{T}
     F::Matrix{T}
@@ -514,7 +524,17 @@ mutable struct qme_workspace{T <: Real}
     AXX::Matrix{T}
     
     # Sylvester workspace for ForwardDiff path
-    sylvester_ws::sylvester_workspace{T}
+    sylvester_ws::sylvester_workspace{T, R}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    X̃::Matrix{R}               # For QME solution partials
+    X̃_first_order::Matrix{R}   # For first order solution partials
+    p_tmp::Matrix{R}            # For calculate_first_order_solution
+    ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
+    
+    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
+    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
+    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}   # Identity for schur & stochastic steady state (dimension nPast_not_future_and_mixed)
 end
 
 
@@ -540,7 +560,7 @@ Fields for Krylov methods (bicgstab, gmres):
 
 All buffer fields are initialized to 0-dimensional objects and lazily resized on first use.
 """
-mutable struct lyapunov_workspace{T <: Real}
+mutable struct lyapunov_workspace{T <: Real, R <: Real}
     # Dimension (stored for reallocation checks)
     n::Int
     
@@ -559,6 +579,11 @@ mutable struct lyapunov_workspace{T <: Real}
     # Krylov solver state (lazily allocated, can be reused across calls)
     bicgstab_workspace::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
+    
+    # ForwardDiff partials buffers (for forward-mode AD)
+    P̃::Matrix{R}       # For lyapunov equation partials
+    Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
+    C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
 end
 
 
@@ -801,7 +826,7 @@ mutable struct kalman_workspace{T <: Real}
 end
 
 
-mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
+mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
     tmpkron11::SparseMatrixCSC{F, Int}
@@ -815,7 +840,7 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
-    sylvester_workspace::sylvester_workspace{G}
+    sylvester_workspace::sylvester_workspace{G, H}
     # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
     # Second order pullback buffers
     ∂∇₂::Matrix{F}
@@ -829,19 +854,9 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat}
     ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
-    # ForwardDiff partials buffers (for forward-mode AD)
-    ∂x_second_order::Matrix{F}     # For second order SSS partials
-    ∂x_third_order::Matrix{F}      # For third order SSS partials
-    ∂SS_and_pars::Matrix{F}        # For NSSS partials
-    X̃_first_order::Matrix{F}       # For first order solution partials
-    X̃_qme::Matrix{F}               # For QME solution partials
-    P̃_sylvester::Matrix{F}         # For sylvester equation partials
-    P̃_lyapunov::Matrix{F}          # For lyapunov equation partials
-    # Temporary matrices for sylvester/lyapunov (to avoid copy allocations)
-    Ã_tmp::Matrix{F}
-    B̃_tmp::Matrix{F}
-    C̃_tmp::Matrix{F}
-    p_tmp::Matrix{F}               # For calculate_first_order_solution
+    # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
+    ∂x_second_order::Matrix{H}     # For second order SSS partials
+    ∂x_third_order::Matrix{H}      # For third order SSS partials
 end
 
 
@@ -876,11 +891,11 @@ mutable struct workspaces
     # Steady state buffer
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
-    qme::qme_workspace{Float64}                 # Quadratic matrix equation (1st order)
-    lyapunov_1st_order::lyapunov_workspace{Float64}  # Covariance (1st order moments)
-    lyapunov_2nd_order::lyapunov_workspace{Float64}  # Covariance (2nd order moments)
-    lyapunov_3rd_order::lyapunov_workspace{Float64}  # Covariance (3rd order moments)
-    sylvester_1st_order::sylvester_workspace{Float64} # Sylvester equation
+    qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
+    lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
+    lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
+    lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
+    sylvester_1st_order::sylvester_workspace{Float64, Float64} # Sylvester equation
     # Filter workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter
@@ -1008,6 +1023,41 @@ mutable struct solver_parameters
 end
 
 """
+Counters for steady state and perturbation solves.
+
+Each counter tracks total attempts and failed attempts, with separate tallies
+for estimation routines. Perturbation counters are split by order (1, 2, 3).
+"""
+mutable struct SolveCounters
+    # Steady state solve counters (total = all attempts, failed = only failures)
+    ss_solves_total::Int
+    ss_solves_failed::Int
+    ss_solves_total_estimation::Int
+    ss_solves_failed_estimation::Int
+    
+    # First order perturbation solve counters
+    first_order_solves_total::Int
+    first_order_solves_failed::Int
+    first_order_solves_total_estimation::Int
+    first_order_solves_failed_estimation::Int
+    
+    # Second order perturbation solve counters
+    second_order_solves_total::Int
+    second_order_solves_failed::Int
+    second_order_solves_total_estimation::Int
+    second_order_solves_failed_estimation::Int
+    
+    # Third order perturbation solve counters
+    third_order_solves_total::Int
+    third_order_solves_failed::Int
+    third_order_solves_total_estimation::Int
+    third_order_solves_failed_estimation::Int
+end
+
+# Constructor with default values
+SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+"""
 The main model struct containing all model data, organized into four categories:
 
 1. **User-facing data**:
@@ -1066,4 +1116,6 @@ mutable struct ℳ
     constants::constants                      # Model structure (never changes after init)
     workspaces::workspaces                    # Temporary buffers (reused, no state)
     functions::model_functions                # Compiled model functions
+
+    counters::SolveCounters                   # Solve counters (steady state and perturbation)
 end

@@ -143,6 +143,13 @@ if test_set == "plots_2"
 
     include("models/Caldara_et_al_2012_estim.jl")
 
+    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
+        include("../models/Smets_Wouters_2007.jl")
+        functionality_test(Smets_Wouters_2007, Caldara_et_al_2012_estim, plots = plots)
+    end
+    Smets_Wouters_2007 = nothing
+    GC.gc()
+
     @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
         include("../models/Smets_Wouters_2003.jl")
         functionality_test(Smets_Wouters_2003, Caldara_et_al_2012_estim, plots = plots)
@@ -155,13 +162,6 @@ if test_set == "plots_2"
         functionality_test(Smets_Wouters_2007_linear, Caldara_et_al_2012_estim, plots = plots)
     end
     Smets_Wouters_2007_linear = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
-        include("../models/Smets_Wouters_2007.jl")
-        functionality_test(Smets_Wouters_2007, Caldara_et_al_2012_estim, plots = plots)
-    end
-    Smets_Wouters_2007 = nothing
     GC.gc()
 end
 
@@ -796,6 +796,11 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
+
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
@@ -1162,11 +1167,6 @@ if test_set == "basic"
         @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
 
         RBC_CME = nothing
-    end
-    GC.gc()
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
     end
     GC.gc()
 

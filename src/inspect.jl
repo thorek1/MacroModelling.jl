@@ -243,6 +243,57 @@ end
 
 """
 $(SIGNATURES)
+Return the solve counters struct for the model.
+
+# Arguments
+- $MODEL®
+"""
+function get_solution_counts(𝓂::ℳ)::SolveCounters
+    return 𝓂.counters
+end
+
+"""
+$(SIGNATURES)
+Print the solve counters for the model in a human-readable format.
+
+# Arguments
+- $MODEL®
+"""
+function print_solution_counts(𝓂::ℳ)::Nothing
+    counts = get_solution_counts(𝓂)
+
+    println("Solve counters",
+            "\n Steady state",
+            "\n  Total:      ", counts.ss_solves_total,
+            "\n  Failed:     ", counts.ss_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.ss_solves_total_estimation,
+            "\n   Failed:    ", counts.ss_solves_failed_estimation,
+            "\n First order",
+            "\n  Total:      ", counts.first_order_solves_total,
+            "\n  Failed:     ", counts.first_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.first_order_solves_total_estimation,
+            "\n   Failed:    ", counts.first_order_solves_failed_estimation,
+            "\n Second order",
+            "\n  Total:      ", counts.second_order_solves_total,
+            "\n  Failed:     ", counts.second_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.second_order_solves_total_estimation,
+            "\n   Failed:    ", counts.second_order_solves_failed_estimation,
+            "\n Third order",
+            "\n  Total:      ", counts.third_order_solves_total,
+            "\n  Failed:     ", counts.third_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.third_order_solves_total_estimation,
+            "\n   Failed:    ", counts.third_order_solves_failed_estimation)
+
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
 Return the calibration equations declared in the `@parameters` block. Calibration equations are additional equations which are part of the non-stochastic steady state problem. The additional equation is matched with a calibated parameter which is part of the equations declared in the `@model` block and can be retrieved with: `get_calibrated_parameters`
 
 In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in example).

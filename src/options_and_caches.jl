@@ -137,7 +137,7 @@ function Krylov_workspace(;S::Type = Float64)
                     BicgstabWorkspace(0,0,Vector{S}))
 end
 
-function Sylvester_workspace(;S::Type = Float64)
+function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
     sylvester_workspace(
         0, 0,                   # n, m dimensions
         zeros(S,0,0),           # tmp (Krylov)
@@ -150,7 +150,12 @@ function Sylvester_workspace(;S::Type = Float64)
         zeros(S,0,0),           # 𝐂_dbl (doubling)
         zeros(S,0,0),           # 𝐂¹ (doubling)
         zeros(S,0,0),           # 𝐂B (doubling)
-        Krylov_workspace(S = S))
+        Krylov_workspace(S = S),
+        # ForwardDiff partials buffers
+        zeros(T,0,0),           # P̃
+        zeros(T,0,0),           # Ã_fd
+        zeros(T,0,0),           # B̃_fd
+        zeros(T,0,0))           # C̃_fd
 end
 
 """
@@ -196,19 +201,9 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂∇₁_3rd
                         zeros(T,0,0),  # ∂𝐒₁_3rd
                         zeros(T,0,0),  # ∂spinv_3rd
-                        # ForwardDiff partials buffers (for forward-mode AD)
-                        zeros(T,0,0),  # ∂x_second_order
-                        zeros(T,0,0),  # ∂x_third_order
-                        zeros(T,0,0),  # ∂SS_and_pars
-                        zeros(T,0,0),  # X̃_first_order
-                        zeros(T,0,0),  # X̃_qme
-                        zeros(T,0,0),  # P̃_sylvester
-                        zeros(T,0,0),  # P̃_lyapunov
-                        # Temporary matrices for sylvester/lyapunov
-                        zeros(T,0,0),  # Ã_tmp
-                        zeros(T,0,0),  # B̃_tmp
-                        zeros(T,0,0),  # C̃_tmp
-                        zeros(T,0,0))  # p_tmp
+                        # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
+                        zeros(S,0,0),  # ∂x_second_order
+                        zeros(S,0,0))  # ∂x_third_order
 end
 
 """
@@ -217,7 +212,7 @@ end
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_workspace(n::Int; T::Type = Float64)
+function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
     qme_workspace(  zeros(T, n, n),  # E
                     zeros(T, n, n),  # F
                     zeros(T, n, n),  # X
@@ -231,7 +226,15 @@ function Qme_workspace(n::Int; T::Type = Float64)
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
-                    Sylvester_workspace(S = T))  # sylvester_ws
+                    Sylvester_workspace(S = T),  # sylvester_ws
+                    # ForwardDiff partials buffers
+                    zeros(S, 0, 0),  # X̃
+                    zeros(S, 0, 0),  # X̃_first_order
+                    zeros(S, 0, 0),  # p_tmp
+                    zeros(S, 0, 0),  # ∂SS_and_pars
+                    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
+                    ℒ.I(n),             # I_n
+                    ℒ.I(nPast))         # I_nPast
 end
 
 """
@@ -242,7 +245,7 @@ Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
 Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
 """
 function Lyapunov_workspace(n::Int; T::Type = Float64)
-    lyapunov_workspace{T}(
+    lyapunov_workspace{T, T}(
         n,                      # dimension
         zeros(T, 0, 0),         # 𝐂 (doubling)
         zeros(T, 0, 0),         # 𝐂¹ (doubling)
@@ -253,7 +256,11 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0, 0),         # 𝐗 (Krylov)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20)  # gmres_workspace
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
+        # ForwardDiff partials buffers
+        zeros(T, 0, 0),         # P̃
+        zeros(T, 0, 0),         # Ã_fd
+        zeros(T, 0, 0)          # C̃_fd
     )
 end
 
@@ -1189,13 +1196,15 @@ If the workspace is the wrong size, it will be reallocated.
 function ensure_qme_workspace!(𝓂)
     T = 𝓂.constants.post_model_macro
     n = T.nVars - T.nPresent_only
-    return ensure_qme_workspace!(𝓂.workspaces, n)
+    nPast = T.nPast_not_future_and_mixed
+    return ensure_qme_workspace!(𝓂.workspaces, n, nPast)
 end
 
-function ensure_qme_workspace!(workspaces::workspaces, n::Int)
+function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
     ws = workspaces.qme
-    if size(ws.E, 1) != n
-        workspaces.qme = Qme_workspace(n)
+    # Check if workspace needs to be resized (either n or nPast changed)
+    if size(ws.E, 1) != n || size(ws.I_nPast, 1) != nPast
+        workspaces.qme = Qme_workspace(n, nPast = nPast)
     end
     return workspaces.qme
 end
