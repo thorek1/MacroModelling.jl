@@ -455,6 +455,73 @@ function check_for_dynamic_variables(ex::Expr)
     any(dynamic_indicator)
 end
 
+function normalize_filtering_options(filter::Symbol,
+                                      smooth::Bool,
+                                      algorithm::Symbol,
+                                      shock_decomposition::Bool,
+                                      warmup_iterations::Int;
+                                      maxlog::Int = DEFAULT_MAXLOG)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
+
+    if shock_decomposition && algorithm ∈ (:second_order, :third_order)
+        @info "Shock decomposition is not available for $(algorithm) solutions, but is available for first order, pruned second order, and pruned third order solutions. Setting `shock_decomposition = false`." maxlog = maxlog
+        shock_decomposition = false
+    end
+
+    if algorithm != :first_order && filter != :inversion
+        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion`." maxlog = maxlog
+        filter = :inversion
+    end
+
+    if filter != :kalman && smooth
+        @info "Only the Kalman filter supports smoothing. Setting `smooth = false`." maxlog = maxlog
+        smooth = false
+    end
+
+    if warmup_iterations > 0
+        if filter == :kalman
+            @info "`warmup_iterations` is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            warmup_iterations = 0
+        elseif algorithm != :first_order
+            @info "Warmup iterations are currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            warmup_iterations = 0
+        end
+    end
+
+    return filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations
+end
+
+
+function adjust_generalised_irf_flag(generalised_irf::Bool,
+                                    generalised_irf_warmup_iterations::Int,
+                                    generalised_irf_draws::Int,
+                                    algorithm::Symbol,
+                                    occasionally_binding_constraints::Bool,
+                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}};
+                                    maxlog::Int = DEFAULT_MAXLOG)
+    if generalised_irf
+        if algorithm == :first_order && !occasionally_binding_constraints
+            @info "Generalised IRFs coincide with normal IRFs for first-order solutions of models without/inactive occasionally binding constraints (OBC). Use `ignore_obc = false` for models with OBCs or a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
+            generalised_irf = false
+        elseif shocks == :none
+            @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
+            generalised_irf = false
+        end
+    end
+
+    if !generalised_irf
+        if generalised_irf_warmup_iterations != 100
+        @info "`generalised_irf_warmup_iterations` is ignored because `generalised_irf = false`." maxlog = maxlog
+        elseif generalised_irf_draws != 50
+            @info "`generalised_irf_draws` is ignored because `generalised_irf = false`." maxlog = maxlog
+        end
+    end
+
+    return generalised_irf
+end
+
 end # dispatch_doctor
 
 function transform_expression(expr::Expr)
@@ -524,77 +591,6 @@ function transform_expression(expr::Expr)
     
     return transformed_expr, reverse_transformations
 end
-
-@stable default_mode = "disable" begin
-
-function normalize_filtering_options(filter::Symbol,
-                                      smooth::Bool,
-                                      algorithm::Symbol,
-                                      shock_decomposition::Bool,
-                                      warmup_iterations::Int;
-                                      maxlog::Int = DEFAULT_MAXLOG)
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
-
-    if shock_decomposition && algorithm ∈ (:second_order, :third_order)
-        @info "Shock decomposition is not available for $(algorithm) solutions, but is available for first order, pruned second order, and pruned third order solutions. Setting `shock_decomposition = false`." maxlog = maxlog
-        shock_decomposition = false
-    end
-
-    if algorithm != :first_order && filter != :inversion
-        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion`." maxlog = maxlog
-        filter = :inversion
-    end
-
-    if filter != :kalman && smooth
-        @info "Only the Kalman filter supports smoothing. Setting `smooth = false`." maxlog = maxlog
-        smooth = false
-    end
-
-    if warmup_iterations > 0
-        if filter == :kalman
-            @info "`warmup_iterations` is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
-            warmup_iterations = 0
-        elseif algorithm != :first_order
-            @info "Warmup iterations are currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
-            warmup_iterations = 0
-        end
-    end
-
-    return filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations
-end
-
-
-function adjust_generalised_irf_flag(generalised_irf::Bool,
-                                    generalised_irf_warmup_iterations::Int,
-                                    generalised_irf_draws::Int,
-                                    algorithm::Symbol,
-                                    occasionally_binding_constraints::Bool,
-                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}};
-                                    maxlog::Int = DEFAULT_MAXLOG)
-    if generalised_irf
-        if algorithm == :first_order && !occasionally_binding_constraints
-            @info "Generalised IRFs coincide with normal IRFs for first-order solutions of models without/inactive occasionally binding constraints (OBC). Use `ignore_obc = false` for models with OBCs or a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
-            generalised_irf = false
-        elseif shocks == :none
-            @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
-            generalised_irf = false
-        end
-    end
-
-    if !generalised_irf
-        if generalised_irf_warmup_iterations != 100
-        @info "`generalised_irf_warmup_iterations` is ignored because `generalised_irf = false`." maxlog = maxlog
-        elseif generalised_irf_draws != 50
-            @info "`generalised_irf_draws` is ignored because `generalised_irf = false`." maxlog = maxlog
-        end
-    end
-
-    return generalised_irf
-end
-
-end # dispatch_doctor
 
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
@@ -3080,42 +3076,6 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-end # dispatch_doctor
-
-function evaluate_conditions(cond)
-    if cond isa Bool
-        return cond
-    elseif cond isa Expr && cond.head == :call 
-        a, b = cond.args[2], cond.args[3]
-
-        if typeof(a) ∉ [Symbol, Number]
-            a = eval(a)
-        end
-
-        if typeof(b) ∉ [Symbol, Number]
-            b = eval(b)
-        end
-        
-        if cond.args[1] == :(==)
-            return a == b
-        elseif cond.args[1] == :(!=)
-            return a != b
-        elseif cond.args[1] == :(<)
-            return a < b
-        elseif cond.args[1] == :(<=)
-            return a <= b
-        elseif cond.args[1] == :(>)
-            return a > b
-        elseif cond.args[1] == :(>=)
-            return a >= b
-        end
-        # end
-    end
-    return nothing
-end
-
-@stable default_mode = "disable" begin
-
 function resolve_if_expr(ex::Expr)
     prewalk(ex) do node
         if node isa Expr && (node.head === :if || node.head === :elseif)
@@ -3163,6 +3123,38 @@ end
 # end
 
 end # dispatch_doctor
+
+function evaluate_conditions(cond)
+    if cond isa Bool
+        return cond
+    elseif cond isa Expr && cond.head == :call 
+        a, b = cond.args[2], cond.args[3]
+
+        if typeof(a) ∉ [Symbol, Number]
+            a = eval(a)
+        end
+
+        if typeof(b) ∉ [Symbol, Number]
+            b = eval(b)
+        end
+        
+        if cond.args[1] == :(==)
+            return a == b
+        elseif cond.args[1] == :(!=)
+            return a != b
+        elseif cond.args[1] == :(<)
+            return a < b
+        elseif cond.args[1] == :(<=)
+            return a <= b
+        elseif cond.args[1] == :(>)
+            return a > b
+        elseif cond.args[1] == :(>=)
+            return a >= b
+        end
+        # end
+    end
+    return nothing
+end
 
 function contains_equation(expr)
     found = false
