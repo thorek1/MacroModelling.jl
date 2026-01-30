@@ -749,6 +749,12 @@ macro model(𝓂,ex...)
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
+    # Precompute index for first order solution
+    past_not_future_and_mixed_in_present_but_not_only_idx = indexin(past_not_future_and_mixed_idx, present_but_not_only_idx)
+
+    # Precompute sorted union for observable indexing
+    aux_var_exo_present_sorted = sort(union(aux, var, exo_present))
+
     T = post_model_macro(
                 max_obc_horizon,
                 # present_only,
@@ -794,6 +800,7 @@ macro model(𝓂,ex...)
                 mixed_in_past_idx,
                 mixed_in_future_idx,
                 past_not_future_idx,
+                past_not_future_and_mixed_in_present_but_not_only_idx,
 
                 reorder,
                 dynamic_order,
@@ -816,7 +823,8 @@ macro model(𝓂,ex...)
                 var_future_list_aux_SS,
                 var_present_list_aux_SS,
                 var_past_list_aux_SS,
-                ss_equations_with_aux_variables)
+                ss_equations_with_aux_variables,
+                aux_var_exo_present_sorted)
 
     ℂ = Constants(T)
 

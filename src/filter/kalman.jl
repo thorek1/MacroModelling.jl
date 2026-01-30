@@ -43,7 +43,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,T.aux_var_exo_present_sorted))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
@@ -61,7 +61,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,T.aux_var_exo_present_sorted))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 

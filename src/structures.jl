@@ -157,6 +157,7 @@ struct post_model_macro
     mixed_in_past_idx::Vector{Int}
     mixed_in_future_idx::Vector{Int}
     past_not_future_idx::Vector{Int}
+    past_not_future_and_mixed_in_present_but_not_only_idx::Vector{Int}
     reorder::Vector{Int}
     dynamic_order::Vector{Int}
     vars_in_ss_equations::Vector{Symbol}
@@ -179,6 +180,7 @@ struct post_model_macro
     var_present_list_aux_SS::Vector{Set{Symbol}}
     var_past_list_aux_SS::Vector{Set{Symbol}}
     ss_equations_with_aux_variables::Vector{Int}
+    aux_var_exo_present_sorted::Vector{Symbol}
 end
 
 struct symbolics

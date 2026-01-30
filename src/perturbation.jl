@@ -63,7 +63,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = @view sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+    L = @view sol[T.past_not_future_and_mixed_in_present_but_not_only_idx, past_not_future_and_mixed_in_comb]
 
     Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = @view A₊[1:T.nPresent_only,:]

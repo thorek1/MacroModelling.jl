@@ -1714,7 +1714,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    obs_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    obs_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     t⁻ = T.past_not_future_and_mixed_idx
 
@@ -1915,7 +1915,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -2387,7 +2387,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -2850,7 +2850,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -3403,7 +3403,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
