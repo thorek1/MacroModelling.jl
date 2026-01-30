@@ -641,7 +641,9 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Set{Symbol}[],
                 # Set{Symbol}[],
                 # Set{Symbol}[],
-                Dict{Symbol,Tuple{Float64,Float64}}()
+                Dict{Symbol,Tuple{Float64,Float64}}(),
+                :ESCH,
+                120.0
                 ),
             post_complete_parameters{Symbol}(
                 Symbol[],

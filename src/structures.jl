@@ -917,6 +917,8 @@ struct post_parameters_macro
     # ss_no_var_calib_list::Vector{Set{Symbol}}
     # par_no_var_calib_list::Vector{Set{Symbol}}
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
+    ss_solver_parameters_algorithm::Symbol
+    ss_solver_parameters_maxtime::Float64
 end
 
 struct post_complete_parameters{S <: Union{Symbol, String}}

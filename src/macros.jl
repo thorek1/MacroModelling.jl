@@ -311,6 +311,8 @@ macro parameters(𝓂,ex...)
             # parsed_parameters.ss_no_var_calib_list,
             # parsed_parameters.par_no_var_calib_list,
             parsed_parameters.bounds,
+            $(QuoteNode(ss_solver_parameters_algorithm)),
+            $ss_solver_parameters_maxtime,
         )
 
         # Update equations struct with calibration fields
