@@ -796,6 +796,11 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset verbose = true "Test equation filtering" begin
+        include("test_filter_equations.jl")
+    end
+    GC.gc()
+
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
     end

@@ -344,7 +344,8 @@ function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Noth
     equations = replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
     filter === nothing && return equations
     
-    sym, pattern = parse_filter_term(filter)
+    pattern = nothing
+    sym, _ = parse_filter_term(filter)
     return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, pattern)]
 end
 
