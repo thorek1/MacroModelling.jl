@@ -256,7 +256,7 @@ function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing}
     filter === nothing && return equations
     
     # Transform internal expressions to user-friendly format for matching
-    transformed_exprs = [Meta.parse(replace(string(expr), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")) for expr in 𝓂.equations.dynamic]
+    transformed_exprs = [Meta.parse(replace(string(expr), "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")) for expr in 𝓂.equations.dynamic]
     
     # Parse filter term (uses user-friendly format with [-1], [0], etc.)
     sym, pattern = parse_filter_term(filter)
