@@ -178,8 +178,19 @@ get_steady_state_equations(RBC)
  "Δk_4q - 0"
 ```
 """
-function get_steady_state_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.equations.steady_state_aux), "◖" => "{", "◗" => "}")
+function get_steady_state_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.steady_state_aux), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+    
+    sym, pattern = parse_filter_term(filter)
+    
+    # Warn if time subscript provided
+    if pattern !== nothing
+        @info "Time subscript in filter will be ignored for steady state equations. Equations containing the variable '$(sym)' will be returned regardless of timing."
+    end
+    
+    # Always ignore timing for steady state equations (no time subscripts in SS)
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.steady_state_aux) if expr_contains(expr, sym, nothing)]
 end
 
 
@@ -239,8 +250,18 @@ get_dynamic_equations(RBC)
  "Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1]))"
 ```
 """
-function get_dynamic_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.equations.dynamic), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
+function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    # Transform equations to user-friendly format
+    equations = replace.(string.(𝓂.equations.dynamic), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
+    filter === nothing && return equations
+    
+    # Transform internal expressions to user-friendly format for matching
+    transformed_exprs = [Meta.parse(replace(string(expr), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")) for expr in 𝓂.equations.dynamic]
+    
+    # Parse filter term (uses user-friendly format with [-1], [0], etc.)
+    sym, pattern = parse_filter_term(filter)
+    
+    return [eq for (eq, expr) in zip(equations, transformed_exprs) if expr_contains(expr, sym, pattern)]
 end
 
 
@@ -343,10 +364,19 @@ get_calibration_equations(RBC)
 function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
     equations = replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
     filter === nothing && return equations
+
+    sym, pattern = parse_filter_term(filter)
     
-    pattern = nothing
-    sym, _ = parse_filter_term(filter)
-    return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, pattern)]
+    # Warn if time subscript provided (other than [ss] which is valid for calibration)
+    if pattern !== nothing
+        pattern_str = string(pattern)
+        if !occursin("[ss]", pattern_str)
+            @info "Time subscript in filter will be ignored for calibration equations. Equations containing the variable '$(sym)' will be returned regardless of timing."
+        end
+    end
+    
+    # Always ignore timing for calibration equations
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, nothing)]
 end
 
 
