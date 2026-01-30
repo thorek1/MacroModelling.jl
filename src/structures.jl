@@ -1121,8 +1121,6 @@ mutable struct ℳ
     functions::model_functions                # Compiled model functions
 
     counters::SolveCounters                   # Solve counters (steady state and perturbation)
-    
-    estimation_helper::Dict{Vector{Symbol}, timings}  # Helper dict for estimation
 
     revision_history::Vector{RevisionEntry}   # History of equation modifications
 end
