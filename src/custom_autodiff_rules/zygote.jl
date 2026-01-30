@@ -470,7 +470,8 @@ function rrule(::typeof(calculate_first_order_solution),
                 ∇₁::Matrix{R},
                 constants::constants,
                 qme_ws::qme_workspace{R,S},
-                sylv_ws::sylvester_workspace{R,S};
+                sylv_ws::sylvester_workspace{R,S},
+                first_order_ws::first_order_workspace{R};
                 opts::CalculationOptions = merge_calculation_options(),
                 initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
@@ -519,7 +520,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     verbose = opts.verbose)
 
     if !solved
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -543,7 +544,7 @@ function rrule(::typeof(calculate_first_order_solution),
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -571,7 +572,7 @@ function rrule(::typeof(calculate_first_order_solution),
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
     
     ℒ.ldiv!(C, ∇̂ₑ)
@@ -610,14 +611,14 @@ function rrule(::typeof(calculate_first_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,idx_constants.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
         ∂∇₁[:,idx_constants.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
-        return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback

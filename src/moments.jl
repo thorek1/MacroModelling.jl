@@ -19,11 +19,13 @@ function calculate_covariance(parameters::Vector{R},
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws;
+                                                            sylv_ws,
+                                                            first_order_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
@@ -82,11 +84,13 @@ function calculate_mean(parameters::Vector{R},
         # Ensure QME workspace
         qme_ws = ensure_qme_workspace!(𝓂)
         sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+        first_order_ws = ensure_first_order_solution_workspace!(𝓂)
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws;
+                                                            sylv_ws,
+                                                            first_order_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
         

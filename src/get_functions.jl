@@ -1096,11 +1096,13 @@ function get_irf(𝓂::ℳ,
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws;
+                                                            sylv_ws,
+                                                            first_order_ws;
                                                             opts = opts,
                                                             initial_guess = 𝓂.caches.qme_solution)
     
@@ -1965,11 +1967,13 @@ function get_solution(𝓂::ℳ,
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2164,11 +2168,13 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2333,11 +2339,13 @@ function get_variance_decomposition(𝓂::ℳ;
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
 
@@ -3629,9 +3637,9 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
+    # NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
 
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
+    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.NSSS_labels))
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 

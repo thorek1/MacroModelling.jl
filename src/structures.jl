@@ -828,6 +828,52 @@ mutable struct kalman_workspace{T <: Real}
 end
 
 
+"""
+Workspace for first-order perturbation solution computations.
+Contains pre-allocated buffers for QR decomposition products and matrix reorderings.
+Buffers are lazily allocated and resized as needed via ensure_first_order_workspace!.
+
+Used by `calculate_first_order_solution` in perturbation.jl.
+"""
+mutable struct first_order_workspace{T <: Real}
+    # Dimensions (for reallocation checks)
+    n_eqns::Int             # nVars (number of equations)
+    n_future::Int           # nFuture_not_past_and_mixed
+    n_vars::Int             # nVars
+    n_past::Int             # nPast_not_future_and_mixed  
+    n_exo::Int              # nExo
+    n_dyn::Int              # nVars - nPresent_only
+    n_comb::Int             # length(comb) = length(union(future_not_past_and_mixed_idx, past_not_future_idx))
+    n_present_only::Int     # nPresent_only
+    
+    # QR decomposition products: A = Q.Q' * ∇
+    A₊::Matrix{T}           # n_eqns × n_future
+    A₀::Matrix{T}           # n_eqns × n_vars  
+    A₋::Matrix{T}           # n_eqns × n_past
+    
+    # Sorted matrices for QME: Ã = A[dynIndex,:] * Ir[...]
+    Ã₊::Matrix{T}           # n_dyn × n_comb
+    Ã₀::Matrix{T}           # n_dyn × n_comb
+    Ã₋::Matrix{T}           # n_dyn × n_comb
+    
+    # Temporary for A₊[dynIndex,:] before multiplication with Ir
+    A₊_dyn::Matrix{T}       # n_dyn × n_future
+    A₋_dyn::Matrix{T}       # n_dyn × n_past
+    
+    # Combined output: vcat(A₋ᵤ, sol_compact)
+    A_vcat::Matrix{T}       # n_vars × n_past (before reorder)
+    
+    # Final result: hcat(A, ∇ₑ)
+    result::Matrix{T}       # n_vars × (n_past + n_exo)
+    
+    # M = A[future_not_past_and_mixed_idx,:] * expand_past
+    M::Matrix{T}            # n_future × n_vars
+    
+    # nₚ₋ = A₊ᵤ * D (temporary)
+    nₚ₋::Matrix{T}          # nPresent_only × n_past
+end
+
+
 mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
@@ -902,6 +948,8 @@ mutable struct workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter
     kalman::kalman_workspace{Float64}            # Kalman filter
+    # First-order perturbation solution workspace
+    first_order::first_order_workspace{Float64}  # First order solution buffers
 end
 
 
@@ -935,7 +983,7 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     # exo_has_curly::Bool
     SS_and_pars_names::Vector{Symbol}
     # all_variables::Vector{Symbol}
-    # NSSS_labels::Vector{Symbol}
+    NSSS_labels::Vector{Symbol}
     # aux_indices::Vector{Int}
     # processed_all_variables::Vector{Symbol}
     full_NSSS_display::Vector{S}

@@ -6356,11 +6356,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
 
@@ -6549,11 +6551,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -6864,11 +6868,13 @@ function solve!(𝓂::ℳ;
 
             qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
             sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+            first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
             
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 qme_ws,
-                                                                sylv_ws;
+                                                                sylv_ws,
+                                                                first_order_ws;
                                                                 opts = opts,
                                                                 initial_guess = 𝓂.caches.qme_solution)
     
@@ -6894,7 +6900,8 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
                                                                     qme_ws,
-                                                                    sylv_ws;
+                                                                    sylv_ws,
+                                                                    first_order_ws;
                                                                     opts = opts,
                                                                     initial_guess = 𝓂.caches.qme_solution)
                 if solved 𝓂.caches.qme_solution = qme_sol end
@@ -9957,11 +9964,13 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
