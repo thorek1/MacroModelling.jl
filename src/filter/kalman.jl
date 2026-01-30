@@ -162,12 +162,12 @@ function run_kalman_iterations(A::Matrix{S},
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
-        if !all(isfinite.(z)) 
+        if any(x -> !isfinite(x), z)
             if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood 
+            return on_failure_loglikelihood
         end
 
-        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)
         # v = data_in_deviations[:, t] - z
 
         ℒ.mul!(Ctmp, C, P) # use Octavian.jl

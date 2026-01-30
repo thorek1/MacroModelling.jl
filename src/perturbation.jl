@@ -59,16 +59,16 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Postprocessing" begin
     # @timeit_debug timer "Setup matrices" begin
 
-    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+    sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
     D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+    L = @view sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
@@ -82,7 +82,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
         nₚ₋ =  A₊ᵤ * D
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
@@ -97,7 +97,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     M = A[T.future_not_past_and_mixed_idx,:] * idx_constants.expand_past
 
-    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
 
     C = ℒ.lu!(∇₀, check = false)
     

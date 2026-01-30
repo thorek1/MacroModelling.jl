@@ -1237,19 +1237,19 @@ Note: buffers are still lazily allocated when algorithms are actually used.
 function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbol)
     if order == :first_order
         ws = workspaces.lyapunov_1st_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_1st_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_1st_order
     elseif order == :second_order
         ws = workspaces.lyapunov_2nd_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_2nd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_2nd_order
     elseif order == :third_order
         ws = workspaces.lyapunov_3rd_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_3rd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_3rd_order
