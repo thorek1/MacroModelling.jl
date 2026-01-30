@@ -28,6 +28,83 @@ like `[0]` (present), `[1]` (future), `[-1]` (past), and `[x]` (shock).
   using MacroModelling
   ```
 
+## Revise-Based Development Workflow (REQUIRED)
+
+**ALWAYS use Revise.jl for interactive development.** This allows hot-reloading of code changes without restarting Julia.
+
+### Setup
+
+1. Start Julia REPL with multi-threading:
+   ```bash
+   cd /path/to/MacroModelling.jl
+   julia -t auto --project=.
+   ```
+
+2. Load Revise FIRST, then MacroModelling:
+   ```julia
+   using Revise
+   using MacroModelling
+   ```
+
+3. Define a test model:
+   ```julia
+   @model RBC begin
+       1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+       c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+       q[0] = exp(z[0]) * k[-1]^α
+       z[0] = ρ * z[-1] + std_z * eps_z[x]
+   end
+
+   @parameters RBC begin
+       std_z = 0.01
+       ρ = 0.2
+       δ = 0.02
+       α = 0.5
+       β = 0.95
+   end
+   ```
+
+### Workflow
+
+1. **Keep the Julia REPL running** - do not restart it between edits
+2. **Edit source files** in `src/` using your editor
+3. **Revise automatically detects changes** and recompiles affected functions
+4. **Test your changes** immediately in the same REPL session
+5. **Iterate** - make more edits, test again, without restarting
+
+### Example
+
+```julia
+# First call (before editing)
+julia> get_equations(RBC)
+4-element Vector{String}:
+ "1 / c[0] = ..."
+ ...
+
+# Edit src/inspect.jl to add: println("Debug: get_equations called")
+# Revise detects the change automatically
+
+# Second call (after editing) - no restart needed!
+julia> get_equations(RBC)
+Debug: get_equations called
+4-element Vector{String}:
+ "1 / c[0] = ..."
+ ...
+```
+
+### Benefits
+
+- **No precompilation wait** after each change
+- **Preserves model state** - no need to re-define models
+- **Fast iteration** - edit, test, repeat in seconds
+- **Essential for debugging** - add print statements, test, remove them
+
+### Important Notes
+
+- Revise must be loaded BEFORE MacroModelling
+- Structural changes (new types, module reorganization) may require restart
+- If Revise misses a change, run `Revise.revise()` manually
+
 ## Tests
 
 Before running tests, activate the test environment and instantiate dependencies:

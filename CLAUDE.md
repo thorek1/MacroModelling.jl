@@ -49,6 +49,85 @@ Pkg.activate(".")
 using MacroModelling
 ```
 
+## Revise-Based Development Workflow (REQUIRED)
+
+**ALWAYS use Revise.jl for interactive development.** This enables hot-reloading of code changes without restarting Julia, which is essential for efficient iteration.
+
+### Setup Steps
+
+1. **Start Julia REPL** with multi-threading enabled:
+   ```bash
+   cd /path/to/MacroModelling.jl
+   julia -t auto --project=.
+   ```
+
+2. **Load Revise FIRST**, then MacroModelling:
+   ```julia
+   using Revise
+   using MacroModelling
+   ```
+
+3. **Define a test model** for quick testing:
+   ```julia
+   @model RBC begin
+       1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+       c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+       q[0] = exp(z[0]) * k[-1]^α
+       z[0] = ρ * z[-1] + std_z * eps_z[x]
+   end
+
+   @parameters RBC begin
+       std_z = 0.01
+       ρ = 0.2
+       δ = 0.02
+       α = 0.5
+       β = 0.95
+   end
+   ```
+
+### Development Workflow
+
+1. **Keep the Julia REPL running** throughout the session - never restart between edits
+2. **Edit source files** in `src/` directory
+3. **Revise automatically detects changes** and recompiles only affected functions
+4. **Test changes immediately** in the same REPL session
+5. **Iterate rapidly** - edit, test, fix, repeat without restarting
+
+### Practical Example
+
+```julia
+# Initial call (before any edits)
+julia> get_equations(RBC)
+4-element Vector{String}:
+ "1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0] ^ (α - 1) + (1 - δ))"
+ ...
+
+# Now edit src/inspect.jl to add a print statement:
+# println("🔍 get_equations called - Revise is working!")
+# Save the file - Revise detects the change automatically
+
+# Call again - no restart needed!
+julia> get_equations(RBC)
+🔍 get_equations called - Revise is working!
+4-element Vector{String}:
+ "1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0] ^ (α - 1) + (1 - δ))"
+ ...
+```
+
+### Why This Matters
+
+- **Eliminates precompilation delays** - changes apply in seconds, not minutes
+- **Preserves session state** - models, variables, and computations persist
+- **Enables rapid debugging** - add/remove print statements instantly
+- **Essential for this package** - MacroModelling has significant compile times
+
+### Important Caveats
+
+- **Revise must be loaded BEFORE MacroModelling** - order matters!
+- **Structural changes require restart** - new types, module reorganization, or changing `__init__` functions
+- **Manual refresh available** - if a change isn't detected, run `Revise.revise()`
+- **Julia 1.12+ note** - may show world age warnings, but hot-reload still works
+
 ## Architecture Overview
 
 ### Source Code (`src/`)
