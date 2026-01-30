@@ -4,6 +4,7 @@ import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import Zygote
 
 include("../models/FS2000.jl")
 
@@ -55,6 +56,14 @@ n_samples = 1000
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 # with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+get_steady_state(FS2000, steady_state_function = FS2000_custom_steady_state_function!)
+
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+# with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
+println("Mean variable values (Zygote + custom steady state): $(mean(samps).nt.mean)")
+
+get_steady_state(FS2000, steady_state_function = nothing)
 
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
 

@@ -1,4 +1,4 @@
-# Write your first model - simple RBC
+# First model - simple RBC
 
 This tutorial walks through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial a simplified version of a real business cycle (RBC) model is used. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 
@@ -123,6 +123,44 @@ end
 Parameter definitions are similar to assigning values in julia. Note that one parameter definition per line is required.
 
 Given the equations and parameters, the package will first attempt to solve the system of nonlinear equations symbolically (including possible calibration equations - see next tutorial for an example). If an analytical solution is not possible, numerical solution methods are used to try and solve it. There is no guarantee that a solution can be found, but it is highly likely, given that a solution exists. The problem setup tries to incorporate parts of the structure of the problem, e.g. bounds on variables: if one equation contains `log(k)` it must be that `k > 0`. Nonetheless, the user can also provide useful information such as variable bounds or initial guesses. Bounds can be set by adding another expression to the parameter block e.g.: `c > 0`. Large values are typically a problem for numerical solvers. Therefore, providing a guess for these values will increase the speed of the solver. Guesses can be provided as a `Dict` after the model name and before the parameter definitions block, e.g.: `@parameters RBC guess = Dict(k => 10) begin ... end`.
+
+### Delayed parameter definition
+
+Not all parameters need to be defined in the `@parameters` macro. Calibration equations (using the `|` syntax) and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., `get_irf`, `get_steady_state`, `simulate`).
+
+**Parameter ordering:** When some parameters are not defined upfront, the parameter vector is ordered as follows: declared parameters come first (in their declaration order), followed by missing parameters (in alphabetical order). This matters when passing parameter values by position rather than by name.
+
+The example above with delayed parameter definition would work as follows. The model is defined as before:
+
+```@repl tutorial_1
+using MacroModelling
+@model RBC_delayed begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+
+    q[0] = exp(z[0]) * k[-1]^α
+
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+end
+```
+
+but in the parameter definition only the calibration equations and parameters defined as functions of other parameters are defined, so in this case we can leave it empty:
+
+```@repl tutorial_1
+@parameters RBC_delayed begin
+end
+```
+
+the package warns that the model has been set up with incomplete parameter definitions and provides the missing parameters.
+
+We can then provide the missing parameters when calling functions that accept the `parameters` argument, for example to retrieve IRFs:
+
+```@repl tutorial_1
+get_irf(RBC_delayed, parameters = (:σᶻ => 0.01, :ρᶻ => 0.2, :δ => 0.02, :α => 0.5, :β => 0.95))
+```
+
+Note that only now that all parameters have been defined the package can attempt to solve the model. The steady state problem and derivatives are taken only once all missing parameters have been provided, as the order of the parameters follows declaration order. This functionality effectively allows to load parameter values from an external source (e.g. a CSV file) and pass them to the model without having to redefine the model.
 
 ## Plot impulse response functions (IRFs)
 

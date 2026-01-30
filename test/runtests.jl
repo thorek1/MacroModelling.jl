@@ -8,13 +8,15 @@ using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
 using Random
+import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
-import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
+import StatsPlots, Turing, Optim # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
 using CSV, DataFrames
 using Dates
+using RuntimeGeneratedFunctions
 
 function quarterly_dates(start_date::Date, len::Int)
     dates = Vector{Date}(undef, len)
@@ -141,6 +143,13 @@ if test_set == "plots_2"
 
     include("models/Caldara_et_al_2012_estim.jl")
 
+    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
+        include("../models/Smets_Wouters_2007.jl")
+        functionality_test(Smets_Wouters_2007, Caldara_et_al_2012_estim, plots = plots)
+    end
+    Smets_Wouters_2007 = nothing
+    GC.gc()
+
     @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
         include("../models/Smets_Wouters_2003.jl")
         functionality_test(Smets_Wouters_2003, Caldara_et_al_2012_estim, plots = plots)
@@ -153,13 +162,6 @@ if test_set == "plots_2"
         functionality_test(Smets_Wouters_2007_linear, Caldara_et_al_2012_estim, plots = plots)
     end
     Smets_Wouters_2007_linear = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
-        include("../models/Smets_Wouters_2007.jl")
-        functionality_test(Smets_Wouters_2007, Caldara_et_al_2012_estim, plots = plots)
-    end
-    Smets_Wouters_2007 = nothing
     GC.gc()
 end
 
@@ -214,6 +216,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+
         functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
         
         observables = [:R, :k]
@@ -482,7 +485,7 @@ if test_set == "plots_5"
 
         plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], negative_shock = true, plot_type = :stack)
         
-        shock_mat = randn(Smets_Wouters_2007.timings.nExo,3)
+        shock_mat = randn(Smets_Wouters_2007.constants.post_model_macro.nExo,3)
 
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
@@ -529,7 +532,7 @@ if test_set == "plots_5"
         plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         # conditons on #3 is nothing which makes sense since it is not showing
 
-        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.constants.post_model_macro.nExo, 10, .1)
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
         cndtns_lvl[1,4] = 2
@@ -541,7 +544,7 @@ if test_set == "plots_5"
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.4
         
-        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.constants.post_model_macro.nExo, 10, .1)
 
         plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
 
@@ -549,7 +552,7 @@ if test_set == "plots_5"
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
-        shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
+        shock_mat = sprandn(FS2000.constants.post_model_macro.nExo, 10, .1)
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
@@ -793,43 +796,37 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    @testset verbose = true "Code quality (Aqua.jl)" begin
-        # Aqua.test_all(MacroModelling)
-        @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
-        @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
-        @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
-        @testset "Piracy" Aqua.test_piracies(MacroModelling)
-        @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
-        @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
-        # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
+    @testset verbose = true "Test equation filtering" begin
+        include("test_filter_equations.jl")
     end
     GC.gc()
-    
-    # test_higher_order = true
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
-    end
-    GC.gc()
-    # test_higher_order = false
-
-    @testset verbose = true "for and if loops" begin
-        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
-        include("models/Backus_Kehoe_Kydland_1992.jl")
-
-        std1 = get_std(Backus_Kehoe_Kydland_1992)
-        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
-
-        common_keys1 = intersect(std1.keys[1], std2.keys[1])
-        common_keys2 = intersect(std1.keys[2], std2.keys[2])
-
-        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
-    end
 
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
     end
     GC.gc()
+
+    function rbc_steady_state(params)
+        std_z, rho, delta, alpha, beta = params
+
+        k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
+        q_ss = k_ss^alpha
+        c_ss = q_ss - delta * k_ss
+        z_ss = 0.0
+
+        return [c_ss, k_ss, q_ss, z_ss]
+    end
+
+    function make_counted_ss()
+        calls = Ref(0)
+
+        function ss(params)
+            calls[] += 1
+            return rbc_steady_state(params)
+        end
+
+        return ss, calls
+    end
 
     @testset verbose = true "FS2000 precompile = true" begin
         @model FS2000_pre precompile = true begin
@@ -929,41 +926,187 @@ if test_set == "basic"
         @test isapprox(irf_nopre, irf_pre)
     end
 
-    @testset verbose = true "Model without shocks" begin
-        @model m begin
-            K[0] = (1 - δ) * K[-1] + I[0]
-            Z[0] = (1 - ρ) * μ + ρ * Z[-1] 
-            I[1]  = ((ρ + δ - Z[0])/(1 - δ))  + ((1 + ρ)/(1 - δ)) * I[0]
+    @testset "Custom steady state assignment" begin
+        @model RBC_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
         end
 
-        @parameters m verbose = true begin
-            ρ = 0.05
-            δ = 0.10
-            μ = .17
-            σ = .2
+        @parameters RBC_switch begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
         end
 
-        m_ss = get_steady_state(m)
-        @test isapprox(m_ss(:,:Steady_state),[1/7.5,1/.75,.17],rtol = eps(Float32))
+        custom_ss, custom_calls = make_counted_ss()
 
-        m_sol = get_solution(m) 
-        @test isapprox(m_sol(:,:K),[1/.75,.9,.04975124378109454],rtol = eps(Float32))
+        inplace_calls = Ref(0)
+        function inplace_ss!(out, params)
+            inplace_calls[] += 1
+            out .= rbc_steady_state(params)
+            return nothing
+        end
 
-        init = m_ss(:,:Steady_state) |> collect
-        init[2] *= 1.5
-        get_irf(m, initial_state = init, shocks = :none)
+        # bad_calls = Ref(0)
+        # function bad_ss(params)
+        #     bad_calls[] += 1
+        #     return zeros(4)
+        # end
 
-        plots = plot_irf(m, initial_state = init, shocks = :none)
+        custom_calls[] = 0
+        _ = get_steady_state(RBC_switch, steady_state_function = custom_ss)
+        @test custom_calls[] > 0
 
-        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+        inplace_calls[] = 0
+        inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
+        @test inplace_calls[] > 0
+        @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
+        expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.equations.calibration_parameters)
+        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
 
-        plots! = plot_irf!(m, initial_state = init .* 1.5, shocks = :none)
-        
-        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+        # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
+        # @test bad_calls[] > 0
+
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch, steady_state_function = nothing)
+        @test custom_calls[] == calls_before
+        @test isnothing(RBC_switch.functions.NSSS_custom)
+
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, custom_ss)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] > calls_before
+
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, nothing)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] == calls_before
     end
-    m = nothing
 
+    @testset "Macro steady state assignment" begin
+        macro_ss, macro_calls = make_counted_ss()
 
+        @model RBC_macro_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_switch steady_state_function = macro_ss begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
+        end
+
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] > 0
+        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+
+        MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
+        _ = get_steady_state(RBC_macro_switch)
+        @test isnothing(RBC_macro_switch.functions.NSSS_custom)
+        @test RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction
+
+        calls_before = macro_calls[]
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] == calls_before
+    end
+    
+    @testset verbose = true "Custom steady state function" begin
+        # Test custom steady state function with simple RBC model
+        @model RBC_custom_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_custom_ss begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get default steady state
+        default_ss = get_steady_state(RBC_custom_ss)
+        
+        # Define custom steady state function
+        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
+        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
+        function my_steady_state_rbc(params)
+            std_z, ρ, δ, α, β = params
+            
+            # Analytical steady state for RBC model
+            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+            q_ss = k_ss^α
+            c_ss = q_ss - δ * k_ss
+            z_ss = 0.0
+            
+            return [c_ss, k_ss, q_ss, z_ss]
+        end
+
+        # Test custom function directly
+        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
+        @test isapprox(custom_result, default_ss(:,:Steady_state))
+
+        # Get steady state with custom function
+        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
+        
+        # Compare with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        irf_custom = get_irf(RBC_custom_ss, levels = true)
+
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
+        @test isnothing(RBC_custom_ss.functions.NSSS_custom)
+        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
+
+        irf_after_clear = get_irf(RBC_custom_ss, levels = true)
+        @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
+        
+        # Test with verbose option (internal function still available but not exported)
+        MacroModelling.set_custom_steady_state_function!(RBC_custom_ss, my_steady_state_rbc)
+        @test !isnothing(RBC_custom_ss.functions.NSSS_custom)
+        
+        
+        @model RBC_macro_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_ss steady_state_function = my_steady_state_rbc begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+        
+        # Verify macro-defined SS function is set
+        @test isapprox(RBC_macro_ss.functions.NSSS_custom(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
+        
+        macro_ss = get_steady_state(RBC_macro_ss)
+        @test isapprox(default_ss, macro_ss, rtol = 1e-10)
+
+        RBC_custom_ss = nothing
+        RBC_macro_ss = nothing
+        RBC_func_arg = nothing
+    end
 
     @testset verbose = true "Non-stochastic steady state guess" begin
         @model RBC_CME begin
@@ -1024,12 +1167,1088 @@ if test_set == "basic"
             # 0 < c < 10
         end
         
-        @test RBC_CME.guess == Dict(:alpha => .2, :beta => .99)
+        @test RBC_CME.constants.post_parameters_macro.guess == Dict(:alpha => .2, :beta => .99)
 
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
 
         RBC_CME = nothing
     end
+    GC.gc()
+
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+    
+    global model = m
+
+    @testset verbose = true "Custom steady state function with calibration equations and lead/lags" begin
+        # Test custom steady state function with RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve model
+        
+        # Get default steady state
+        default_ss = get_steady_state(model)
+        
+        function custom_steady_state(p::Vector{Float64})
+            # 1. Unpack parameters
+            cap_share   = p[1]
+            R_ss_target = p[2]
+            I_K_ratio   = p[3]
+            phi_pi    = p[4] 
+            # std_eps   = p[5] 
+            # std_z_d   = p[6] 
+            Pi_real     = p[7]
+            # rhoz      = p[8] 
+
+            # 2. Solve for Deep Parameters and Rates
+            # Target R: log(R) = R_ss - 1
+            R = exp(R_ss_target - 1.0)
+
+            # Target Pi
+            Pi = R_ss_target - Pi_real
+            
+            # Euler Equation: 1 = beta * (R / Pi)
+            beta = Pi / R
+            Pibar = (R * beta) ^ (-1/phi_pi) * Pi
+
+            # Ratios
+            # k / (4 * y) = cap_share
+            ky_ratio = 4.0 * cap_share
+            
+            # c / y = 1 - I_K_ratio
+            cy_ratio = 1.0 - I_K_ratio
+
+            # Resource Constraint: 1 = c/y + delta * k/y
+            delta = (1.0 - cy_ratio) / ky_ratio
+
+            # Euler Equation: 1 = beta * (alpha * y/k + 1 - delta)
+            # alpha = (k/y) * (1/beta - 1 + delta)
+            alpha = ky_ratio * ((1.0 / beta) - 1.0 + delta)
+
+            # 3. Solve for Levels
+            A = 1.0
+            z_delta = 1.0
+
+            # Production: y/k = k^(alpha-1) => k = (k/y)^(1/(1-alpha))
+            k = (ky_ratio)^(1.0 / (1.0 - alpha))
+            y = k^alpha
+            c = cy_ratio * y
+
+            # Auxiliary variables
+            ZZ_avg = A
+            ZZ_avg_fut = A
+            log_ZZ_avg = 0.0 # log(1.0)
+
+            c_logpdf = (-(abs2(c) + 1.8378770664093453) / 2) # normlogpdf
+            c_invcdf = (-erfcinv(2*(c - 1.0)) * 1.4142135623730951) # norminvcdf
+            
+            # 4. Return Vector
+            return [
+                A,              # 7
+                Pi,             # 4
+                R,              # 3
+                ZZ_avg,         # 8
+                ZZ_avg_fut,     # 9
+                c,              # 2
+                c_invcdf,       # 12
+                c_logpdf,       # 11
+                k,              # 5
+                log_ZZ_avg,     # 10
+                y,              # 1
+                z_delta,        # 6
+                beta,           # 14 (Derived)
+                Pibar,          # 15 (Derived)
+                alpha,          # 13 (Derived)
+                delta           # 16 (Derived)
+            ]
+        end
+        
+        # Get steady state with custom function
+        custom_ss = get_steady_state(model, steady_state_function = custom_steady_state)
+        
+        # Compare key variables with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        std_custom = get_std(model)
+
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(model, steady_state_function = nothing)
+        @test isnothing(model.functions.NSSS_custom)
+        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
+
+        std_after_clear = get_std(model)
+        @test isapprox(std_after_clear, std_custom, rtol = 1e-10)
+    end
+
+    @testset verbose = true "Provide parameters later" begin
+        include("models/Backus_Kehoe_Kydland_1992.jl")
+
+        @model Backus_Kehoe_Kydland_1992_incomplete begin
+            for co in [H, F]
+                Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+
+                K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+
+                X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+
+                A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+
+                L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+
+                U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+
+                psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+
+                psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+                for lag in 0:(4-1)  
+                    beta{co}^lag * LGM[lag]*phi{co}
+                end +
+                for lag in 1:4
+                    -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+                end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+                LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+
+                NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+            end
+
+            (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+
+            (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+            for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+
+            dLGM[0] = LGM[1] / LGM[0]
+
+            dLGM_ann[0] = for operator = :*, lag in -3:0 dLGM[lag] end
+        end
+
+        @parameters Backus_Kehoe_Kydland_1992_incomplete begin
+            # K_ss = 11.0148
+            # K[ss] = K_ss | beta
+            # K[ss] = 10 | beta
+            # F_H_ratio = 1
+            K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
+            K{H}[ss] = K_ss | beta{H}
+
+            # beta    =    0.99
+            # mu      =    0.34
+            # gamma   =    -1.0
+            # alpha   =    1
+            # eta     =    0.5
+            # theta   =    0.36
+            # nu      =    3
+            # sigma   =    0.01
+            # delta   =    0.025
+            # phi     =    1/4
+            # psi     =    0.5
+
+            # Z_E = 0.00852
+            
+            # rho{H}{H} = 0.906
+            rho{F}{F} = rho{H}{H}
+            # rho{H}{F} = 0.088
+            rho{F}{H} = rho{H}{F}
+        end
+
+        pars = [ 
+                "F_H_ratio" => 1.0,
+                "K_ss"      => 11.0148,
+                "Z_E{F}"    => 0.00852,
+                "Z_E{H}"    => 0.00852,
+                "alpha{F}"  => 1.0,
+                "alpha{H}"  => 1.0,
+                "delta{F}"  => 0.025,
+                "delta{H}"  => 0.025,
+                "eta{F}"    => 0.5,
+                "eta{H}"    => 0.5,
+                "gamma{F}"  => -1.0,
+                "gamma{H}"  => -1.0,
+                "mu{F}"     => 0.34,
+                "mu{H}"     => 0.34,
+                "nu{F}"     => 3.0,
+                "nu{H}"     => 3.0,
+                "phi{F}"    => 0.25,
+                "phi{H}"    => 0.25,
+                "psi{F}"    => 0.5,
+                "psi{H}"    => 0.5,
+                "rho{H}{F}" => 0.088,
+                "rho{H}{H}" => 0.906,
+                "sigma{F}"  => 0.01,
+                "sigma{H}"  => 0.01,
+                "theta{F}"  => 0.36,
+                "theta{H}"  => 0.36
+                ]
+
+        cov1 = get_cov(Backus_Kehoe_Kydland_1992_incomplete, parameters = pars)
+
+        cov2 = get_cov(Backus_Kehoe_Kydland_1992)
+
+        @test cov1 ≈ cov2
+
+
+        include("../models/Gali_2015_chapter_3_obc.jl")
+
+        @model Gali_2015_chapter_3_obc_incomplete begin
+            W_real[0] = C[0] ^ σ * N[0] ^ φ
+
+            Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+
+            R[0] = 1 / Q[0]
+
+            Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+
+            R[0] = Pi[1] * realinterest[0]
+
+            R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+
+            C[0] = Y[0]
+
+            log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+
+            log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+
+            nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+
+            MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+
+            1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+
+            S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+
+            Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+
+            x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+
+            x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+
+            log_y[0] = log(Y[0])
+
+            log_W_real[0] = log(W_real[0])
+
+            log_N[0] = log(N[0])
+
+            pi_ann[0] = 4 * log(Pi[0])
+
+            i_ann[0] = 4 * log(R[0])
+
+            r_real_ann[0] = 4 * log(realinterest[0])
+
+            M_real[0] = Y[0] / R[0] ^ η
+
+        end
+
+        @parameters Gali_2015_chapter_3_obc_incomplete begin
+            σ = 1
+
+            φ = 5
+
+            ϕᵖⁱ = 1.5
+            
+            ϕʸ = 0.125
+
+            θ = 0.75
+
+            ρ_ν = 0.5
+
+            ρ_z = 0.5
+
+            ρ_a = 0.9
+
+            β = 0.99
+
+            η = 3.77
+
+            α = 0.25
+
+            ϵ = 9
+
+            τ = 0
+
+            std_a = .01
+
+            std_z = .05
+
+            std_nu = .0025
+
+            R > 1.0001
+        end
+
+        cov1 = get_cov(Gali_2015_chapter_3_obc_incomplete, parameters = :R̄ => 1.0)
+
+        cov2 = get_cov(Gali_2015_chapter_3_obc)
+
+        @test cov1 ≈ cov2
+
+
+        @model Backus_Kehoe_Kydland_1992_incomplete2 begin
+            for co in [H, F]
+                Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+
+                K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+
+                X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+
+                A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+
+                L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+
+                U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+
+                psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+
+                psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+                for lag in 0:(4-1)  
+                    beta{co}^lag * LGM[lag]*phi{co}
+                end +
+                for lag in 1:4
+                    -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+                end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+                LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+
+                NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+            end
+
+            (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+
+            (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+            for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+
+            dLGM[0] = LGM[1] / LGM[0]
+
+            dLGM_ann[0] = for operator = :*, lag in -3:0 dLGM[lag] end
+        end
+
+        @parameters Backus_Kehoe_Kydland_1992_incomplete2 begin
+            K_ss = 11.0148
+            kk = 1
+            K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
+            K{H}[ss] = K_ss | beta{H}
+            rho{F}{F} = rho{H}{H}
+            rho{F}{H} = rho{H}{F}
+        end
+
+        params_full = get_parameters(Backus_Kehoe_Kydland_1992, values = true)
+
+        std1 = get_std(Backus_Kehoe_Kydland_1992_incomplete2, parameters = params_full)
+
+        std2 = get_std(Backus_Kehoe_Kydland_1992)
+
+        @test std1 ≈ std2
+
+
+        # Define a model with missing parameters
+        @model RBC begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        # Only define some parameters
+        @parameters RBC begin
+            std_z = 0.01
+            ρ = 0.2
+            α = 0.5
+            β = 0.95
+            δ = 0.02
+        end
+
+        # Define a model with missing parameters
+        @model RBC_missing_provide begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        # Only define some parameters
+        @parameters RBC_missing_provide begin
+            std_z = 0.01
+            ρ = 0.2
+            # α => 0.5
+            # β => 0.95
+            # δ => 0.02
+        end
+
+        # Verify parameters are missing before providing them
+        @test has_missing_parameters(RBC_missing_provide)
+
+        # Provide missing parameters and get IRF
+        irf_result = get_irf(RBC_missing_provide, parameters = [:α => 0.5, :β => 0.95, :δ => 0.02])
+
+        # Provide missing parameters and get IRF
+        irf_result_no_missing = get_irf(RBC)
+
+        @test irf_result_no_missing ≈ irf_result
+
+        # After providing parameters, they should no longer be missing
+        @test !has_missing_parameters(RBC_missing_provide)
+
+
+        @model m_incomplete begin
+            y[0]=A[0]*k[-1]^alpha
+            1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+            1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+            R[0] * beta =(Pi[0]/Pibar)^phi_pi
+            A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+            z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+            A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * (eps_z[x-2] + eps_z[x+2] + eps_z_s[x])
+            ZZ_avg[0] = (A[0] + A[-1] + A[-2] + A[ss]) / 4
+            ZZ_avg_fut[0] = (A[0] + A[1] + A[2] + A[ss]) / 4
+            log_ZZ_avg[0] = log(ZZ_avg[0]/ZZ_avg[ss])
+            c_normlogpdf[0]= normlogpdf(c[0])
+            c_norminvcdf[0]= norminvcdf(c[0]-1)
+        end
+
+
+        @parameters m_incomplete verbose = true begin
+            alpha | k[ss] / (4 * y[ss]) = cap_share
+            # cap_share = 1.66
+            # alpha = .157
+
+            beta | R[ss] = R_ss
+            # R_ss = 1.0035
+            # beta = .999
+
+            delta | c[ss]/y[ss] = 1 - I_K_ratio
+            # delta | delta * k[ss]/y[ss] = I_K_ratio #check why this doesnt solve for y
+            # I_K_ratio = .15
+            # delta = .0226
+
+            Pibar | Pi[ss] = Pi_ss
+            Pi_ss = R_ss - Pi_real
+            # Pi_real = 1/1000
+            # Pibar = 1.0008
+
+            # phi_pi = 1.5
+            # rhoz = 9 / 10
+            # std_eps = .0068
+            rho_z_delta = rhoz
+            # std_z_delta = .005
+        end
+
+
+        param_defs = [
+                    :cap_share => 1.66,
+                    :alpha => .157,
+                    :std_z_delta => .005,
+                    :phi_pi => 1.5,
+                    :rhoz => 9 / 10,
+                    :std_eps => .0068,
+                    :Pi_real => 1/1000,
+                    :Pibar => 1.0008,
+                    :I_K_ratio => .15,
+                    :delta => .0226,
+                    :R_ss => 1.0035,
+                    :beta => .999
+                ]
+
+        irfs_m_incomplete = get_irf(m_incomplete, parameters = param_defs)
+
+        std_m_incomplete = get_std(m_incomplete)
+
+
+
+        @model m begin
+            y[0]=A[0]*k[-1]^alpha
+            1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+            1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+            R[0] * beta =(Pi[0]/Pibar)^phi_pi
+            A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+            z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+            A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * (eps_z[x-2] + eps_z[x+2] + eps_z_s[x])
+            ZZ_avg[0] = (A[0] + A[-1] + A[-2] + A[ss]) / 4
+            ZZ_avg_fut[0] = (A[0] + A[1] + A[2] + A[ss]) / 4
+            log_ZZ_avg[0] = log(ZZ_avg[0]/ZZ_avg[ss])
+            c_normlogpdf[0]= normlogpdf(c[0])
+            c_norminvcdf[0]= norminvcdf(c[0]-1)
+        end
+
+        @parameters m verbose = true begin
+            alpha | k[ss] / (4 * y[ss]) = cap_share
+            cap_share = 1.66
+            # alpha = .157
+
+            beta | R[ss] = R_ss
+            R_ss = 1.0035
+            # beta = .999
+
+            delta | c[ss]/y[ss] = 1 - I_K_ratio
+            # delta | delta * k[ss]/y[ss] = I_K_ratio #check why this doesnt solve for y
+            I_K_ratio = .15
+            # delta = .0226
+
+            Pibar | Pi[ss] = Pi_ss
+            Pi_ss = R_ss - Pi_real
+            Pi_real = 1/1000
+            # Pibar = 1.0008
+
+            phi_pi = 1.5
+            rhoz = 9 / 10
+            std_eps = .0068
+            rho_z_delta = rhoz
+            std_z_delta = .005
+        end
+
+        irfs_m = get_irf(m)
+
+        std_m = get_std(m)
+
+
+        @test irfs_m ≈ irfs_m_incomplete
+
+        @test std_m(:,:Standard_deviation) ≈ std_m_incomplete(:,:Standard_deviation)
+
+
+        
+        include("../models/NAWM_EAUS_2008.jl")
+
+
+        @model NAWM_EAUS_2008_incomplete begin
+            EA_R[0] ^ 4 - 1 = EA_PHIRR * (EA_R[-1] ^ 4 - 1) + (1 - EA_PHIRR) * (EA_RRSTAR ^ 4 * EA_PI4TARGET - 1 + EA_PHIRPI * (EA_PIC4[0] - EA_PI4TARGET)) + EA_PHIRGY * (EA_Y[0] / EA_Y[-1] - 1) + σ_EA_R * EA_EPSR[x]
+
+            US_R[0] ^ 4 - 1 = US_PHIRR * (US_R[-1] ^ 4 - 1) + (1 - US_PHIRR) * (US_RRSTAR ^ 4 * US_PI4TARGET - 1 + US_PHIRPI * (US_PIC4[0] - US_PI4TARGET)) + US_PHIRGY * (US_Y[0] / US_Y[-1] - 1) + σ_US_R * US_EPSR[x]
+
+            EA_UTILI[0] = 1 / (1 - EA_SIGMA) * (EA_CI[0] - EA_KAPPA * EA_CI[-1]) ^ (1 - EA_SIGMA) - 1 / (1 + EA_ZETA) * EA_NI[0] ^ (1 + EA_ZETA) + EA_BETA * EA_UTILI[1]
+
+            EA_LAMBDAI[0] * (1 + EA_TAUC[0] + EA_GAMMAVI[0] + EA_VI[0] * EA_GAMMAVIDER[0]) = (EA_CI[0] - EA_KAPPA * EA_CI[-1]) ^ (-EA_SIGMA)
+
+            EA_R[0] = EA_LAMBDAI[0] * EA_BETA ^ (-1) / EA_LAMBDAI[1] * EA_PIC[1]
+
+            EA_GAMMAVIDER[0] * EA_VI[0] ^ 2 = 1 - EA_BETA * EA_LAMBDAI[1] / (EA_LAMBDAI[0] * EA_PIC[1])
+
+            EA_VI[0] = EA_CI[0] * (1 + EA_TAUC[0]) / EA_MI[0]
+
+            EA_GAMMAVI[0] = EA_VI[0] * EA_GAMMAV1 + EA_GAMMAV2 / EA_VI[0] - 2 * (EA_GAMMAV1 * EA_GAMMAV2) ^ 0.5
+
+            EA_GAMMAVIDER[0] = EA_GAMMAV1 - EA_GAMMAV2 * EA_VI[0] ^ (-2)
+
+            EA_KI[0] = (1 - EA_DELTA) * EA_KI[-1] + (1 - EA_GAMMAI[-1]) * EA_II[-1]
+
+            EA_GAMMAI[0] = EA_GAMMAI1 / 2 * (EA_II[0] / EA_II[-1] - 1) ^ 2
+
+            EA_GAMMAIDER[0] = EA_GAMMAI1 * (EA_II[0] / EA_II[-1] - 1) / EA_II[-1]
+
+            EA_GAMMAU[0] = ((EA_DELTA + EA_BETA ^ (-1) - 1) * EA_QBAR - EA_DELTA * EA_TAUKBAR * EA_PIBAR) / (EA_PIBAR * (1 - EA_TAUKBAR)) * (EA_U[0] - 1) + EA_GAMMAU2 / 2 * (EA_U[0] - 1) ^ 2
+
+            EA_GAMMAUDER[0] = ((EA_DELTA + EA_BETA ^ (-1) - 1) * EA_QBAR - EA_DELTA * EA_TAUKBAR * EA_PIBAR) / (EA_PIBAR * (1 - EA_TAUKBAR)) + (EA_U[0] - 1) * EA_GAMMAU2
+
+            EA_RK[0] = EA_GAMMAUDER[0] * EA_PI[0]
+
+            EA_PI[0] = EA_Q[0] * (1 - EA_GAMMAI[0] - EA_II[0] * EA_GAMMAIDER[0]) + EA_BETA * EA_LAMBDAI[1] / EA_LAMBDAI[0] * EA_Q[1] * EA_GAMMAIDER[1] * EA_II[1] ^ 2 / EA_II[0]
+
+            EA_Q[0] = EA_BETA * EA_LAMBDAI[1] / EA_LAMBDAI[0] * ((1 - EA_TAUK[1]) * (EA_RK[1] * EA_U[1] - EA_GAMMAU[1] * EA_PI[1]) + EA_PI[1] * EA_DELTA * EA_TAUK[1] + (1 - EA_DELTA) * EA_Q[1])
+
+            EA_WITILDE[0] ^ (1 + EA_ZETA * EA_ETAI) = EA_ETAI / (EA_ETAI - 1) * EA_FI[0] / EA_GI[0]
+
+            EA_FI[0] = EA_WI[0] ^ ((1 + EA_ZETA) * EA_ETAI) * EA_NDI[0] ^ (1 + EA_ZETA) + EA_BETA * EA_XII * (EA_PIC[1] / (EA_PIC[0] ^ EA_CHII * EA_PI4TARGET ^ (0.25 * (1 - EA_CHII)))) ^ ((1 + EA_ZETA) * EA_ETAI) * EA_FI[1]
+
+            EA_GI[0] = EA_NDI[0] * EA_LAMBDAI[0] * (1 - EA_TAUN[0] - EA_TAUWH[0]) * EA_WI[0] ^ EA_ETAI + EA_BETA * EA_XII * (EA_PIC[1] / (EA_PIC[0] ^ EA_CHII * EA_PI4TARGET ^ (0.25 * (1 - EA_CHII)))) ^ (EA_ETAI - 1) * EA_GI[1]
+
+            EA_WI[0] ^ (1 - EA_ETAI) = (1 - EA_XII) * EA_WITILDE[0] ^ (1 - EA_ETAI) + EA_XII * EA_WI[-1] ^ (1 - EA_ETAI) * (EA_PI4TARGET ^ (0.25 * (1 - EA_CHII)) * EA_PIC[-1] ^ EA_CHII / EA_PIC[0]) ^ (1 - EA_ETAI)
+
+            EA_UTILJ[0] = 1 / (1 - EA_SIGMA) * (EA_CJ[0] - EA_KAPPA * EA_CJ[-1]) ^ (1 - EA_SIGMA) - 1 / (1 + EA_ZETA) * EA_NJ[0] ^ (1 + EA_ZETA) + EA_BETA * EA_UTILJ[1]
+
+            EA_CJ[0] * (1 + EA_TAUC[0] + EA_GAMMAVJ[0]) + EA_MJ[0] = EA_NJ[0] * (1 - EA_TAUN[0] - EA_TAUWH[0]) * EA_WJ[0] + EA_TRJ[0] - EA_TJ[0] + EA_MJ[-1] * EA_PIC[0] ^ (-1)
+
+            EA_LAMBDAJ[0] * (1 + EA_TAUC[0] + EA_GAMMAVJ[0] + EA_VJ[0] * EA_GAMMAVJDER[0]) = (EA_CJ[0] - EA_KAPPA * EA_CJ[-1]) ^ (-EA_SIGMA)
+
+            EA_GAMMAVJDER[0] * EA_VJ[0] ^ 2 = 1 - EA_BETA * EA_LAMBDAJ[1] / (EA_PIC[1] * EA_LAMBDAJ[0])
+
+            EA_VJ[0] = (1 + EA_TAUC[0]) * EA_CJ[0] / EA_MJ[0]
+
+            EA_GAMMAVJ[0] = EA_GAMMAV1 * EA_VJ[0] + EA_GAMMAV2 / EA_VJ[0] - 2 * (EA_GAMMAV1 * EA_GAMMAV2) ^ 0.5
+
+            EA_GAMMAVJDER[0] = EA_GAMMAV1 - EA_GAMMAV2 * EA_VJ[0] ^ (-2)
+
+            EA_WJTILDE[0] ^ (1 + EA_ZETA * EA_ETAJ) = EA_ETAJ / (EA_ETAJ - 1) * EA_FJ[0] / EA_GJ[0]
+
+            EA_FJ[0] = EA_WJ[0] ^ ((1 + EA_ZETA) * EA_ETAJ) * EA_NDJ[0] ^ (1 + EA_ZETA) + EA_BETA * EA_XIJ * (EA_PIC[1] / (EA_PIC[0] ^ EA_CHIJ * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIJ)))) ^ ((1 + EA_ZETA) * EA_ETAJ) * EA_FJ[1]
+
+            EA_GJ[0] = EA_NDJ[0] * (1 - EA_TAUN[0] - EA_TAUWH[0]) * EA_LAMBDAJ[0] * EA_WJ[0] ^ EA_ETAJ + EA_BETA * EA_XIJ * (EA_PIC[1] / (EA_PIC[0] ^ EA_CHIJ * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIJ)))) ^ (EA_ETAJ - 1) * EA_GJ[1]
+
+            EA_WJ[0] ^ (1 - EA_ETAJ) = (1 - EA_XIJ) * EA_WJTILDE[0] ^ (1 - EA_ETAJ) + EA_XIJ * EA_WJ[-1] ^ (1 - EA_ETAJ) * (EA_PI4TARGET ^ (0.25 * (1 - EA_CHIJ)) * EA_PIC[-1] ^ EA_CHIJ / EA_PIC[0]) ^ (1 - EA_ETAJ)
+
+            EA_YS[0] = EA_Z[0] * EA_KD[0] ^ EA_ALPHA * EA_ND[0] ^ (1 - EA_ALPHA) - EA_PSIBAR
+
+            EA_RK[0] = EA_ALPHA * (EA_YS[0] + EA_PSIBAR) / EA_KD[0] * EA_MC[0]
+
+            EA_MC[0] = 1 / (EA_Z[0] * EA_ALPHA ^ EA_ALPHA * (1 - EA_ALPHA) ^ (1 - EA_ALPHA)) * EA_RK[0] ^ EA_ALPHA * ((1 + EA_TAUWF[0]) * EA_W[0]) ^ (1 - EA_ALPHA)
+
+            EA_NDI[0] = EA_ND[0] * (1 - EA_OMEGA) * (EA_WI[0] / EA_W[0]) ^ (-EA_ETA)
+
+            EA_NDJ[0] = EA_ND[0] * EA_OMEGA * (EA_WJ[0] / EA_W[0]) ^ (-EA_ETA)
+
+            EA_ND[0] ^ (1 - 1 / EA_ETA) = (1 - EA_OMEGA) ^ (1 / EA_ETA) * EA_NDI[0] ^ (1 - 1 / EA_ETA) + EA_OMEGA ^ (1 / EA_ETA) * EA_NDJ[0] ^ (1 - 1 / EA_ETA)
+
+            EA_D[0] = EA_Y[0] * EA_PY[0] - EA_RK[0] * EA_KD[0] - EA_ND[0] * (1 + EA_TAUWF[0]) * EA_W[0]
+
+            EA_PHTILDE[0] / EA_PH[0] = EA_THETA / (EA_THETA - 1) * EA_FH[0] / EA_GH[0]
+
+            EA_FH[0] = EA_MC[0] * EA_H[0] + EA_LAMBDAI[1] * EA_BETA * EA_XIH / EA_LAMBDAI[0] * (EA_PIH[1] / (EA_PIH[0] ^ EA_CHIH * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIH)))) ^ EA_THETA * EA_FH[1]
+
+            EA_GH[0] = EA_PH[0] * EA_H[0] + EA_LAMBDAI[1] * EA_BETA * EA_XIH / EA_LAMBDAI[0] * (EA_PIH[1] / (EA_PIH[0] ^ EA_CHIH * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIH)))) ^ (EA_THETA - 1) * EA_GH[1]
+
+            EA_PH[0] ^ (1 - EA_THETA) = (1 - EA_XIH) * EA_PHTILDE[0] ^ (1 - EA_THETA) + EA_XIH * (EA_PH[-1] / EA_PIC[0]) ^ (1 - EA_THETA) * (EA_PI4TARGET ^ (0.25 * (1 - EA_CHIH)) * EA_PIH[-1] ^ EA_CHIH) ^ (1 - EA_THETA)
+
+            EA_PIH[0] = EA_PIC[0] * EA_PH[0] / EA_PH[-1]
+
+            US_PIMTILDE[0] / US_PIM[0] = EA_THETA / (EA_THETA - 1) * EA_FX[0] / EA_GX[0]
+
+            EA_FX[0] = EA_MC[0] * US_SIZE / EA_SIZE * US_IM[0] + EA_LAMBDAI[1] * EA_BETA * EA_XIX / EA_LAMBDAI[0] * (US_PIIM[1] / (US_PIIM[0] ^ EA_CHIX * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIX)))) ^ EA_THETA * EA_FX[1]
+
+            EA_GX[0] = US_IM[0] * US_SIZE * US_PIM[0] * EAUS_RER[0] / EA_SIZE + EA_LAMBDAI[1] * EA_BETA * EA_XIX / EA_LAMBDAI[0] * (US_PIIM[1] / (US_PIIM[0] ^ EA_CHIX * EA_PI4TARGET ^ (0.25 * (1 - EA_CHIX)))) ^ (EA_THETA - 1) * EA_GX[1]
+
+            US_PIM[0] ^ (1 - EA_THETA) = (1 - EA_XIX) * US_PIMTILDE[0] ^ (1 - EA_THETA) + EA_XIX * (US_PIM[-1] / US_PIC[0]) ^ (1 - EA_THETA) * (US_PIIM[-1] ^ EA_CHIX * US_PI4TARGET ^ (0.25 * (1 - EA_CHIH))) ^ (1 - EA_THETA)
+
+            US_PIIM[0] = US_PIC[0] * US_PIM[0] / US_PIM[-1]
+
+            EAUS_RER[0] = EA_RER[0] / US_RER
+
+            EA_QC[0] ^ ((EA_MUC - 1) / EA_MUC) = EA_NUC ^ (1 / EA_MUC) * EA_HC[0] ^ (1 - 1 / EA_MUC) + (1 - EA_NUC) ^ (1 / EA_MUC) * ((1 - EA_GAMMAIMC[0]) * EA_IMC[0]) ^ (1 - 1 / EA_MUC)
+
+            1 = EA_NUC * EA_PH[0] ^ (1 - EA_MUC) + (1 - EA_NUC) * (EA_PIM[0] / EA_GAMMAIMCDAG[0]) ^ (1 - EA_MUC)
+
+            EA_HC[0] = EA_QC[0] * EA_NUC * EA_PH[0] ^ (-EA_MUC)
+
+            EA_GAMMAIMC[0] = EA_GAMMAIMC1 / 2 * (EA_IMC[0] / EA_QC[0] / (EA_IMC[-1] / EA_QC[-1]) - 1) ^ 2
+
+            EA_GAMMAIMCDAG[0] = 1 - EA_GAMMAIMC[0] - EA_IMC[0] * EA_GAMMAIMC1 * (EA_IMC[0] / EA_QC[0] / (EA_IMC[-1] / EA_QC[-1]) - 1) / EA_QC[0] / (EA_IMC[-1] / EA_QC[-1])
+
+            EA_QI[0] ^ ((EA_MUI - 1) / EA_MUI) = EA_NUI ^ (1 / EA_MUI) * EA_HI[0] ^ (1 - 1 / EA_MUI) + (1 - EA_NUI) ^ (1 / EA_MUI) * ((1 - EA_GAMMAIMI[0]) * EA_IMI[0]) ^ (1 - 1 / EA_MUI)
+
+            EA_PI[0] ^ (1 - EA_MUI) = EA_NUI * EA_PH[0] ^ (1 - EA_MUI) + (1 - EA_NUI) * (EA_PIM[0] / EA_GAMMAIMIDAG[0]) ^ (1 - EA_MUI)
+
+            EA_HI[0] = EA_QI[0] * EA_NUI * (EA_PH[0] / EA_PI[0]) ^ (-EA_MUI)
+
+            EA_GAMMAIMI[0] = EA_GAMMAIMI1 / 2 * (EA_IMI[0] / EA_QI[0] / (EA_IMI[-1] / EA_QI[-1]) - 1) ^ 2
+
+            EA_GAMMAIMIDAG[0] = 1 - EA_GAMMAIMI[0] - EA_IMI[0] * EA_GAMMAIMI1 * (EA_IMI[0] / EA_QI[0] / (EA_IMI[-1] / EA_QI[0]) - 1) / EA_QI[0] / (EA_IMI[-1] / EA_QI[-1])
+
+            EA_PH[-1] * EA_G[-1] + EA_TR[-1] + EA_B[-1] * EA_PIC[-1] ^ (-1) + EA_PIC[-1] ^ (-1) * EA_M[-2] = EA_TAUC[-1] * EA_C[-1] + (EA_TAUN[-1] + EA_TAUWH[-1]) * (EA_WI[-1] * EA_NDI[-1] + EA_WJ[-1] * EA_NDJ[-1]) + EA_TAUWF[-1] * EA_W[-1] * EA_ND[-1] + EA_TAUK[-1] * (EA_RK[-1] * EA_U[-1] - (EA_DELTA + EA_GAMMAU[-1]) * EA_PI[-1]) * EA_K[-1] + EA_TAUD[-1] * EA_D[-1] + EA_T[-1] + EA_R[-1] ^ (-1) * EA_B[0] + EA_M[-1]
+
+            EA_PH[0] * EA_G[0] = EA_GY[0] * EA_PYBAR * EA_YBAR
+
+            EA_TR[0] = EA_YBAR * EA_PYBAR * EA_TRY[0]
+
+            EA_T[0] / (EA_PYBAR * EA_YBAR) = EA_PHITB * (EA_B[0] / (EA_PYBAR * EA_YBAR) - EA_BYTARGET)
+
+            EA_TI[0] = EA_T[0] * EA_UPSILONT
+
+            EA_TRI[0] = EA_TR[0] * EA_UPSILONTR
+
+            EA_PIC4[0] = EA_PIC[0] * EA_PIC[-1] * EA_PIC[-2] * EA_PIC[-3]
+
+            EA_RR[0] - 1 = EA_R[0] / EA_PIC[1] - 1
+
+            EA_C[0] = EA_CI[0] * (1 - EA_OMEGA) + EA_CJ[0] * EA_OMEGA
+
+            EA_M[0] = EA_MI[0] * (1 - EA_OMEGA) + EA_MJ[0] * EA_OMEGA
+
+            EA_K[0] = EA_KI[0] * (1 - EA_OMEGA)
+
+            EA_I[0] = EA_II[0] * (1 - EA_OMEGA)
+
+            EA_TRJ[0] = EA_TR[0] * 1 / EA_OMEGA - EA_TRI[0] * (1 - EA_OMEGA) / EA_OMEGA
+
+            EA_TJ[0] = EA_T[0] * 1 / EA_OMEGA - EA_TI[0] * (1 - EA_OMEGA) / EA_OMEGA
+
+            EA_GAMMAV[0] = EA_GAMMAVI[0] * EA_CI[0] * (1 - EA_OMEGA) + EA_GAMMAVJ[0] * EA_CJ[0] * EA_OMEGA
+
+            EA_NI[0] = EA_NDI[0] * EA_SI[0]
+
+            EA_SI[0] = (1 - EA_XII) * (EA_WITILDE[0] / EA_WI[0]) ^ (-EA_ETAI) + EA_XII * (EA_WI[-1] / EA_WI[0]) ^ (-EA_ETAI) * (EA_PIC[0] / (EA_PI4TARGET ^ (0.25 * (1 - EA_CHII)) * EA_PIC[-1] ^ EA_CHII)) ^ EA_ETAI * EA_SI[-1]
+
+            EA_NJ[0] = EA_NDJ[0] * EA_SJ[0]
+
+            EA_SJ[0] = (1 - EA_XIJ) * (EA_WJTILDE[0] / EA_WJ[0]) ^ (-EA_ETAJ) + EA_XIJ * (EA_WJ[-1] / EA_WJ[0]) ^ (-EA_ETAJ) * (EA_PIC[0] / (EA_PI4TARGET ^ (0.25 * (1 - EA_CHIJ)) * EA_PIC[-1] ^ EA_CHIJ)) ^ EA_ETAJ * EA_SJ[-1]
+
+            EA_U[0] * EA_K[0] = EA_KD[0]
+
+            EA_YS[0] = EA_H[0] * EA_SH[0] + US_IM[0] * US_SIZE * EA_SX[0] / EA_SIZE
+
+            EA_H[0] = EA_G[0] + EA_HC[0] + EA_HI[0]
+
+            EA_IM[0] = EA_IMC[0] + EA_IMI[0]
+
+            EA_SH[0] = (1 - EA_XIH) * (EA_PHTILDE[0] / EA_PH[0]) ^ (-EA_THETA) + EA_XIH * (EA_PIH[0] / (EA_PI4TARGET ^ (0.25 * (1 - EA_CHIH)) * EA_PIH[-1] ^ EA_CHIH)) ^ EA_THETA * EA_SH[-1]
+
+            EA_SX[0] = (1 - EA_XIX) * (US_PIMTILDE[0] / US_PIM[0]) ^ (-EA_THETA) + EA_XIX * (US_PIIM[0] / (EA_PI4TARGET ^ (0.25 * (1 - EA_CHIH)) * US_PIIM[-1] ^ EA_CHIX)) ^ EA_THETA * EA_SX[-1]
+
+            EA_QC[0] = EA_C[0] + EA_GAMMAV[0]
+
+            EA_QI[0] = EA_I[0] + EA_GAMMAU[0] * EA_K[0]
+
+            EA_Y[0] * EA_PY[0] = US_IM[0] * US_SIZE * US_PIM[0] * EAUS_RER[0] / EA_SIZE + EA_PH[0] * EA_G[0] + EA_QC[0] + EA_PI[0] * EA_QI[0] - EA_PIM[0] * ((1 - EA_GAMMAIMC[0]) * EA_IMC[0] / EA_GAMMAIMCDAG[0] + (1 - EA_GAMMAIMI[0]) * EA_IMI[0] / EA_GAMMAIMIDAG[0])
+
+            EA_Y[0] = EA_YS[0]
+
+            log(EA_Z[0]) = (1 - EA_RHOZ) * log(EA_ZBAR) + EA_RHOZ * log(EA_Z[-1]) + σ_EA_Z * EA_EPSZ[x]
+
+            EA_GY[0] = (1 - EA_RHOG) * EA_GYBAR + EA_RHOG * EA_GY[-1] + σ_EA_G * EA_EPSG[x]
+
+            EA_TRY[0] = (1 - EA_RHOTR) * EA_TRYBAR + EA_RHOTR * EA_TRY[-1] + σ_EA_TR * EA_EPSTR[x]
+
+            EA_TAUC[0] = (1 - EA_RHOTAUC) * EA_TAUCBAR + EA_TAUC[-1] * EA_RHOTAUC + σ_EA_TAUC * EA_EPSTAUC[x]
+
+            EA_TAUD[0] = (1 - EA_RHOTAUD) * EA_TAUDBAR + EA_TAUD[-1] * EA_RHOTAUD + σ_EA_TAUD * EA_EPSTAUD[x]
+
+            EA_TAUK[0] = EA_TAUKBAR * (1 - EA_RHOTAUK) + EA_TAUK[-1] * EA_RHOTAUK + σ_EA_TAUK * EA_EPSTAUK[x]
+
+            EA_TAUN[0] = (1 - EA_RHOTAUN) * EA_TAUNBAR + EA_TAUN[-1] * EA_RHOTAUN + σ_EA_TAUN * EA_EPSTAUN[x]
+
+            EA_TAUWH[0] = (1 - EA_RHOTAUWH) * EA_TAUWHBAR + EA_TAUWH[-1] * EA_RHOTAUWH + σ_EA_TAUWH * EA_EPSTAUWH[x]
+
+            EA_TAUWF[0] = (1 - EA_RHOTAUWF) * EA_TAUWFBAR + EA_TAUWF[-1] * EA_RHOTAUWF + σ_EA_TAUWF * EA_EPSTAUWF[x]
+
+            EA_CY[0] = EA_C[0] / (EA_Y[0] * EA_PY[0])
+
+            EA_IY[0] = EA_PI[0] * EA_I[0] / (EA_Y[0] * EA_PY[0])
+
+            EA_IMY[0] = EA_PIM[0] * EA_IM[0] / (EA_Y[0] * EA_PY[0])
+
+            EA_IMCY[0] = EA_IMC[0] * EA_PIM[0] / (EA_Y[0] * EA_PY[0])
+
+            EA_IMIY[0] = EA_PIM[0] * EA_IMI[0] / (EA_Y[0] * EA_PY[0])
+
+            EA_BY[0] = EA_B[0] / (EA_PYBAR * EA_YBAR)
+
+            EA_TY[0] = EA_T[0] / (EA_PYBAR * EA_YBAR)
+
+            EA_YGAP[0] = EA_Y[0] / EA_YBAR - 1
+
+            EA_YGROWTH[0] = EA_Y[0] / EA_Y[-1]
+
+            EA_YSHARE[0] = EA_Y[0] * EA_PY[0] * EA_SIZE / EA_RER[0] / (EA_Y[0] * EA_PY[0] * EA_SIZE / EA_RER[0] + US_Y[0] * US_SIZE * US_PY[0] / US_RER)
+
+            EA_EPSILONM[0] = ( - 0.125) / (EA_R[0] * (EA_R[0] + EA_R[0] * EA_GAMMAV2 - 1))
+
+            US_UTILI[0] = 1 / (1 - US_SIGMA) * (US_CI[0] - US_KAPPA * US_CI[-1]) ^ (1 - US_SIGMA) - 1 / (1 + US_ZETA) * US_NI[0] ^ (1 + US_ZETA) + US_BETA * US_UTILI[1]
+
+            US_LAMBDAI[0] * (1 + US_TAUC[0] + US_GAMMAVI[0] + US_VI[0] * US_GAMMAVIDER[0]) = (US_CI[0] - US_KAPPA * US_CI[-1]) ^ (-US_SIGMA)
+
+            US_R[0] = US_LAMBDAI[0] * US_BETA ^ (-1) / US_LAMBDAI[1] * US_PIC[1]
+
+            US_GAMMAVIDER[0] * US_VI[0] ^ 2 = 1 - US_BETA * US_LAMBDAI[1] / (US_LAMBDAI[0] * US_PIC[1])
+
+            US_VI[0] = US_CI[0] * (1 + US_TAUC[0]) / US_MI[0]
+
+            US_GAMMAVI[0] = US_VI[0] * US_GAMMAV1 + US_GAMMAV2 / US_VI[0] - 2 * (US_GAMMAV1 * US_GAMMAV2) ^ 0.5
+
+            US_GAMMAVIDER[0] = US_GAMMAV1 - US_GAMMAV2 * US_VI[0] ^ (-2)
+
+            US_KI[0] = (1 - US_DELTA) * US_KI[-1] + (1 - US_GAMMAI[-1]) * US_II[-1]
+
+            US_GAMMAI[0] = US_GAMMAI1 / 2 * (US_II[0] / US_II[-1] - 1) ^ 2
+
+            US_GAMMAIDER[0] = US_GAMMAI1 * (US_II[0] / US_II[-1] - 1) / US_II[-1]
+
+            US_GAMMAU[0] = ((US_DELTA + US_BETA ^ (-1) - 1) * US_QBAR - US_DELTA * US_TAUKBAR * US_PIBAR) / (US_PIBAR * (1 - US_TAUKBAR)) * (US_U[0] - 1) + US_GAMMAU2 / 2 * (US_U[0] - 1) ^ 2
+
+            US_GAMMAUDER[0] = ((US_DELTA + US_BETA ^ (-1) - 1) * US_QBAR - US_DELTA * US_TAUKBAR * US_PIBAR) / (US_PIBAR * (1 - US_TAUKBAR)) + (US_U[0] - 1) * US_GAMMAU2
+
+            US_RK[0] = US_GAMMAUDER[0] * US_PI[0]
+
+            US_PI[0] = US_Q[0] * (1 - US_GAMMAI[0] - US_II[0] * US_GAMMAIDER[0]) + US_BETA * US_LAMBDAI[1] / US_LAMBDAI[0] * US_Q[1] * US_GAMMAIDER[1] * US_II[1] ^ 2 / US_II[0]
+
+            US_Q[0] = US_BETA * US_LAMBDAI[1] / US_LAMBDAI[0] * ((1 - US_TAUK[1]) * (US_RK[1] * US_U[1] - US_GAMMAU[1] * US_PI[1]) + US_PI[1] * US_DELTA * US_TAUK[1] + (1 - US_DELTA) * US_Q[1])
+
+            US_WITILDE[0] ^ (1 + US_ZETA * US_ETAI) = US_ETAI / (US_ETAI - 1) * US_FI[0] / US_GI[0]
+
+            US_FI[0] = US_WI[0] ^ ((1 + US_ZETA) * US_ETAI) * US_NDI[0] ^ (1 + US_ZETA) + US_BETA * US_XII * (US_PIC[1] / (US_PIC[0] ^ US_CHII * US_PI4TARGET ^ (0.25 * (1 - US_CHII)))) ^ ((1 + US_ZETA) * US_ETAI) * US_FI[1]
+
+            US_GI[0] = US_NDI[0] * US_LAMBDAI[0] * (1 - US_TAUN[0] - US_TAUWH[0]) * US_WI[0] ^ US_ETAI + US_BETA * US_XII * (US_PIC[1] / (US_PIC[0] ^ US_CHII * US_PI4TARGET ^ (0.25 * (1 - US_CHII)))) ^ (US_ETAI - 1) * US_GI[1]
+
+            US_WI[0] ^ (1 - US_ETAI) = (1 - US_XII) * US_WITILDE[0] ^ (1 - US_ETAI) + US_XII * US_WI[-1] ^ (1 - US_ETAI) * (US_PI4TARGET ^ (0.25 * (1 - US_CHII)) * US_PIC[-1] ^ US_CHII / US_PIC[0]) ^ (1 - US_ETAI)
+
+            US_UTILJ[0] = 1 / (1 - US_SIGMA) * (US_CJ[0] - US_KAPPA * US_CJ[-1]) ^ (1 - US_SIGMA) - 1 / (1 + US_ZETA) * US_NJ[0] ^ (1 + US_ZETA) + US_BETA * US_UTILJ[1]
+
+            US_CJ[0] * (1 + US_TAUC[0] + US_GAMMAVJ[0]) + US_MJ[0] = US_NJ[0] * (1 - US_TAUN[0] - US_TAUWH[0]) * US_WJ[0] + US_TRJ[0] - US_TJ[0] + US_MJ[-1] * US_PIC[0] ^ (-1)
+
+            US_LAMBDAJ[0] * (1 + US_TAUC[0] + US_GAMMAVJ[0] + US_VJ[0] * US_GAMMAVJDER[0]) = (US_CJ[0] - US_KAPPA * US_CJ[-1]) ^ (-US_SIGMA)
+
+            US_GAMMAVJDER[0] * US_VJ[0] ^ 2 = 1 - US_BETA * US_LAMBDAJ[1] / (US_PIC[1] * US_LAMBDAJ[0])
+
+            US_VJ[0] = (1 + US_TAUC[0]) * US_CJ[0] / US_MJ[0]
+
+            US_GAMMAVJ[0] = US_GAMMAV1 * US_VJ[0] + US_GAMMAV2 / US_VJ[0] - 2 * (US_GAMMAV1 * US_GAMMAV2) ^ 0.5
+
+            US_GAMMAVJDER[0] = US_GAMMAV1 - US_GAMMAV2 * US_VJ[0] ^ (-2)
+
+            US_WJTILDE[0] ^ (1 + US_ZETA * US_ETAJ) = US_ETAJ / (US_ETAJ - 1) * US_FJ[0] / US_GJ[0]
+
+            US_FJ[0] = US_WJ[0] ^ ((1 + US_ZETA) * US_ETAJ) * US_NDJ[0] ^ (1 + US_ZETA) + US_BETA * US_XIJ * (US_PIC[1] / (US_PIC[0] ^ US_CHIJ * US_PI4TARGET ^ (0.25 * (1 - US_CHIJ)))) ^ ((1 + US_ZETA) * US_ETAJ) * US_FJ[1]
+
+            US_GJ[0] = US_NDJ[0] * (1 - US_TAUN[0] - US_TAUWH[0]) * US_LAMBDAJ[0] * US_WJ[0] ^ US_ETAJ + US_BETA * US_XIJ * (US_PIC[1] / (US_PIC[0] ^ US_CHIJ * US_PI4TARGET ^ (0.25 * (1 - US_CHIJ)))) ^ (US_ETAJ - 1) * US_GJ[1]
+
+            US_WJ[0] ^ (1 - US_ETAJ) = (1 - US_XIJ) * US_WJTILDE[0] ^ (1 - US_ETAJ) + US_XIJ * US_WJ[-1] ^ (1 - US_ETAJ) * (US_PI4TARGET ^ (0.25 * (1 - US_CHIJ)) * US_PIC[-1] ^ US_CHIJ / US_PIC[0]) ^ (1 - US_ETAJ)
+
+            US_YS[0] = US_Z[0] * US_KD[0] ^ US_ALPHA * US_ND[0] ^ (1 - US_ALPHA) - US_PSIBAR
+
+            US_RK[0] = US_ALPHA * (US_YS[0] + US_PSIBAR) / US_KD[0] * US_MC[0]
+
+            US_MC[0] = 1 / (US_Z[0] * US_ALPHA ^ US_ALPHA * (1 - US_ALPHA) ^ (1 - US_ALPHA)) * US_RK[0] ^ US_ALPHA * ((1 + US_TAUWF[0]) * US_W[0]) ^ (1 - US_ALPHA)
+
+            US_NDI[0] = US_ND[0] * (1 - US_OMEGA) * (US_WI[0] / US_W[0]) ^ (-US_ETA)
+
+            US_NDJ[0] = US_ND[0] * US_OMEGA * (US_WJ[0] / US_W[0]) ^ (-US_ETA)
+
+            US_ND[0] ^ (1 - 1 / US_ETA) = (1 - US_OMEGA) ^ (1 / US_ETA) * US_NDI[0] ^ (1 - 1 / US_ETA) + US_OMEGA ^ (1 / US_ETA) * US_NDJ[0] ^ (1 - 1 / US_ETA)
+
+            US_D[0] = US_Y[0] * US_PY[0] - US_RK[0] * US_KD[0] - US_ND[0] * (1 + US_TAUWF[0]) * US_W[0]
+
+            US_PHTILDE[0] / US_PH[0] = US_THETA / (US_THETA - 1) * US_FH[0] / US_GH[0]
+
+            US_FH[0] = US_MC[0] * US_H[0] + US_LAMBDAI[1] * US_BETA * US_XIH / US_LAMBDAI[0] * (US_PIH[1] / (US_PIH[0] ^ US_CHIH * US_PI4TARGET ^ (0.25 * (1 - US_CHIH)))) ^ US_THETA * US_FH[1]
+
+            US_GH[0] = US_PH[0] * US_H[0] + US_LAMBDAI[1] * US_BETA * US_XIH / US_LAMBDAI[0] * (US_PIH[1] / (US_PIH[0] ^ US_CHIH * US_PI4TARGET ^ (0.25 * (1 - US_CHIH)))) ^ (US_THETA - 1) * US_GH[1]
+
+            US_PH[0] ^ (1 - US_THETA) = (1 - US_XIH) * US_PHTILDE[0] ^ (1 - US_THETA) + US_XIH * (US_PH[-1] / US_PIC[0]) ^ (1 - US_THETA) * (US_PI4TARGET ^ (0.25 * (1 - US_CHIH)) * US_PIH[-1] ^ US_CHIH) ^ (1 - US_THETA)
+
+            US_PIH[0] = US_PIC[0] * US_PH[0] / US_PH[-1]
+
+            EA_PIMTILDE[0] / EA_PIM[0] = US_THETA / (US_THETA - 1) * US_FX[0] / US_GX[0]
+
+            US_FX[0] = US_MC[0] * EA_IM[0] * EA_SIZE / US_SIZE + US_LAMBDAI[1] * US_BETA * US_XIX / US_LAMBDAI[0] * (EA_PIIM[1] / (EA_PIIM[0] ^ US_CHIX * US_PI4TARGET ^ (0.25 * (1 - US_CHIX)))) ^ US_THETA * US_FX[1]
+
+            US_GX[0] = EA_IM[0] * EA_SIZE * EA_PIM[0] * USEA_RER[0] / US_SIZE + US_LAMBDAI[1] * US_BETA * US_XIX / US_LAMBDAI[0] * (EA_PIIM[1] / (EA_PIIM[0] ^ US_CHIX * US_PI4TARGET ^ (0.25 * (1 - US_CHIX)))) ^ (US_THETA - 1) * US_GX[1]
+
+            EA_PIM[0] ^ (1 - US_THETA) = (1 - US_XIX) * EA_PIMTILDE[0] ^ (1 - US_THETA) + US_XIX * (EA_PIM[-1] / EA_PIC[0]) ^ (1 - US_THETA) * (EA_PIIM[-1] ^ US_CHIX * EA_PI4TARGET ^ (0.25 * (1 - US_CHIH))) ^ (1 - US_THETA)
+
+            EA_PIIM[0] = EA_PIC[0] * EA_PIM[0] / EA_PIM[-1]
+
+            USEA_RER[0] = US_RER / EA_RER[0]
+
+            US_QC[0] ^ ((US_MUC - 1) / US_MUC) = US_NUC ^ (1 / US_MUC) * US_HC[0] ^ (1 - 1 / US_MUC) + (1 - US_NUC) ^ (1 / US_MUC) * ((1 - US_GAMMAIMC[0]) * US_IMC[0]) ^ (1 - 1 / US_MUC)
+
+            1 = US_NUC * US_PH[0] ^ (1 - US_MUC) + (1 - US_NUC) * (US_PIM[0] / US_GAMMAIMCDAG[0]) ^ (1 - US_MUC)
+
+            US_HC[0] = US_QC[0] * US_NUC * US_PH[0] ^ (-US_MUC)
+
+            US_GAMMAIMC[0] = US_GAMMAIMC1 / 2 * (US_IMC[0] / US_QC[0] / (US_IMC[-1] / US_QC[-1]) - 1) ^ 2
+
+            US_GAMMAIMCDAG[0] = 1 - US_GAMMAIMC[0] - US_IMC[0] * US_GAMMAIMC1 * (US_IMC[0] / US_QC[0] / (US_IMC[-1] / US_QC[-1]) - 1) / US_QC[0] / (US_IMC[-1] / US_QC[-1])
+
+            US_QI[0] ^ ((US_MUI - 1) / US_MUI) = US_NUI ^ (1 / US_MUI) * US_HI[0] ^ (1 - 1 / US_MUI) + (1 - US_NUI) ^ (1 / US_MUI) * ((1 - US_GAMMAIMI[0]) * US_IMI[0]) ^ (1 - 1 / US_MUI)
+
+            US_PI[0] ^ (1 - US_MUI) = US_NUI * US_PH[0] ^ (1 - US_MUI) + (1 - US_NUI) * (US_PIM[0] / US_GAMMAIMIDAG[0]) ^ (1 - US_MUI)
+
+            US_HI[0] = US_QI[0] * US_NUI * (US_PH[0] / US_PI[0]) ^ (-US_MUI)
+
+            US_GAMMAIMI[0] = US_GAMMAIMI1 / 2 * (US_IMI[0] / US_QI[0] / (US_IMI[-1] / US_QI[-1]) - 1) ^ 2
+
+            US_GAMMAIMIDAG[0] = 1 - US_GAMMAIMI[0] - US_IMI[0] * US_GAMMAIMI1 * (US_IMI[0] / US_QI[0] / (US_IMI[-1] / US_QI[0]) - 1) / US_QI[0] / (US_IMI[-1] / US_QI[-1])
+
+            US_PH[-1] * US_G[-1] + US_TR[-1] + US_B[-1] * US_PIC[-1] ^ (-1) + US_PIC[-1] ^ (-1) * US_M[-2] = US_TAUC[-1] * US_C[-1] + (US_TAUN[-1] + US_TAUWH[-1]) * (US_WI[-1] * US_NDI[-1] + US_WJ[-1] * US_NDJ[-1]) + US_TAUWF[-1] * US_W[-1] * US_ND[-1] + US_TAUK[-1] * (US_RK[-1] * US_U[-1] - (US_DELTA + US_GAMMAU[-1]) * US_PI[-1]) * US_K[-1] + US_TAUD[-1] * US_D[-1] + US_T[-1] + US_R[-1] ^ (-1) * US_B[0] + US_M[-1]
+
+            US_PH[0] * US_G[0] = US_GY[0] * US_PYBAR * US_YBAR
+
+            US_TR[0] = US_YBAR * US_PYBAR * US_TRY[0]
+
+            US_T[0] / (US_PYBAR * US_YBAR) = US_PHITB * (US_B[0] / (US_PYBAR * US_YBAR) - US_BYTARGET)
+
+            US_TI[0] = US_T[0] * US_UPSILONT
+
+            US_TRI[0] = US_TR[0] * US_UPSILONTR
+
+            US_PIC4[0] = US_PIC[0] * US_PIC[-1] * US_PIC[-2] * US_PIC[-3]
+
+            US_RR[0] - 1 = US_R[0] / US_PIC[1] - 1
+
+            US_C[0] = US_CI[0] * (1 - US_OMEGA) + US_CJ[0] * US_OMEGA
+
+            US_M[0] = US_MI[0] * (1 - US_OMEGA) + US_MJ[0] * US_OMEGA
+
+            US_K[0] = US_KI[0] * (1 - US_OMEGA)
+
+            US_I[0] = US_II[0] * (1 - US_OMEGA)
+
+            US_TRJ[0] = US_TR[0] * 1 / US_OMEGA - US_TRI[0] * (1 - US_OMEGA) / US_OMEGA
+
+            US_TJ[0] = US_T[0] * 1 / US_OMEGA - US_TI[0] * (1 - US_OMEGA) / US_OMEGA
+
+            US_GAMMAV[0] = US_GAMMAVI[0] * US_CI[0] * (1 - US_OMEGA) + US_GAMMAVJ[0] * US_CJ[0] * US_OMEGA
+
+            US_NI[0] = US_NDI[0] * US_SI[0]
+
+            US_SI[0] = (1 - US_XII) * (US_WITILDE[0] / US_WI[0]) ^ (-US_ETAI) + US_XII * (US_WI[-1] / US_WI[0]) ^ (-US_ETAI) * (US_PIC[0] / (US_PI4TARGET ^ (0.25 * (1 - US_CHII)) * US_PIC[-1] ^ US_CHII)) ^ US_ETAI * US_SI[-1]
+
+            US_NJ[0] = US_NDJ[0] * US_SJ[0]
+
+            US_SJ[0] = (1 - US_XIJ) * (US_WJTILDE[0] / US_WJ[0]) ^ (-US_ETAJ) + US_XIJ * (US_WJ[-1] / US_WJ[0]) ^ (-US_ETAJ) * (US_PIC[0] / (US_PI4TARGET ^ (0.25 * (1 - US_CHIJ)) * US_PIC[-1] ^ US_CHIJ)) ^ US_ETAJ * US_SJ[-1]
+
+            US_U[0] * US_K[0] = US_KD[0]
+
+            US_YS[0] = US_H[0] * US_SH[0] + EA_IM[0] * EA_SIZE * US_SX[0] / US_SIZE
+
+            US_H[0] = US_G[0] + US_HC[0] + US_HI[0]
+
+            US_IM[0] = US_IMC[0] + US_IMI[0]
+
+            US_SH[0] = (1 - US_XIH) * (US_PHTILDE[0] / US_PH[0]) ^ (-US_THETA) + US_XIH * (US_PIH[0] / (US_PI4TARGET ^ (0.25 * (1 - US_CHIH)) * US_PIH[-1] ^ US_CHIH)) ^ US_THETA * US_SH[-1]
+
+            US_SX[0] = (1 - US_XIX) * (EA_PIMTILDE[0] / EA_PIM[0]) ^ (-US_THETA) + US_XIX * (EA_PIIM[0] / (US_PI4TARGET ^ (0.25 * (1 - US_CHIH)) * EA_PIIM[-1] ^ US_CHIX)) ^ US_THETA * US_SX[-1]
+
+            US_QC[0] = US_C[0] + US_GAMMAV[0]
+
+            US_QI[0] = US_I[0] + US_GAMMAU[0] * US_K[0]
+
+            US_Y[0] * US_PY[0] = EA_IM[0] * EA_SIZE * EA_PIM[0] * USEA_RER[0] / US_SIZE + US_PH[0] * US_G[0] + US_QC[0] + US_PI[0] * US_QI[0] - US_PIM[0] * ((1 - US_GAMMAIMC[0]) * US_IMC[0] / US_GAMMAIMCDAG[0] + (1 - US_GAMMAIMI[0]) * US_IMI[0] / US_GAMMAIMIDAG[0])
+
+            US_Y[0] = US_YS[0]
+
+            log(US_Z[0]) = (1 - US_RHOZ) * log(US_ZBAR) + US_RHOZ * log(US_Z[-1]) + σ_US_Z * US_EPSZ[x]
+
+            US_GY[0] = (1 - US_RHOG) * US_GYBAR + US_RHOG * US_GY[-1] + σ_US_G * US_EPSG[x]
+
+            US_TRY[0] = (1 - US_RHOTR) * US_TRYBAR + US_RHOTR * US_TRY[-1] + σ_US_TR * US_EPSTR[x]
+
+            US_TAUC[0] = (1 - US_RHOTAUC) * US_TAUCBAR + US_TAUC[-1] * US_RHOTAUC + σ_US_TAUC * US_EPSTAUC[x]
+
+            US_TAUD[0] = (1 - US_RHOTAUD) * US_TAUDBAR + US_TAUD[-1] * US_RHOTAUD + σ_US_TAUD * US_EPSTAUD[x]
+
+            US_TAUK[0] = US_TAUKBAR * (1 - US_RHOTAUK) + US_TAUK[-1] * US_RHOTAUK + σ_US_TAUK * US_EPSTAUK[x]
+
+            US_TAUN[0] = (1 - US_RHOTAUN) * US_TAUNBAR + US_TAUN[-1] * US_RHOTAUN + σ_US_TAUN * US_EPSTAUN[x]
+
+            US_TAUWH[0] = (1 - US_RHOTAUWH) * US_TAUWHBAR + US_TAUWH[-1] * US_RHOTAUWH + σ_US_TAUWH * US_EPSTAUWH[x]
+
+            US_TAUWF[0] = (1 - US_RHOTAUWF) * US_TAUWFBAR + US_TAUWF[-1] * US_RHOTAUWF + σ_US_TAUWF * US_EPSTAUWF[x]
+
+            US_CY[0] = US_C[0] / (US_Y[0] * US_PY[0])
+
+            US_IY[0] = US_PI[0] * US_I[0] / (US_Y[0] * US_PY[0])
+
+            US_IMY[0] = US_PIM[0] * US_IM[0] / (US_Y[0] * US_PY[0])
+
+            US_IMCY[0] = US_PIM[0] * US_IMC[0] / (US_Y[0] * US_PY[0])
+
+            US_IMIY[0] = US_PIM[0] * US_IMI[0] / (US_Y[0] * US_PY[0])
+
+            US_BY[0] = US_B[0] / (US_PYBAR * US_YBAR)
+
+            US_TY[0] = US_T[0] / (US_PYBAR * US_YBAR)
+
+            US_YGAP[0] = US_Y[0] / US_YBAR - 1
+
+            US_YGROWTH[0] = US_Y[0] / US_Y[-1]
+
+            US_YSHARE[0] = US_Y[0] * US_SIZE * US_PY[0] / US_RER / (EA_Y[0] * EA_PY[0] * EA_SIZE / EA_RER[0] + US_Y[0] * US_SIZE * US_PY[0] / US_RER)
+
+            US_EPSILONM[0] = ( - 0.125) / (US_R[0] * (US_R[0] + US_R[0] * US_GAMMAV2 - 1))
+
+            1 = EA_LAMBDAI[1] * EA_BETA * US_R[0] * (1 - EA_GAMMAB[0]) / EA_LAMBDAI[0] * EA_RERDEP[1] / US_PIC[1]
+
+            EA_GAMMAB[0] = EA_GAMMAB1 * (exp(EA_RER[0] * EA_BF[0] / US_PIC[0] / (EA_Y[0] * EA_PY[0]) - EA_BFYTARGET) - 1) - EA_RP[0]
+
+            EA_RP[0] = EA_RHORP * EA_RP[-1] + σ_EA_RP * EA_EPSRP[x]
+
+            EA_RERDEP[0] = EA_RER[0] / EA_RER[-1]
+
+            EA_TOT[0] = EA_PIM[0] / (US_PIM[0] * EA_RER[0])
+
+            EA_TB[0] = US_IM[0] * US_SIZE * US_PIM[0] * EA_RER[0] / EA_SIZE - EA_PIM[0] * EA_IM[0]
+
+            EA_BF[0] / US_R[-1] = EA_BF[-1] + EA_TB[-1] / EA_RER[-1]
+
+            EA_SIZE * EA_BF[0] + US_SIZE * US_BF[0] = 0
+
+        end
+
+
+        @parameters NAWM_EAUS_2008_incomplete begin
+            EA_RRSTAR = 1 / EA_BETA
+
+            US_RRSTAR = 1 / US_BETA
+        end
+
+        # write the parameters from NAWM_EAUS_2008 to a csv file
+        using CSV
+        using DataFrames
+
+        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_complete_parameters.parameters, Value = NAWM_EAUS_2008.parameter_values)
+        CSV.write("NAWM_EAUS_2008_parameters.csv", df)
+
+        # read the parameters from the csv file as a Dict and update NAWM_EAUS_2008_incomplete
+        param_df = CSV.read("NAWM_EAUS_2008_parameters.csv", DataFrame)
+        param_dict = Dict(row.Parameter => row.Value for row in eachrow(param_df))
+
+        sol1 = get_solution(NAWM_EAUS_2008_incomplete, parameters = param_dict)
+        sol2 = get_solution(NAWM_EAUS_2008)
+
+        @test isapprox(sol1, sol2, rtol = 1e-7)
+    end
+
+    @testset verbose = true "Code quality (Aqua.jl)" begin
+        # Aqua.test_all(MacroModelling)
+        @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
+        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
+        @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
+        @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
+        @testset "Piracy" Aqua.test_piracies(MacroModelling)
+        @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+        @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
+        # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
+    end
+    GC.gc()
+    
+    # test_higher_order = true
+    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
+        include("test_models.jl")
+    end
+    GC.gc()
+    # test_higher_order = false
+
+    @testset verbose = true "for and if loops" begin
+        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
+        include("models/Backus_Kehoe_Kydland_1992.jl")
+
+        std1 = get_std(Backus_Kehoe_Kydland_1992)
+        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
+
+        common_keys1 = intersect(std1.keys[1], std2.keys[1])
+        common_keys2 = intersect(std1.keys[2], std2.keys[2])
+
+        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
+    end
+
+    @testset verbose = true "Model without shocks" begin
+        @model m begin
+            K[0] = (1 - δ) * K[-1] + I[0]
+            Z[0] = (1 - ρ) * μ + ρ * Z[-1] 
+            I[1]  = ((ρ + δ - Z[0])/(1 - δ))  + ((1 + ρ)/(1 - δ)) * I[0]
+        end
+
+        @parameters m verbose = true begin
+            ρ = 0.05
+            δ = 0.10
+            μ = .17
+            σ = .2
+        end
+
+        m_ss = get_steady_state(m)
+        @test isapprox(m_ss(:,:Steady_state),[1/7.5,1/.75,.17],rtol = eps(Float32))
+
+        m_sol = get_solution(m) 
+        @test isapprox(m_sol(:,:K),[1/.75,.9,.04975124378109454],rtol = eps(Float32))
+
+        init = m_ss(:,:Steady_state) |> collect
+        init[2] *= 1.5
+        get_irf(m, initial_state = init, shocks = :none)
+
+        plots = plot_irf(m, initial_state = init, shocks = :none)
+
+        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+
+        plots! = plot_irf!(m, initial_state = init .* 1.5, shocks = :none)
+        
+        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+    end
+    m = nothing
+
+
 
     @testset verbose = true "Distribution functions, general and SS" begin
         
@@ -2099,7 +3318,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
         # irf(RBC_CME)
         
@@ -2167,7 +3386,7 @@ if test_set == "basic"
         # using NLopt
         # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # solve!(RBC_CME,symbolic_SS = true)
-        @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+        @test get_steady_state(RBC_CME)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
         # get_moments(RBC_CME)[1]
 
         RBC_CME = nothing
@@ -2239,7 +3458,7 @@ if test_set == "basic"
         # solve!(RBC_CME, verbose = true)
         # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
         # get_steady_state(RBC_CME)
-        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+        @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
         # get_moments(RBC_CME)[1]
 
         # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -2308,7 +3527,7 @@ if test_set == "basic"
         # # using NLopt
         # # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
         # # get_steady_state(RBC_CME)
-        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
+        @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.constants.post_model_macro.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
         # get_moments(RBC_CME)[1]
         
         RBC_CME = nothing
@@ -2443,7 +3662,7 @@ if test_set == "basic"
         # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var,[:Steady_state]),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.constants.post_model_macro.var,[:Steady_state]),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
@@ -2708,7 +3927,7 @@ if test_set == "basic"
         end
 
         get_solution(RBC_CME)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -2717,7 +3936,7 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :I_K_ratio => .1)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -2726,7 +3945,7 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :cap_share => 1.5)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -2781,7 +4000,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
     #                                                                 6.73489e-6   0.000168887
     #                                                                 1.01124e-5   0.000253583
     #                                                                 -0.000365783  0.00217203
@@ -2792,7 +4011,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
     #         3.42408e-6   0.000111417
     #         5.14124e-6   0.000167292
     #     -0.000196196  0.00190741
@@ -2803,7 +4022,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+    #     @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
     #     4.00629e-6   0.000118171
     #     6.01543e-6   0.000177434
     # -0.000207089  0.00201698
@@ -2858,7 +4077,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -2869,7 +4088,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -2880,7 +4099,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.caches.first_order_solution_matrix[:,[(end-RBC_CME.constants.post_model_macro.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -2890,9 +4109,6 @@ if test_set == "basic"
 
         RBC_CME = nothing
     end
-
-
-
 
 
     @testset verbose = true "Plotting" begin
@@ -2964,4 +4180,5 @@ if test_set == "basic"
         RBC_CME = nothing
     end
     GC.gc()
+    
 end

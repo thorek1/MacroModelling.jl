@@ -11,12 +11,19 @@
 @stable default_mode = "disable" begin
 
 function solve_lyapunov_equation(A::AbstractMatrix{T},
-                                C::AbstractMatrix{T};
+                                C::AbstractMatrix{T},
+                                workspace::lyapunov_workspace;
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-14,
                                 acceptance_tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
+    # Update workspace dimension if needed (for cases like Kalman filter where dimension differs from initial setup)
+    n = size(A, 1)
+    if workspace.n != n
+        workspace.n = n
+    end
+    
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
         
@@ -33,7 +40,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
 
-    X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol) # timer = timer)
+    X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = tol) # timer = timer)
 
     if verbose
         println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
@@ -42,7 +49,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :doubling
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), workspace; tol = tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
@@ -52,7 +59,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :bicgstab
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), workspace; tol = tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
@@ -64,7 +71,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
@@ -78,84 +85,15 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     return X, reached_tol < acceptance_tol
 end
 
-end # dispatch_doctor
-
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64};
-                lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
-                # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
-
-    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    # pullback 
-    # https://arxiv.org/abs/2011.11430  
-    function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
-
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
-    
-        solved = solved && slvd
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), ∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-@stable default_mode = "disable" begin
-
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
-
-        if ℒ.norm(X) < eps() continue end
-
-        P, slvd = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-        
-        solved = solved && slvd
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
 
 
 function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:bartels_stewart};
+                                    ::Val{:bartels_stewart},
+                                    workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Note: workspace is unused by bartels_stewart but accepted for API consistency
     𝐂 = try 
         MatrixEquations.lyapd(A, C)::Matrix{T}
     catch
@@ -181,9 +119,11 @@ end
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
 
@@ -228,9 +168,11 @@ end
 
 function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
 
@@ -278,9 +220,11 @@ end
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
     𝐂A = collect(𝐀)    
@@ -340,15 +284,23 @@ end
 
 function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:doubling};
+                                    ::Val{:doubling},
+                                    workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    𝐂  = copy(C)
-    𝐂¹ = copy(C)
-    𝐀  = copy(A)
-
-    𝐂A = similar(𝐀)
-    𝐀² = similar(𝐀)
+    # Ensure doubling buffers are allocated
+    ensure_lyapunov_doubling_buffers!(workspace)
+    
+    # Use workspaces for dense-dense case
+    𝐂  = workspace.𝐂
+    𝐂¹ = workspace.𝐂¹
+    𝐀  = workspace.𝐀
+    𝐂A = workspace.𝐂A
+    𝐀² = workspace.𝐀²
+    
+    copyto!(𝐂, C)
+    copyto!(𝐂¹, C)
+    copyto!(𝐀, A)
 
     max_iter = 500
 
@@ -389,7 +341,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     #     println("Lyapunov: doubling $reached_tol")
     # end
 
-    return 𝐂, iters, reached_tol # return info on convergence
+    return copy(𝐂), iters, reached_tol # return info on convergence
 end
 
 
@@ -397,11 +349,17 @@ end
 
 function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                ::Val{:bicgstab};
+                                ::Val{:bicgstab},
+                                workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
+    # Ensure Krylov buffers and bicgstab solver are allocated
+    ensure_lyapunov_bicgstab_solver!(workspace)
+    
+    # Use workspaces
+    tmp̄ = workspace.tmp̄
+    𝐗 = workspace.𝐗
+    b = workspace.b
 
     function lyapunov!(sol,𝐱)
         copyto!(𝐗, 𝐱)
@@ -412,9 +370,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
     lyapunov = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov!)
 
-    𝐂, info = Krylov.bicgstab(lyapunov, [vec(C);], rtol = tol, atol = tol)
+    # Use vectorized C in workspace
+    copyto!(b, vec(C))
+    
+    # Use pre-allocated solver
+    Krylov.bicgstab!(workspace.bicgstab_workspace, lyapunov, b, rtol = tol, atol = tol)
 
-    copyto!(𝐗, 𝐂)
+    copyto!(𝐗, workspace.bicgstab_workspace.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * A')
     # ℒ.axpy!(1, C, tmp̄)
@@ -431,17 +393,23 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: bicgstab $reached_tol")
     # end
 
-    return 𝐗, info.niter, reached_tol
+    return copy(𝐗), workspace.bicgstab_workspace.stats.niter, reached_tol
 end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                ::Val{:gmres};
+                                ::Val{:gmres},
+                                workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
+    # Ensure Krylov buffers and gmres solver are allocated
+    ensure_lyapunov_gmres_solver!(workspace)
+    
+    # Use workspaces
+    tmp̄ = workspace.tmp̄
+    𝐗 = workspace.𝐗
+    b = workspace.b
 
     function lyapunov!(sol,𝐱)
         copyto!(𝐗, 𝐱)
@@ -454,9 +422,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
     lyapunov = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov!)
 
-    𝐂, info = Krylov.gmres(lyapunov, [vec(C);], rtol = tol, atol = tol)
+    # Use vectorized C in workspace
+    copyto!(b, vec(C))
+    
+    # Use pre-allocated solver
+    Krylov.gmres!(workspace.gmres_workspace, lyapunov, b, rtol = tol, atol = tol)
 
-    copyto!(𝐗, 𝐂)
+    copyto!(𝐗, workspace.gmres_workspace.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * A')
     # ℒ.axpy!(1, C, tmp̄)
@@ -473,7 +445,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: gmres $reached_tol")
     # end
 
-    return 𝐗, info.niter, reached_tol
+    return copy(𝐗), workspace.gmres_workspace.stats.niter, reached_tol
 end
 
 

@@ -21,7 +21,7 @@ The goal of this package is to reduce coding time and speed up model development
 As of now the package can:
 
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
-- (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
+- (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed; possibility to define custom steady state function)
 - calculate **first, second, and third order (pruned) perturbation** solutions using symbolic derivatives
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
@@ -77,6 +77,82 @@ plot_irf(RBC)
 
 ![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
 
+#### Custom steady state function
+
+By default, the package automatically solves for the non-stochastic steady state. For complex models, you can provide a custom steady state function to ensure efficient computation or in case the automatic solver fails:
+
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+function rbc_steady_state!(ss, params)
+    std_z, rho, delta, alpha, beta = params
+
+    k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
+    q_ss = k_ss^alpha
+    c_ss = q_ss - delta * k_ss
+    z_ss = 0.0
+
+    ss[1] = c_ss
+    ss[2] = k_ss
+    ss[3] = q_ss
+    ss[4] = z_ss
+end
+
+@parameters RBC steady_state_function = rbc_steady_state! begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+```
+
+#### Delayed parameter definition
+
+Parameters do not need to be defined upfront in the `@parameters` block. You can define the model first and provide parameter values later when calling functions. This is useful for loading parameter values from external sources (e.g., CSV files).
+
+```julia
+using MacroModelling
+import StatsPlots
+
+@model RBC_delayed begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+
+    q[0] = exp(z[0]) * k[-1]^α
+
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC_delayed begin
+end;
+
+plot_irf(RBC_delayed, parameters = (:std_z => 0.01, :ρ => 0.2, :δ => 0.02, :α => 0.5, :β => 0.95))
+```
+
+![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
+
+Note: Calibration equations (using `|` syntax) and parameters defined as functions of other parameters must be declared in the `@parameters` block.
+
+Steady state options:
+
+- Automatic solver (default) from the model equations.
+- Custom steady state function.
+
+Parameter values can also be supplied later (delayed parameter definition) as illustrated above.
+
+See the documentation for more details on the [steady state](https://thorek1.github.io/MacroModelling.jl/stable/steady_state/).
+
+## Models
+
 The package contains the following models in the `models` folder:
 
 - [Aguiar and Gopinath (2007)](https://www.journals.uchicago.edu/doi/10.1086/511283) `Aguiar_Gopinath_2007.jl`
@@ -101,19 +177,19 @@ The package contains the following models in the `models` folder:
 
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[IRIS](https://iris.igpmn.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)|
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-**Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
-**Non-stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
-**Automatic declaration of variables and parameters**|yes|||||||||||||
-**Derivatives wrt parameters**|yes|||||yes|||||||
-**Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
-**Pruning**|yes|yes||||yes|||yes|||||
-**Automatic derivation of first order conditions**|||||||||||yes||
-**Occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
-**Global solution**||||yes|yes|||||||yes||
-**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
-**Balanced growth path**||yes|yes||||yes|yes|yes|yes|||||
-**Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
-**Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|
+|**Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
+|**Non-stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem; custom steady state function can be provided|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
+|**Automatic declaration of variables and parameters**|yes|||||||||||||
+|**Derivatives wrt parameters**|yes|||||yes||||||||
+|**Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
+|**Pruning**|yes|yes||||yes|||yes|||||
+|**Automatic derivation of first order conditions**|||||||||||yes|||
+|**Occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
+|**Global solution**||||yes|yes|||||||yes||
+|**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
+|**Balanced growth path**||yes|yes||||yes|yes|yes|yes||||
+|**Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
+|**Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|
 
 ## Bibliography
 

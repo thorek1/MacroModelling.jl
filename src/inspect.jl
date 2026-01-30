@@ -27,6 +27,47 @@ function get_symbols(ex::Expr)
     return par
 end
 
+end # dispatch_doctor
+
+"""
+    parse_filter_term(term::Union{Symbol, String}) -> (Symbol, Union{Expr, Nothing})
+
+Parse a filter term into (base_symbol, pattern_expr).
+- `:k` or `"k"` → `(:k, nothing)` matches variable at any timing
+- `"k[-1]"` → `(:k, :(k[-1]))` matches exact timing
+- `"eps[x]"` → `(:eps, :(eps[x]))` matches shock at exact timing
+"""
+function parse_filter_term(term::Union{Symbol, String})
+    term_str = replace(string(term), "{" => "◖", "}" => "◗")
+    m = match(r"^(.+)\[(.+)\]$", term_str)
+    m === nothing && return (Symbol(term_str), nothing)
+    return (Symbol(m.captures[1]), Meta.parse(term_str))
+end
+
+@stable default_mode = "disable" begin
+
+"""
+    expr_contains(expr, sym::Symbol, pattern) -> Bool
+
+Check if `expr` contains `sym` matching `pattern` (nothing = any timing).
+"""
+function expr_contains(expr, sym::Symbol, pattern)
+    found = Ref(false)
+    postwalk(expr) do x
+        if pattern === nothing
+            # Match symbol anywhere (as ref base or standalone)
+            if x === sym || (x isa Expr && x.head == :ref && x.args[1] === sym)
+                found[] = true
+            end
+        else
+            # Match exact expression pattern
+            x == pattern && (found[] = true)
+        end
+        x
+    end
+    found[]
+end
+
 
 """
 $(SIGNATURES)
@@ -75,8 +116,12 @@ get_equations(RBC)
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
 ```
 """
-function get_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
+function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.original), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+    
+    sym, pattern = parse_filter_term(filter)
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.original) if expr_contains(expr, sym, pattern)]
 end
 
 
@@ -133,8 +178,19 @@ get_steady_state_equations(RBC)
  "Δk_4q - 0"
 ```
 """
-function get_steady_state_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.ss_aux_equations), "◖" => "{", "◗" => "}")
+function get_steady_state_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.steady_state_aux), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+    
+    sym, pattern = parse_filter_term(filter)
+    
+    # Warn if time subscript provided
+    if pattern !== nothing
+        @info "Time subscript in filter will be ignored for steady state equations. Equations containing the variable '$(sym)' will be returned regardless of timing."
+    end
+    
+    # Always ignore timing for steady state equations (no time subscripts in SS)
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.steady_state_aux) if expr_contains(expr, sym, nothing)]
 end
 
 
@@ -194,8 +250,69 @@ get_dynamic_equations(RBC)
  "Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1]))"
 ```
 """
-function get_dynamic_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.dyn_equations), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
+function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    # Transform equations to user-friendly format
+    equations = replace.(string.(𝓂.equations.dynamic), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
+    filter === nothing && return equations
+    
+    # Transform internal expressions to user-friendly format for matching
+    transformed_exprs = [Meta.parse(replace(string(expr), "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")) for expr in 𝓂.equations.dynamic]
+    
+    # Parse filter term (uses user-friendly format with [-1], [0], etc.)
+    sym, pattern = parse_filter_term(filter)
+    
+    return [eq for (eq, expr) in zip(equations, transformed_exprs) if expr_contains(expr, sym, pattern)]
+end
+
+
+"""
+$(SIGNATURES)
+Return the solve counters struct for the model.
+
+# Arguments
+- $MODEL®
+"""
+function get_solution_counts(𝓂::ℳ)::SolveCounters
+    return 𝓂.counters
+end
+
+"""
+$(SIGNATURES)
+Print the solve counters for the model in a human-readable format.
+
+# Arguments
+- $MODEL®
+"""
+function print_solution_counts(𝓂::ℳ)::Nothing
+    counts = get_solution_counts(𝓂)
+
+    println("Solve counters",
+            "\n Steady state",
+            "\n  Total:      ", counts.ss_solves_total,
+            "\n  Failed:     ", counts.ss_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.ss_solves_total_estimation,
+            "\n   Failed:    ", counts.ss_solves_failed_estimation,
+            "\n First order",
+            "\n  Total:      ", counts.first_order_solves_total,
+            "\n  Failed:     ", counts.first_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.first_order_solves_total_estimation,
+            "\n   Failed:    ", counts.first_order_solves_failed_estimation,
+            "\n Second order",
+            "\n  Total:      ", counts.second_order_solves_total,
+            "\n  Failed:     ", counts.second_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.second_order_solves_total_estimation,
+            "\n   Failed:    ", counts.second_order_solves_failed_estimation,
+            "\n Third order",
+            "\n  Total:      ", counts.third_order_solves_total,
+            "\n  Failed:     ", counts.third_order_solves_failed,
+            "\n  Estimation",
+            "\n   Total:     ", counts.third_order_solves_total_estimation,
+            "\n   Failed:    ", counts.third_order_solves_failed_estimation)
+
+    return nothing
 end
 
 
@@ -244,8 +361,22 @@ get_calibration_equations(RBC)
  "k / (q * 4) - capital_to_output"
 ```
 """
-function get_calibration_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.calibration_equations), "◖" => "{", "◗" => "}")
+function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
+    filter === nothing && return equations
+
+    sym, pattern = parse_filter_term(filter)
+    
+    # Warn if time subscript provided (other than [ss] which is valid for calibration)
+    if pattern !== nothing
+        pattern_str = string(pattern)
+        if !occursin("[ss]", pattern_str)
+            @info "Time subscript in filter will be ignored for calibration equations. Equations containing the variable '$(sym)' will be returned regardless of timing."
+        end
+    end
+    
+    # Always ignore timing for calibration equations
+    return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, nothing)]
 end
 
 
@@ -302,9 +433,9 @@ get_parameters(RBC)
 """
 function get_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
-        return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}") .=> 𝓂.parameter_values
+        return replace.(string.(𝓂.constants.post_complete_parameters.parameters), "◖" => "{", "◗" => "}") .=> 𝓂.parameter_values
     else
-        return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}")# |> sort
+        return replace.(string.(𝓂.constants.post_complete_parameters.parameters), "◖" => "{", "◗" => "}")# |> sort
     end
 end
 
@@ -354,10 +485,86 @@ get_calibrated_parameters(RBC)
 """
 function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
-        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.timings.nVars + 1:end]
+        return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.caches.non_stochastic_steady_state[𝓂.constants.post_model_macro.nVars + 1:end]
     else
-        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")# |> sort
+        return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}")# |> sort
     end
+end
+
+
+"""
+$(SIGNATURES)
+Returns the parameters which are required by the model but have not been assigned values in the `@parameters` block. These parameters must be provided via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc. before the model can be solved.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the missing parameters.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC_incomplete begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC_incomplete begin
+    std_z = 0.01
+    ρ = 0.2
+    # Note: α, β, δ are not defined
+end
+
+get_missing_parameters(RBC_incomplete)
+# output
+3-element Vector{String}:
+ "α"
+ "β"
+ "δ"
+```
+"""
+function get_missing_parameters(𝓂::ℳ)::Vector{String}
+    replace.(string.(𝓂.constants.post_complete_parameters.missing_parameters), "◖" => "{", "◗" => "}")
+end
+
+
+"""
+$(SIGNATURES)
+Returns whether the model has missing parameters that need to be provided before solving.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `Bool` indicating whether the model has missing parameters.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+end
+
+has_missing_parameters(RBC)
+# output
+true
+```
+"""
+function has_missing_parameters(𝓂::ℳ)::Bool
+    !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
 end
 
 
@@ -411,7 +618,7 @@ get_parameters_in_equations(RBC)
 ```
 """
 function get_parameters_in_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(𝓂.constants.post_model_macro.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -457,7 +664,7 @@ get_parameters_defined_by_parameters(RBC)
 ```
 """
 function get_parameters_defined_by_parameters(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.parameters_as_function_of_parameters), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -503,7 +710,7 @@ get_parameters_defining_parameters(RBC)
 ```
 """
 function get_parameters_defining_parameters(𝓂::ℳ)::Vector{String}
-    replace.(string.(setdiff(𝓂.parameters, 𝓂.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.calibration_equations_parameters, 𝓂.parameters_as_function_of_parameters, reduce(union, 𝓂.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(setdiff(𝓂.constants.post_complete_parameters.parameters, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.parameters_in_equations, 𝓂.equations.calibration_parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters, reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -549,7 +756,7 @@ get_calibration_equation_parameters(RBC)
 ```
 """
 function get_calibration_equation_parameters(𝓂::ℳ)::Vector{String}
-    reduce(union, 𝓂.par_calib_list, init = []) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    reduce(union, 𝓂.constants.post_parameters_macro.par_calib_list, init = []) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -603,7 +810,7 @@ get_variables(RBC)
 ```
 """
 function get_variables(𝓂::ℳ)::Vector{String}
-    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux), init = []), union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -652,7 +859,7 @@ get_nonnegativity_auxiliary_variables(RBC)
 ```
 """
 function get_nonnegativity_auxiliary_variables(𝓂::ℳ)::Vector{String}
-    𝓂.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -702,7 +909,7 @@ get_dynamic_auxiliary_variables(RBC)
 ```
 """
 function get_dynamic_auxiliary_variables(𝓂::ℳ)::Vector{String}
-    𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -754,7 +961,7 @@ get_shocks(RBC)
 ```
 """
 function get_shocks(𝓂::ℳ)::Vector{String}
-    𝓂.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -813,7 +1020,7 @@ get_state_variables(RBC)
 ```
 """
 function get_state_variables(𝓂::ℳ)::Vector{String}
-    𝓂.timings.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -864,7 +1071,7 @@ get_jump_variables(RBC)
 ```
 """
 function get_jump_variables(𝓂::ℳ)::Vector{String}
-    𝓂.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    𝓂.constants.post_model_macro.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 

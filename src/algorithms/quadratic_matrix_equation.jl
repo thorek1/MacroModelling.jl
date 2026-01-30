@@ -8,15 +8,18 @@
 
 @stable default_mode = "disable" begin
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        T::timings; 
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
+                                        B::AbstractMatrix{R},
+                                        C::AbstractMatrix{R},
+                                        constants::constants,
+                                        workspace::qme_workspace{R,S};
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where R <: Real
+                                        verbose::Bool = false) where {R <: Real, S <: Real}
+    T = constants.post_model_macro
+    
 
     if length(initial_guess) > 0
         X = initial_guess
@@ -40,7 +43,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_algorithm), 
-                                                        T; 
+                                                        constants,
+                                                        workspace; 
                                                         initial_guess = initial_guess,
                                                         tol = tol,
                                                         # timer = timer,
@@ -52,7 +56,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if quadratic_matrix_equation_algorithm ≠ :schur # try schur if previous one didn't solve it
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
-                                                                T; 
+                                                                constants,
+                                                                workspace; 
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
@@ -62,7 +67,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         else quadratic_matrix_equation_algorithm ≠ :doubling
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
-                                                                T; 
+                                                                constants,
+                                                                workspace; 
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
@@ -81,13 +87,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
                                         ::Val{:schur}, 
-                                        T::timings; 
+                                        constants::constants,
+                                        workspace::qme_workspace; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+    # Use cached identity matrix from workspace (Diagonal{Bool} supports indexing)
+    T = constants.post_model_macro
     # @timeit_debug timer "Prepare indice" begin
-   
+    I_nPast = workspace.I_nPast
+
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
@@ -104,13 +114,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     Ã₀₊ =  B[:,future_not_past_and_mixed_in_comb]
 
-    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:]
+    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
 
     Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
     I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
     
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = ℒ.I(T.nPast_not_future_and_mixed)[T.mixed_in_past_idx,:]
+    I₋ = I_nPast[T.mixed_in_past_idx,:]
     
     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
     
@@ -210,28 +220,46 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
                                         ::Val{:doubling}, 
-                                        T::timings; 
+                                        constants::constants,
+                                        workspace::qme_workspace{R,S}; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat, S <: Real}
+    T = constants.post_model_macro
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
     # @timeit_debug timer "Invert B" begin
 
     guess_provided = true
+    n = size(A, 1)
 
     if length(initial_guess) == 0
         guess_provided = false
         initial_guess = zero(A)
     end
 
-    E = copy(C)
-    F = copy(A)
-
-    B̄ = copy(B)
+    # Extract workspaces
+    E = workspace.E
+    F = workspace.F
+    X = workspace.X
+    Y = workspace.Y
+    X_new = workspace.X_new
+    Y_new = workspace.Y_new
+    E_new = workspace.E_new
+    F_new = workspace.F_new
+    temp1 = workspace.temp1
+    temp2 = workspace.temp2
+    temp3 = workspace.temp3
+    B̄ = workspace.B̄
+    AXX = workspace.AXX
+    
+    # Initialize from inputs
+    copy!(E, C)
+    copy!(F, A)
+    copy!(B̄, B)
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
@@ -245,22 +273,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.ldiv!(E, B̂, C)
     ℒ.ldiv!(F, B̂, A)
 
-    X = -E - initial_guess
-    Y = -F
+    # X = -E - initial_guess (in-place)
+    copy!(X, E)
+    ℒ.rmul!(X, -1)
+    ℒ.axpy!(-1, initial_guess, X)
+    # Y = -F (in-place)
+    copy!(Y, F)
+    ℒ.rmul!(Y, -1)
     # end # timeit_debug
     # @timeit_debug timer "Prellocate" begin
 
-    X_new = similar(X)
-    Y_new = similar(Y)
-    E_new = similar(E) 
-    F_new = similar(F)
-    
-    temp1 = similar(Y)  # Temporary for intermediate operations
-    temp2 = similar(Y)  # Temporary for intermediate operations
-    temp3 = similar(Y)  # Temporary for intermediate operations
-
-    n = size(X, 1)
-    II = ℒ.I(n)  # Temporary for identity matrix
+    II = workspace.I_n  # Pre-computed identity matrix reference
 
     Xtol = 1.0
     Ytol = 1.0
@@ -376,13 +399,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.axpy!(1, initial_guess, X_new)
 
-    X = X_new
-
-    AXX = A * X^2
+    # Compute residual to verify solution quality
+    # AXX = A * X_new^2 (use temp1 for X^2)
+    ℒ.mul!(temp1, X_new, X_new)
+    ℒ.mul!(AXX, A, temp1)
     
     AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
     
-    ℒ.mul!(AXX, B, X, 1, 1)
+    ℒ.mul!(AXX, B, X_new, 1, 1)
 
     ℒ.axpy!(1, C, AXX)
     
@@ -392,7 +416,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: doubling $reached_tol")
     # end
 
-    return X, iter, reached_tol
+    # Return a copy of X_new (to avoid returning a reference to mutable workspace)
+    return copy(X_new), iter, reached_tol
 end
 
 
@@ -506,64 +531,5 @@ end
 
 
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        T::timings; 
-                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
-                                        # timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false) where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
-                                                Val(quadratic_matrix_equation_algorithm), 
-                                                T; 
-                                                tol = tol,
-                                                initial_guess = initial_guess,
-                                                # timer = timer,
-                                                verbose = verbose)
-
-    AXB = Â * X + B̂
-    
-    AXBfact = ℒ.lu(AXB, check = false)
-
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
-    end
-
-    invAXB = inv(AXBfact)
-
-    AA = invAXB * Â
-
-    X² = X * X
-
-    X̃ = zeros(length(X), N)
-
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        dA = ℱ.partials.(A, i)
-        dB = ℱ.partials.(B, i)
-        dC = ℱ.partials.(C, i)
-    
-        CC = invAXB * (dA * X² + dB * X + dC)
-
-        if ℒ.norm(CC) < eps() continue end
-    
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :doubling)
-
-        solved = Bool(solved) && Bool(slvd)
-
-        X̃[:,i] = vec(dX)
-    end
-    
-    return reshape(map(X, eachrow(X̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(X)), solved
-end
 
 end # dispatch_doctor

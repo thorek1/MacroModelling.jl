@@ -5,6 +5,7 @@
 - [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
 - [ ] add FRB US model
 - [ ] check allocations of jacobian in sparse case (NAWM)
+- [ ] write another seciton in the docs explaining the parameters macro and what you can do (calibration equations, parameters as functions of other parameters, delayed definition of parameters)
 
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] error when parsing expression of the form: XYZ[0] = 0
