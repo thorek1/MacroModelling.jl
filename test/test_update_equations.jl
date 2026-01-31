@@ -244,8 +244,86 @@ end
         RBC_calib = nothing
     end
 
-    # Test adding a calibration equation to replace a fixed parameter
-    @testset "Replace parameter with calibration equation" begin
+    @testset "Switch calibrated parameter to another model parameter" begin
+        # Test scenario 1: switching from alpha to delta (both are used in model equations)
+        @model RBC_switch begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_switch begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            k[ss] / (4 * y[ss]) = 1.5 | alpha  # alpha is calibrated
+            beta = 0.99
+        end
+
+        # Initially alpha is calibrated
+        calib_params_before = get_calibrated_parameters(RBC_switch)
+        @test "alpha" in calib_params_before
+        @test !("delta" in calib_params_before)
+        
+        # Get original alpha value from steady state
+        ss_before = get_steady_state(RBC_switch, derivatives = false)
+        
+        # Switch calibration from alpha to delta
+        # This means: alpha will become a fixed parameter (with its SS value)
+        # and delta will become calibrated
+        update_calibration_equations!(
+            RBC_switch,
+            1,
+            :(k[ss] / (4 * y[ss]) = 1.5 | delta),
+            silent = true,
+        )
+        
+        # Now delta should be calibrated, not alpha
+        calib_params_after = get_calibrated_parameters(RBC_switch)
+        @test !("alpha" in calib_params_after)
+        @test "delta" in calib_params_after
+        
+        # Model should still solve
+        ss_after = get_steady_state(RBC_switch, derivatives = false)
+        @test !any(isnan, ss_after)
+        
+        RBC_switch = nothing
+    end
+
+    @testset "Error when calibrating parameter not in model equations" begin
+        # Test scenario 2: trying to calibrate a parameter that isn't used in any equation
+        @model RBC_error begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_error begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            k[ss] / (4 * y[ss]) = 1.5 | alpha
+            beta = 0.99
+        end
+
+        # Try to switch to a parameter that doesn't exist in model equations
+        # "unused_param" is not in the model, so this should error
+        @test_throws ErrorException update_calibration_equations!(
+            RBC_error,
+            1,
+            :(k[ss] / (4 * y[ss]) = 1.5 | unused_param),
+            silent = true,
+        )
+        
+        RBC_error = nothing
+    end
+end
+
+
+@testset verbose = true "add_calibration_equation! functionality" begin
+    @testset "Add calibration equation to model without any" begin
         # Model where alpha is initially a fixed parameter
         @model RBC_add_calib begin
             y[0] = A[0] * k[-1]^alpha
@@ -266,28 +344,112 @@ end
         calib_eqs_before = get_calibration_equations(RBC_add_calib)
         @test length(calib_eqs_before) == 0
         
+        # Verify alpha is NOT calibrated initially
+        calib_params_before = get_calibrated_parameters(RBC_add_calib)
+        @test !("alpha" in calib_params_before)
+        
         # Get original steady state with fixed alpha
         ss_before = get_steady_state(RBC_add_calib, derivatives = false)
         @test !any(isnan, ss_before)
         
-        # Verify alpha is in the parameter list
-        params = get_parameters(RBC_add_calib)
-        @test "alpha" in params
-        
-        # Adding new calibration equations to a model that doesn't have any is currently
-        # not supported because it requires modifying the model's parameter structure:
-        # - Moving a parameter from the fixed parameter list to the calibrated parameter list
-        # - This affects many internal data structures (parameter_values, parameter indexing, etc.)
-        # - Only updating existing calibration equations works because the structure remains the same
-        # Use index 0 to indicate "add new" - this should error
-        @test update_calibration_equations!(
+        # Add a calibration equation - alpha will become calibrated
+        add_calibration_equation!(
             RBC_add_calib,
-            0,
             :(k[ss] / (4 * y[ss]) = 1.5 | alpha),
             silent = true,
-        ) === nothing
+        )
+        
+        # Verify calibration equation was added
+        calib_eqs_after = get_calibration_equations(RBC_add_calib)
+        @test length(calib_eqs_after) == 1
+        
+        # Verify alpha is now calibrated
+        calib_params_after = get_calibrated_parameters(RBC_add_calib)
+        @test "alpha" in calib_params_after
+        
+        # Model should still solve
+        ss_after = get_steady_state(RBC_add_calib, derivatives = false)
+        @test !any(isnan, ss_after)
         
         RBC_add_calib = nothing
+    end
+
+    @testset "Add calibration equation - error if parameter not in model" begin
+        @model RBC_add_error begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_add_error begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            alpha = 0.33
+            beta = 0.99
+        end
+
+        # Try to add calibration for a parameter not in model equations
+        @test_throws ErrorException add_calibration_equation!(
+            RBC_add_error,
+            :(k[ss] / (4 * y[ss]) = 1.5 | unused_param),
+            silent = true,
+        )
+        
+        RBC_add_error = nothing
+    end
+
+    @testset "Add calibration equation - error if parameter already calibrated" begin
+        @model RBC_already_calib begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_already_calib begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            k[ss] / (4 * y[ss]) = 1.5 | alpha  # alpha is already calibrated
+            beta = 0.99
+        end
+
+        # Try to add another calibration for alpha - should error
+        @test_throws ErrorException add_calibration_equation!(
+            RBC_already_calib,
+            :(c[ss] / y[ss] = 0.8 | alpha),
+            silent = true,
+        )
+        
+        RBC_already_calib = nothing
+    end
+
+    @testset "Add calibration equation - error if no | parameter syntax" begin
+        @model RBC_no_pipe begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_no_pipe begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            alpha = 0.33
+            beta = 0.99
+        end
+
+        # Try to add a calibration equation without | parameter syntax
+        @test_throws ErrorException add_calibration_equation!(
+            RBC_no_pipe,
+            :(k[ss] / (4 * y[ss]) = 1.5),  # Missing | alpha
+            silent = true,
+        )
+        
+        RBC_no_pipe = nothing
     end
 end
 

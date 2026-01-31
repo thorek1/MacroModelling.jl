@@ -1341,6 +1341,65 @@ function update_calibration_equations!(𝓂::ℳ,
     # Store old equation for revision history
     old_equation = 𝓂.equations.calibration_original[equation_index]
     
+    # Validate that the calibrated parameter (if present) is used in model equations
+    new_calib_param = extract_calibrated_parameter(parsed_new_equation)
+    if new_calib_param !== nothing
+        model_params = Set{Symbol}(𝓂.constants.post_model_macro.parameters_in_equations)
+        if new_calib_param ∉ model_params
+            error("Cannot calibrate parameter `$new_calib_param`: it is not used in any model equation. " *
+                  "Calibrated parameters must appear in the model equations. " *
+                  "Available parameters: $(sort(collect(model_params)))")
+        end
+    end
+
+    # Detect parameter switching and inform user
+    old_calib_param = extract_calibrated_parameter(old_equation)
+    old_calib_params = Set{Symbol}(𝓂.equations.calibration_parameters)
+    new_calib_params = old_calib_param === nothing ? Set{Symbol}() : Set{Symbol}([old_calib_param])
+    if new_calib_param !== nothing
+        new_calib_params = Set{Symbol}([new_calib_param])
+    end
+    
+    # Parameters becoming calibrated (were fixed, now calibrated)
+    params_becoming_calibrated = setdiff(new_calib_params, old_calib_params)
+    # Parameters no longer calibrated (were calibrated, now fixed)
+    params_no_longer_calibrated = setdiff(old_calib_params, new_calib_params)
+    
+    if !silent && (!isempty(params_becoming_calibrated) || !isempty(params_no_longer_calibrated))
+        println("\nCalibration parameter changes:")
+        
+        # Report parameters that are now calibrated (were fixed before)
+        for param in params_becoming_calibrated
+            # Find the previous fixed value
+            param_idx = findfirst(==(param), 𝓂.constants.post_complete_parameters.parameters)
+            if param_idx !== nothing
+                old_value = 𝓂.parameter_values[param_idx]
+                if !isnan(old_value)
+                    println("  → `$param` is now CALIBRATED (was fixed at $old_value)")
+                else
+                    println("  → `$param` is now CALIBRATED")
+                end
+            else
+                println("  → `$param` is now CALIBRATED")
+            end
+        end
+        
+        # Report parameters that are now fixed (were calibrated before)
+        for param in params_no_longer_calibrated
+            # Get the calibrated value from NSSS cache
+            n_vars = 𝓂.constants.post_model_macro.nVars
+            calib_param_list = 𝓂.equations.calibration_parameters
+            idx = findfirst(==(param), calib_param_list)
+            if idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
+                ss_value = 𝓂.caches.non_stochastic_steady_state[n_vars + idx]
+                println("  → `$param` is now FIXED at $ss_value (was calibrated)")
+            else
+                println("  → `$param` is now FIXED (was calibrated)")
+            end
+        end
+        println()
+    end
+
     # Record the revision
     revision_entry = (
         timestamp = Dates.now(),
@@ -1360,6 +1419,200 @@ function update_calibration_equations!(𝓂::ℳ,
     # Reconstruct parameter block with updated calibration equation
     updated_calibration_original = copy(𝓂.equations.calibration_original)
     updated_calibration_original[equation_index] = parsed_new_equation
+
+    parameter_block = reconstruct_parameter_block(
+        𝓂;
+        calibration_original_override = updated_calibration_original,
+    )
+
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro,
+    )
+
+    # Update post_parameters_macro (keeping existing options like guess, simplify, etc.)
+    𝓂.constants.post_parameters_macro = post_parameters_macro(
+        parsed_parameters.calib_parameters_no_var,
+        𝓂.constants.post_parameters_macro.precompile,
+        𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.guess,
+        parsed_parameters.ss_calib_list,
+        parsed_parameters.par_calib_list,
+        parsed_parameters.bounds,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+    )
+
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    # Update post_complete_parameters 
+    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+        var_axis = Symbol[],  # Reset so it gets recomputed
+        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
+    )
+    
+    # Update parameter values
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    # Reinitialize caches (fresh empty state, all marked outdated)
+    𝓂.caches = caches()
+
+    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
+    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
+    𝓂.NSSS.dependencies = nothing
+
+    # Mark functions as needing recompilation
+    𝓂.functions.functions_written = false
+
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
+
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = false,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
+Add a new calibration equation to the model.
+
+This function adds a calibration equation to a model, converting a fixed parameter to a calibrated one.
+The calibration equation specifies a steady-state relationship that determines the parameter value.
+
+# Arguments
+- $MODEL®
+- `new_equation::Union{Expr, String}`: The new calibration equation to add. Must use the format 
+  `:(lhs = rhs | parameter)` where `parameter` is the parameter to be calibrated.
+
+# Keyword Arguments
+- `verbose::Bool = false`: Print detailed information about the update process
+- `silent::Bool = false`: Suppress all output including warnings
+
+# Returns
+- `nothing`
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Add a calibration equation - α will be calibrated to match a capital-output ratio
+add_calibration_equation!(RBC, :(k[ss] / (4 * q[ss]) = 1.5 | α))
+```
+"""
+function add_calibration_equation!(𝓂::ℳ, 
+                                   new_equation::Union{Expr, String};
+                                   verbose::Bool = false,
+                                   silent::Bool = false)
+    # Parse string to Expr if needed
+    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+
+    # Validate that the calibrated parameter is specified
+    new_calib_param = extract_calibrated_parameter(parsed_new_equation)
+    if new_calib_param === nothing
+        error("Calibration equation must specify a parameter to calibrate using the `| parameter` syntax. " *
+              "Example: `:(k[ss] / (4 * y[ss]) = 1.5 | alpha)`")
+    end
+
+    # Validate that the calibrated parameter is used in model equations
+    model_params = Set{Symbol}(𝓂.constants.post_model_macro.parameters_in_equations)
+    if new_calib_param ∉ model_params
+        error("Cannot calibrate parameter `$new_calib_param`: it is not used in any model equation. " *
+              "Calibrated parameters must appear in the model equations. " *
+              "Available parameters: $(sort(collect(model_params)))")
+    end
+
+    # Check if parameter is already calibrated
+    if new_calib_param ∈ 𝓂.equations.calibration_parameters
+        error("Parameter `$new_calib_param` is already calibrated. " *
+              "Use `update_calibration_equations!` to modify existing calibration equations.")
+    end
+
+    # Get the previous fixed value for user notification
+    param_idx = findfirst(==(new_calib_param), 𝓂.constants.post_complete_parameters.parameters)
+    old_value = param_idx !== nothing ? 𝓂.parameter_values[param_idx] : NaN
+
+    if !silent
+        println("\nAdding calibration equation:")
+        println("  Equation: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
+        if !isnan(old_value)
+            println("  → `$new_calib_param` is now CALIBRATED (was fixed at $old_value)")
+        else
+            println("  → `$new_calib_param` is now CALIBRATED")
+        end
+        println()
+    end
+
+    # Record the revision
+    revision_entry = (
+        timestamp = Dates.now(),
+        action = :add_calibration_equation,
+        equation_index = length(𝓂.equations.calibration_original) + 1,
+        old_equation = nothing,
+        new_equation = parsed_new_equation
+    )
+    push!(𝓂.revision_history, revision_entry)
+
+    if verbose
+        println("Added calibration equation $(length(𝓂.equations.calibration_original) + 1):")
+        println("  New: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
+    end
+
+    # Reconstruct parameter block with new calibration equation appended
+    updated_calibration_original = copy(𝓂.equations.calibration_original)
+    push!(updated_calibration_original, parsed_new_equation)
 
     parameter_block = reconstruct_parameter_block(
         𝓂;
