@@ -114,6 +114,60 @@ using Test
         RBC_test3 = nothing
     end
 
+    # Test update by matching old equation in string form
+    @testset "Update equation by matching old equation string" begin
+        @model RBC_test5 begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_test5 begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        old_eq = "q[0] = exp(z[0]) * k[-1]^α"
+        new_eq = "q[0] = exp(z[0]) * k[-1]^α * 1.0"
+
+        update_equations!(RBC_test5, old_eq, new_eq, silent = true)
+
+        history = get_revision_history(RBC_test5)
+        @test length(history) == 1
+        @test history[1].action == :update_equation
+        @test history[1].equation_index == 3
+
+        ss_after = get_steady_state(RBC_test5, derivatives = false)
+        @test !any(isnan, ss_after)
+
+        RBC_test5 = nothing
+    end
+
+    # Test update with Taylor rule exchange
+    @testset "Update Taylor rule equation" begin
+        include(joinpath(@__DIR__, "..", "models", "Gali_2015_chapter_3_nonlinear.jl"))
+        model = getfield(Main, :Gali_2015_chapter_3_nonlinear)
+
+        old_rule = :(R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+        new_rule = :(R[0] = 1 / β * Pi[0] ^ 1.7 * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+
+        update_equations!(model, old_rule, new_rule, silent = true)
+
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :update_equation
+        @test history[1].equation_index !== nothing
+
+        ss_after = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss_after)
+
+        model = nothing
+    end
+
     # Test multiple updates
     @testset "Multiple equation updates with history tracking" begin
         @model RBC_test4 begin

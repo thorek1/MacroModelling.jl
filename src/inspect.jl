@@ -76,6 +76,10 @@ Return the equations of the model. In case programmatic model writing was used t
 # Arguments
 - $MODEL®
 
+# Keyword Arguments
+- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
+    Use `:k`/"k" to match any reference to `k`, or `"k[0]"` to target specific timing.
+
 # Returns
 - `Vector{String}` of the parsed equations. 
 
@@ -114,6 +118,8 @@ get_equations(RBC)
  "z{δ}[0] = ρ{δ} * z{δ}[-1] + σ{δ} * (eps{δ}[x] + eps_news{δ}[x - 1])"
  "Δc_share[0] = log(c[0] / q[0]) - log(c[-1] / q[-1])"
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
+get_equations(RBC, filter = :k)
+get_equations(RBC, filter = "k[0]")
 ```
 """
 function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
@@ -127,6 +133,52 @@ end
 
 """
 $(SIGNATURES)
+Write the current model equations and parameters to a Julia file in `@model`/`@parameters` syntax.
+
+This is useful for exporting a model after multiple updates so the current equation set can be inspected
+or versioned outside the running session.
+
+# Arguments
+- $MODEL®
+
+# Keyword Arguments
+- `path::AbstractString = ""`: Output path. Defaults to `<model_name>.jl` in the current directory.
+- `overwrite::Bool = false`: Overwrite an existing file if `true`.
+
+# Returns
+- `String`: The path of the written file.
+"""
+function write_julia_model_file(𝓂::ℳ; path::AbstractString = "", overwrite::Bool = false)::String
+    output_path = isempty(path) ? 𝓂.model_name * ".jl" : path
+
+    if isfile(output_path) && !overwrite
+        error("File already exists: $output_path. Pass overwrite = true to replace it.")
+    end
+
+    parameter_block = reconstruct_parameter_block(𝓂)
+
+    open(output_path, "w") do io
+        println(io, "using MacroModelling\n")
+        println(io, "@model ", 𝓂.model_name, " begin")
+        for eq in 𝓂.equations.original
+            println(io, "    ", replace(string(eq), "◖" => "{", "◗" => "}"))
+        end
+        println(io, "end\n")
+
+        println(io, "@parameters ", 𝓂.model_name, " begin")
+        for line in parameter_block.args
+            line isa LineNumberNode && continue
+            println(io, "    ", replace(string(line), "◖" => "{", "◗" => "}"))
+        end
+        println(io, "end")
+    end
+
+    return output_path
+end
+
+
+"""
+$(SIGNATURES)
 Return the non-stochastic steady state (NSSS) equations of the model. The difference to the equations as they were written in the `@model` block is that exogenous shocks are set to `0`, time subscripts are eliminated (e.g. `c[-1]` becomes `c`), trivial simplifications are carried out (e.g. `log(k) - log(k) = 0`), and auxiliary variables are added for expressions that cannot become negative. 
 
 Auxiliary variables facilitate the solution of the NSSS problem. The package substitutes expressions which cannot become negative with auxiliary variables and adds another equation to the system of equations determining the NSSS. For example, `log(c/q)` cannot be negative and `c/q` is substituted by an auxiliary variable `➕₁` and an additional equation is added: `➕₁ = c / q`.
@@ -135,6 +187,10 @@ Note that the output assumes the equations are equal to 0. As in, `-z{δ} * ρ{�
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
+    Time subscripts in the filter are ignored for steady state equations.
 
 # Returns
 - `Vector{String}` of the NSSS equations. 
@@ -204,6 +260,10 @@ Note that the output assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹�
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
+    Use `:k`/"k" to match any reference to `k`, or `"k[0]"` to target specific timing.
 
 # Returns
 - `Vector{String}` of the dynamic model equations. 
@@ -326,6 +386,10 @@ Note that the output assumes the equations are equal to 0. As in, `k / (q * 4) -
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
+    Time subscripts (other than `[ss]`) are ignored for calibration equations.
 
 # Returns
 - `Vector{String}` of the calibration equations. 

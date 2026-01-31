@@ -209,7 +209,7 @@ export Tolerances
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
-export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters, get_solution_counts, print_solution_counts
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters, get_solution_counts, print_solution_counts, write_julia_model_file
 export update_equations!, update_calibration_equations!, add_calibration_equation!, get_revision_history
 # Internal
 export irf, girf
@@ -828,74 +828,6 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     sum(abs2, X)
 end
 
-function set_up_obc_violation_function!(𝓂)
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
-
-    sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
-
-    # write indices in auxiliary objects
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
-
-    dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
-    SS_and_pars_names = ms.SS_and_pars_names
-
-    dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
-
-    alll = []
-    for (i,var) in enumerate(present_varss)
-        if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
-            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:max(periods, 1)]))
-        end
-    end
-
-    calc_obc_violation = :(function calculate_obc_violation(x, p)
-        state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
-
-        T = 𝓂.constants.post_model_macro
-
-        Y = zeros(typeof(x[1]), T.nVars, periods+1)
-
-        shock_values = convert(typeof(x), shock_values)
-
-        shock_values[contains.(string.(T.exo),"ᵒᵇᶜ")] .= x
-
-        zero_shock = zero(shock_values)
-
-        if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-            states = state_update(state, shock_values)
-            Y[:,1] = sum(states)
-        else
-            Y[:,1] = state_update(state, shock_values)
-        end
-
-        for t in 1:periods
-            if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-                states = state_update(states, zero_shock)
-                Y[:,t+1] = sum(states)
-            else
-                Y[:,t+1] = state_update(Y[:,t], zero_shock)
-            end
-        end
-
-        Y .+= reference_steady_state[1:T.nVars]
-
-        $(alll...)
-
-        constraint_values = Vector[]
-
-        $(𝓂.equations.obc_violation...)
-
-        return vcat(constraint_values...)
-    end)
-
-    𝓂.functions.obc_violation = @RuntimeGeneratedFunction(calc_obc_violation)
-
-    return nothing
-end
-
-
 function check_for_minmax(expr)
     contains_minmax = Bool[]
 
@@ -913,95 +845,6 @@ function check_for_minmax(expr)
     expr)
 
     any(contains_minmax)
-end
-
-
-function write_obc_violation_equations(𝓂)
-    eqs = Expr[]
-    for (i,eq) in enumerate(𝓂.equations.dynamic)
-        if check_for_minmax(eq)
-            minmax_fixed_eqs = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :call ? 
-                        length(x.args) == 3 ?
-                            x.args[3] isa Expr ?
-                                x.args[3].args[1] ∈ [:Min, :min, :Max, :max] ?
-                                    begin
-                                        plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
-
-                                        ineq_plchldr_1 = x.args[3].args[2] isa Symbol ? Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => "")) : x.args[3].args[2]
-
-                                        arg1 = x.args[3].args[2]
-                                        arg2 = x.args[3].args[3]
-
-                                        dyn_1 = check_for_dynamic_variables(x.args[3].args[2])
-                                        dyn_2 = check_for_dynamic_variables(x.args[3].args[3])
-
-                                        cond1 = Expr[]
-                                        cond2 = Expr[]
-
-                                        maximisation = contains(string(plchldr), "⁺")
-                                        
-                                        # if dyn_1
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
-                                        #     end
-                                        # end
-
-                                        # if dyn_2
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
-                                        #     end
-                                        # end
-
-
-                                        if maximisation
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, max.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        else
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        end
-
-                                        # if maximisation
-                                        #     push!(cond1, :(push!(shock_sign_indicators, true)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, true)))
-                                        # else
-                                        #     push!(cond1, :(push!(shock_sign_indicators, false)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, false)))
-                                        # end
-
-                                        # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
-                                        #     $(Expr(:block, cond1...))
-                                        # else
-                                        #     $(Expr(:block, cond2...))
-                                        # end)
-                                        :($(Expr(:block, cond1...)))
-                                    end :
-                                x :
-                            x :
-                        x :
-                    x :
-                x,
-            eq)
-
-            push!(eqs, minmax_fixed_eqs)
-        end
-    end
-
-    return eqs
 end
 
 
@@ -2889,11 +2732,6 @@ function generateSumVectors(vectorLength::Int, totalSum::Int)::Union{Vector{Int}
 end
 
 
-function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) !== nothing, strings)
-end
-
-
 function count_ops(expr)::Int
     op_count = 0
     postwalk(x -> begin
@@ -2904,104 +2742,6 @@ function count_ops(expr)::Int
     end, expr)
     return op_count
 end
-
-# try: run optim only if there is a violation / capture case with small shocks and set them to zero
-function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 40, avoid_solve::Bool = false)
-    # precision_factor = 1e  #factor to force the optimiser to have non-relevatn shocks at zero
-
-    eqs = []
-    obc_shocks = Expr[]
-
-    for arg in equations_block.args
-        if isa(arg,Expr)
-            if check_for_minmax(arg)
-                arg_trans = transform_obc(arg)
-            else
-                arg_trans = arg
-            end
-
-            eq = postwalk(x -> 
-                    x isa Expr ?
-                        x.head == :call ? 
-                            x.args[1] == :max ?
-                                begin
-
-                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
-                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
-
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
-
-                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
-
-                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
-
-                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
-
-                                    push!(obc_shocks, obc_shock)
-
-                                    :($obc_inequality - $obc_shock)
-                                end :
-                            x.args[1] == :min ?
-                                begin
-                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
-                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
-
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
-
-                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
-
-                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
-
-                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
-
-                                    push!(obc_shocks, obc_shock)
-
-                                    :($obc_inequality - $obc_shock)
-                                end :
-                            x :
-                        x :
-                    x,
-            arg_trans)
-
-            push!(eqs, eq)
-        end
-    end
-
-    for obc in obc_shocks
-        # push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_horizon)) * "⁾"), 0))))
-        push!(eqs, :($(obc) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_horizon)) * "⁾"), 0))))
-
-        push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = activeᵒᵇᶜshocks * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_horizon)) * "⁾"), :x))))
-
-        for i in 1:max_obc_horizon
-            push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i)) * "⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i-1)) * "⁾"), -1)) + activeᵒᵇᶜshocks * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_horizon-i)) * "⁾"), :x))))
-        end
-    end
-
-    return Expr(:block, eqs...)
-end
-
-
 
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
@@ -3078,30 +2818,6 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-function resolve_if_expr(ex::Expr)
-    prewalk(ex) do node
-        if node isa Expr && (node.head === :if || node.head === :elseif)
-            cond = node.args[1]
-            then_blk = node.args[2]
-            if length(node.args) == 3
-                else_blk = node.args[3]
-            end
-            val = evaluate_conditions(unblock(cond))
-
-            if val === true
-                # recurse into the selected branch
-                return resolve_if_expr(unblock(then_blk))
-            elseif val === false && length(node.args) == 3
-                return resolve_if_expr(unblock(else_blk))
-            elseif val === false && length(node.args) == 2
-                return nothing
-            elseif val === false && node.head === :elseif
-                return resolve_if_expr(unblock(else_blk))
-            end
-        end
-        return node
-    end
-end
 
 # function remove_nothing(ex::Expr)
 #     postwalk(ex) do node
@@ -3126,137 +2842,7 @@ end
 
 end # dispatch_doctor
 
-function evaluate_conditions(cond)
-    if cond isa Bool
-        return cond
-    elseif cond isa Expr && cond.head == :call 
-        a, b = cond.args[2], cond.args[3]
-
-        if typeof(a) ∉ [Symbol, Number]
-            a = eval(a)
-        end
-
-        if typeof(b) ∉ [Symbol, Number]
-            b = eval(b)
-        end
-        
-        if cond.args[1] == :(==)
-            return a == b
-        elseif cond.args[1] == :(!=)
-            return a != b
-        elseif cond.args[1] == :(<)
-            return a < b
-        elseif cond.args[1] == :(<=)
-            return a <= b
-        elseif cond.args[1] == :(>)
-            return a > b
-        elseif cond.args[1] == :(>=)
-            return a >= b
-        end
-        # end
-    end
-    return nothing
-end
-
-function contains_equation(expr)
-    found = false
-    postwalk(expr) do x
-        if x isa Expr && x.head == :(=)
-            found = true
-        end
-        return x
-    end
-    return found
-end
-
-function remove_nothing(ex::Expr)
-    postwalk(ex) do node
-        # Only consider call-expressions
-        if node isa Expr && node.head === :call && any(node.args .=== nothing)
-            fn = node.args[1]
-            # Unblock and collect all the operands
-            # raw_args = map(arg -> unblock(arg), node.args[2:end])
-            # Drop any nothing
-            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
-            if isempty(kept)
-                return nothing
-            elseif length(kept) == 1
-                return kept[1]
-            else
-            # elseif length(kept) < length(raw_args)
-                return Expr(:call, fn, kept...)
-            # else
-            #     return node
-            end
-        end
-        return node
-    end
-end
-
 @stable default_mode = "disable" begin
-
-function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
-    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
-    calls = []
-    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
-    for idx in indices
-        push!(calls, postwalk(x -> begin
-            x isa Expr ?
-                x.head == :ref ?
-                    @capture(x, name_{index_}[time_]) ?
-                        index == index_variable ?
-                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            x :
-                        x :
-                    @capture(x, name_[time_]) ?
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            # occursin("{" * string(index_variable) * "}", string(name)) ?
-                            #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                            x :
-                        # occursin("{" * string(index_variable) * "}", string(name)) ?
-                        #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                        x :
-                    x :
-                x.head == :if ?
-                    length(x.args) > 2 ?
-                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
-                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
-                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
-                @capture(x, name_{index_}) ?
-                    index == index_variable ?
-                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
-                    x :
-                x :
-            @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
-                    :($idx) :
-                x isa Symbol ?
-                    occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
-                    x :
-                x :
-            x
-        end,
-        exxpr))
-    end
-    
-    if concatenate
-        return :($(Expr(:call, operator, calls...)))
-    else
-        return :($(Expr(:block, calls...)))
-        # return :($calls...)
-        # return calls
-    end
-end
-
-
 replace_indices(x::Symbol) = x
 
 replace_indices_special(x::Symbol) = x
@@ -3379,71 +2965,6 @@ function replace_indices_special(exxpr::Expr)::Union{Expr,Symbol}
     end, exxpr)
 end
 
-function write_out_for_loops(arg::Expr)::Expr
-    postwalk(x -> begin
-                    x = flatten(unblock(x))
-                    x isa Expr ?
-                        x.head == :for ?
-                            x.args[2] isa Array ?
-                                length(x.args[2]) >= 1 ?
-                                    x.args[1].head == :block ?
-                                        # begin println("here"); 
-                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] : # end :
-                                    # begin println("here2"); 
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] : # end :
-                                x :
-                            x.args[2].head ∉ [:(=), :block] ?
-                                x.args[1].head == :block ?
-                                    # begin println("here3"); 
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    true,
-                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
-                                x.args[2].head == :if ?
-                                    contains_equation(x.args[2]) ?
-                                        # begin println("here5"); println(x)
-                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                            Symbol(x.args[1].args[1]), 
-                                                            (x.args[1].args[2]),
-                                                            false,
-                                                            :+) : # end : # for loop part of equation
-                                    # begin println("here6"); println(x)
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[1]), 
-                                                        (x.args[1].args[2]),
-                                                        true,
-                                                        :+) : # end : # for loop part of equation
-                                # begin println("here4"); println(x)
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[1]), 
-                                                    (x.args[1].args[2]),
-                                                    true,
-                                                    :+) : # end : # for loop part of equation
-                            x.args[1].head == :block ?
-                                # begin println("here5"); 
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    false,
-                                                    x.args[1].args[1].args[2].value) : # end :
-                                                # end 
-                                                # : # for loop part of equation
-                            # begin println(x); 
-                            # begin println("here7"); println(x)
-                            replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                            Symbol(x.args[1].args[1]), 
-                                            (x.args[1].args[2]),
-                                            false,
-                                            :+) : # end :
-                                            # println(out); 
-                                            # return out end 
-                                            # :
-                        x :
-                    x
-                end,
-    arg) #|> unblock |> flatten
-end
 
 # function parse_for_loops(equations_block)
 #     eqs = Expr[]  # Initialize an empty array to collect expressions
@@ -3480,43 +3001,6 @@ end
 #     # Return the collected expressions as a block
 #     return Expr(:block, eqs...)
 # end
-
-
-function parse_for_loops(equations_block)::Expr
-    eqs = Expr[]
-    for arg in equations_block.args
-        if isa(arg,Expr)
-            parsed_eqs = write_out_for_loops(arg)
-            # println(parsed_eqs)
-            if parsed_eqs isa Expr
-                push!(eqs,unblock(replace_indices(parsed_eqs)))
-            elseif parsed_eqs isa Array
-                for B in parsed_eqs
-                    if B isa Array
-                        for b in B
-                            push!(eqs,unblock(replace_indices(b)))
-                        end
-                    elseif B isa Expr
-                        if B.head == :block
-                            for b in B.args
-                                if b isa Expr
-                                    push!(eqs,replace_indices(b))
-                                end
-                            end
-                        else
-                            push!(eqs,unblock(replace_indices(B)))
-                        end
-                    else
-                        push!(eqs,unblock(replace_indices(B)))
-                    end
-                end
-            end
-
-        end
-    end
-    return Expr(:block,eqs...) |> flatten
-end
-
 
 
 function decompose_name(name::Symbol)
@@ -7581,11 +7065,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     cse = true,
                                     skipzeros = true)
 
-    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎$")))
-    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
-    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎$")))
-    shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎$")))
-    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎$")))
+    future_varss  = collect(reduce(union,filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎$")))
+    present_varss = collect(reduce(union,filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
+    past_varss    = collect(reduce(union,filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎$")))
+    shock_varss   = collect(reduce(union,filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎$")))
+    ss_varss      = collect(reduce(union,filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎$")))
 
     sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>"")) #sort by name without time index because otherwise eps_zᴸ⁽⁻¹⁾₍₋₁₎ comes before eps_z₍₋₁₎
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -8072,11 +7556,11 @@ end
 
 function write_auxiliary_indices!(𝓂::ℳ)
     # write indices in auxiliary objects
-    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎")))
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎")))
-    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎")))
-    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎")))
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₋₁₎")))
+    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₓ₎")))
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(filter_by_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍ₛₛ₎")))
 
     dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
     dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
