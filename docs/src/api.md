@@ -6,4 +6,6 @@ Modules = [
     Base.get_extension(MacroModelling, :TuringExt),
 ]
 Order   = [:function, :macro, :module]
+Public  = true
+Private = false
 ```
