@@ -58,6 +58,9 @@
 
 # using ForwardDiff
 
+# Type alias for revision history entries
+const RevisionEntry = NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation), Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}
+
 # =============================================================================
 # STRUCTURES OVERVIEW
 # =============================================================================
@@ -111,6 +114,7 @@ mutable struct equations
     calibration::Vector{Expr}
     calibration_no_var::Vector{Expr}
     calibration_parameters::Vector{Symbol}
+    calibration_original::Vector{Expr}
 end
 
 struct post_model_macro
@@ -620,6 +624,9 @@ mutable struct outdated_caches
     pruned_third_order_solution::Bool
 end
 
+# Convenience constructor: all caches outdated (true)
+outdated_caches() = outdated_caches(true, true, true, true, true, true, true, true, true)
+
 
 """
 Stored computation results that can be reused across function calls.
@@ -685,6 +692,20 @@ mutable struct caches
     ∂equations_∂parameters::AbstractMatrix{<: Real}        # SS sensitivity to params
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}       # SS Jacobian
 end
+
+# Default constructor: empty caches, all marked outdated
+caches() = caches(
+    outdated_caches(),
+    zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
+    zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
+    zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
+    zeros(0,0), zeros(0,0),              # first_order_solution_matrix, qme_solution
+    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 2nd order
+    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 3rd order
+    Float64[],                           # non_stochastic_steady_state
+    CircularBuffer{Vector{Vector{Float64}}}(500),  # solver_cache
+    zeros(0,0), zeros(0,0),              # ∂equations_∂parameters, ∂equations_∂SS_and_pars
+)
 
 # Structs for perturbation derivative functions (used for AD)
 struct jacobian_functions
@@ -914,6 +935,8 @@ struct post_parameters_macro
     # ss_no_var_calib_list::Vector{Set{Symbol}}
     # par_no_var_calib_list::Vector{Set{Symbol}}
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
+    ss_solver_parameters_algorithm::Symbol
+    ss_solver_parameters_maxtime::Float64
 end
 
 struct post_complete_parameters{S <: Union{Symbol, String}}
@@ -1118,4 +1141,6 @@ mutable struct ℳ
     functions::model_functions                # Compiled model functions
 
     counters::SolveCounters                   # Solve counters (steady state and perturbation)
+
+    revision_history::Vector{RevisionEntry}   # History of equation modifications
 end
