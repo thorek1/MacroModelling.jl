@@ -1,8 +1,562 @@
+# =============================================================================
+# Constants for bounds and numerical limits
+# =============================================================================
+const _BOUND_INFINITY = 1e12
+const _EXP_UPPER_BOUND = 600
+const _SMALL_EPS = eps(Float32)
+
+# Bounded functions with their (lower_bound, upper_bound) for arguments
+# Used for automatic bounds detection in nonnegativity constraints
+const _BOUNDED_FUNCTIONS = Dict{Symbol, Tuple{Float64, Float64}}(
+    :log => (eps(), _BOUND_INFINITY),
+    :^ => (eps(), _BOUND_INFINITY),  # when exponent is non-integer
+    :exp => (-_BOUND_INFINITY, _EXP_UPPER_BOUND),
+    :norminvcdf => (eps(), 1 - eps()),
+    :norminv => (eps(), 1 - eps()),
+    :qnorm => (eps(), 1 - eps()),
+    :erfcinv => (eps(), 2 - eps()),
+)
+
+# Regex pattern for auxiliary variables with lead/lag notation (e.g., xᴸ⁽²⁾)
+const _AUX_VAR_REGEX = r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾"
+
+# =============================================================================
+# Private helper predicates for timing/marker detection
+# =============================================================================
+
+"""Check if timing marker indicates an exogenous shock (x, ex, exo, exogenous)."""
+_is_exogenous_marker(t) = occursin(r"^(x|ex|exo|exogenous){1}$"i, string(t))
+
+"""Check if timing marker indicates steady state (ss, stst, steady, steadystate, steady_state)."""
+_is_steady_state_marker(t) = occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(t))
+
+"""Check if timing marker is exogenous with a lead offset (e.g., 'x + 2')."""
+_is_exogenous_lead_offset(t) = occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i, string(t))
+
+"""Check if timing marker is exogenous with a lag offset (e.g., 'x - 2')."""
+_is_exogenous_lag_offset(t) = occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i, string(t))
+
+"""Check if timing marker starts with exogenous prefix (for any offset)."""
+_is_exogenous_with_offset(t) = occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}(\-|\+){1}\s{1}\d+$))"i, string(t))
+
+"""Check if a symbol is an operator or timing keyword (not a parameter)."""
+_is_operator_or_keyword(s) = occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i, string(s))
+
+# =============================================================================
+# @capture-based expression transformation helpers
+# =============================================================================
+
+"""
+Extract all steady-state variable references from an expression.
+Returns a Set of variable names that appear as `var[ss]`.
+"""
+function _extract_ss_refs(eq)
+    ss_vars = Set{Symbol}()
+    postwalk(eq) do x
+        if @capture(x, name_[timing_]) && name isa Symbol && _is_steady_state_marker(timing)
+            push!(ss_vars, name)
+        end
+        x
+    end
+    return ss_vars
+end
+
+"""
+Extract parameters from an expression (symbols that are not SS variables or operators).
+"""
+function _extract_parameters(eq, ss_vars::Set)
+    params = Set{Symbol}()
+    all_syms = get_symbols(eq)
+    postwalk(eq) do x
+        if x isa Symbol && !_is_operator_or_keyword(x) && x ∉ ss_vars && x ∈ all_syms
+            push!(params, x)
+        end
+        x
+    end
+    return params
+end
+
+"""
+Classify variable references by timing (future, present, past, ss).
+Updates the provided sets in place.
+"""
+function _classify_variable_timing!(eq, var_future::Set, var_present::Set, var_past::Set, ss_vars::Set, params::Set)
+    all_syms = get_symbols(eq)
+    postwalk(eq) do x
+        # Handle variable references with timing
+        if @capture(x, name_[timing_])
+            if name isa Symbol
+                if timing isa Int
+                    if timing == 0
+                        push!(var_present, name)
+                    elseif timing > 0
+                        push!(var_future, name)
+                    else  # timing < 0
+                        push!(var_past, name)
+                    end
+                elseif _is_steady_state_marker(timing)
+                    push!(ss_vars, name)
+                elseif _is_exogenous_lag_offset(timing)
+                    push!(var_past, name)
+                elseif _is_exogenous_lead_offset(timing)
+                    push!(var_future, name)
+                end
+            end
+        # Handle symbols in function calls (potential parameters)
+        elseif x isa Symbol && !_is_operator_or_keyword(x) && x ∈ all_syms
+            # Only add if not already classified as a variable
+            if x ∉ var_future && x ∉ var_present && x ∉ var_past && x ∉ ss_vars
+                push!(params, x)
+            end
+        end
+        x
+    end
+end
+
+"""
+Remove terms multiplied by zero: `a * 0 * b => 0`.
+"""
+function _remove_zero_multiplication(x)
+    if @capture(x, *(args__))
+        if any(a -> a == 0, args)
+            return 0
+        end
+    end
+    return x
+end
+
+"""
+Reorder integer multiplication: `2 * beta => beta * 2` (needed for SymPy).
+"""
+function _reorder_int_multiplication(x)
+    if @capture(x, n_ * rest__)
+        if n isa Int && length(rest) >= 1 && !(rest[1] isa Int)
+            return Expr(:call, :*, rest..., n)
+        end
+    end
+    return x
+end
+
+"""
+Transform a calibration equation for solving.
+- Converts `a = b` to `a - b`
+- Strips steady state markers: `K[ss] => K`
+- Reorders integer multiplication
+Set `convert_eq_to_sub=false` for parameter-only equations that shouldn't convert `=` to `-`.
+"""
+function _transform_calibration_eq(eq; convert_eq_to_sub::Bool=true)
+    postwalk(eq) do x
+        # Convert equality to subtraction (if requested)
+        if convert_eq_to_sub && @capture(x, lhs_ = rhs_)
+            return Expr(:call, :-, lhs, rhs)
+        end
+        # Strip steady state markers
+        if @capture(x, name_[timing_]) && _is_steady_state_marker(timing)
+            return name
+        end
+        # Reorder integer multiplication
+        x = _reorder_int_multiplication(x)
+        # Unblock
+        if x isa Expr
+            return unblock(x)
+        end
+        return x
+    end
+end
+
+# =============================================================================
+# Parameter definition parsing helpers
+# =============================================================================
+
+"""
+Context struct for collecting parameter definitions during parsing.
+"""
+mutable struct _ParamParseContext
+    calib_parameters::Vector{Symbol}
+    calib_values::Vector{Float64}
+    calib_values_no_var::Vector{Any}
+    calib_parameters_no_var::Vector{Symbol}
+    calib_eq_parameters::Vector{Symbol}
+    calib_equations::Vector{Expr}
+    calib_equations_original::Vector{Expr}
+    bounded_vars::Vector{Any}
+    par_defined_more_than_once::Set{Symbol}
+end
+
+"""
+Check if parameter was already defined and track duplicates.
+"""
+function _check_duplicate_param!(ctx::_ParamParseContext, param::Symbol)
+    all_defined = union(ctx.calib_parameters, ctx.calib_parameters_no_var, ctx.calib_eq_parameters)
+    if param ∈ all_defined
+        push!(ctx.par_defined_more_than_once, param)
+    end
+end
+
+"""
+Check if expression is a pipe call `a | b` and return (value, param) or nothing.
+Note: @capture doesn't work well with | operator due to precedence, so we check manually.
+"""
+function _match_pipe_call(ex::Expr)
+    if ex.head == :call && length(ex.args) >= 3 && ex.args[1] == :|
+        return (ex.args[2], ex.args[3])  # (value, param)
+    end
+    return nothing
+end
+_match_pipe_call(::Any) = nothing
+
+"""
+Parse a calibration equation with | at the beginning: `| calib_param = target_expr = value`.
+Returns true if handled, false otherwise.
+"""
+function _parse_leading_pipe_assignment!(ctx::_ParamParseContext, x::Expr)
+    # Check pattern: (| param = target) = rhs
+    # The LHS has form: Expr(:call, :|, param, target)
+    if x.head == :(=) && x.args[1] isa Expr && x.args[1].head == :call && 
+       length(x.args[1].args) >= 3 && x.args[1].args[1] == :|
+        calib_param = x.args[1].args[2]
+        target_expr = x.args[1].args[3]
+        rhs = x.args[2]
+        if calib_param isa Symbol
+            _check_duplicate_param!(ctx, calib_param)
+            push!(ctx.calib_eq_parameters, calib_param)
+            push!(ctx.calib_equations, Expr(:(=), target_expr, unblock(rhs)))
+            push!(ctx.calib_equations_original, Expr(:(=), target_expr, Expr(:call, :|, unblock(rhs), calib_param)))
+            return true
+        end
+    end
+    return false
+end
+
+"""
+Parse a bounds expression: `0 < x < 1`, `x > 0`, etc.
+Returns true if handled, false otherwise.
+"""
+function _parse_bounds_expr!(ctx::_ParamParseContext, x::Expr)
+    if x.head == :comparison
+        push!(ctx.bounded_vars, x)
+        return true
+    elseif x.head == :call && x.args[1] ∈ [:<, :>, :<=, :>=]
+        push!(ctx.bounded_vars, x)
+        return true
+    end
+    return false
+end
+
+# =============================================================================
+# Parameter bounds parsing helpers
+# =============================================================================
+
+"""
+Parse comparison bounds like `0 < x < 1`, `0 <= x < 1`, etc.
+Updates the bounds dict in place.
+"""
+function _parse_comparison_bound!(bounds::Dict{Symbol,Tuple{Float64,Float64}}, x::Expr)
+    x.head == :comparison || return
+    length(x.args) >= 5 || return
+    
+    lo_val = x.args[1]
+    lo_op = x.args[2]
+    param = x.args[3]
+    hi_op = x.args[4]
+    hi_val = x.args[5]
+    
+    param isa Symbol || return
+    
+    # Determine if bounds are strict (<) or inclusive (<=)
+    lo_strict = lo_op == :(<) || lo_op == :(>)
+    hi_strict = hi_op == :(<) || hi_op == :(>)
+    
+    # Handle reversed comparisons (> and >=)
+    if lo_op == :(>) || lo_op == :(>=)
+        lo_val, hi_val = hi_val, lo_val
+        lo_strict, hi_strict = hi_strict, lo_strict
+    end
+    
+    # Apply epsilon for strict bounds
+    lb = lo_strict ? lo_val + _SMALL_EPS : lo_val
+    ub = hi_strict ? hi_val - _SMALL_EPS : hi_val
+    
+    # Merge with existing bounds
+    if haskey(bounds, param)
+        bounds[param] = (max(bounds[param][1], lb), min(bounds[param][2], ub))
+    else
+        bounds[param] = (lb, ub)
+    end
+end
+
+"""
+Parse single-sided bounds like `x < 1`, `x > 0`, `x <= 1`, `x >= 0`.
+Updates the bounds dict in place.
+"""
+function _parse_call_bound!(bounds::Dict{Symbol,Tuple{Float64,Float64}}, x::Expr)
+    x.head == :call || return
+    length(x.args) >= 3 || return
+    
+    op = x.args[1]
+    op ∈ [:(<), :(>), :(<=), :(>=)] || return
+    
+    lhs = x.args[2]
+    rhs = x.args[3]
+    
+    # Determine which side has the symbol
+    if lhs isa Symbol
+        param = lhs
+        val = rhs
+        # param op val: e.g., x < 1 means upper bound
+        if op == :(<)
+            lb, ub = -_BOUND_INFINITY + rand(), val - _SMALL_EPS
+        elseif op == :(<=)
+            lb, ub = -_BOUND_INFINITY + rand(), val
+        elseif op == :(>)
+            lb, ub = val + _SMALL_EPS, _BOUND_INFINITY + rand()
+        elseif op == :(>=)
+            lb, ub = val, _BOUND_INFINITY + rand()
+        else
+            return
+        end
+    elseif rhs isa Symbol
+        param = rhs
+        val = lhs
+        # val op param: e.g., 0 < x means lower bound
+        if op == :(<)
+            lb, ub = val + _SMALL_EPS, _BOUND_INFINITY + rand()
+        elseif op == :(<=)
+            lb, ub = val, _BOUND_INFINITY + rand()
+        elseif op == :(>)
+            lb, ub = -_BOUND_INFINITY + rand(), val - _SMALL_EPS
+        elseif op == :(>=)
+            lb, ub = -_BOUND_INFINITY + rand(), val
+        else
+            return
+        end
+    else
+        return
+    end
+    
+    # Merge with existing bounds
+    if haskey(bounds, param)
+        bounds[param] = (max(bounds[param][1], lb), min(bounds[param][2], ub))
+    else
+        bounds[param] = (lb, ub)
+    end
+end
+
+"""
+Parse a list of bound expressions and return a bounds dictionary.
+"""
+function _parse_bounds(bounded_vars::Vector)
+    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
+    
+    for bound in bounded_vars
+        postwalk(x -> begin
+            if x isa Expr
+                if x.head == :comparison
+                    _parse_comparison_bound!(bounds, x)
+                elseif x.head == :call
+                    _parse_call_bound!(bounds, x)
+                end
+            end
+            x
+        end, bound)
+    end
+    
+    return bounds
+end
+
+# =============================================================================
+# Model preprocessing
+# =============================================================================
+
 function preprocess_model_block(model_block::Expr, max_obc_horizon::Int)
     model_ex = parse_for_loops(model_block)
     model_ex = resolve_if_expr(model_ex::Expr)::Expr
     model_ex = remove_nothing(model_ex::Expr)::Expr
     return parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
+end
+
+# =============================================================================
+# Helper functions for auxiliary variable creation (leads/lags > 1)
+# =============================================================================
+
+"""
+Create auxiliary equations for variables with lead > 1.
+Returns the symbol to use in the transformed expression.
+"""
+function _create_lead_auxiliaries!(name::Symbol, k::Int, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+    name_str = string(name)
+    
+    # Create auxiliary dynamic equations for k > 2
+    while k > 2
+        aux_sym = Symbol(name_str * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎")
+        if aux_sym ∈ aux_vars_created
+            break
+        end
+        push!(aux_vars_created, aux_sym)
+        aux_next = Symbol(name_str * "ᴸ⁽" * super(string(abs(k - 2))) * "⁾₍₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, aux_next))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+        k -= 1
+    end
+    
+    # Create the final auxiliary equation connecting to x₍₁₎
+    aux_sym = Symbol(name_str * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎")
+    if aux_sym ∉ aux_vars_created && k > 1
+        push!(aux_vars_created, aux_sym)
+        base_future = Symbol(name_str * "₍₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, base_future))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+    end
+end
+
+"""
+Create auxiliary equations for variables with lag < -1.
+Returns the symbol to use in the transformed expression.
+"""
+function _create_lag_auxiliaries!(name::Symbol, k::Int, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+    name_str = string(name)
+    
+    # Create auxiliary dynamic equations for k < -2
+    while k < -2
+        aux_sym = Symbol(name_str * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+        if aux_sym ∈ aux_vars_created
+            break
+        end
+        push!(aux_vars_created, aux_sym)
+        aux_prev = Symbol(name_str * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, aux_prev))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+        k += 1
+    end
+    
+    # Create the final auxiliary equation connecting to x₍₋₁₎
+    aux_sym = Symbol(name_str * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+    if aux_sym ∉ aux_vars_created && k < -1
+        push!(aux_vars_created, aux_sym)
+        base_past = Symbol(name_str * "₍₋₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, base_past))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+    end
+end
+
+"""
+Create auxiliary equations for exogenous variables with lead/lag, including the x₍₀₎ = x₍ₓ₎ equation.
+"""
+function _create_exo_auxiliaries!(name::Symbol, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+    name_str = string(name)
+    present_sym = Symbol(name_str * "₍₀₎")
+    if present_sym ∉ aux_vars_created
+        push!(aux_vars_created, present_sym)
+        exo_sym = Symbol(name_str * "₍ₓ₎")
+        push!(dyn_equations, Expr(:call, :-, present_sym, exo_sym))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+    end
+end
+
+"""
+Transform a variable reference expression to its dynamic form.
+Handles time indices: [0], [1], [-1], [ss], [x], [x+k], [x-k], and leads/lags > 1.
+"""
+function _transform_variable_ref(x::Expr, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+    # Use @capture to match var[timing] pattern
+    @capture(x, name_[timing_]) || return x
+    name isa Symbol || return x
+    name_str = string(name)
+    
+    # Case 1: Simple exogenous marker (x, ex, exo, exogenous)
+    if _is_exogenous_marker(timing)
+        return Symbol(name_str * "₍ₓ₎")
+    end
+    
+    # Case 2: Steady state marker
+    if _is_steady_state_marker(timing)
+        return Symbol(name_str * "₍ₛₛ₎")
+    end
+    
+    # Case 3: Exogenous with offset (x + k or x - k)
+    if _is_exogenous_with_offset(timing)
+        if timing isa Expr && timing.head == :call
+            op = timing.args[1]
+            offset = timing.args[3]
+            
+            if op == :(+)  # Lead (x + k)
+                k = offset
+                _create_lead_auxiliaries!(name, k, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+                _create_exo_auxiliaries!(name, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+                
+                if k > 1
+                    return Symbol(name_str * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₁₎")
+                else
+                    return Symbol(name_str * "₍₁₎")
+                end
+                
+            elseif op == :(-)  # Lag (x - k)
+                k = -offset
+                _create_lag_auxiliaries!(name, k, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+                _create_exo_auxiliaries!(name, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+                
+                if k < -1
+                    return Symbol(name_str * "ᴸ⁽⁻" * super(string(abs(offset - 1))) * "⁾₍₋₁₎")
+                else
+                    return Symbol(name_str * "₍₋₁₎")
+                end
+            end
+        end
+        return name  # Fallback
+    end
+    
+    # Case 4: Integer time index
+    if timing isa Int
+        if timing > 1  # Lead > 1
+            _create_lead_auxiliaries!(name, timing, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+            return Symbol(name_str * "ᴸ⁽" * super(string(abs(timing - 1))) * "⁾₍₁₎")
+            
+        elseif timing >= 0 && timing <= 1  # Present or future (0 or 1)
+            return Symbol(name_str * "₍" * sub(string(timing)) * "₎")
+            
+        elseif timing >= -1 && timing < 0  # Past (-1)
+            return Symbol(name_str * "₍₋" * sub(string(timing)) * "₎")
+            
+        elseif timing < -1  # Lag < -1
+            _create_lag_auxiliaries!(name, timing, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+            return Symbol(name_str * "ᴸ⁽⁻" * super(string(abs(timing + 1))) * "⁾₍₋₁₎")
+        end
+    end
+    
+    # Fallback: return the variable name
+    return name
+end
+
+"""
+Transform an expression for steady-state equations.
+Sets shocks to zero, removes time indices, and reorders integer multiplication.
+"""
+function _transform_for_ss(x)
+    x isa Expr || return x
+    
+    # Convert = to subtraction
+    if x.head == :(=)
+        return Expr(:call, :-, x.args[1], x.args[2])
+    end
+    
+    # Handle variable references
+    if x.head == :ref
+        # Exogenous variables become 0 in steady state
+        if length(x.args) >= 2 && occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2]))
+            return 0
+        end
+        # Other variables: strip time index
+        return x.args[1]
+    end
+    
+    # Reorder integer multiplication: 2*beta => beta*2 (needed for sympy)
+    if x.head == :call && x.args[1] == :*
+        if length(x.args) >= 3 && x.args[2] isa Int && !(x.args[3] isa Int)
+            return Expr(:call, :*, x.args[3:end]..., x.args[2])
+        end
+    end
+    
+    return x
 end
 
 function build_dynamic_and_ss_equations!(
@@ -16,187 +570,169 @@ function build_dynamic_and_ss_equations!(
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
-            t_ex = postwalk(x -> 
-                x isa Expr ? 
-                    x.head == :(=) ? 
-                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                        x.head == :ref ?
-                            occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
-                                begin
-                                    Symbol(string(x.args[1]) * "₍ₓ₎") 
-                                end :
-                            occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}(\-|\+){1}\s{1}\d+$))"i,string(x.args[2])) ?
-                                x.args[2].args[1] == :(+) ?
-                                    begin
-                                        k = x.args[2].args[3]
+            t_ex = postwalk(x -> begin
+                x isa Expr || return x
                 
-                                        while k > 2 # create auxiliary dynamic equation for exogenous variables with lead > 1
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
-                                                break
-                                            else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"))
-                    
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 2))) * "⁾₍₁₎")))
-                                                push!(dyn_eq_aux_ind,length(dyn_equations))
-                                                
-                                                k -= 1
-                                            end
-                                        end
+                # Convert = to subtraction
+                if x.head == :(=)
+                    return Expr(:call, :-, x.args[1], x.args[2])
+                end
+                
+                # Handle variable references with timing
+                if x.head == :ref
+                    return _transform_variable_ref(x, aux_vars_created, dyn_equations, dyn_eq_aux_ind)
+                end
+                
+                return unblock(x)
+            end, model_ex.args[i])
 
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∉ aux_vars_created && k > 1
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"))
-                    
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"), Symbol(string(x.args[1]) * "₍₁₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-
-                                        if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
-                                            
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-
-                                        if x.args[2].args[3] > 1
-                                            Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(x.args[2].args[3] - 1))) * "⁾₍₁₎")
-                                        else
-                                            Symbol(string(x.args[1]) * "₍₁₎")
-                                        end
-                                    end :
-                                x.args[2].args[1] == :(-) ?
-                                    begin
-                                        k = - x.args[2].args[3]
-                    
-                                        while k < -2 # create auxiliary dynamic equations for exogenous variables with lag < -1
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∈ aux_vars_created
-                                                break
-                                            else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"))
-                    
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")))
-                                                push!(dyn_eq_aux_ind,length(dyn_equations))
-                                                
-                                                k += 1
-                                            end
-                                        end
-                    
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∉ aux_vars_created && k < -1
-                                        
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"))
-                    
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-                                        
-                                        if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
-                                            
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-
-                                        if  - x.args[2].args[3] < -1
-                                            Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(x.args[2].args[3] - 1))) * "⁾₍₋₁₎")
-                                        else
-                                            Symbol(string(x.args[1]) * "₍₋₁₎")
-                                        end
-                                    end :
-                                x.args[1] : 
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                                begin
-                                    Symbol(string(x.args[1]) * "₍ₛₛ₎") 
-                                end :
-                            x.args[2] isa Int ? 
-                                x.args[2] > 1 ? 
-                                    begin
-                                        k = x.args[2]
-
-                                        while k > 2 # create auxiliary dynamic equations for endogenous variables with lead > 1
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
-                                                break
-                                            else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"))
-
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 2))) * "⁾₍₁₎")))
-                                                push!(dyn_eq_aux_ind,length(dyn_equations))
-                                                
-                                                k -= 1
-                                            end
-                                        end
-
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∉ aux_vars_created
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"))
-
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-                                        Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(x.args[2] - 1))) * "⁾₍₁₎")
-                                    end :
-                                1 >= x.args[2] >= 0 ? 
-                                    begin
-                                        Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2])) * "₎")
-                                    end :  
-                                -1 <= x.args[2] < 0 ? 
-                                    begin
-                                        Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎")
-                                    end :
-                                x.args[2] < -1 ?  # create auxiliary dynamic equations for endogenous variables with lag < -1
-                                    begin
-                                        k = x.args[2]
-
-                                        while k < -2
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∈ aux_vars_created
-                                                break
-                                            else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"))
-
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")))
-                                                push!(dyn_eq_aux_ind,length(dyn_equations))
-                                                
-                                                k += 1
-                                            end
-                                        end
-
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∉ aux_vars_created
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"))
-
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
-                                            push!(dyn_eq_aux_ind,length(dyn_equations))
-                                        end
-
-                                        Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(x.args[2] + 1))) * "⁾₍₋₁₎")
-                                    end :
-                            x.args[1] :
-                        x.args[1] : 
-                    unblock(x) : 
-                x,
-            model_ex.args[i])
-
-            push!(dyn_equations,unblock(t_ex))
+            push!(dyn_equations, unblock(t_ex))
             
-            
-            # write down ss equations
-            eqs = postwalk(x -> 
-                x isa Expr ? 
-                    x.head == :(=) ? 
-                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                            x.head == :ref ?
-                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
-                        x.args[1] :
-                    x.head == :call ?
-                        x.args[1] == :* ?
-                            x.args[2] isa Int ?
-                                x.args[3] isa Int ?
-                                    x :
-                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
-                            x :
-                        x :
-                    x :
-                x,
-            model_ex.args[i])
-            push!(ss_equations,flatten(unblock(eqs)))
+            # write down ss equations using the helper function
+            eqs = postwalk(x -> _transform_for_ss(x), model_ex.args[i])
+            push!(ss_equations, flatten(unblock(eqs)))
         end
     end
+end
+
+# =============================================================================
+# Helper functions for nonnegativity/bounded constraint handling
+# =============================================================================
+
+"""
+Update bounds for a symbol, merging with existing bounds if present.
+"""
+function _update_bounds!(bounds::Dict{Symbol,Tuple{Float64,Float64}}, sym::Symbol, lb::Float64, ub::Float64)
+    if haskey(bounds, sym)
+        bounds[sym] = (max(bounds[sym][1], lb), min(bounds[sym][2], ub))
+    else
+        bounds[sym] = (lb, ub)
+    end
+end
+
+"""
+Create an auxiliary variable for a bounded expression and return the replacement expression.
+"""
+function _create_bounded_auxiliary!(
+    arg_expr::Expr,
+    lb::Float64,
+    ub::Float64,
+    bounds,
+    ss_and_aux_equations,
+    ss_equations_with_aux_variables,
+    ➕_vars,
+    unique_➕_eqs,
+    precompile::Bool,
+)
+    replacement = precompile ? arg_expr : simplify(arg_expr)
+    
+    # Check if it's just a constant
+    if replacement isa Int
+        return replacement
+    end
+    
+    # Check if we already created an auxiliary for this expression
+    if haskey(unique_➕_eqs, arg_expr)
+        return unique_➕_eqs[arg_expr]
+    end
+    
+    # Create new auxiliary variable
+    aux_name = Symbol("➕" * sub(string(length(➕_vars) + 1)))
+    
+    # Add the auxiliary equation: aux[0] - expression = 0
+    push!(ss_and_aux_equations, Expr(:call, :-, Expr(:ref, aux_name, 0), arg_expr))
+    
+    # Set bounds for the auxiliary variable
+    _update_bounds!(bounds, aux_name, lb, ub)
+    
+    push!(ss_equations_with_aux_variables, length(ss_and_aux_equations))
+    push!(➕_vars, aux_name)
+    
+    # Create the replacement reference
+    replacement = Expr(:ref, aux_name, 0)
+    unique_➕_eqs[arg_expr] = replacement
+    
+    return replacement
+end
+
+"""
+Handle bounded function calls (log, exp, ^, norminvcdf, erfcinv, etc.).
+Sets bounds on arguments and creates auxiliary variables for complex expressions.
+Returns the (potentially modified) expression.
+"""
+function _handle_bounded_call(
+    x::Expr,
+    bounds,
+    ss_and_aux_equations,
+    ss_equations_with_aux_variables,
+    ➕_vars,
+    unique_➕_eqs,
+    precompile::Bool,
+)
+    # Must be a function call
+    x.head == :call || return x
+    length(x.args) >= 2 || return x
+    
+    func = x.args[1]
+    arg = x.args[2]
+    
+    # Skip if argument is a Float64 literal
+    arg isa Float64 && return x
+    
+    # Special handling for power operator: only applies when exponent is non-integer
+    if func == :^
+        length(x.args) >= 3 || return x
+        exponent = x.args[3]
+        exponent isa Int && return x  # Integer exponent doesn't require bounds
+        
+        lb, ub = _BOUNDED_FUNCTIONS[:^]
+        
+        # Handle symbol argument (parameter)
+        if arg isa Symbol
+            _update_bounds!(bounds, arg, lb, ub)
+            return x
+        end
+        
+        # Handle variable reference
+        if arg isa Expr && arg.head == :ref && arg.args[1] isa Symbol
+            _update_bounds!(bounds, arg.args[1], lb, ub)
+            return x
+        end
+        
+        # Handle complex expression - create auxiliary
+        if arg isa Expr && arg.head == :call
+            replacement = _create_bounded_auxiliary!(arg, lb, ub, bounds, ss_and_aux_equations, ss_equations_with_aux_variables, ➕_vars, unique_➕_eqs, precompile)
+            return :($(replacement) ^ $(exponent))
+        end
+        
+        return x
+    end
+    
+    # Handle other bounded functions (log, exp, norminvcdf, erfcinv, etc.)
+    func_key = func ∈ [:norminv, :qnorm] ? :norminvcdf : func
+    haskey(_BOUNDED_FUNCTIONS, func_key) || return x
+    
+    lb, ub = _BOUNDED_FUNCTIONS[func_key]
+    
+    # Handle symbol argument (parameter)
+    if arg isa Symbol
+        _update_bounds!(bounds, arg, lb, ub)
+        return x
+    end
+    
+    # Handle variable reference
+    if arg isa Expr && arg.head == :ref && arg.args[1] isa Symbol
+        _update_bounds!(bounds, arg.args[1], lb, ub)
+        return x
+    end
+    
+    # Handle complex expression - create auxiliary
+    if arg isa Expr && arg.head == :call
+        replacement = _create_bounded_auxiliary!(arg, lb, ub, bounds, ss_and_aux_equations, ss_equations_with_aux_variables, ➕_vars, unique_➕_eqs, precompile)
+        return Expr(:call, func, replacement)
+    end
+    
+    return x
 end
 
 function create_nonnegativity_auxiliaries!(
@@ -210,252 +746,41 @@ function create_nonnegativity_auxiliaries!(
 )
     # write down ss equations including nonnegativity auxiliary variables
     # find nonegative variables, parameters, or terms
-    for (i,arg) in enumerate(model_ex.args)
-        if isa(arg,Expr)
-            eqs = postwalk(x -> 
-                x isa Expr ? 
-                    x.head == :(=) ? 
-                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                            x.head == :ref ?
-                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
-                        x : 
-                    x.head == :call ?
-                        x.args[1] == :* ?
-                            x.args[2] isa Int ?
-                                x.args[3] isa Int ?
-                                    x :
-                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
-                            x :
-                        x.args[1] ∈ [:^] ?
-                            !(x.args[3] isa Int) ?
-                                x.args[2] isa Symbol ? # nonnegative parameters 
-                                        begin
-                                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
-                                            x
-                                        end :
-                                x.args[2].head == :ref ?
-                                    x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                        begin
-                                            bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
-                                            x
-                                        end :
-                                    x :
-                                x.args[2].head == :call ? # nonnegative expressions
-                                    begin
-                                        if precompile
-                                            replacement = x.args[2]
-                                        else
-                                            replacement = simplify(x.args[2])
-                                        end
-
-                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if haskey(unique_➕_eqs, x.args[2])
-                                                replacement = unique_➕_eqs[x.args[2]]
-                                            else 
-                                                lb = eps()
-                                                ub = 1e12
-
-                                                # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
-                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
-
-                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
-
-                                                push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
-
-                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                                replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-
-                                                unique_➕_eqs[x.args[2]] = replacement
-                                            end
-                                        end
-
-                                        :($(replacement) ^ $(x.args[3]))
-                                    end :
-                                x :
-                            x :
-                        x.args[2] isa Float64 ?
-                            x :
-                        x.args[1] ∈ [:log] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            lb = eps()
-                                            ub = 1e12
-
-                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
-
-                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
-
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1-eps())
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1-eps())) : (eps(), 1-eps())
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            lb = eps()
-                                            ub = 1-eps()
-
-                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
-
-                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
-
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:exp] ?
-                            x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
-                                    begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 600)) : (-1e12, 600)
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            lb = -1e12
-                                            ub = 600
-
-                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
-
-                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
-
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:erfcinv] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2-eps())) : (eps(), 2-eps())
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            lb = eps()
-                                            ub = 2-eps()
-
-                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
-
-                                            push!(ss_equations_with_aux_variables,length(ss_and_aux_equations))
-
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x :
-                    x :
-                x,
-            model_ex.args[i])
-            push!(ss_and_aux_equations,unblock(eqs))
+    for (i, arg) in enumerate(model_ex.args)
+        if isa(arg, Expr)
+            eqs = postwalk(x -> begin
+                x isa Expr || return x
+                
+                # Convert = to subtraction
+                if x.head == :(=)
+                    return Expr(:call, :-, x.args[1], x.args[2])
+                end
+                
+                # Handle variable references - exogenous become 0, others keep their name
+                if x.head == :ref
+                    if length(x.args) >= 2 && occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2]))
+                        return 0
+                    end
+                    return x
+                end
+                
+                # Handle function calls
+                if x.head == :call
+                    # Reorder integer multiplication: 2*beta => beta*2
+                    if x.args[1] == :* && length(x.args) >= 3
+                        if x.args[2] isa Int && !(x.args[3] isa Int)
+                            return Expr(:call, :*, x.args[3:end]..., x.args[2])
+                        end
+                    end
+                    
+                    # Handle bounded functions (log, exp, ^, norminvcdf, erfcinv)
+                    return _handle_bounded_call(x, bounds, ss_and_aux_equations, ss_equations_with_aux_variables, ➕_vars, unique_➕_eqs, precompile)
+                end
+                
+                return x
+            end, model_ex.args[i])
+            
+            push!(ss_and_aux_equations, unblock(eqs))
         end
     end
 end
@@ -482,48 +807,10 @@ function process_auxiliary_ss_equations!(
         var_past_tmp = Set()
 
         # remove terms multiplied with 0
-        eq = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :call ? 
-                    x.args[1] == :* ?
-                        any(x.args[2:end] .== 0) ? 
-                            0 :
-                        x :
-                    x :
-                x :
-            x,
-        eq)
+        eq = postwalk(_remove_zero_multiplication, eq)
 
         # label all variables parameters and exogenous variables and timings for individual equations
-        postwalk(x -> 
-            x isa Expr ? 
-                x.head == :call ? 
-                    for i in 2:length(x.args)
-                        x.args[i] isa Symbol ? 
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state|x|ex|exo|exogenous){1}$"i,string(x.args[i])) ? 
-                                x :
-                            push!(par_tmp,x.args[i]) : 
-                        x
-                    end :
-                x.head == :ref ? 
-                    x.args[2] isa Int ? 
-                        x.args[2] == 0 ? 
-                            push!(var_present_tmp,x.args[1]) : 
-                        x.args[2] > 0 ? 
-                            push!(var_future_tmp,x.args[1]) : 
-                        x.args[2] < 0 ? 
-                            push!(var_past_tmp,x.args[1]) : 
-                        x :
-                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        push!(var_past_tmp,x.args[1]) : 
-                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        push!(var_future_tmp,x.args[1]) : 
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss_tmp,x.args[1]) :
-                    x : 
-                x :
-            x,
-        eq)
+        _classify_variable_timing!(eq, var_future_tmp, var_present_tmp, var_past_tmp, ss_tmp, par_tmp)
 
         var_tmp = union(var_future_tmp,var_present_tmp,var_past_tmp)
         
@@ -641,17 +928,16 @@ function process_model_equations(
     mixed_in_future           = sort(intersect(dyn_var_future, mixed))
     exo                       = sort(collect(reduce(union,dyn_exo_list)))
     var                       = sort(dyn_var_present)
-    aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux                       = sort(aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)])
-    exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
-    exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
-    exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
+    aux_tmp                   = sort(filter(x->occursin(_AUX_VAR_REGEX,string(x)), dyn_var_present))
+    aux                       = sort(aux_tmp[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∉ exo, aux_tmp)])
+    exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∈ exo, dyn_var_future)]
+    exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∈ exo, dyn_var_present)]
+    exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∈ exo, dyn_var_past)]
 
     nPresent_only              = length(present_only)
     nMixed                     = length(mixed)
     nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
     nPast_not_future_and_mixed = length(past_not_future_and_mixed)
-    nPresent_but_not_only      = length(present_but_not_only)
     nVars                      = length(all_vars)
     nExo                       = length(collect(exo))
 
@@ -682,14 +968,14 @@ function process_model_equations(
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
-    aux_future_tmp  = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_future))
-    aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_future_tmp)]
+    aux_future_tmp  = sort(filter(x->occursin(_AUX_VAR_REGEX,string(x)), dyn_var_future))
+    aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∉ exo, aux_future_tmp)]
 
-    aux_past_tmp    = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_past))
-    aux_past        = aux_past_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_past_tmp)]
+    aux_past_tmp    = sort(filter(x->occursin(_AUX_VAR_REGEX,string(x)), dyn_var_past))
+    aux_past        = aux_past_tmp[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∉ exo, aux_past_tmp)]
 
-    aux_present_tmp = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
-    aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
+    aux_present_tmp = sort(filter(x->occursin(_AUX_VAR_REGEX,string(x)), dyn_var_present))
+    aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),_AUX_VAR_REGEX => "")) ∉ exo, aux_present_tmp)]
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
     vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
@@ -771,12 +1057,8 @@ function process_model_equations(
     original_equations = []
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
-            prs_exx = postwalk(x -> 
-                x isa Expr ? 
-                    unblock(x) : 
-                x,
-            model_ex.args[i])
-            push!(original_equations,unblock(prs_exx))
+            prs_exx = postwalk(x -> x isa Expr ? unblock(x) : x, model_ex.args[i])
+            push!(original_equations, unblock(prs_exx))
         end
     end
 
@@ -839,92 +1121,144 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
 
     parameter_definitions = replace_indices(parameter_block)
 
-    # parse parameter inputs
-    # label all variables parameters and exogenous variables and timings across all equations
-    postwalk(x -> 
-        x isa Expr ?
-            x.head == :(=) ? 
-                x.args[1] isa Symbol ?
-                    typeof(x.args[2]) ∈ [Int, Float64] ?
-                        begin # normal calibration by setting values of parameters
-                            push!(calib_values,x.args[2])
-                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end 
-                            push!(calib_parameters,x.args[1]) 
-                        end :
-                    x.args[2] isa Symbol ?
-                        begin # normal calibration by setting values of parameters
-                            push!(calib_values_no_var,unblock(x.args[2]))
-                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
-                            push!(calib_parameters_no_var,x.args[1])
-                        end :
-                    x.args[2].args[1] == :| ?
-                        x :
-                    begin # normal calibration by setting values of parameters
-                        push!(calib_values_no_var,unblock(x.args[2]))
-                        if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
-                        push!(calib_parameters_no_var,x.args[1])
-                    end :
-                x.args[1].args[1] == :| ?
-                    begin # calibration by targeting SS values (conditional parameter at the beginning)
-                        if x.args[1].args[2] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1].args[2]) end
-                        push!(calib_eq_parameters,x.args[1].args[2])
-                        push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
-                        push!(calib_equations_original, Expr(:(=), x.args[1].args[3], Expr(:call, :|, unblock(x.args[2]), x.args[1].args[2])))
-                    end :
-                x :
-            x.head == :comparison ? 
-                push!(bounded_vars,x) :
-            x.head == :call ?
-                issubset([x.args[1]], [:(<) :(>) :(<=) :(>=)]) ?
-                    push!(bounded_vars,x) :
-                x :
-            x :
-        x,
-    parameter_definitions)
+    # Create parsing context to collect results
+    ctx = _ParamParseContext(
+        calib_parameters,
+        calib_values,
+        calib_values_no_var,
+        calib_parameters_no_var,
+        calib_eq_parameters,
+        calib_equations,
+        calib_equations_original,
+        bounded_vars,
+        par_defined_more_than_once
+    )
 
-    postwalk(x -> 
-        x isa Expr ?
-            x.head == :(=) ? 
-                typeof(x.args[2]) ∈ [Int, Float64] ?
-                    x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesn't work really well yet
-                    x.args[2] isa Expr ?
-                        x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
-                            begin # this is calibration by targeting SS values (conditional parameter at the end)
-                                if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                                push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
-                                push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
-                                push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2]), x.args[2].args[end])))
-                            end :
-                            x :
-                        x :
-                x.args[2].head == :block ?
-                    x.args[1].args[1] == :| ?
-                        x :
-                    x.args[2].args[2].args[1] == :| ?
-                        begin # this is calibration by targeting SS values (conditional parameter at the end)
-                            if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
-                            push!(calib_eq_parameters,x.args[2].args[end].args[end])
-                            push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
-                            push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2].args[2]), x.args[2].args[end].args[end])))
-                        end :
-                    begin 
+    # First pass: parse simple assignments, leading pipe calibrations, and bounds
+    postwalk(parameter_definitions) do x
+        if !(x isa Expr)
+            return x
+        end
+        
+        # Try bounds first
+        if _parse_bounds_expr!(ctx, x)
+            return x
+        end
+        
+        # Try leading pipe calibration: | param = target = value
+        if _parse_leading_pipe_assignment!(ctx, x)
+            return x
+        end
+        
+        # Handle simple assignments (but skip trailing pipe - handled in second pass)
+        if x.head == :(=) && x.args[1] isa Symbol
+            val = x.args[2]
+            param = x.args[1]
+            
+            if val isa Int || val isa Float64
+                # param = numeric_value
+                _check_duplicate_param!(ctx, param)
+                push!(ctx.calib_values, val)
+                push!(ctx.calib_parameters, param)
+            elseif val isa Symbol
+                # param = other_symbol
+                _check_duplicate_param!(ctx, param)
+                push!(ctx.calib_values_no_var, val)
+                push!(ctx.calib_parameters_no_var, param)
+            elseif val isa Expr
+                # Check if NOT a trailing pipe (those are handled in second pass)
+                if !(val.head == :call && length(val.args) >= 2 && val.args[1] == :|)
+                    # param = expr (no calibration)
+                    _check_duplicate_param!(ctx, param)
+                    push!(ctx.calib_values_no_var, unblock(val))
+                    push!(ctx.calib_parameters_no_var, param)
+                end
+            end
+        end
+        x
+    end
+
+    # Second pass: handle trailing pipe calibrations: param = expr | calibrated_param
+    postwalk(parameter_definitions) do x
+        if !(x isa Expr) || x.head != :(=)
+            return x
+        end
+        
+        # Skip if already processed as numeric
+        if x.args[2] isa Int || x.args[2] isa Float64
+            return x
+        end
+        
+        lhs = x.args[1]
+        rhs = x.args[2]
+        
+        # Case: param = expr | calibrated_param
+        if lhs isa Symbol && rhs isa Expr
+            pipe_match = _match_pipe_call(rhs)
+            if pipe_match !== nothing
+                target_expr, calib_param = pipe_match
+                if calib_param isa Symbol
+                    _check_duplicate_param!(ctx, calib_param)
+                    push!(ctx.calib_eq_parameters, calib_param)
+                    push!(ctx.calib_equations, Expr(:(=), lhs, unblock(target_expr)))
+                    push!(ctx.calib_equations_original, Expr(:(=), lhs, Expr(:call, :|, unblock(target_expr), calib_param)))
+                    return x
+                end
+            end
+        end
+        
+        # Case: expr[ss] = expr | calibrated_param (calibration equation with LHS expression)
+        if lhs isa Expr && rhs isa Expr
+            pipe_match = _match_pipe_call(rhs)
+            if pipe_match !== nothing
+                target_expr, calib_param = pipe_match
+                if calib_param isa Symbol
+                    _check_duplicate_param!(ctx, calib_param)
+                    push!(ctx.calib_eq_parameters, calib_param)
+                    push!(ctx.calib_equations, Expr(:(=), lhs, unblock(target_expr)))
+                    push!(ctx.calib_equations_original, Expr(:(=), lhs, Expr(:call, :|, unblock(target_expr), calib_param)))
+                    return x
+                end
+            end
+            
+            # Handle block expressions with embedded pipes (may have LineNumberNodes)
+            if rhs.head == :block
+                # Find the actual expression (skip LineNumberNodes)
+                inner_idx = findfirst(a -> a isa Expr, rhs.args)
+                if inner_idx !== nothing
+                    inner = rhs.args[inner_idx]
+                    inner_pipe = _match_pipe_call(inner)
+                    if inner_pipe !== nothing
+                        inner_expr, calib_param = inner_pipe
+                        if calib_param isa Symbol
+                            # Skip if leading pipe was already handled
+                            if !(lhs isa Expr && lhs.head == :call && lhs.args[1] == :|)
+                                _check_duplicate_param!(ctx, calib_param)
+                                push!(ctx.calib_eq_parameters, calib_param)
+                                push!(ctx.calib_equations, Expr(:(=), lhs, unblock(inner_expr)))
+                                push!(ctx.calib_equations_original, Expr(:(=), lhs, Expr(:call, :|, unblock(inner_expr), calib_param)))
+                            end
+                            return x
+                        end
+                    elseif !(lhs isa Expr && lhs.head == :call && lhs.args[1] == :|)
                         @warn "Invalid parameter input ignored: " * repr(x)
-                        x
-                    end :
-                x.args[2].head == :call ?
-                    x.args[1].args[1] == :| ?
-                            x :
-                    begin # this is calibration by targeting SS values (conditional parameter at the end)
-                        if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                        push!(calib_eq_parameters, x.args[2].args[end])
-                        push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
-                        push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2]), x.args[2].args[end])))
-                    end :
-                x :
-            x :
-        x,
-    parameter_definitions)
+                    end
+                end
+            end
+        end
+        x
+    end
+
+    # Update local variables from context
+    calib_parameters = ctx.calib_parameters
+    calib_values = ctx.calib_values
+    calib_values_no_var = ctx.calib_values_no_var
+    calib_parameters_no_var = ctx.calib_parameters_no_var
+    calib_eq_parameters = ctx.calib_eq_parameters
+    calib_equations = ctx.calib_equations
+    calib_equations_original = ctx.calib_equations_original
+    bounded_vars = ctx.bounded_vars
+    par_defined_more_than_once = ctx.par_defined_more_than_once
 
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
 
@@ -947,113 +1281,31 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
     calib_parameters_no_var = setdiff(calib_parameters_no_var, calib_parameters)
 
     for (i, cal_eq) in enumerate(calib_equations)
-        ss_tmp = Set{Symbol}()
-        par_tmp = Set()
+        # Extract SS variables and parameters using @capture-based helpers
+        ss_tmp = _extract_ss_refs(cal_eq)
+        par_tmp = _extract_parameters(cal_eq, ss_tmp)
 
-        # parse SS variables
-        postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss_tmp,x.args[1]) :
-                    x : 
-                x :
-            x,
-        cal_eq)
-
-        # separate out parameters
-        postwalk(x -> 
-            x isa Symbol ? 
-                occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
-                    x :
-                    begin
-                        diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
-                        if !isempty(diffed)
-                            push!(par_tmp,diffed[1])
-                        end
-                    end :
-            x,
-        cal_eq)
-
-        push!(ss_calib_list,ss_tmp)
-        push!(par_calib_list,par_tmp)
+        push!(ss_calib_list, ss_tmp)
+        push!(par_calib_list, par_tmp)
         
-        # write down calibration equations
-        prs_ex = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :(=) ? 
-                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                        x.head == :ref ?
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ? # K[ss] => K
-                        x.args[1] : 
-                    x : 
-                x.head == :call ?
-                    x.args[1] == :* ?
-                        x.args[2] isa Int ?
-                            x.args[3] isa Int ?
-                                x :
-                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
-                        x :
-                    x :
-                unblock(x) : 
-            x,
-            cal_eq)
-        push!(calib_equations_list,unblock(prs_ex))
+        # Transform calibration equation using @capture-based helper
+        prs_ex = _transform_calibration_eq(cal_eq)
+        push!(calib_equations_list, unblock(prs_ex))
     end
 
     # parse calibration equations without a variable present: eta = Pi_bar /2 (Pi_bar is also a parameter)
     for (i, cal_eq) in enumerate(calib_equations_no_var)
-        ss_tmp = Set()
-        par_tmp = Set()
+        # Extract SS variables and parameters using @capture-based helpers
+        ss_tmp = _extract_ss_refs(cal_eq)
+        par_tmp = _extract_parameters(cal_eq, ss_tmp)
 
-        # parse SS variables
-        postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss_tmp,x.args[1]) :
-                    x : 
-                x :
-            x,
-            cal_eq)
-
-        # get SS variables per non_linear_solved_vals
-        postwalk(x -> 
-        x isa Symbol ? 
-            occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
-                x :
-                begin
-                    diffed = setdiff([x],ss_tmp)
-                    if !isempty(diffed)
-                        push!(par_tmp,diffed[1])
-                    end
-                end :
-        x,
-        cal_eq)
-
-        push!(ss_no_var_calib_list,ss_tmp)
-        push!(par_no_var_calib_list, setdiff(par_tmp,calib_parameters))
-        push!(par_no_var_calib_rhs_list, intersect(par_tmp,calib_parameters))
+        push!(ss_no_var_calib_list, ss_tmp)
+        push!(par_no_var_calib_list, setdiff(par_tmp, calib_parameters))
+        push!(par_no_var_calib_rhs_list, intersect(par_tmp, calib_parameters))
         
-        # write down calibration equations
-        prs_ex = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                    x.args[1] : 
-                x : 
-                x.head == :call ?
-                    x.args[1] == :* ?
-                        x.args[2] isa Int ?
-                            x.args[3] isa Int ?
-                                x :
-                            :($(x.args[3]) * $(x.args[2])) :
-                        x :
-                    x :
-                unblock(x) : 
-            x,
-            cal_eq)
-        push!(calib_equations_no_var_list,unblock(prs_ex))
+        # Simplify calibration equation (without converting = to -)
+        prs_ex = _transform_calibration_eq(cal_eq; convert_eq_to_sub=false)
+        push!(calib_equations_no_var_list, unblock(prs_ex))
     end
 
     # arrange calibration equations where they use parameters defined in parameters block so that they appear in right order (Pi_bar is defined before it is used later on: eta = Pi_bar / 2)
@@ -1073,101 +1325,8 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
         calib_equations_no_var_list = calib_equations_no_var_list[Q]
     end
 
-    #parse bounds
-    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
-
-    for bound in bounded_vars
-        postwalk(x -> 
-        x isa Expr ?
-            x.head == :comparison ? 
-                x.args[2] == :(<) ?
-                    x.args[4] == :(<) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1]+eps(Float32), x.args[5]-eps(Float32))
-                        end :
-                    x.args[4] == :(<=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1]+eps(Float32), x.args[5])
-                        end :
-                    x :
-                x.args[2] == :(<=) ?
-                    x.args[4] == :(<) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1], x.args[5]-eps(Float32))
-                        end :
-                    x.args[4] == :(<=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1], x.args[5])
-                        end :
-                    x :
-
-                x.args[2] == :(>) ?
-                    x.args[4] == :(>) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5]+eps(Float32), x.args[1]-eps(Float32))
-                        end :
-                    x.args[4] == :(>=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5]+eps(Float32), x.args[1])
-                        end :
-                    x :
-                x.args[2] == :(>=) ?
-                    x.args[4] == :(>) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5], x.args[1]-eps(Float32))
-                        end :
-                    x.args[4] == :(>=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5], x.args[1])
-                        end :
-                    x :
-                x :
-
-            x.head ==  :call ? 
-                x.args[1] == :(<) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3]-eps(Float32))) : (-1e12+rand(), x.args[3]-eps(Float32))
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]+eps(Float32)), min(bounds[x.args[3]][2], 1e12+rand())) : (x.args[2]+eps(Float32), 1e12+rand())
-                        end :
-                    x :
-                x.args[1] == :(>) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]+eps(Float32)), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3]+eps(Float32), 1e12+rand())
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2]-eps(Float32))) : (-1e12+rand(), x.args[2]-eps(Float32))
-                        end :
-                    x :
-                x.args[1] == :(>=) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3], 1e12+rand())
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2])) : (-1e12+rand(), x.args[2])
-                        end :
-                    x :
-                x.args[1] == :(<=) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3])) : (-1e12+rand(), x.args[3])
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]), min(bounds[x.args[3]][2],1e12+rand())) : (x.args[2],1e12+rand())
-                        end :
-                    x :
-                x :
-            x :
-        x,bound)
-    end
+    # parse bounds
+    bounds = _parse_bounds(bounded_vars)
 
     return (
         calib_parameters = calib_parameters,
