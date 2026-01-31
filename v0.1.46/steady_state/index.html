@@ -34,7 +34,7 @@ Parameters:   5</code><br/><code class="language-julia-repl hljs" style="display
            δ = 0.02
            α = 0.5
            β = 0.95
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Take symbolic derivatives up to first order:				0.018 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Take symbolic derivatives up to first order:				0.025 seconds
 Model:        RBC
 Variables
  Total:       4
@@ -89,7 +89,7 @@ Parameters:   5</code><br/><code class="language-julia-repl hljs" style="display
            δ = 0.02
            α = 0.5
            β = 0.95
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Take symbolic derivatives up to first order:				0.017 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Take symbolic derivatives up to first order:				0.024 seconds
 Model:        RBC
 Variables
  Total:       4
@@ -110,8 +110,8 @@ And data, <span class="sgr1">4×6 Matrix{Float64}</span>:
   <span class="sgr35">(:k)</span>   0.00234136       0.0    0.0    0.0   0.0   0.0
   <span class="sgr35">(:q)</span>   0.941228         0.0    0.0    0.0   0.0   0.0
   <span class="sgr35">(:z)</span>   0.0              0.0    0.0    0.0   0.0   0.0</code></pre><h3 id="Method-2:-Via-Function-Arguments"><a class="docs-heading-anchor" href="#Method-2:-Via-Function-Arguments">Method 2: Via Function Arguments</a><a id="Method-2:-Via-Function-Arguments-1"></a><a class="docs-heading-anchor-permalink" href="#Method-2:-Via-Function-Arguments" title="Permalink"></a></h3><p>All functions that accept a <code>parameters</code> argument also accept a <code>steady_state_function</code> argument:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; # Pass the steady state function to specific function calls
-       get_irf(RBC, steady_state_function = my_ss)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find non-stochastic steady state.</code></pre><p>To revert to the internal solver and clear any previously set custom function on the model, pass <code>nothing</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(RBC, steady_state_function = nothing)</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.068 seconds
-Set up non-stochastic steady state problem:				0.167 seconds
+       get_irf(RBC, steady_state_function = my_ss)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find non-stochastic steady state.</code></pre><p>To revert to the internal solver and clear any previously set custom function on the model, pass <code>nothing</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(RBC, steady_state_function = nothing)</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.059 seconds
+Set up non-stochastic steady state problem:				0.149 seconds
 2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
 →   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 6-element Vector{Symbol}</span>
@@ -147,10 +147,10 @@ Variables
   Auxiliary:  0
 Shocks:       1
 Parameters:   5
- Missing:     5</code></pre><p>Later, one can define the parameter values when needed. For example, to get the steady state one can define the parameter values as a <code>Dict</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; ss = get_steady_state(RBC, parameters = Dict(:α =&gt; 0.5, :β =&gt; 0.95, :δ =&gt; 0.02, :ρᶻ =&gt; 0.2, :σᶻ =&gt; 0.01))</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.055 seconds
-Set up non-stochastic steady state problem:				0.131 seconds
-Find non-stochastic steady state:					0.266 seconds
-Take symbolic derivatives up to first order:				0.017 seconds
+ Missing:     5</code></pre><p>Later, one can define the parameter values when needed. For example, to get the steady state one can define the parameter values as a <code>Dict</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; ss = get_steady_state(RBC, parameters = Dict(:α =&gt; 0.5, :β =&gt; 0.95, :δ =&gt; 0.02, :ρᶻ =&gt; 0.2, :σᶻ =&gt; 0.01))</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.048 seconds
+Set up non-stochastic steady state problem:				0.125 seconds
+Find non-stochastic steady state:					0.258 seconds
+Take symbolic derivatives up to first order:				0.025 seconds
 2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables_and_calibrated_parameters ∈ 4-element Vector{Symbol}</span>
 →   <span class="sgr35">Steady_state_and_∂steady_state∂parameter ∈ 6-element Vector{Symbol}</span>
@@ -159,4 +159,4 @@ And data, <span class="sgr1">4×6 Matrix{Float64}</span>:
   <span class="sgr35">(:c)</span>   5.93625          55.786    -116.072    0.0    0.0     76.1014
   <span class="sgr35">(:k)</span>  47.3903          555.264   -1304.95     0.0    0.0   1445.93
   <span class="sgr35">(:q)</span>   6.88406          66.8912    -94.7805   0.0    0.0    105.02
-  <span class="sgr35">(:z)</span>   0.0               0.0         0.0      0.0    0.0      0.0</code></pre><p>The user has the full flexibility to define the parameter values in any way they see fit, and integrate it into their workflow.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../plot_model_estimates/">« Model Estimates</a><a class="docs-footer-nextpage" href="../how-to/loops/">Programmatic model writing using for-loops »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 30 January 2026 19:43">Friday 30 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+  <span class="sgr35">(:z)</span>   0.0               0.0         0.0      0.0    0.0      0.0</code></pre><p>The user has the full flexibility to define the parameter values in any way they see fit, and integrate it into their workflow.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../plot_model_estimates/">« Model Estimates</a><a class="docs-footer-nextpage" href="../how-to/loops/">Programmatic model writing using for-loops »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Saturday 31 January 2026 02:06">Saturday 31 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
