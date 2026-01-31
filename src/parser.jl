@@ -806,6 +806,7 @@ function process_model_equations(
         Expr[],
         Expr[],
         Symbol[],
+        Expr[],
     )
 
     return T, equations_struct
@@ -813,6 +814,7 @@ end
 
 function parse_parameter_definitions_raw(parameter_block::Expr)
     calib_equations = Expr[]
+    calib_equations_original = Expr[]
     calib_equations_no_var = Expr[]
     calib_values_no_var = Any[]
     calib_parameters_no_var = Symbol[]
@@ -867,6 +869,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
                         if x.args[1].args[2] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1].args[2]) end
                         push!(calib_eq_parameters,x.args[1].args[2])
                         push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
+                        push!(calib_equations_original, Expr(:(=), x.args[1].args[3], Expr(:call, :|, unblock(x.args[2]), x.args[1].args[2])))
                     end :
                 x :
             x.head == :comparison ? 
@@ -891,6 +894,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
                                 if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
                                 push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
                                 push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
+                                push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2]), x.args[2].args[end])))
                             end :
                             x :
                         x :
@@ -902,6 +906,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
                             if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
                             push!(calib_eq_parameters,x.args[2].args[end].args[end])
                             push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                            push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2].args[2]), x.args[2].args[end].args[end])))
                         end :
                     begin 
                         @warn "Invalid parameter input ignored: " * repr(x)
@@ -914,6 +919,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
                         if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
                         push!(calib_eq_parameters, x.args[2].args[end])
                         push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
+                        push!(calib_equations_original, Expr(:(=), x.args[1], Expr(:call, :|, unblock(x.args[2].args[2]), x.args[2].args[end])))
                     end :
                 x :
             x :
@@ -1168,6 +1174,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
         calib_values = calib_values,
         calib_eq_parameters = calib_eq_parameters,
         calib_equations_list = calib_equations_list,
+        calib_equations_original = calib_equations_original,
         ss_calib_list = ss_calib_list,
         par_calib_list = par_calib_list,
         calib_parameters_no_var = calib_parameters_no_var,
@@ -1193,6 +1200,116 @@ function build_guess_dict(guess)
     return guess_dict
 end
 
+"""
+Reconstruct a parameter block expression from model state.
+Optionally override calibration equations (original form) for updates.
+
+When calibration equations change, this function handles the case where:
+- A parameter switches from calibrated to having a value assignment
+- A parameter switches from having a value assignment to being calibrated
+
+The function extracts which parameters are calibrated from the calibration equations,
+and adjusts the parameter value assignments accordingly.
+"""
+function reconstruct_parameter_block(
+    𝓂::ℳ;
+    calibration_original_override::Union{Nothing, Vector{Expr}} = nothing,
+)
+    lines = Expr[]
+
+    # Calibration equations (original form)
+    calibration_original = calibration_original_override === nothing ? 𝓂.equations.calibration_original : calibration_original_override
+
+    # Extract calibrated parameters from calibration equations
+    # These are the parameters after the | symbol
+    new_calib_params = Set{Symbol}()
+    for eq in calibration_original
+        # Look for pattern: lhs = rhs | param or | param = rhs
+        calib_param = extract_calibrated_parameter(eq)
+        if calib_param !== nothing
+            push!(new_calib_params, calib_param)
+        end
+    end
+
+    # Original calibrated parameters
+    old_calib_params = Set{Symbol}(𝓂.equations.calibration_parameters)
+
+    # Parameters that are now calibrated but weren't before - exclude them from value assignments
+    params_becoming_calibrated = setdiff(new_calib_params, old_calib_params)
+
+    # Parameters that were calibrated but no longer are - add them with their SS value
+    params_no_longer_calibrated = setdiff(old_calib_params, new_calib_params)
+
+    # Parameters with values - exclude those that are now calibrated
+    params = 𝓂.constants.post_complete_parameters.parameters
+    values = 𝓂.parameter_values
+    for (p, v) in zip(params, values)
+        if !isnan(v) && p ∉ params_becoming_calibrated
+            push!(lines, Expr(:(=), p, v))
+        end
+    end
+
+    # Add parameters that were calibrated but now need value assignments
+    # Use their value from the non-stochastic steady state cache
+    if !isempty(params_no_longer_calibrated)
+        # The NSSS cache contains [variables..., calibrated_parameters...]
+        n_vars = 𝓂.constants.post_model_macro.nVars
+        old_calib_param_list = 𝓂.equations.calibration_parameters
+        for param in params_no_longer_calibrated
+            idx = findfirst(==(param), old_calib_param_list)
+            if idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
+                val = 𝓂.caches.non_stochastic_steady_state[n_vars + idx]
+                push!(lines, Expr(:(=), param, val))
+            end
+        end
+    end
+
+    # Parameters defined as functions of other parameters
+    for eq in 𝓂.equations.calibration_no_var
+        push!(lines, eq)
+    end
+
+    # Calibration equations (original form)
+    for eq in calibration_original
+        push!(lines, eq)
+    end
+
+    # Bounds
+    for (param, (lo, hi)) in 𝓂.constants.post_parameters_macro.bounds
+        push!(lines, Expr(:comparison, lo, :(<), param, :(<), hi))
+    end
+
+    return Expr(:block, lines...)
+end
+
+"""
+Extract the calibrated parameter from a calibration equation.
+Handles formats like:
+- `:(k[ss] / (4 * q[ss]) = 1.5 | α)` returns `:α`
+- `:(| α = k[ss] / (4 * q[ss]) - 1.5)` returns `:α`
+Returns `nothing` if no calibrated parameter found.
+"""
+function extract_calibrated_parameter(eq::Expr)::Union{Symbol, Nothing}
+    result = Ref{Union{Symbol, Nothing}}(nothing)
+    
+    postwalk(eq) do x
+        if x isa Expr && x.head == :call && x.args[1] == :|
+            # Pattern: Expr(:call, :|, rhs, param)
+            if length(x.args) >= 3 && x.args[end] isa Symbol
+                result[] = x.args[end]
+            end
+        elseif x isa Expr && x.head == :| 
+            # Pattern: Expr(:|, param, ...)
+            if length(x.args) >= 1 && x.args[1] isa Symbol
+                result[] = x.args[1]
+            end
+        end
+        x
+    end
+    
+    return result[]
+end
+
 function process_parameter_definitions(
     parameter_block::Expr,
     post_model_macro::post_model_macro
@@ -1203,6 +1320,7 @@ function process_parameter_definitions(
     calib_values = parsed.calib_values
     calib_eq_parameters = parsed.calib_eq_parameters
     calib_equations_list = parsed.calib_equations_list
+    calib_equations_original = parsed.calib_equations_original
     ss_calib_list = parsed.ss_calib_list
     par_calib_list = parsed.par_calib_list
     calib_parameters_no_var = parsed.calib_parameters_no_var
@@ -1210,14 +1328,20 @@ function process_parameter_definitions(
     par_no_var_calib_list = parsed.par_no_var_calib_list
     par_no_var_calib_rhs_list = parsed.par_no_var_calib_rhs_list
 
+    calib_eq_parameters_raw = calib_eq_parameters
+    ss_calib_list_raw = ss_calib_list
+    par_calib_list_raw = par_calib_list
+    all_names = [post_model_macro.parameters_in_equations; post_model_macro.var]
+
     if any(contains.(string.(post_model_macro.var), "ᵒᵇᶜ"))
         push!(calib_parameters, :activeᵒᵇᶜshocks)
         push!(calib_values, 0)
     end
 
-    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, [post_model_macro.parameters_in_equations; post_model_macro.var])
-    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, [post_model_macro.parameters_in_equations; post_model_macro.var])
-    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, [post_model_macro.parameters_in_equations; post_model_macro.var])
+    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, all_names)
+    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters_raw, calib_equations_list, ss_calib_list_raw, par_calib_list_raw, all_names)
+    _, calib_equations_original, _, _ = expand_calibration_equations(calib_eq_parameters_raw, calib_equations_original, ss_calib_list_raw, par_calib_list_raw, all_names)
+    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, all_names)
 
     # Calculate missing parameters instead of asserting
     # Include parameters from:
@@ -1283,6 +1407,7 @@ function process_parameter_definitions(
             calibration = calib_equations_list,
             calibration_no_var = calib_equations_no_var_list,
             calibration_parameters = calib_eq_parameters,
+            calibration_original = calib_equations_original,
         ),
         calib_parameters_no_var = calib_parameters_no_var,
         ss_calib_list = ss_calib_list,

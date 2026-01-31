@@ -319,6 +319,7 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.equations.calibration = parsed_parameters.equations.calibration
         mod.$𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
         mod.$𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+        mod.$𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
 
         mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
             mod.$𝓂.constants.post_complete_parameters;

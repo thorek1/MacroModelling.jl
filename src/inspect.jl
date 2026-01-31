@@ -1276,8 +1276,7 @@ Modify or replace a calibration equation. This function updates the calibration 
 # Arguments
 - $MODEL®
 - `old_equation_or_index::Union{Int, Expr, String}`: Either the index of the calibration equation to modify (1-based), or the old equation itself (as `Expr` or `String`) to be matched and replaced. Use `get_calibration_equations` to see current calibration equations.
-- `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`).
-- `calibrated_parameter::Union{Symbol, String, Nothing}` [Optional]: The parameter to calibrate. If `nothing`, keeps the existing calibrated parameter.
+- `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`). When provided as `lhs = rhs | param`, the `param` portion is accepted and ignored in this stub.
 
 # Keyword Arguments
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
@@ -1309,7 +1308,7 @@ end
 get_calibration_equations(RBC_calibrated)
 
 # Update the calibration equation by index
-update_calibration_equations!(RBC_calibrated, 1, :(k[ss] / (4 * q[ss]) = 2.0))
+update_calibration_equations!(RBC_calibrated, 1, :(k[ss] / (4 * q[ss]) = 2.0 | α))
 
 # The model is automatically re-solved - verify with:
 get_steady_state(RBC_calibrated)
@@ -1320,38 +1319,27 @@ get_revision_history(RBC_calibrated)
 """
 function update_calibration_equations!(𝓂::ℳ, 
                                        old_equation_or_index::Union{Int, Expr, String}, 
-                                       new_equation::Union{Expr, String},
-                                       calibrated_parameter::Union{Symbol, String, Nothing} = nothing;
+                                       new_equation::Union{Expr, String};
                                        verbose::Bool = false,
                                        silent::Bool = false)
-    # Validate and determine equation index
-    n_equations = length(𝓂.equations.calibration)
+    # Parse string to Expr if needed
+    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+
+    # Determine equation index
+    n_equations = length(𝓂.equations.calibration_original)
     @assert n_equations > 0 "Model has no calibration equations."
-    
+
     if old_equation_or_index isa Int
         equation_index = old_equation_or_index
         @assert 1 <= equation_index <= n_equations "Calibration equation index must be between 1 and $n_equations. Use `get_calibration_equations(model)` to see current calibration equations."
     else
-        # Parse string to Expr if needed
         old_eq_to_match = old_equation_or_index isa String ? Meta.parse(old_equation_or_index) : old_equation_or_index
-        
-        # Find the equation index by matching
-        equation_index = find_equation_index(𝓂.equations.calibration, old_eq_to_match)
+        equation_index = find_equation_index(𝓂.equations.calibration_original, old_eq_to_match)
         @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}")). Use `get_calibration_equations(model)` to see current calibration equations."
     end
-    
-    # Parse string to Expr if needed
-    if new_equation isa String
-        new_equation = Meta.parse(new_equation)
-    end
-    
-    # Convert calibrated_parameter to Symbol if String
-    if calibrated_parameter isa String
-        calibrated_parameter = Symbol(calibrated_parameter)
-    end
-    
+
     # Store old equation for revision history
-    old_equation = 𝓂.equations.calibration[equation_index]
+    old_equation = 𝓂.equations.calibration_original[equation_index]
     
     # Record the revision
     revision_entry = (
@@ -1359,75 +1347,63 @@ function update_calibration_equations!(𝓂::ℳ,
         action = :update_calibration_equation,
         equation_index = equation_index,
         old_equation = old_equation,
-        new_equation = new_equation
+        new_equation = parsed_new_equation
     )
     push!(𝓂.revision_history, revision_entry)
-    
-    # Parse the new equation to the internal format (convert = to -, remove SS refs)
-    parsed_equation = postwalk(x -> 
-        x isa Expr ? 
-            x.head == :(=) ? 
-                Expr(:call, :(-), x.args[1], x.args[2]) :
-            x.head == :ref ?
-                occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(x.args[2])) ?
-                    x.args[1] : 
-                x :
-            x.head == :call && x.args[1] == :* && length(x.args) >= 3 && x.args[2] isa Int && !(x.args[3] isa Int) ?
-                Expr(:call, :*, x.args[3:end]..., x.args[2]) :
-            unblock(x) :
-        x,
-    new_equation)
-    
-    # Update the calibration equation
-    updated_calibration_equations = copy(𝓂.equations.calibration)
-    updated_calibration_equations[equation_index] = unblock(parsed_equation)
-    
-    # Update the calibrated parameter if provided
-    if calibrated_parameter !== nothing
-        old_param = 𝓂.equations.calibration_parameters[equation_index]
-        updated_calibration_parameters = copy(𝓂.equations.calibration_parameters)
-        updated_calibration_parameters[equation_index] = calibrated_parameter
-        𝓂.equations.calibration_parameters = updated_calibration_parameters
-        if verbose
-            println("Updated calibrated parameter: $old_param -> $calibrated_parameter")
-        end
-    end
 
-    𝓂.equations.calibration = updated_calibration_equations
-
-    # Rebuild ss_calib_list and par_calib_list from updated calibration equations
-    model_vars = Set(𝓂.constants.post_model_macro.var)
-    ss_calib_list = Vector{Set{Symbol}}(undef, length(updated_calibration_equations))
-    par_calib_list = Vector{Set{Symbol}}(undef, length(updated_calibration_equations))
-    for (i, eq) in enumerate(updated_calibration_equations)
-        syms = Set{Symbol}()
-        for s in get_symbols(eq)
-            s isa Symbol && push!(syms, s)
-        end
-        ss_tmp = intersect(syms, model_vars)
-        par_tmp = setdiff(syms, ss_tmp)
-        ss_calib_list[i] = ss_tmp
-        par_calib_list[i] = par_tmp
-    end
-
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.guess,
-        ss_calib_list,
-        par_calib_list,
-        𝓂.constants.post_parameters_macro.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-    
     if verbose
         println("Updated calibration equation $equation_index:")
         println("  Old: ", replace(string(old_equation), "◖" => "{", "◗" => "}"))
-        println("  New: ", replace(string(parsed_equation), "◖" => "{", "◗" => "}"))
+        println("  New: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
     end
+
+    # Reconstruct parameter block with updated calibration equation
+    updated_calibration_original = copy(𝓂.equations.calibration_original)
+    updated_calibration_original[equation_index] = parsed_new_equation
+
+    parameter_block = reconstruct_parameter_block(
+        𝓂;
+        calibration_original_override = updated_calibration_original,
+    )
+
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro,
+    )
+
+    # Update post_parameters_macro (keeping existing options like guess, simplify, etc.)
+    𝓂.constants.post_parameters_macro = post_parameters_macro(
+        parsed_parameters.calib_parameters_no_var,
+        𝓂.constants.post_parameters_macro.precompile,
+        𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.guess,
+        parsed_parameters.ss_calib_list,
+        parsed_parameters.par_calib_list,
+        parsed_parameters.bounds,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+    )
+
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    # Update post_complete_parameters 
+    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+        var_axis = Symbol[],  # Reset so it gets recomputed
+        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
+    )
     
+    # Update parameter values
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    # Mark all caches as outdated
     𝓂.caches.outdated.non_stochastic_steady_state = true
     𝓂.caches.outdated.jacobian = true
     𝓂.caches.outdated.hessian = true
@@ -1437,21 +1413,75 @@ function update_calibration_equations!(𝓂::ℳ,
     𝓂.caches.outdated.pruned_second_order_solution = true
     𝓂.caches.outdated.third_order_solution = true
     𝓂.caches.outdated.pruned_third_order_solution = true
-    𝓂.functions.functions_written = false
 
-    if !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(𝓂.constants.post_complete_parameters.missing_parameters). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-        return nothing
+    # Reset cache arrays to zeros (similar to @model macro initialization)
+    𝓂.caches.jacobian = zeros(0, 0)
+    𝓂.caches.jacobian_parameters = zeros(0, 0)
+    𝓂.caches.jacobian_SS_and_pars = zeros(0, 0)
+    𝓂.caches.hessian = zeros(0, 0)
+    𝓂.caches.hessian_parameters = zeros(0, 0)
+    𝓂.caches.hessian_SS_and_pars = zeros(0, 0)
+    𝓂.caches.third_order_derivatives = zeros(0, 0)
+    𝓂.caches.third_order_derivatives_parameters = zeros(0, 0)
+    𝓂.caches.third_order_derivatives_SS_and_pars = zeros(0, 0)
+    𝓂.caches.first_order_solution_matrix = zeros(0, 0)
+    𝓂.caches.qme_solution = zeros(0, 0)
+    𝓂.caches.second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.second_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
+    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
+    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.non_stochastic_steady_state = Float64[]
+    𝓂.caches.∂equations_∂parameters = zeros(0, 0)
+    𝓂.caches.∂equations_∂SS_and_pars = zeros(0, 0)
+
+    # Clear solver cache
+    while !isempty(𝓂.caches.solver_cache)
+        pop!(𝓂.caches.solver_cache)
     end
 
-    set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = !𝓂.constants.post_parameters_macro.simplify, symbolic = false)
-    opts = merge_calculation_options(verbose = verbose)
-    solve_steady_state!(𝓂, opts, :ESCH, 120.0, silent = silent)
-    write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-    𝓂.functions.functions_written = true
-    
+    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
+    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
+    𝓂.NSSS.dependencies = nothing
+
+    # Mark functions as needing recompilation
+    𝓂.functions.functions_written = false
+
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
+
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = false,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+
     return nothing
 end
 

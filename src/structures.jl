@@ -114,6 +114,7 @@ mutable struct equations
     calibration::Vector{Expr}
     calibration_no_var::Vector{Expr}
     calibration_parameters::Vector{Symbol}
+    calibration_original::Vector{Expr}
 end
 
 struct post_model_macro
