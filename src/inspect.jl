@@ -1403,43 +1403,8 @@ function update_calibration_equations!(𝓂::ℳ,
     # Update parameter values
     𝓂.parameter_values = parsed_parameters.parameter_values
 
-    # Mark all caches as outdated
-    𝓂.caches.outdated.non_stochastic_steady_state = true
-    𝓂.caches.outdated.jacobian = true
-    𝓂.caches.outdated.hessian = true
-    𝓂.caches.outdated.third_order_derivatives = true
-    𝓂.caches.outdated.first_order_solution = true
-    𝓂.caches.outdated.second_order_solution = true
-    𝓂.caches.outdated.pruned_second_order_solution = true
-    𝓂.caches.outdated.third_order_solution = true
-    𝓂.caches.outdated.pruned_third_order_solution = true
-
-    # Reset cache arrays to zeros (similar to @model macro initialization)
-    𝓂.caches.jacobian = zeros(0, 0)
-    𝓂.caches.jacobian_parameters = zeros(0, 0)
-    𝓂.caches.jacobian_SS_and_pars = zeros(0, 0)
-    𝓂.caches.hessian = zeros(0, 0)
-    𝓂.caches.hessian_parameters = zeros(0, 0)
-    𝓂.caches.hessian_SS_and_pars = zeros(0, 0)
-    𝓂.caches.third_order_derivatives = zeros(0, 0)
-    𝓂.caches.third_order_derivatives_parameters = zeros(0, 0)
-    𝓂.caches.third_order_derivatives_SS_and_pars = zeros(0, 0)
-    𝓂.caches.first_order_solution_matrix = zeros(0, 0)
-    𝓂.caches.qme_solution = zeros(0, 0)
-    𝓂.caches.second_order_stochastic_steady_state = Float64[]
-    𝓂.caches.second_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
-    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
-    𝓂.caches.third_order_stochastic_steady_state = Float64[]
-    𝓂.caches.third_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
-    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
-    𝓂.caches.non_stochastic_steady_state = Float64[]
-    𝓂.caches.∂equations_∂parameters = zeros(0, 0)
-    𝓂.caches.∂equations_∂SS_and_pars = zeros(0, 0)
-
-    # Clear solver cache
-    while !isempty(𝓂.caches.solver_cache)
-        pop!(𝓂.caches.solver_cache)
-    end
+    # Reinitialize caches (fresh empty state, all marked outdated)
+    𝓂.caches = caches()
 
     # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
     𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]

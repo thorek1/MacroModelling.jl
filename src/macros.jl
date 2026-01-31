@@ -110,40 +110,7 @@ macro model(𝓂,ex...)
 
                         $equations_struct, 
 
-                        caches(
-                            outdated_caches(
-                                true, # non_stochastic_steady_state
-                                true, # jacobian
-                                true, # hessian
-                                true, # third_order_derivatives
-                                true, # first_order_solution
-                                true, # second_order_solution
-                                true, # pruned_second_order_solution
-                                true, # third_order_solution
-                                true, # pruned_third_order_solution
-                            ),
-                            zeros(0,0), # jacobian
-                            zeros(0,0), # jacobian_parameters
-                            zeros(0,0), # jacobian_SS_and_pars
-                            zeros(0,0), # hessian
-                            zeros(0,0), # hessian_parameters
-                            zeros(0,0), # hessian_SS_and_pars
-                            zeros(0,0), # third_order_derivatives
-                            zeros(0,0), # third_order_derivatives_parameters
-                            zeros(0,0), # third_order_derivatives_SS_and_pars
-                            zeros(0,0), # first_order_solution_matrix
-                            zeros(0,0), # qme_solution
-                            Float64[],  # second_order_stochastic_steady_state
-                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # second_order_solution
-                            Float64[],  # pruned_second_order_stochastic_steady_state
-                            Float64[],  # third_order_stochastic_steady_state
-                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
-                            Float64[],  # pruned_third_order_stochastic_steady_state
-                            Float64[],  # non_stochastic_steady_state
-                            $(CircularBuffer{Vector{Vector{Float64}}}(500)),  # NSSS_solver_cache
-                            $(zeros(0,0)),  # NSSS_∂equations_∂parameters
-                            $(zeros(0,0)),  # NSSS_∂equations_∂SS_and_pars
-                        ),
+                        caches(),
                         
                         $ℂ,
                         $𝓦,
