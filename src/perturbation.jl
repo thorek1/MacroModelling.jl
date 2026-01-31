@@ -21,9 +21,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     Ir = idx_constants.Ir
     
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = @view ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
     ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -41,23 +41,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
 
-    # Use preallocated workspace for sorted matrices
-    Ã₊ = first_order_ws.Ã₊
-    Ã₀ = first_order_ws.Ã₀
-    Ã₋ = first_order_ws.Ã₋
-    A₊_dyn = first_order_ws.A₊_dyn
-    A₋_dyn = first_order_ws.A₋_dyn
-    
-    # Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
-    A₊_dyn .= @view A₊[dynIndex,:]
-    ℒ.mul!(Ã₊, A₊_dyn, @view(Ir[future_not_past_and_mixed_in_comb,:]))
-    
-    # Ã₀ = A₀[dynIndex, comb]
-    Ã₀ .= @view A₀[dynIndex, comb]
-    
-    # Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
-    A₋_dyn .= @view A₋[dynIndex,:]
-    ℒ.mul!(Ã₋, A₋_dyn, @view(Ir[past_not_future_and_mixed_in_comb,:]))
+    # Use direct (allocating) construction for sorted matrices to preserve correctness
+    Ã₊ = @view(A₊[dynIndex,:]) * Ir[future_not_past_and_mixed_in_comb,:]
+    Ã₀ = @view(A₀[dynIndex, comb])
+    Ã₋ = @view(A₋[dynIndex,:]) * Ir[past_not_future_and_mixed_in_comb,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin

@@ -631,8 +631,6 @@ function First_order_workspace(;T::Type = Float64)
         zeros(T, 0, 0),          # Ã₊
         zeros(T, 0, 0),          # Ã₀
         zeros(T, 0, 0),          # Ã₋
-        zeros(T, 0, 0),          # A₊_dyn
-        zeros(T, 0, 0),          # A₋_dyn
         zeros(T, 0, 0),          # A_vcat
         zeros(T, 0, 0),          # result
         zeros(T, 0, 0),          # M
@@ -682,14 +680,6 @@ function ensure_first_order_workspace!(ws::first_order_workspace{T}, n_eqns::Int
     end
     if size(ws.Ã₋, 1) != n_dyn || size(ws.Ã₋, 2) != n_comb
         ws.Ã₋ = zeros(T, n_dyn, n_comb)
-    end
-    
-    # Temporary matrices
-    if size(ws.A₊_dyn, 1) != n_dyn || size(ws.A₊_dyn, 2) != n_future
-        ws.A₊_dyn = zeros(T, n_dyn, n_future)
-    end
-    if size(ws.A₋_dyn, 1) != n_dyn || size(ws.A₋_dyn, 2) != n_past
-        ws.A₋_dyn = zeros(T, n_dyn, n_past)
     end
     
     # Combined output (before reorder)

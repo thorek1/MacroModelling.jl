@@ -6919,7 +6919,7 @@ function solve!(𝓂::ℳ;
                 state_update₁̂ = (x,y)->nothing
             end
             
-            𝓂.caches.first_order_solution_matrix = S₁
+            𝓂.caches.first_order_solution_matrix = copy(S₁)
             𝓂.functions.first_order_state_update = state_update₁
             𝓂.functions.first_order_state_update_obc = state_update₁̂
             𝓂.caches.outdated.first_order_solution = false
@@ -8733,7 +8733,9 @@ function irf(state_update::Function,
     always_solved = true
 
     if shocks == :simulate
-        shock_history = randn(T.nExo,periods) * shock_size
+        shock_history = zeros(T.nExo, periods)
+        Random.randn!(Random.default_rng(), shock_history)
+        shock_history .*= shock_size
 
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 

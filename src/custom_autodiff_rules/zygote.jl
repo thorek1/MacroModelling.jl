@@ -488,19 +488,22 @@ function rrule(::typeof(calculate_first_order_solution),
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     Ir = idx_constants.Ir
     
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇̂ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇̂ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
     Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-    A₊ = Q.Q' * ∇₊
-    A₀ = Q.Q' * ∇₀
-    A₋ = Q.Q' * ∇₋
+    A₊ = first_order_ws.A₊
+    A₀ = first_order_ws.A₀
+    A₋ = first_order_ws.A₋
+    ℒ.mul!(A₊, Q.Q', ∇₊)
+    ℒ.mul!(A₀, Q.Q', ∇₀)
+    ℒ.mul!(A₋, Q.Q', ∇₋)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
@@ -527,16 +530,16 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Postprocessing" begin
     # @timeit_debug timer "Setup matrices" begin
 
-    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+    sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
-    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+    D = @view sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+    L = @view sol[T.past_not_future_and_mixed_in_present_but_not_only_idx, past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
@@ -548,12 +551,13 @@ function rrule(::typeof(calculate_first_order_solution),
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    nₚ₋ = first_order_ws.nₚ₋
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
-        nₚ₋ =  A₊ᵤ * D
-        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-        ℒ.rmul!(A₋ᵤ, -1)
+        ℒ.mul!(@view(A₋[1:T.nPresent_only,:]), Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
+        ℒ.mul!(nₚ₋, A₊ᵤ, D)
+        ℒ.mul!(@view(A₋[1:T.nPresent_only,:]), nₚ₋, L, 1, 1)
+        ℒ.ldiv!(Ā̂₀ᵤ, @view(A₋[1:T.nPresent_only,:]))
+        ℒ.rmul!(@view(A₋[1:T.nPresent_only,:]), -1)
     end
 
     # end # timeit_debug
@@ -563,11 +567,21 @@ function rrule(::typeof(calculate_first_order_solution),
     expand_future = idx_constants.expand_future
     expand_past = idx_constants.expand_past
 
-    𝐒ᵗ = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
+    A_vcat = first_order_ws.A_vcat
+    A_vcat[1:T.nPresent_only, :] .= A₋ᵤ
+    A_vcat[T.nPresent_only+1:end, :] .= sol_compact
+
+    result = first_order_ws.result
+    @views result[:, 1:T.nPast_not_future_and_mixed] .= A_vcat[T.reorder, :]
+
+    𝐒ᵗ = @view result[:, 1:T.nPast_not_future_and_mixed]
 
     𝐒̂ᵗ = 𝐒ᵗ * expand_past
 
-    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future, 𝐒̂ᵗ, 1, 1)
+    M = first_order_ws.M
+    ℒ.mul!(M, @view(result[T.future_not_past_and_mixed_idx, 1:T.nPast_not_future_and_mixed]), expand_past)
+
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
 
     C = ℒ.lu!(∇₀, check = false)
     
@@ -584,9 +598,9 @@ function rrule(::typeof(calculate_first_order_solution),
     M = inv(C)
 
     tmp2 = -M' * (∇₊ * expand_future)'
-    
+
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
         ∂∇₁ = zero(∇₁)
@@ -621,7 +635,9 @@ function rrule(::typeof(calculate_first_order_solution),
         return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
-    return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
+    result[:, T.nPast_not_future_and_mixed+1:end] .= ∇̂ₑ
+
+    return (result, sol, solved), first_order_solution_pullback
 end
 
 function rrule(::typeof(calculate_second_order_solution), 

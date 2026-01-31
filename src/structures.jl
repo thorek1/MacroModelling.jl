@@ -856,10 +856,6 @@ mutable struct first_order_workspace{T <: Real}
     Ã₀::Matrix{T}           # n_dyn × n_comb
     Ã₋::Matrix{T}           # n_dyn × n_comb
     
-    # Temporary for A₊[dynIndex,:] before multiplication with Ir
-    A₊_dyn::Matrix{T}       # n_dyn × n_future
-    A₋_dyn::Matrix{T}       # n_dyn × n_past
-    
     # Combined output: vcat(A₋ᵤ, sol_compact)
     A_vcat::Matrix{T}       # n_vars × n_past (before reorder)
     

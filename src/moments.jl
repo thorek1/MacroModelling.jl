@@ -21,17 +21,36 @@ function calculate_covariance(parameters::Vector{R},
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
     first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants,
-                                                            qme_ws,
-                                                            sylv_ws,
-                                                            first_order_ws;
-                                                            initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+    solved_qme = false
+    use_cache_for_qme = (R <: Float64)
+    parameters_match_cache = (parameters === 𝓂.parameter_values) || (length(parameters) == length(𝓂.parameter_values) && parameters == 𝓂.parameter_values)
+    use_cached_solution = use_cache_for_qme &&
+                        parameters_match_cache &&
+                        !𝓂.caches.outdated.first_order_solution &&
+                        size(𝓂.caches.first_order_solution_matrix, 1) == T.nVars &&
+                        eltype(𝓂.caches.first_order_solution_matrix) == R
+
+    if use_cached_solution
+        sol = 𝓂.caches.first_order_solution_matrix
+        qme_sol = 𝓂.caches.qme_solution
+        solved = true
+    else
+        initial_guess = use_cache_for_qme ? 𝓂.caches.qme_solution : zeros(0, 0)
+        sol, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                    constants,
+                                    qme_ws,
+                                    sylv_ws,
+                                    first_order_ws;
+                                    initial_guess = initial_guess,
+                                    opts = opts)
+        solved_qme = solved
+    end
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
-    if solved 𝓂.caches.qme_solution = qme_sol end
+    if solved_qme && use_cache_for_qme
+        𝓂.caches.qme_solution = qme_sol
+    end
 
     # Direct constants access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_constants.diag_nVars[T.past_not_future_and_mixed_idx,:]
