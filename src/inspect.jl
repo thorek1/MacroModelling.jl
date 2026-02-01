@@ -1150,7 +1150,7 @@ Modify or replace a model equation. This function updates the model equations an
 
 # Keyword Arguments
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
-- `silent` [Default: `false`, Type: `Bool`]: Suppress all output during reprocessing.
+- `silent` [Default: `true`, Type: `Bool`]: Suppress all output during reprocessing.
 
 # Returns
 - `Nothing`. The model is modified in place and re-solved.
@@ -1350,7 +1350,7 @@ Modify or replace a calibration equation. This function updates the calibration 
 
 # Keyword Arguments
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
-- `silent` [Default: `false`, Type: `Bool`]: Suppress all output during reprocessing.
+- `silent` [Default: `true`, Type: `Bool`]: Suppress all output during reprocessing.
 
 # Returns
 - `Nothing`. The model is modified in place and re-solved.
