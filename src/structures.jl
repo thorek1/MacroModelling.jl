@@ -624,9 +624,6 @@ mutable struct outdated_caches
     pruned_third_order_solution::Bool
 end
 
-# Convenience constructor: all caches outdated (true)
-outdated_caches() = outdated_caches(true, true, true, true, true, true, true, true, true)
-
 
 """
 Stored computation results that can be reused across function calls.
@@ -695,7 +692,7 @@ end
 
 # Default constructor: empty caches, all marked outdated
 Caches() = caches(
-    outdated_caches(),
+    outdated_caches(true, true, true, true, true, true, true, true, true),
     zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
     zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
     zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
