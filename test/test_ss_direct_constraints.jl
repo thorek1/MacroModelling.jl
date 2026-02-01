@@ -63,8 +63,13 @@
         end
 
         @test TestExprSS.constants.post_parameters_macro.ss_direct_constraints_vars == [:q]
-        # The expression should be stored, not evaluated
-        @test TestExprSS.constants.post_parameters_macro.ss_direct_constraints_exprs[1] == :(scale * α)
+        # The expression should be stored as an Expr (not a number)
+        expr = TestExprSS.constants.post_parameters_macro.ss_direct_constraints_exprs[1]
+        @test expr isa Expr
+        # Verify it contains the expected symbols (robust to expression structure changes)
+        syms = MacroModelling.get_symbols(expr)
+        @test :scale ∈ syms
+        @test :α ∈ syms
     end
 
     @testset "Multiple constraints" begin

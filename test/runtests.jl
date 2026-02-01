@@ -811,6 +811,11 @@ if test_set == "basic"
     end
     GC.gc()
 
+    @testset verbose = true "Direct SS constraints" begin
+        include("test_ss_direct_constraints.jl")
+    end
+    GC.gc()
+
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
