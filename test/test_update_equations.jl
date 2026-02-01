@@ -149,13 +149,11 @@ using Test
 
     # Test update with Taylor rule exchange
     @testset "Update Taylor rule equation" begin
-        include("../models/Gali_2015_chapter_3_nonlinear.jl")
-        model = Gali_2015_chapter_3_nonlinear
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
         
-        old_rule = :(R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-        new_rule = :(R[0] = 1 / β * Pi[0] ^ 1.7 * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-
-        push!(model.constants.post_complete_parameters.missing_parameters, :__skip__)
+        old_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0])
+        new_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * ms[0])
 
         update_equations!(model, old_rule, new_rule, silent = true)
 
