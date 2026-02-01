@@ -47,6 +47,25 @@ end
 @stable default_mode = "disable" begin
 
 """
+    reset_solver_state!(𝓂::ℳ)
+
+Reset the solver-related state of the model struct in preparation for reinitializing
+the steady-state solver. This clears caches, NSSS solve blocks, and marks functions
+as needing recompilation.
+
+Used by `update_equations!`, `update_calibration_equations!`, and `add_calibration_equation!`
+to ensure consistent state reset before regenerating solver functions.
+"""
+function reset_solver_state!(𝓂::ℳ)
+    𝓂.caches = Caches()
+    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
+    𝓂.NSSS.dependencies = nothing
+    𝓂.functions.functions_written = false
+    return nothing
+end
+
+
+"""
     expr_contains(expr, sym::Symbol, pattern) -> Bool
 
 Check if `expr` contains `sym` matching `pattern` (nothing = any timing).
@@ -1252,19 +1271,15 @@ function update_equations!(𝓂::ℳ,
 
     𝓂.workspaces = Workspaces()
 
-    𝓂.caches = Caches()
-    
     𝓂.equations = equations_struct
 
-    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
-    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
-    𝓂.NSSS.dependencies = nothing
-    
-    NSSS_custom = 𝓂.functions.NSSS_custom
+    # Store custom steady state function before resetting
+    # NSSS_custom = 𝓂.functions.NSSS_custom
+    # 𝓂.functions = Functions()
+    # 𝓂.functions.NSSS_custom = NSSS_custom
 
-    𝓂.functions = Functions()
-
-    𝓂.functions.NSSS_custom = NSSS_custom
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
     
     parsed_parameters = process_parameter_definitions(
         parameter_block,
@@ -1335,6 +1350,355 @@ $(SIGNATURES)
 Alias for [`update_equations!`](@ref).
 """
 replace_equations! = update_equations!
+
+
+"""
+$(SIGNATURES)
+Add a new equation to the model.
+
+This function adds a new equation to an existing model and automatically re-solves it.
+The model structure (variables, parameters, shocks) is updated to reflect any new symbols
+introduced by the equation.
+
+# Arguments
+- $MODEL®
+- `new_equation::Union{Expr, String}`: The new equation to add. Can be either a Julia expression
+  using the `:(...)` syntax or a string that will be parsed.
+
+# Keyword Arguments
+- `verbose::Bool = false`: Print detailed information about the update process
+- `silent::Bool = true`: Suppress output during model re-solving
+
+# Returns
+- `nothing`
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Add a new equation for investment
+add_equation!(RBC, :(i[0] = k[0] - (1 - δ) * k[-1]))
+
+# The model now has 5 equations instead of 4
+get_equations(RBC)
+```
+"""
+function add_equation!(𝓂::ℳ, 
+                       new_equation::Union{Expr, String};
+                       verbose::Bool = false,
+                       silent::Bool = true)
+    # Parse string to Expr if needed
+    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+
+    # Validate the equation has proper structure (should be an assignment or equality)
+    if !(parsed_new_equation isa Expr && parsed_new_equation.head in (:(=), :call))
+        error("Invalid equation format. Equations should be in the form `lhs = rhs` or use comparison operators.")
+    end
+
+    if !silent
+        println("\nAdding equation:")
+        println("  Equation: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
+        println()
+    end
+
+    # Record the revision
+    revision_entry = (
+        timestamp = Dates.now(),
+        action = :add_equation,
+        equation_index = length(𝓂.equations.original) + 1,
+        old_equation = nothing,
+        new_equation = parsed_new_equation
+    )
+    push!(𝓂.revision_history, revision_entry)
+
+    if verbose
+        println("Adding equation $(length(𝓂.equations.original) + 1):")
+        println("  New: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
+    end
+
+    # Update the original equations list with the new equation
+    updated_original_equations = copy(𝓂.equations.original)
+    push!(updated_original_equations, parsed_new_equation)
+
+    # Re-process the model equations and combine with existing calibration parts
+    updated_block = Expr(:block, updated_original_equations...)
+
+    parameter_block = reconstruct_parameter_block(𝓂)
+
+    T, equations_struct = process_model_equations(
+        updated_block,
+        𝓂.constants.post_model_macro.max_obc_horizon,
+        𝓂.constants.post_parameters_macro.precompile,
+    )
+
+    𝓂.constants = Constants(T)
+
+    𝓂.workspaces = Workspaces()
+
+    𝓂.equations = equations_struct
+
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
+    
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro
+    )
+    
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro,
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds
+    )
+    
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+    
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
+    
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+    
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
+Remove an equation from the model.
+
+This function removes an equation from an existing model by index or by matching the equation expression,
+and automatically re-solves the model. The model structure is updated accordingly.
+
+# Arguments
+- $MODEL®
+- `equation_or_index::Union{Int, Expr, String}`: Either the 1-based index of the equation to remove,
+  or the equation expression to match and remove.
+
+# Keyword Arguments
+- `verbose::Bool = false`: Print detailed information about the removal process
+- `silent::Bool = true`: Suppress output during model re-solving
+
+# Returns
+- `nothing`
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+    i[0] = k[0] - (1 - δ) * k[-1]  # Extra equation to remove
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Remove by index
+remove_equation!(RBC, 5)
+
+# Or remove by matching the equation
+remove_equation!(RBC, :(i[0] = k[0] - (1 - δ) * k[-1]))
+```
+"""
+function remove_equation!(𝓂::ℳ, 
+                          equation_or_index::Union{Int, Expr, String};
+                          verbose::Bool = false,
+                          silent::Bool = true)
+    n_equations = length(𝓂.equations.original)
+    
+    # Determine equation index
+    if equation_or_index isa Int
+        equation_index = equation_or_index
+        @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations. Use `get_equations(model)` to see current equations."
+    else
+        # Parse string to Expr if needed
+        eq_to_match = equation_or_index isa String ? Meta.parse(equation_or_index) : equation_or_index
+        
+        # Find the equation index by matching
+        equation_index = find_equation_index(𝓂.equations.original, eq_to_match)
+        @assert equation_index !== nothing "Could not find equation matching: $(replace(string(eq_to_match), "◖" => "{", "◗" => "}")). Use `get_equations(model)` to see current equations."
+    end
+    
+    # Ensure we have at least one equation remaining
+    @assert n_equations > 1 "Cannot remove the last equation from the model."
+    
+    # Store the equation being removed for revision history
+    removed_equation = 𝓂.equations.original[equation_index]
+    
+    if !silent
+        println("\nRemoving equation $equation_index:")
+        println("  Equation: ", replace(string(removed_equation), "◖" => "{", "◗" => "}"))
+        println()
+    end
+
+    # Record the revision
+    revision_entry = (
+        timestamp = Dates.now(),
+        action = :remove_equation,
+        equation_index = equation_index,
+        old_equation = removed_equation,
+        new_equation = nothing
+    )
+    push!(𝓂.revision_history, revision_entry)
+
+    if verbose
+        println("Removing equation $equation_index:")
+        println("  Removed: ", replace(string(removed_equation), "◖" => "{", "◗" => "}"))
+    end
+
+    # Create updated equations list without the removed equation
+    updated_original_equations = copy(𝓂.equations.original)
+    deleteat!(updated_original_equations, equation_index)
+
+    # Re-process the model equations and combine with existing calibration parts
+    updated_block = Expr(:block, updated_original_equations...)
+
+    parameter_block = reconstruct_parameter_block(𝓂)
+
+    T, equations_struct = process_model_equations(
+        updated_block,
+        𝓂.constants.post_model_macro.max_obc_horizon,
+        𝓂.constants.post_parameters_macro.precompile,
+    )
+
+    𝓂.constants = Constants(T)
+
+    𝓂.workspaces = Workspaces()
+
+    𝓂.equations = equations_struct
+
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
+    
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro
+    )
+    
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro,
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds
+    )
+    
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+    
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
+    
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+    
+    return nothing
+end
 
 
 """
@@ -1563,15 +1927,8 @@ function update_calibration_equations!(𝓂::ℳ,
     # Update parameter values
     𝓂.parameter_values = parsed_parameters.parameter_values
 
-    # Reinitialize caches (fresh empty state, all marked outdated)
-    𝓂.caches = Caches()
-
-    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
-    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
-    𝓂.NSSS.dependencies = nothing
-
-    # Mark functions as needing recompilation
-    𝓂.functions.functions_written = false
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
 
     has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
     missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
@@ -1764,15 +2121,204 @@ function add_calibration_equation!(𝓂::ℳ,
     # Update parameter values
     𝓂.parameter_values = parsed_parameters.parameter_values
 
-    # Reinitialize caches (fresh empty state, all marked outdated)
-    𝓂.caches = Caches()
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
 
-    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
-    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
-    𝓂.NSSS.dependencies = nothing
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
 
-    # Mark functions as needing recompilation
-    𝓂.functions.functions_written = false
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
+Remove a calibration equation from the model.
+
+This function removes a calibration equation from the model by index or by matching the equation expression.
+The previously calibrated parameter becomes a regular (fixed) parameter, and the model is automatically re-solved.
+
+# Arguments
+- $MODEL®
+- `equation_or_index::Union{Int, Expr, String}`: Either the 1-based index of the calibration equation to remove,
+  or the calibration equation expression to match and remove.
+
+# Keyword Arguments
+- `new_value::Union{Real, Nothing} = nothing`: The value to assign to the parameter that was calibrated.
+  If `nothing`, the parameter's most recent solved value is used.
+- `verbose::Bool = false`: Print detailed information about the removal process
+- `silent::Bool = false`: Suppress all output including warnings
+
+# Returns
+- `nothing`
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    α = 0.5
+    β = 0.95
+    k[ss] / q[ss] = 10 | δ  # Calibration equation
+end
+
+# Remove by index - δ becomes a fixed parameter
+remove_calibration_equation!(RBC, 1, new_value = 0.025)
+
+# Or remove by matching (partial match on calibrated parameter)
+remove_calibration_equation!(RBC, 1)  # Uses the current calibrated value
+```
+"""
+function remove_calibration_equation!(𝓂::ℳ, 
+                                      equation_or_index::Union{Int, Expr, String};
+                                      new_value::Union{Real, Nothing} = nothing,
+                                      verbose::Bool = false,
+                                      silent::Bool = false)
+    n_calib_equations = length(𝓂.equations.calibration_original)
+    
+    @assert n_calib_equations > 0 "Model has no calibration equations to remove."
+    
+    # Determine equation index
+    if equation_or_index isa Int
+        equation_index = equation_or_index
+        @assert 1 <= equation_index <= n_calib_equations "Calibration equation index must be between 1 and $n_calib_equations. Use `get_calibration_equations(model)` to see current calibration equations."
+    else
+        # Parse string to Expr if needed
+        eq_to_match = equation_or_index isa String ? Meta.parse(equation_or_index) : equation_or_index
+        
+        # Find the equation index by matching
+        equation_index = find_equation_index(𝓂.equations.calibration_original, eq_to_match)
+        @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(eq_to_match), "◖" => "{", "◗" => "}")). Use `get_calibration_equations(model)` to see current calibration equations."
+    end
+    
+    # Store the equation being removed
+    removed_equation = 𝓂.equations.calibration_original[equation_index]
+    
+    # Get the calibrated parameter name
+    calib_param = 𝓂.equations.calibration_parameters[equation_index]
+    
+    # Determine the value for the now-fixed parameter
+    if new_value === nothing
+        # Try to get the current calibrated value
+        param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.SS_and_pars_names)
+        
+        new_value = 𝓂.caches.non_stochastic_steady_state[param_idx]
+    end
+    
+    if !silent
+        println("\nRemoving calibration equation $equation_index:")
+        println("  Equation: ", replace(string(removed_equation), "◖" => "{", "◗" => "}"))
+        println("  → `$calib_param` is now FIXED at $new_value (was calibrated)")
+        println()
+    end
+
+    # Record the revision
+    revision_entry = (
+        timestamp = Dates.now(),
+        action = :remove_calibration_equation,
+        equation_index = equation_index,
+        old_equation = removed_equation,
+        new_equation = nothing
+    )
+    push!(𝓂.revision_history, revision_entry)
+
+    if verbose
+        println("Removing calibration equation $equation_index:")
+        println("  Removed: ", replace(string(removed_equation), "◖" => "{", "◗" => "}"))
+        println("  Parameter $calib_param fixed at: $new_value")
+    end
+
+    # Create updated calibration equations list without the removed equation
+    updated_calibration_original = copy(𝓂.equations.calibration_original)
+    deleteat!(updated_calibration_original, equation_index)
+
+    # Reconstruct parameter block with removed calibration equation and new fixed parameter value
+    parameter_block = reconstruct_parameter_block(
+        𝓂;
+        calibration_original_override = updated_calibration_original,
+        parameter_overrides = Dict(calib_param => new_value),
+    )
+
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro,
+    )
+
+    # Update post_parameters_macro (keeping existing options)
+    𝓂.constants.post_parameters_macro = post_parameters_macro(
+        parsed_parameters.calib_parameters_no_var,
+        𝓂.constants.post_parameters_macro.precompile,
+        𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.symbolic,
+        𝓂.constants.post_parameters_macro.guess,
+        parsed_parameters.ss_calib_list,
+        parsed_parameters.par_calib_list,
+        parsed_parameters.bounds,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+    )
+
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    # Update post_complete_parameters 
+    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+        var_axis = Symbol[],  # Reset so it gets recomputed
+        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
+    )
+    
+    # Update parameter values
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
+    reset_solver_state!(𝓂)
 
     has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
     missing_params = 𝓂.constants.post_complete_parameters.missing_parameters

@@ -1715,6 +1715,7 @@ and adjusts the parameter value assignments accordingly.
 function reconstruct_parameter_block(
     𝓂::ℳ;
     calibration_original_override::Union{Nothing, Vector{Expr}} = nothing,
+    parameter_overrides::Union{Nothing, Dict{Symbol, <:Real}} = nothing,
 )
     lines = Expr[]
 
@@ -1746,21 +1747,28 @@ function reconstruct_parameter_block(
     values = 𝓂.parameter_values
     for (p, v) in zip(params, values)
         if !isnan(v) && p ∉ params_becoming_calibrated
-            push!(lines, Expr(:(=), p, v))
+            # Use override value if provided
+            val = (parameter_overrides !== nothing && haskey(parameter_overrides, p)) ? parameter_overrides[p] : v
+            push!(lines, Expr(:(=), p, val))
         end
     end
 
     # Add parameters that were calibrated but now need value assignments
-    # Use their value from the non-stochastic steady state cache
+    # Use their value from the non-stochastic steady state cache (or override if provided)
     if !isempty(params_no_longer_calibrated)
         # The NSSS cache contains [variables..., calibrated_parameters...]
         n_vars = 𝓂.constants.post_model_macro.nVars
         old_calib_param_list = 𝓂.equations.calibration_parameters
         for param in params_no_longer_calibrated
-            idx = findfirst(==(param), old_calib_param_list)
-            if idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
-                val = 𝓂.caches.non_stochastic_steady_state[n_vars + idx]
-                push!(lines, Expr(:(=), param, val))
+            # Check for override first
+            if parameter_overrides !== nothing && haskey(parameter_overrides, param)
+                push!(lines, Expr(:(=), param, parameter_overrides[param]))
+            else
+                idx = findfirst(==(param), old_calib_param_list)
+                if idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
+                    val = 𝓂.caches.non_stochastic_steady_state[n_vars + idx]
+                    push!(lines, Expr(:(=), param, val))
+                end
             end
         end
     end
