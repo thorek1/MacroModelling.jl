@@ -30,6 +30,77 @@ end
 end # dispatch_doctor
 
 """
+    replace_curly_braces_in_symbols(expr) -> Union{Expr, Symbol, Any}
+
+Recursively traverse expression tree and convert ◖/◗ to proper curly brace syntax.
+Transforms symbols like `Symbol("eps◖δ◗")` into `Expr(:curly, :eps, :δ)`.
+Handles multiple curly braces like `a◖b◗◖c◗` → `Expr(:curly, Expr(:curly, :a, :b), :c)`.
+"""
+function replace_curly_braces_in_symbols(expr)
+    if expr isa Symbol
+        str = string(expr)
+        if occursin("◖", str) && occursin("◗", str)
+            # Process all ◖...◗ pairs iteratively from left to right
+            result = nothing
+            remaining = str
+            
+            while occursin("◖", remaining)
+                # Match the pattern: base◖content◗rest
+                m = match(r"^([^◖]*)◖([^◗]+)◗(.*)$", remaining)
+                if m === nothing
+                    break
+                end
+                
+                base_str = m.captures[1]
+                content = Symbol(m.captures[2])
+                rest = m.captures[3]
+                
+                if result === nothing && !isempty(base_str)
+                    # First iteration with a base
+                    result = Expr(:curly, Symbol(base_str), content)
+                elseif result === nothing
+                    # First iteration without base (shouldn't happen normally)
+                    result = content
+                else
+                    # Subsequent iterations: nest the curly expression
+                    result = Expr(:curly, result, content)
+                end
+                
+                remaining = rest
+            end
+            
+            return result === nothing ? expr : result
+        end
+        return expr
+    elseif expr isa Expr
+        return Expr(expr.head, [replace_curly_braces_in_symbols(arg) for arg in expr.args]...)
+    else
+        return expr
+    end
+end
+
+"""
+    replace_dynamic_symbols(expr) -> Union{Expr, Symbol, Any}
+
+Replace timing subscripts (₍₋₁₎, ₍₀₎, ₍₁₎, ₍ₓ₎) with bracket notation and convert ◖/◗ to curly braces.
+Transforms symbols like `Symbol("z◖TFP◗₍₀₎")` into `Expr(:ref, Expr(:curly, :z, :TFP), 0)`.
+"""
+function replace_dynamic_symbols(expr)
+    if expr isa Symbol
+        str = string(expr)
+        # First replace timing subscripts
+        str = replace(replace(replace(replace(str, "₍₋₁₎" => "[-1]"), "₍₁₎" => "[1]"), "₍₀₎" => "[0]"), "₍ₓ₎" => "[x]")
+        # Parse to handle timing indices, then apply curly brace conversion
+        parsed = Meta.parse(str)
+        return replace_curly_braces_in_symbols(parsed)
+    elseif expr isa Expr
+        return Expr(expr.head, [replace_dynamic_symbols(arg) for arg in expr.args]...)
+    else
+        return expr
+    end
+end
+
+"""
     parse_filter_term(term::Union{Symbol, String}) -> (Symbol, Union{Expr, Nothing})
 
 Parse a filter term into (base_symbol, pattern_expr).
@@ -96,11 +167,10 @@ Return the equations of the model. In case programmatic model writing was used t
 - $MODEL®
 
 # Keyword Arguments
-- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
-    Use `:k`/"k" to match any reference to `k`, or `"k[0]"` to target specific timing.
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Optionally include timing (e.g., `"k[-1]"` or `"eps[x]"`) to match exact timing.
 
 # Returns
-- `Vector{String}` of the parsed equations. 
+- `Vector{Expr}` of the parsed equations as expressions.
 
 # Examples
 ```jldoctest
@@ -129,24 +199,26 @@ end
 
 get_equations(RBC)
 # output
-7-element Vector{String}:
- "1 / c[0] = (β / c[1]) * (α * ex" ⋯ 25 bytes ⋯ " - 1) + (1 - exp(z{δ}[1]) * δ))"
- "c[0] + k[0] = (1 - exp(z{δ}[0]) * δ) * k[-1] + q[0]"
- "q[0] = exp(z{TFP}[0]) * k[-1] ^ α"
- "z{TFP}[0] = ρ{TFP} * z{TFP}[-1]" ⋯ 18 bytes ⋯ "TFP}[x] + eps_news{TFP}[x - 1])"
- "z{δ}[0] = ρ{δ} * z{δ}[-1] + σ{δ} * (eps{δ}[x] + eps_news{δ}[x - 1])"
- "Δc_share[0] = log(c[0] / q[0]) - log(c[-1] / q[-1])"
- "Δk_4q[0] = log(k[0]) - log(k[-4])"
-get_equations(RBC, filter = :k)
-get_equations(RBC, filter = "k[0]")
+7-element Vector{Expr}:
+ :(1 / c[0] = (β / c[1]) * (α * exp(z{TFP}[1]) * k[0] ^ (α - 1) + (1 - exp(z{δ}[1]) * δ)))
+ :(c[0] + k[0] = (1 - exp(z{δ}[0]) * δ) * k[-1] + q[0])
+ :(q[0] = exp(z{TFP}[0]) * k[-1] ^ α)
+ :(z{TFP}[0] = ρ{TFP} * z{TFP}[-1] + σ{TFP} * (eps{TFP}[x] + eps_news{TFP}[x - 1]))
+ :(z{δ}[0] = ρ{δ} * z{δ}[-1] + σ{δ} * (eps{δ}[x] + eps_news{δ}[x - 1]))
+ :(Δc_share[0] = log(c[0] / q[0]) - log(c[-1] / q[-1]))
+ :(Δk_4q[0] = log(k[0]) - log(k[-4]))
 ```
 """
-function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
-    equations = replace.(string.(𝓂.equations.original), "◖" => "{", "◗" => "}")
-    filter === nothing && return equations
+function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{Expr}
+    # Replace ◖/◗ with {/} in symbols within expression tree
+    exprs = replace_curly_braces_in_symbols.(𝓂.equations.original)
+    
+    if filter === nothing
+        return exprs
+    end
     
     sym, pattern = parse_filter_term(filter)
-    return [eq for (eq, expr) in zip(equations, 𝓂.equations.original) if expr_contains(expr, sym, pattern)]
+    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.original) if expr_contains(orig, sym, pattern)]
 end
 
 
@@ -208,11 +280,10 @@ Note that the output assumes the equations are equal to 0. As in, `-z{δ} * ρ{�
 - $MODEL®
 
 # Keyword Arguments
-- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
-    Time subscripts in the filter are ignored for steady state equations.
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Time subscripts are ignored for steady state equations.
 
 # Returns
-- `Vector{String}` of the NSSS equations. 
+- `Vector{Expr}` of the NSSS equations as expressions.
 
 # Examples
 ```jldoctest
@@ -241,21 +312,25 @@ end
 
 get_steady_state_equations(RBC)
 # output
-9-element Vector{String}:
- "(-β * ((k ^ (α - 1) * α * exp(z{TFP}) - δ * exp(z{δ})) + 1)) / c + 1 / c"
- "((c - k * (-δ * exp(z{δ}) + 1)) + k) - q"
- "-(k ^ α) * exp(z{TFP}) + q"
- "-z{TFP} * ρ{TFP} + z{TFP}"
- "-z{δ} * ρ{δ} + z{δ}"
- "➕₁ - c / q"
- "➕₂ - c / q"
- "(Δc_share - log(➕₁)) + log(➕₂)"
- "Δk_4q - 0"
+9-element Vector{Expr}:
+ :((-β * ((k ^ (α - 1) * α * exp(z{TFP}) - δ * exp(z{δ})) + 1)) / c + 1 / c)
+ :(((c - k * (-δ * exp(z{δ}) + 1)) + k) - q)
+ :(-(k ^ α) * exp(z{TFP}) + q)
+ :(-z{TFP} * ρ{TFP} + z{TFP})
+ :(-z{δ} * ρ{δ} + z{δ})
+ :(➕₁ - c / q)
+ :(➕₂ - c / q)
+ :((Δc_share - log(➕₁)) + log(➕₂))
+ :(Δk_4q - 0)
 ```
 """
-function get_steady_state_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
-    equations = replace.(string.(𝓂.equations.steady_state_aux), "◖" => "{", "◗" => "}")
-    filter === nothing && return equations
+function get_steady_state_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{Expr}
+    # Replace ◖/◗ with {/} in symbols within expression tree
+    exprs = replace_curly_braces_in_symbols.(𝓂.equations.steady_state_aux)
+    
+    if filter === nothing
+        return exprs
+    end
     
     sym, pattern = parse_filter_term(filter)
     
@@ -265,7 +340,7 @@ function get_steady_state_equations(𝓂::ℳ; filter::Union{Symbol, String, Not
     end
     
     # Always ignore timing for steady state equations (no time subscripts in SS)
-    return [eq for (eq, expr) in zip(equations, 𝓂.equations.steady_state_aux) if expr_contains(expr, sym, nothing)]
+    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.steady_state_aux) if expr_contains(orig, sym, nothing)]
 end
 
 
@@ -281,11 +356,10 @@ Note that the output assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹�
 - $MODEL®
 
 # Keyword Arguments
-- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
-    Use `:k`/"k" to match any reference to `k`, or `"k[0]"` to target specific timing.
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Optionally include timing (e.g., `"k[-1]"` or `"eps[x]"`) to match exact timing.
 
 # Returns
-- `Vector{String}` of the dynamic model equations. 
+- `Vector{Expr}` of the dynamic model equations as expressions.
 
 # Examples
 ```jldoctest
@@ -314,33 +388,32 @@ end
 
 get_dynamic_equations(RBC)
 # output
-12-element Vector{String}:
- "1 / c[0] - (β / c[1]) * (α * ex" ⋯ 25 bytes ⋯ " - 1) + (1 - exp(z{δ}[1]) * δ))"
- "(c[0] + k[0]) - ((1 - exp(z{δ}[0]) * δ) * k[-1] + q[0])"
- "q[0] - exp(z{TFP}[0]) * k[-1] ^ α"
- "eps_news{TFP}[0] - eps_news{TFP}[x]"
- "z{TFP}[0] - (ρ{TFP} * z{TFP}[-1] + σ{TFP} * (eps{TFP}[x] + eps_news{TFP}[-1]))"
- "eps_news{δ}[0] - eps_news{δ}[x]"
- "z{δ}[0] - (ρ{δ} * z{δ}[-1] + σ{δ} * (eps{δ}[x] + eps_news{δ}[-1]))"
- "Δc_share[0] - (log(c[0] / q[0]) - log(c[-1] / q[-1]))"
- "kᴸ⁽⁻³⁾[0] - kᴸ⁽⁻²⁾[-1]"
- "kᴸ⁽⁻²⁾[0] - kᴸ⁽⁻¹⁾[-1]"
- "kᴸ⁽⁻¹⁾[0] - k[-1]"
- "Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1]))"
+12-element Vector{Expr}:
+ :(1 / c[0] - (β / c[1]) * (α * exp(z{TFP}[1]) * k[0] ^ (α - 1) + (1 - exp(z{δ}[1]) * δ)))
+ :((c[0] + k[0]) - ((1 - exp(z{δ}[0]) * δ) * k[-1] + q[0]))
+ :(q[0] - exp(z{TFP}[0]) * k[-1] ^ α)
+ :(eps_news{TFP}[0] - eps_news{TFP}[x])
+ :(z{TFP}[0] - (ρ{TFP} * z{TFP}[-1] + σ{TFP} * (eps{TFP}[x] + eps_news{TFP}[-1])))
+ :(eps_news{δ}[0] - eps_news{δ}[x])
+ :(z{δ}[0] - (ρ{δ} * z{δ}[-1] + σ{δ} * (eps{δ}[x] + eps_news{δ}[-1])))
+ :(Δc_share[0] - (log(c[0] / q[0]) - log(c[-1] / q[-1])))
+ :(kᴸ⁽⁻³⁾[0] - kᴸ⁽⁻²⁾[-1])
+ :(kᴸ⁽⁻²⁾[0] - kᴸ⁽⁻¹⁾[-1])
+ :(kᴸ⁽⁻¹⁾[0] - k[-1])
+ :(Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1])))
 ```
 """
-function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
-    # Transform equations to user-friendly format
-    equations = replace.(string.(𝓂.equations.dynamic), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
-    filter === nothing && return equations
+function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{Expr}
+    exprs = replace_dynamic_symbols.(𝓂.equations.dynamic)
     
-    # Transform internal expressions to user-friendly format for matching
-    transformed_exprs = [Meta.parse(replace(string(expr), "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")) for expr in 𝓂.equations.dynamic]
+    if filter === nothing
+        return exprs
+    end
     
     # Parse filter term (uses user-friendly format with [-1], [0], etc.)
     sym, pattern = parse_filter_term(filter)
     
-    return [eq for (eq, expr) in zip(equations, transformed_exprs) if expr_contains(expr, sym, pattern)]
+    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.dynamic) if expr_contains(orig, sym, pattern)]
 end
 
 
@@ -407,11 +480,10 @@ Note that the output assumes the equations are equal to 0. As in, `k / (q * 4) -
 - $MODEL®
 
 # Keyword Arguments
-- `filter::Union{Symbol, String, Nothing} = nothing`: Optional filter to return only equations that contain a specific symbol.
-    Time subscripts (other than `[ss]`) are ignored for calibration equations.
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Time subscripts (except `[ss]`) are ignored for calibration equations.
 
 # Returns
-- `Vector{String}` of the calibration equations. 
+- `Vector{Expr}` of the calibration equations as expressions.
 
 # Examples
 ```jldoctest
@@ -440,13 +512,17 @@ end
 
 get_calibration_equations(RBC)
 # output
-1-element Vector{String}:
- "k / (q * 4) - capital_to_output"
+1-element Vector{Expr}:
+ :(k / (q * 4) - capital_to_output)
 ```
 """
-function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
-    equations = replace.(string.(𝓂.equations.calibration), "◖" => "{", "◗" => "}")
-    filter === nothing && return equations
+function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{Expr}
+    # Replace ◖/◗ with {/} in symbols within expression tree
+    exprs = replace_curly_braces_in_symbols.(𝓂.equations.calibration)
+    
+    if filter === nothing
+        return exprs
+    end
 
     sym, pattern = parse_filter_term(filter)
     
@@ -459,7 +535,7 @@ function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Noth
     end
     
     # Always ignore timing for calibration equations
-    return [eq for (eq, expr) in zip(equations, 𝓂.equations.calibration) if expr_contains(expr, sym, nothing)]
+    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.calibration) if expr_contains(orig, sym, nothing)]
 end
 
 

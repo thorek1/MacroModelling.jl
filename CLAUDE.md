@@ -1,52 +1,62 @@
-# CLAUDE.md
+# Agent Guide for MacroModelling.jl
 
-This file provides guidance for Claude Code (claude.ai/code) when working with this repository.
+This file provides guidance for AI coding agents (GitHub Copilot, Claude, etc.) when working with this repository.
 
 ## Project Overview
 
-MacroModelling.jl is a Julia package for developing and solving Dynamic Stochastic General Equilibrium (DSGE) models used in macroeconomic research and policy analysis. It provides tools for model specification, steady-state solving, perturbation solutions (up to 3rd order), estimation, and analysis.
+`MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models. These models describe macroeconomic behavior and are used for counterfactual analysis, economic policy evaluation, and quantifying specific mechanisms in academic research.
 
-**Author**: Thore Kockerols (@thorek1)
-**Documentation**: https://thorek1.github.io/MacroModelling.jl/stable
+**Key capabilities:**
+- Parse models with user-friendly syntax (time indices like `[0], [-1], [1]`)
+- Solve models automatically from equations and parameter values
+- Calculate first, second, and third order (pruned) perturbation solutions
+- Handle occasionally binding constraints
+- Calculate impulse response functions, simulations, and conditional forecasts
+- Estimate models using gradient-based samplers (NUTS, HMC) or inversion filters
+- Differentiate solutions and moments with respect to parameters
 
-## Key Commands
+**Target audience:** Central bankers, regulators, graduate students, and researchers in DSGE modeling.
 
-### Running Tests
+**Timing convention:** End-of-period (not start-of-period like some other packages).
 
-Before running tests, activate the test environment and instantiate dependencies:
+## Project Structure
 
-```julia
-using Pkg
-Pkg.activate("test")
-Pkg.instantiate()
+```
+MacroModelling.jl/
+├── src/                      # Main source code
+│   ├── MacroModelling.jl    # Main module, exports, type definitions
+│   ├── macros.jl            # @model and @parameters macros
+│   ├── get_functions.jl     # User-facing API (IRFs, simulations, forecasts)
+│   ├── perturbation.jl      # Perturbation solution algorithms (1st-3rd order)
+│   ├── moments.jl           # Model moment calculations
+│   ├── structures.jl        # Core data structures and types
+│   ├── options_and_caches.jl # Solution caching and calculation options
+│   ├── dynare.jl            # Dynare file import support
+│   ├── inspect.jl           # Model inspection utilities
+│   ├── solver_parameters.jl # Solver configuration parameters
+│   ├── default_options.jl   # Default option values
+│   ├── common_docstrings.jl # Shared documentation strings
+│   ├── algorithms/          # Matrix equation solvers (sylvester, lyapunov, quadratic_matrix_equation, nonlinear_solver)
+│   ├── filter/              # Kalman and inversion filters (kalman, inversion, find_shocks)
+│   └── custom_autodiff_rules/ # AD rules (forwarddiff, zygote)
+├── test/                     # Test suite with multiple test sets
+├── models/                   # Example DSGE models from literature
+├── docs/                     # Documentation (Documenter.jl)
+├── benchmark/                # Benchmark scripts (BenchmarkTools)
+└── ext/                      # Package extensions (StatsPlots, Turing, Optim)
 ```
 
-Tests are organized by test sets specified via the `TEST_SET` environment variable:
+## Development Setup
 
-```bash
-# Run basic functionality tests
-TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'
+### Julia Requirements
+- **Julia version:** 1.10 or higher (tested on 1.10+, lts, and pre-release versions)
+- **Running Julia:** Always use `julia -t auto` to enable multi-threading
 
-# Run estimation tests
-TEST_SET=estimation julia --project -e 'using Pkg; Pkg.test()'
-
-# Other test sets: jet, higher_order_1, higher_order_2, higher_order_3,
-# plots_1-5, estimate_sw07, 1st_order_inversion_estimation,
-# 2nd_order_estimation, pruned_2nd_order_estimation, 3rd_order_estimation, etc.
-```
-
-### Building Documentation
-
-```bash
-julia --project=docs docs/make.jl
-```
-
-### Loading the Package for Development
-
+### Package Setup
 ```julia
 using Pkg
 Pkg.activate(".")
-using MacroModelling
+Pkg.instantiate()
 ```
 
 ## Revise-Based Development Workflow (REQUIRED)
@@ -126,209 +136,133 @@ julia> get_equations(RBC)
 - **Revise must be loaded BEFORE MacroModelling** - order matters!
 - **Structural changes require restart** - new types, module reorganization, or changing `__init__` functions
 - **Manual refresh available** - if a change isn't detected, run `Revise.revise()`
-- **Julia 1.12+ note** - may show world age warnings, but hot-reload still works
 
-## Architecture Overview
+## Testing
 
-### Source Code (`src/`)
+**Do NOT run the full test suite** - it takes too long. Instead:
 
-| File | Purpose |
-|------|---------|
-| `MacroModelling.jl` | Main module, exports, type definitions |
-| `macros.jl` | `@model` and `@parameters` macro definitions |
-| `get_functions.jl` | Public API functions (`get_irf`, `get_solution`, `simulate`, etc.) |
-| `perturbation.jl` | Perturbation solution algorithms (1st, 2nd, 3rd order) |
-| `structures.jl` | Core data structures (`ℳ` model type, `timings`, etc.) |
-| `moments.jl` | Model moment calculations |
-| `dynare.jl` | Dynare compatibility layer |
-| `inspect.jl` | Model inspection utilities |
-| `default_options.jl` | Default solver options and constants |
-| `options_and_caches.jl` | Options structs and caching mechanisms |
+### Quick Feature Testing
+Write a bespoke script using the simple RBC model shown above, then test your changes:
+```julia
+# Test your changes here
+get_irf(RBC)
+simulate(RBC)
+```
 
-### Algorithms (`src/algorithms/`)
+### Test Sets (CI Only)
+Tests are organized by test sets specified via `TEST_SET` environment variable:
+- `basic`, `estimation`, `higher_order_1-3`, `plots_1-5`, `estimate_sw07`, `jet`
+- Estimation tests: `1st_order_inversion_estimation`, `2nd_order_estimation`, `pruned_2nd_order_estimation`, `3rd_order_estimation`, `pruned_3rd_order_estimation`
+- Pigeons estimation tests: `estimation_pigeons`, `1st_order_inversion_estimation_pigeons`, `2nd_order_estimation_pigeons`, `pruned_2nd_order_estimation_pigeons`, `3rd_order_estimation_pigeons`, `pruned_3rd_order_estimation_pigeons`
 
-- `sylvester.jl` - Sylvester equation solvers
-- `lyapunov.jl` - Lyapunov equation solvers
-- `quadratic_matrix_equation.jl` - QME solvers (Schur, doubling)
-- `nonlinear_solver.jl` - Nonlinear equation solvers for steady state
+```bash
+TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'
+```
 
-### Filters (`src/filter/`)
+### Test Environment Setup
+```julia
+using Pkg
+Pkg.activate("test")
+Pkg.instantiate()
+```
 
-- `kalman.jl` - Kalman filter for linear estimation
-- `inversion.jl` - Inversion filter for nonlinear models
-- `find_shocks.jl` - Shock finding algorithms for conditional forecasting
+## Documentation
 
-### Models (`models/`)
+Build documentation locally:
+```bash
+julia --project=docs docs/make.jl
+```
 
-Contains 25+ pre-built DSGE models including RBC variants, Smets-Wouters (2003, 2007), and other academic models. These serve as examples and test cases.
+Documentation is built with Documenter.jl and deployed to GitHub Pages.
 
-### Extensions (`ext/`)
-
-Optional integrations loaded when dependencies are present:
-- `OptimExt.jl` - Optimization with Optim.jl
-- `StatsPlotsExt.jl` - Plotting support
-- `TuringExt.jl` - Bayesian inference with Turing.jl
-
-## Key Concepts
-
-### Model Definition
-
-Models are defined using two macros:
+## Benchmarking
 
 ```julia
-@model ModelName begin
-    # Equations with time indices: [0] = present, [1] = future, [-1] = past, [x] = shock
-    c[0] + k[0] = (1 - δ) * k[-1] + y[0]
-    y[0] = z[0] * k[-1]^α
-    z[0] = ρ * z[-1] + σ * ε[x]
-end
-
-@parameters ModelName begin
-    α = 0.33
-    δ = 0.025
-    # Calibration equations use | syntax
-    β | r[ss] = 0.04  # β calibrated so steady-state r = 0.04
-end
+using BenchmarkTools
+include("benchmark/benchmarks.jl")
+run(SUITE)
 ```
 
-### Core Data Structure
+## Model Syntax
 
-The main model type is `ℳ` (mutable struct) containing:
-- Variable/parameter names and values
-- Parsed equations (symbolic and compiled)
-- Solution matrices (perturbation coefficients)
-- Steady state values
-- Timings (variable classifications by timing)
-- Solver caches and options
+- **Variables** use time indices: `...[2], [1], [0], [-1], [-2]...`
+- **Shocks** use `[x]`: `eps_z[x]`
+- **Calibration equations** use `|` syntax in `@parameters` block
+- **Custom steady state** can be provided via `steady_state_function` parameter
 
-### Variable Timing Classification
+## Code Style and Conventions
 
-Variables are classified by their timing in equations:
-- `present_only` - Only appear at t=0
-- `past_not_future` - Appear at t-1 but not t+1
-- `future_not_past` - Appear at t+1 but not t-1
-- `mixed` - Appear at both t-1 and t+1
-
-### Solution Algorithms
-
-- `:first_order` - Linear perturbation
-- `:second_order` / `:pruned_second_order` - Quadratic perturbation
-- `:third_order` / `:pruned_third_order` - Cubic perturbation
-
-## Coding Conventions
-
-### Import Aliases
-
-The codebase uses Unicode aliases for common imports:
-```julia
-import LinearAlgebra as ℒ
-import DifferentiationInterface as 𝒟
-import ForwardDiff as ℱ
-import LinearSolve as 𝒮
-```
-
-### Type Annotations
-
-- Use `Float64` for numerical computations
-- `KeyedArray` (from AxisKeys.jl) for labeled arrays in return values
-- `SparseMatrixCSC` for sparse Jacobians/Hessians
-
-### Function Documentation
-
-Functions use DocStringExtensions macros:
-```julia
-"""
-$(SIGNATURES)
-Description here.
-# Arguments
-- `arg1`: description
-# Keyword Arguments
-- `kwarg1`: description
-# Returns
-- Description of return value
-# Examples
-```jldoctest
-...
-```
-"""
-```
-
-### Reserved Names
-
-The constant `SYMPYWORKSPACE_RESERVED_NAMES` in `MacroModelling.jl` lists names that cannot be used as variables/parameters (mathematical functions like `exp`, `log`, `sin`, etc.).
+### General Principles
+1. **Minimal changes:** Make the smallest possible changes to accomplish the task
+2. **Testing:** Test changes with simple models rather than running the full test suite
+3. **Performance:** This package emphasizes performance - be mindful of type stability and allocations
+4. **Documentation:** Update docstrings when modifying public APIs
 
 ### Writing Style
-
-- Avoid second-person phrasing (“you”) in docs and docstrings.
+- Avoid second-person phrasing ("you") in docs and docstrings
 
 ### Caching Guidance
+- For constant calculations that can be computed once and reused, compute lazily on first use and store in the model struct cache; subsequent use must read from the cache
 
-- For constant calculations that can be computed once and reused, compute lazily on first use and store in the model struct cache; subsequent use must read from the cache.
+## Key Design Considerations
 
-### Session Progress Log
-
-- Always take stock of what was done and what remains, and save it in `AGENT_PROGRESS.md`.
-- At the start of a new session, always read `AGENT_PROGRESS.md` before making changes.
-
-## Testing Patterns
-
-Tests use Julia's `Test` module with `@testset` blocks:
-
-```julia
-@testset verbose = true "Test Name" begin
-    include("path/to/model.jl")
-    # Test assertions
-    @test some_condition
-end
-```
-
-The `functionality_tests.jl` file contains a comprehensive `functionality_test()` function that tests models across multiple algorithm and solver combinations.
+- **Performance critical** - Package competes with Dynare/RISE. Be mindful of type stability and allocations.
+- **Symbolic mathematics** - Uses Symbolics.jl and SymPyPythonCall for symbolic derivatives compiled to efficient numerical code.
+- **Automatic differentiation** - Supports forward and reverse-mode AD for gradients w.r.t. parameters.
+- **Thread safety** - Important for estimation tasks.
 
 ## Common Tasks
 
-### Adding a New Function
+### Adding a New Feature
+1. Write the feature in the appropriate `src/` file
+2. Create a minimal test script (don't rely on full test suite)
+3. Test with the simple RBC model
+4. Update documentation if it's a user-facing feature
 
-1. Add the function to `src/get_functions.jl` (or appropriate file)
-2. Export it in `src/MacroModelling.jl`
-3. Add docstring with examples
-4. Add tests in `test/` directory
+### Fixing a Bug
+1. Identify the issue location in `src/`
+2. Write a minimal reproduction case
+3. Fix and verify with test script
+4. Ensure existing functionality isn't broken
 
 ### Adding a New Model
+1. Place in `models/` directory
+2. Follow existing model structure
+3. Include citation information
+4. Test that it solves and produces IRFs
 
-1. Create file in `models/` directory
-2. Use `@model` and `@parameters` macros
-3. Include in relevant test sets
+### Common Change Points
+- **New API:** add in `src/get_functions.jl` and export from `src/MacroModelling.jl`
+- **New model:** add a file under `models/` using the model macros
+- **Solver changes:** look in `src/perturbation.jl` and `src/algorithms/`
 
-### Modifying Solution Algorithms
+## CI/CD Pipeline
 
-Perturbation solutions are in `src/perturbation.jl`. Matrix equation solvers are in `src/algorithms/`.
+- **CI runs on:** push (pull requests are commented out in workflow)
+- **Platforms:** Ubuntu, macOS, Windows (x64 and arm64 where applicable)
+- **Coverage:** Uploaded to Codecov
+- **Matrix testing:** Multiple test sets run in parallel across different OS/architecture combinations
 
-## Dependencies
+## Session Progress Log
 
-Key dependencies (see Project.toml for full list):
-- **Symbolic**: SymPyPythonCall, Symbolics.jl
-- **Linear Algebra**: LinearAlgebra, SparseArrays, LinearSolve, Krylov, MatrixEquations
-- **AD**: ForwardDiff, DifferentiationInterface, ChainRulesCore
-- **Optimization**: NLopt
-- **Data**: AxisKeys, DataStructures
-
-## CI/CD
-
-GitHub Actions runs tests across:
-- Julia versions: 1.10 (min), LTS, latest, pre-release
-- OS: Ubuntu, macOS, Windows
-- Architectures: x64, arm64
-
-Test sets are parallelized across the matrix. JET.jl is used for static analysis.
+- Always take stock of what was done and what remains, and save it in `AGENT_PROGRESS.md`
+- At the start of a new session, always read `AGENT_PROGRESS.md` before making changes
 
 ## CRITICAL WORKFLOW REQUIREMENTS
 
-**YOU MUST FOLLOW THESE RULES. THEY ARE NON-NEGOTIABLE.**
+**These rules are non-negotiable.**
 
 1. **NEVER claim something works without running a test to prove it.** After writing any code, immediately write and run a test. If you cannot test it, say so explicitly.
 
-2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results, and wait for confirmation before proceeding.
+2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results.
 
-3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output.
+3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
 
 4. **Be explicit about unknowns.** If you're uncertain about something, say so. Don't guess.
+
+## Additional Resources
+
+- **Documentation:** https://thorek1.github.io/MacroModelling.jl/stable
+- **Issue tracker:** GitHub Issues
+- **Contributing guidelines:** See CONTRIBUTING.md
+- **Code of Conduct:** See CODE_OF_CONDUCT.md
