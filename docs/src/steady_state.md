@@ -168,6 +168,50 @@ Consider a custom steady state function when:
 
 The internal solver is robust and works well for most models, so start with the automatic solver and only switch to a custom function if needed.
 
+## Direct Steady State Constraints
+
+In some models, the steady state is not uniquely determined by the model equations alone (rank deficiency). For example, a model may determine ratios between variables but not absolute levels. In such cases, direct steady state constraints allow pinning down specific variable values.
+
+### Syntax
+
+Specify steady state values directly in the `@parameters` block:
+
+```julia
+@parameters MyModel begin
+    β = 0.95
+    y[ss] = 1                    # Pin y to 1 in steady state
+    c[ss] = α / 4 * θ            # Use an expression involving parameters
+end
+```
+
+The constraint value can be:
+- A numeric constant: `y[ss] = 1`
+- A parameter: `y[ss] = y_target`
+- An expression involving parameters: `y[ss] = α / 4 * θ`
+
+### Use Cases
+
+- **Normalization**: Set output or price levels to 1
+- **Rank-deficient models**: When model equations determine only ratios or relationships, not absolute levels
+- **Model calibration**: Specify target values for key variables
+
+### Difference from Calibration Equations
+
+| Syntax | Meaning |
+|--------|---------|
+| `β \| R[ss] = 1.02` | Adjust parameter β to achieve R[ss] = 1.02 |
+| `y[ss] = 1` | Pin y[ss] = 1 directly (for rank-deficient models) |
+
+Use calibration equations (`param \| target = value`) when a parameter should adjust to hit a target.
+Use direct constraints (`var[ss] = value`) when the model has built-in indeterminacy that needs to be resolved.
+
+### Validation
+
+The parser validates that:
+- Constrained variables exist in the model
+- No duplicate constraints exist for the same variable
+- Constraints do not conflict with calibration equations
+
 ## Delayed Parameter Declaration
 
 There are cases when one does not want to define all parameter values at the time of model definition. In such cases, one can define a model without parameters (as otherwise defined in the parameter macro) and add them in subsequent function call instead. This is particularly useful if one wants to use parameters from a file, database, or estimation routine. In such cases, one can define the model as follows:

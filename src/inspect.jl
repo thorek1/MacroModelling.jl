@@ -471,7 +471,9 @@ function reprocess_model_equations!(𝓂::ℳ,
         parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
         ss_calib_list = parsed_parameters.ss_calib_list,
         par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
+        bounds = parsed_parameters.bounds,
+        ss_direct_constraints_vars = parsed_parameters.ss_direct_constraints_vars,
+        ss_direct_constraints_exprs = parsed_parameters.ss_direct_constraints_exprs,
     )
     
     𝓂.equations.calibration = parsed_parameters.equations.calibration
@@ -533,6 +535,8 @@ function reprocess_calibration_equations!(𝓂::ℳ,
         parsed_parameters.bounds,
         𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
         𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+        parsed_parameters.ss_direct_constraints_vars,
+        parsed_parameters.ss_direct_constraints_exprs,
     )
 
     𝓂.equations.calibration = parsed_parameters.equations.calibration

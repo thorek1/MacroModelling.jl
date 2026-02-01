@@ -675,7 +675,9 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 # Set{Symbol}[],
                 Dict{Symbol,Tuple{Float64,Float64}}(),
                 :ESCH,
-                120.0
+                120.0,
+                Symbol[],                               # ss_direct_constraints_vars
+                Any[]                                   # ss_direct_constraints_exprs
                 ),
             post_complete_parameters{Symbol}(
                 Symbol[],
@@ -761,6 +763,8 @@ function update_post_parameters_macro(p::post_parameters_macro; kwargs...)
         get(kwargs, :bounds, p.bounds),
         get(kwargs, :ss_solver_parameters_algorithm, p.ss_solver_parameters_algorithm),
         get(kwargs, :ss_solver_parameters_maxtime, p.ss_solver_parameters_maxtime),
+        get(kwargs, :ss_direct_constraints_vars, p.ss_direct_constraints_vars),
+        get(kwargs, :ss_direct_constraints_exprs, p.ss_direct_constraints_exprs),
     )
 end
 
