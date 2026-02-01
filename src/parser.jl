@@ -377,44 +377,46 @@ function replace_indices_in_for_loop(exxpr,index_variable,indices,concatenate, o
     indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
     for idx in indices
         push!(calls, postwalk(x -> begin
-            x isa Expr ?
-                x.head == :ref ?
-                    @capture(x, name_{index_}[time_]) ?
-                        index == index_variable ?
-                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            x :
-                        x :
-                    @capture(x, name_[time_]) ?
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            x :
-                        x :
-                    x :
-                x.head == :if ?
-                    length(x.args) > 2 ?
-                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+            if x isa Expr
+                if x.head == :ref
+                    if @capture(x, name_{index_}[time_])
+                        if index == index_variable
+                            return :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time)))
+                        elseif time isa Expr || time isa Symbol
+                            if index_variable ∈ get_symbols(time)
+                                return :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx)))))
+                            end
+                        end
+                        return x
+                    elseif @capture(x, name_[time_])
+                        if time isa Expr || time isa Symbol
+                            if index_variable ∈ get_symbols(time)
+                                return :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx)))))
+                            end
+                        end
+                        return x
+                    end
+                elseif x.head == :if
+                    if length(x.args) > 2
+                        return Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
                                     replace_indices_in_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
-                                    replace_indices_in_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
-                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                                replace_indices_in_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
-                @capture(x, name_{index_}) ?
-                    index == index_variable ?
-                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
-                    x :
-                x :
-            @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
-                    :($idx) :
-                x isa Symbol ?
-                    occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
-                    x :
-                x :
-            x
+                                    replace_indices_in_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock)
+                    end
+                    return Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                replace_indices_in_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock)
+                elseif @capture(x, name_{index_})
+                    if index == index_variable
+                        return :($(Symbol(string(name) * "{" * string(idx) * "}")))
+                    end
+                end
+            elseif @capture(x, name_)
+                if name == index_variable && idx isa Int
+                    return :($idx)
+                elseif x isa Symbol && occursin("{" * string(index_variable) * "}", string(x))
+                    return Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}"))
+                end
+            end
+            return x
         end,
         exxpr))
     end
@@ -429,7 +431,7 @@ end
 function has_equation(expr)
     found = false
     postwalk(expr) do x
-        if x isa Expr && x.head == :(=)
+        if @capture(x, _ = _)
             found = true
         end
         return x
@@ -523,68 +525,62 @@ function expand_obc_constraints(equations_block; max_obc_horizon::Int = 40)
                 arg_trans = arg
             end
 
-            eq = postwalk(x -> 
-                    x isa Expr ?
-                        x.head == :call ? 
-                            x.args[1] == :max ?
-                                begin
+            eq = postwalk(x -> begin
+                    x isa Expr || return x
+                    if @capture(x, max_(lhs_, rhs_)) && max == :max
+                        obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
+                        obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
-                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
+                        if !(lhs isa Symbol) && check_for_dynamic_variables(lhs)
+                            push!(eqs, :($obc_vars_left = $(lhs)))
+                        else
+                            obc_vars_left = lhs
+                        end
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
+                        if !(rhs isa Symbol) && check_for_dynamic_variables(rhs)
+                            push!(eqs, :($obc_vars_right = $(rhs)))
+                        else
+                            obc_vars_right = rhs
+                        end
 
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                        obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
-                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
+                        push!(eqs, :($obc_inequality = $(Expr(:call, :max, obc_vars_left, obc_vars_right))))
 
-                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
+                        obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
 
-                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
+                        push!(obc_shocks, obc_shock)
 
-                                    push!(obc_shocks, obc_shock)
+                        return :($obc_inequality - $obc_shock)
+                    elseif @capture(x, min_(lhs_, rhs_)) && min == :min
+                        obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
+                        obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    :($obc_inequality - $obc_shock)
-                                end :
-                            x.args[1] == :min ?
-                                begin
-                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
-                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
+                        if !(lhs isa Symbol) && check_for_dynamic_variables(lhs)
+                            push!(eqs, :($obc_vars_left = $(lhs)))
+                        else
+                            obc_vars_left = lhs
+                        end
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
+                        if !(rhs isa Symbol) && check_for_dynamic_variables(rhs)
+                            push!(eqs, :($obc_vars_right = $(rhs)))
+                        else
+                            obc_vars_right = rhs
+                        end
 
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                        obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
-                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
+                        push!(eqs, :($obc_inequality = $(Expr(:call, :min, obc_vars_left, obc_vars_right))))
 
-                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
+                        obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
 
-                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
+                        push!(obc_shocks, obc_shock)
 
-                                    push!(obc_shocks, obc_shock)
+                        return :($obc_inequality - $obc_shock)
+                    end
 
-                                    :($obc_inequality - $obc_shock)
-                                end :
-                            x :
-                        x :
-                    x,
-            arg_trans)
+                    return x
+            end, arg_trans)
 
             push!(eqs, eq)
         end
