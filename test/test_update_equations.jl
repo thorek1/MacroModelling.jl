@@ -510,6 +510,397 @@ end
 end
 
 
+@testset verbose = true "add_equation! functionality" begin
+    @testset "Add equation - basic functionality" begin
+        @model RBC_add begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_add begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Initial state
+        @test length(get_equations(RBC_add)) == 4
+        @test length(get_variables(RBC_add)) == 4
+
+        # Add an investment equation
+        add_equation!(RBC_add, :(i[0] = k[0] - (1 - δ) * k[-1]), silent = true)
+
+        # Check model was updated
+        @test length(get_equations(RBC_add)) == 5
+        @test length(get_variables(RBC_add)) == 5
+        @test "i" in get_variables(RBC_add)
+
+        # Check revision history
+        history = get_revision_history(RBC_add)
+        @test length(history) == 1
+        @test history[1].action == :add_equation
+        @test history[1].equation_index == 5
+        @test history[1].old_equation === nothing
+
+        # Model should still solve
+        ss = get_steady_state(RBC_add, derivatives = false)
+        @test !any(isnan, ss)
+
+        RBC_add = nothing
+    end
+
+    @testset "Add equation - string format" begin
+        @model RBC_add_str begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_add_str begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Add equation using string
+        add_equation!(RBC_add_str, "i[0] = k[0] - (1 - δ) * k[-1]", silent = true)
+
+        @test length(get_equations(RBC_add_str)) == 5
+        @test "i" in get_variables(RBC_add_str)
+
+        RBC_add_str = nothing
+    end
+
+    @testset "Add equation - multiple additions" begin
+        @model RBC_multi_add begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_multi_add begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Add two equations
+        add_equation!(RBC_multi_add, :(i[0] = k[0] - (1 - δ) * k[-1]), silent = true)
+        add_equation!(RBC_multi_add, :(y[0] = q[0]), silent = true)
+
+        @test length(get_equations(RBC_multi_add)) == 6
+        @test length(get_variables(RBC_multi_add)) == 6
+        @test "i" in get_variables(RBC_multi_add)
+        @test "y" in get_variables(RBC_multi_add)
+
+        # Check revision history
+        history = get_revision_history(RBC_multi_add)
+        @test length(history) == 2
+        @test history[1].action == :add_equation
+        @test history[2].action == :add_equation
+
+        RBC_multi_add = nothing
+    end
+end
+
+
+@testset verbose = true "remove_equation! functionality" begin
+    @testset "Remove equation by index" begin
+        @model RBC_remove begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+            i[0] = k[0] - (1 - δ) * k[-1]  # Extra equation to remove
+        end
+
+        @parameters RBC_remove begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Initial state
+        @test length(get_equations(RBC_remove)) == 5
+        @test length(get_variables(RBC_remove)) == 5
+        @test "i" in get_variables(RBC_remove)
+
+        # Remove equation 5 (the investment equation)
+        remove_equation!(RBC_remove, 5, silent = true)
+
+        # Check model was updated
+        @test length(get_equations(RBC_remove)) == 4
+        @test length(get_variables(RBC_remove)) == 4
+        @test !("i" in get_variables(RBC_remove))
+
+        # Check revision history
+        history = get_revision_history(RBC_remove)
+        @test length(history) == 1
+        @test history[1].action == :remove_equation
+        @test history[1].equation_index == 5
+        @test history[1].new_equation === nothing
+
+        # Model should still solve
+        ss = get_steady_state(RBC_remove, derivatives = false)
+        @test !any(isnan, ss)
+
+        RBC_remove = nothing
+    end
+
+    @testset "Remove equation by matching" begin
+        @model RBC_remove_match begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+            i[0] = k[0] - (1 - δ) * k[-1]
+        end
+
+        @parameters RBC_remove_match begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Remove by matching the equation
+        remove_equation!(RBC_remove_match, :(i[0] = k[0] - (1 - δ) * k[-1]), silent = true)
+
+        @test length(get_equations(RBC_remove_match)) == 4
+        @test !("i" in get_variables(RBC_remove_match))
+
+        RBC_remove_match = nothing
+    end
+
+    @testset "Remove equation - error cases" begin
+        @model RBC_remove_err begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_remove_err begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Error: index out of bounds
+        @test_throws AssertionError remove_equation!(RBC_remove_err, 5, silent = true)
+        @test_throws AssertionError remove_equation!(RBC_remove_err, 0, silent = true)
+
+        # Error: equation not found
+        @test_throws AssertionError remove_equation!(
+            RBC_remove_err,
+            :(nonexistent[0] = 1),
+            silent = true,
+        )
+
+        RBC_remove_err = nothing
+    end
+
+    @testset "Remove equation - cannot remove to less than 2 equations" begin
+        @model RBC_two_eqs begin
+            x[0] = ρ * x[-1] + std_x * eps_x[x]
+            y[0] = x[0]
+        end
+
+        @parameters RBC_two_eqs begin
+            std_x = 0.01
+            ρ = 0.9
+        end
+
+        @test length(get_equations(RBC_two_eqs)) == 2
+
+        # Trying to remove an equation when it would leave < 2 equations throws an error
+        # (either AssertionError from our check, or from process_model_equations)
+        @test_throws Exception remove_equation!(RBC_two_eqs, 2, silent = true)
+
+        RBC_two_eqs = nothing
+    end
+
+    @testset "Add then remove equation - round trip" begin
+        @model RBC_roundtrip begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_roundtrip begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get original state
+        ss_before = get_steady_state(RBC_roundtrip, derivatives = false)
+        n_eqs_before = length(get_equations(RBC_roundtrip))
+
+        # Add then remove
+        add_equation!(RBC_roundtrip, :(i[0] = k[0] - (1 - δ) * k[-1]), silent = true)
+        @test length(get_equations(RBC_roundtrip)) == n_eqs_before + 1
+
+        remove_equation!(RBC_roundtrip, n_eqs_before + 1, silent = true)
+        @test length(get_equations(RBC_roundtrip)) == n_eqs_before
+
+        # Steady state should be the same
+        ss_after = get_steady_state(RBC_roundtrip, derivatives = false)
+        @test isapprox(collect(ss_before), collect(ss_after), rtol = 1e-10)
+
+        RBC_roundtrip = nothing
+    end
+end
+
+
+@testset verbose = true "remove_calibration_equation! functionality" begin
+    @testset "Remove calibration equation by index" begin
+        @model RBC_remove_calib begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_remove_calib begin
+            std_z = 0.01
+            ρ = 0.2
+            α = 0.5
+            β = 0.95
+            k[ss] / q[ss] = 10 | δ  # Calibration equation
+        end
+
+        # Initial state - δ is calibrated
+        @test "δ" in get_calibrated_parameters(RBC_remove_calib)
+        @test length(get_calibration_equations(RBC_remove_calib)) == 1
+
+        # Remove the calibration equation with explicit new value
+        remove_calibration_equation!(RBC_remove_calib, 1, new_value = 0.025, silent = true)
+
+        # Check δ is now a fixed parameter
+        @test !("δ" in get_calibrated_parameters(RBC_remove_calib))
+        @test "δ" in get_parameters(RBC_remove_calib)
+        @test length(get_calibration_equations(RBC_remove_calib)) == 0
+
+        # Check revision history
+        history = get_revision_history(RBC_remove_calib)
+        @test length(history) == 1
+        @test history[1].action == :remove_calibration_equation
+        @test history[1].new_equation === nothing
+
+        # Model should still solve
+        ss = get_steady_state(RBC_remove_calib, derivatives = false)
+        @test !any(isnan, ss)
+
+        RBC_remove_calib = nothing
+    end
+
+    @testset "Remove calibration equation - use current value" begin
+        @model RBC_remove_calib_auto begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_remove_calib_auto begin
+            std_z = 0.01
+            ρ = 0.2
+            α = 0.5
+            β = 0.95
+            k[ss] / q[ss] = 10 | δ
+        end
+
+        # Remove without specifying new_value - should use calibrated value
+        remove_calibration_equation!(RBC_remove_calib_auto, 1, silent = true)
+
+        @test !("δ" in get_calibrated_parameters(RBC_remove_calib_auto))
+        @test "δ" in get_parameters(RBC_remove_calib_auto)
+
+        # Model should still solve
+        ss = get_steady_state(RBC_remove_calib_auto, derivatives = false)
+        @test !any(isnan, ss)
+
+        RBC_remove_calib_auto = nothing
+    end
+
+    @testset "Remove calibration equation - error cases" begin
+        @model RBC_no_calib begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_no_calib begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Error: no calibration equations
+        @test_throws AssertionError remove_calibration_equation!(RBC_no_calib, 1, silent = true)
+
+        RBC_no_calib = nothing
+    end
+
+    @testset "Add then remove calibration equation - round trip" begin
+        @model RBC_calib_roundtrip begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_calib_roundtrip begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02  # Fixed initially
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get original δ value
+        original_delta = 0.02
+
+        # Add calibration equation
+        add_calibration_equation!(RBC_calib_roundtrip, :(k[ss] / q[ss] = 10 | δ), silent = true)
+        @test "δ" in get_calibrated_parameters(RBC_calib_roundtrip)
+
+        # Remove calibration equation with original value
+        remove_calibration_equation!(RBC_calib_roundtrip, 1, new_value = original_delta, silent = true)
+        @test !("δ" in get_calibrated_parameters(RBC_calib_roundtrip))
+        @test "δ" in get_parameters(RBC_calib_roundtrip)
+
+        # Model should solve
+        ss = get_steady_state(RBC_calib_roundtrip, derivatives = false)
+        @test !any(isnan, ss)
+
+        RBC_calib_roundtrip = nothing
+    end
+end
+
+
 @testset verbose = true "get_revision_history functionality" begin
     @testset "Empty history for new model" begin
         @model RBC_empty begin
