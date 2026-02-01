@@ -938,6 +938,8 @@ struct post_parameters_macro
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
     ss_solver_parameters_algorithm::Symbol
     ss_solver_parameters_maxtime::Float64
+    ss_direct_constraints_vars::Vector{Symbol}         # Variables with direct SS constraints (e.g., y[ss] = 1)
+    ss_direct_constraints_exprs::Vector{Any}           # RHS expressions (can be Expr, Symbol, or Number)
 end
 
 struct post_complete_parameters{S <: Union{Symbol, String}}

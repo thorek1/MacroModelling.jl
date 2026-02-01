@@ -145,6 +145,13 @@ Not all parameters need to be defined in the `@parameters` macro. Calibration eq
 
 **Parameter ordering:** When some parameters are not defined in `@parameters`, the final parameter vector follows a specific order: first come the parameters defined in `@parameters` (in their declaration order), followed by any missing parameters (in alphabetical order). This ordering is important when passing parameter values by position rather than by name in subsequent function calls.
 
+# Direct steady state constraints
+Variables can be constrained to specific steady state values using the syntax `y[ss] = value`:
+- `y[ss] = 1` pins variable `y` to 1 in steady state
+- `y[ss] = α * scale` pins `y` to an expression involving parameters
+
+This is useful for models with rank deficiency (where model equations determine only ratios, not absolute levels).
+
 # Examples
 ```julia
 using MacroModelling
@@ -260,6 +267,8 @@ macro parameters(𝓂,ex...)
             parsed_parameters.bounds,
             $(QuoteNode(ss_solver_parameters_algorithm)),
             $ss_solver_parameters_maxtime,
+            parsed_parameters.ss_direct_constraints_vars,
+            parsed_parameters.ss_direct_constraints_exprs,
         )
 
         # Update equations struct with calibration fields

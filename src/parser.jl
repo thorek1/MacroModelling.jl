@@ -1493,6 +1493,10 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
 
     bounded_vars = []
 
+    # Storage for direct steady state constraints: y[ss] = value
+    ss_direct_constraints_vars = Symbol[]
+    ss_direct_constraints_exprs = Any[]
+
     parameter_definitions = replace_indices(parameter_block)
 
     # Helper to check for duplicate parameter definitions
@@ -1511,7 +1515,7 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
         push!(calib_equations_original, Expr(:(=), lhs_expr, Expr(:call, :|, unblock(rhs_expr), calib_param)))
     end
 
-    # First pass: parse simple assignments, leading pipe calibrations, and bounds
+    # First pass: parse simple assignments, leading pipe calibrations, bounds, and direct SS constraints
     postwalk(parameter_definitions) do x
         if !(x isa Expr)
             return x
@@ -1529,6 +1533,27 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
             calib_param, target_expr, rhs = leading_pipe
             add_calibration_eq!(calib_param, target_expr, rhs)
             return x
+        end
+        
+        # Direct steady state constraints: y[ss] = value OR y[ss] = expr
+        # Pattern: assignment where LHS is var[timing] and timing is a steady state marker
+        if x.head == :(=) && x.args[1] isa Expr && x.args[1].head == :ref
+            lhs = x.args[1]
+            if length(lhs.args) >= 2
+                var_name = lhs.args[1]
+                timing = lhs.args[2]
+                if var_name isa Symbol && is_steady_state_marker(timing)
+                    rhs = x.args[2]
+                    # Check for duplicate constraint
+                    if var_name ∈ ss_direct_constraints_vars
+                        error("Duplicate steady state constraint for variable $var_name")
+                    end
+                    # Store the constraint - RHS can be Int, Float64, Symbol, or Expr
+                    push!(ss_direct_constraints_vars, var_name)
+                    push!(ss_direct_constraints_exprs, rhs isa Expr ? unblock(rhs) : rhs)
+                    return x
+                end
+            end
         end
         
         # Simple assignment: param = value
@@ -1683,6 +1708,8 @@ function parse_parameter_definitions_raw(parameter_block::Expr)
         par_no_var_calib_list = par_no_var_calib_list,
         par_no_var_calib_rhs_list = par_no_var_calib_rhs_list,
         bounds = bounds,
+        ss_direct_constraints_vars = ss_direct_constraints_vars,
+        ss_direct_constraints_exprs = ss_direct_constraints_exprs,
     )
 end
 
@@ -1836,6 +1863,8 @@ function process_parameter_definitions(
     calib_equations_no_var_list = parsed.calib_equations_no_var_list
     par_no_var_calib_list = parsed.par_no_var_calib_list
     par_no_var_calib_rhs_list = parsed.par_no_var_calib_rhs_list
+    ss_direct_constraints_vars = parsed.ss_direct_constraints_vars
+    ss_direct_constraints_exprs = parsed.ss_direct_constraints_exprs
 
     calib_eq_parameters_raw = calib_eq_parameters
     ss_calib_list_raw = ss_calib_list
@@ -1852,11 +1881,45 @@ function process_parameter_definitions(
     _, calib_equations_original, _, _ = expand_calibration_equations(calib_eq_parameters_raw, calib_equations_original, ss_calib_list_raw, par_calib_list_raw, all_names)
     calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, all_names)
 
+    # Expand indices for direct SS constraints (handle curly brace notation)
+    ss_direct_constraints_vars, ss_direct_constraints_exprs = expand_indices(ss_direct_constraints_vars, ss_direct_constraints_exprs, all_names)
+
+    # Validate direct SS constraints: ensure constrained variables are actual model variables
+    for var in ss_direct_constraints_vars
+        @assert var ∈ post_model_macro.var "Direct steady state constraint references unknown variable: $var. Known variables are: $(post_model_macro.var)"
+    end
+
+    # Check for conflicts: a variable cannot have both y[ss] = value AND be targeted in a calibration equation
+    # In calibration equations like "k[ss] / q[ss] = 2.5 | α", the SS variables are targets
+    calib_target_vars = reduce(union, ss_calib_list, init = Set{Symbol}())
+    constraint_conflict_vars = intersect(Set(ss_direct_constraints_vars), calib_target_vars)
+    @assert isempty(constraint_conflict_vars) "Variables cannot have both a direct SS constraint (y[ss] = value) and be used in a calibration equation (lhs | param): $(collect(constraint_conflict_vars))"
+
+    # Extract parameters used in SS constraint expressions
+    ss_constraint_params = Set{Symbol}()
+    for expr in ss_direct_constraints_exprs
+        if expr isa Symbol
+            # Simple parameter reference
+            if expr ∈ all_names || expr ∈ calib_parameters || expr ∈ calib_parameters_no_var || expr ∈ calib_eq_parameters
+                push!(ss_constraint_params, expr)
+            end
+        elseif expr isa Expr
+            # Complex expression - extract all symbols
+            for sym in get_symbols(expr)
+                if sym ∉ post_model_macro.var && !is_operator_or_timing_keyword(sym)
+                    push!(ss_constraint_params, sym)
+                end
+            end
+        end
+        # Numbers don't add to parameter requirements
+    end
+
     # Calculate missing parameters instead of asserting
     # Include parameters from:
     # 1. par_calib_list - parameters used in calibration equations (e.g., K_ss in "K[ss] = K_ss | beta")
     # 2. parameters_in_equations - parameters used in model equations
     # 3. par_no_var_calib_list - parameters used in parameter definitions (e.g., rho{H}{H} in "rho{F}{F} = rho{H}{H}")
+    # 4. ss_constraint_params - parameters used in direct SS constraint expressions
     # Subtract:
     # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
     # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
@@ -1865,7 +1928,8 @@ function process_parameter_definitions(
     all_required_params = union(
         reduce(union, par_calib_list, init = Set{Symbol}()),
         reduce(union, par_no_var_calib_rhs_list, init = Set{Symbol}()),
-        Set{Symbol}(post_model_macro.parameters_in_equations)
+        Set{Symbol}(post_model_macro.parameters_in_equations),
+        ss_constraint_params
     )
 
     # Add parameters from parameter definitions, but only if the target parameter is needed
@@ -1925,5 +1989,7 @@ function process_parameter_definitions(
         parameters = all_params[defined_params_idx],
         missing_parameters = missing_params,
         parameter_values = all_values[defined_params_idx],
+        ss_direct_constraints_vars = ss_direct_constraints_vars,
+        ss_direct_constraints_exprs = ss_direct_constraints_exprs,
     )
 end
