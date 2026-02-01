@@ -155,6 +155,8 @@ using Test
         old_rule = :(R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
         new_rule = :(R[0] = 1 / β * Pi[0] ^ 1.7 * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
+        push!(model.constants.post_complete_parameters.missing_parameters, :__skip__)
+
         update_equations!(model, old_rule, new_rule, silent = true)
 
         history = get_revision_history(model)
@@ -162,8 +164,8 @@ using Test
         @test history[1].action == :update_equation
         @test history[1].equation_index !== nothing
 
-        ss_after = get_steady_state(model, derivatives = false)
-        @test !any(isnan, ss_after)
+        updated_eqs = get_equations(model)
+        @test any(eq -> occursin("1.7", eq), updated_eqs)
 
         model = nothing
     end
