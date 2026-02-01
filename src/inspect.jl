@@ -1194,7 +1194,7 @@ function update_equations!(𝓂::ℳ,
                           old_equation_or_index::Union{Int, Expr, String}, 
                           new_equation::Union{Expr, String}; 
                           verbose::Bool = false,
-                          silent::Bool = false)
+                          silent::Bool = true)
     # Determine equation index
     if old_equation_or_index isa Int
         equation_index = old_equation_or_index
@@ -1275,7 +1275,7 @@ function update_equations!(𝓂::ℳ,
                 verbose = verbose,
                 silent = silent,
                 avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = false,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
             )
         end
     end
@@ -1299,6 +1299,12 @@ function update_equations!(𝓂::ℳ,
     
     return nothing
 end
+
+"""
+$(SIGNATURES)
+Alias for [`update_equations!`](@ref).
+"""
+replace_equations! = update_equations!
 
 
 """
@@ -1385,7 +1391,7 @@ function update_calibration_equations!(𝓂::ℳ,
                                        old_equation_or_index::Union{Int, Expr, String}, 
                                        new_equation::Union{Expr, String};
                                        verbose::Bool = false,
-                                       silent::Bool = false)
+                                       silent::Bool = true)
     # Parse string to Expr if needed
     parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
 
@@ -1499,6 +1505,7 @@ function update_calibration_equations!(𝓂::ℳ,
         parsed_parameters.calib_parameters_no_var,
         𝓂.constants.post_parameters_macro.precompile,
         𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.symbolic,
         𝓂.constants.post_parameters_macro.guess,
         parsed_parameters.ss_calib_list,
         parsed_parameters.par_calib_list,
@@ -1548,7 +1555,7 @@ function update_calibration_equations!(𝓂::ℳ,
                 verbose = verbose,
                 silent = silent,
                 avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = false,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
             )
         end
     end
@@ -1572,6 +1579,12 @@ function update_calibration_equations!(𝓂::ℳ,
 
     return nothing
 end
+
+"""
+$(SIGNATURES)
+Alias for [`update_calibration_equations!`](@ref).
+"""
+replace_calibration_equations! = update_calibration_equations!
 
 
 """
@@ -1693,6 +1706,7 @@ function add_calibration_equation!(𝓂::ℳ,
         parsed_parameters.calib_parameters_no_var,
         𝓂.constants.post_parameters_macro.precompile,
         𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.symbolic,
         𝓂.constants.post_parameters_macro.guess,
         parsed_parameters.ss_calib_list,
         parsed_parameters.par_calib_list,
@@ -1742,7 +1756,7 @@ function add_calibration_equation!(𝓂::ℳ,
                 verbose = verbose,
                 silent = silent,
                 avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = false,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
             )
         end
     end

@@ -636,6 +636,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Symbol[],
                 false,
                 true,
+                false,
                 Dict{Symbol, Float64}(),
                 Set{Symbol}[],
                 Set{Symbol}[],

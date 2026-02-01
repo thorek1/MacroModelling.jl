@@ -929,6 +929,7 @@ struct post_parameters_macro
     parameters_as_function_of_parameters::Vector{Symbol}
     precompile::Bool
     simplify::Bool
+    symbolic::Bool
     guess::Dict{Symbol, Float64}
     ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}

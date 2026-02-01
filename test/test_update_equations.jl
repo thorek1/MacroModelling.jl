@@ -149,9 +149,9 @@ using Test
 
     # Test update with Taylor rule exchange
     @testset "Update Taylor rule equation" begin
-        include(joinpath(@__DIR__, "..", "models", "Gali_2015_chapter_3_nonlinear.jl"))
-        model = getfield(Main, :Gali_2015_chapter_3_nonlinear)
-
+        include("../models/Gali_2015_chapter_3_nonlinear.jl")
+        model = Gali_2015_chapter_3_nonlinear
+        
         old_rule = :(R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
         new_rule = :(R[0] = 1 / β * Pi[0] ^ 1.7 * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 

@@ -272,6 +272,7 @@ macro parameters(𝓂,ex...)
             parsed_parameters.calib_parameters_no_var,
             $precompile,
             $simplify,
+            $symbolic,
             guess_dict,
             parsed_parameters.ss_calib_list,
             parsed_parameters.par_calib_list,
