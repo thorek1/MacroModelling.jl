@@ -1256,13 +1256,21 @@ function update_equations!(𝓂::ℳ,
     
     𝓂.equations = equations_struct
 
+    # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
+    𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
+    𝓂.NSSS.dependencies = nothing
+    
+    NSSS_custom = 𝓂.functions.NSSS_custom
+
     𝓂.functions = Functions()
+
+    𝓂.functions.NSSS_custom = NSSS_custom
     
     parsed_parameters = process_parameter_definitions(
         parameter_block,
         𝓂.constants.post_model_macro
     )
-
+    
     𝓂.constants.post_parameters_macro = update_post_parameters_macro(
         𝓂.constants.post_parameters_macro,
         parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
@@ -1282,7 +1290,7 @@ function update_equations!(𝓂::ℳ,
         parameters = parsed_parameters.parameters,
         missing_parameters = parsed_parameters.missing_parameters,
     )
-
+    
     𝓂.parameter_values = parsed_parameters.parameter_values
 
     has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
