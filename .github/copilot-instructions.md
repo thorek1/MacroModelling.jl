@@ -1,6 +1,8 @@
-# Copilot Instructions for MacroModelling.jl
+# Agent Guide for MacroModelling.jl
 
-## Repository Overview
+This file provides guidance for AI coding agents (GitHub Copilot, Claude, etc.) when working with this repository.
+
+## Project Overview
 
 `MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models. These models describe macroeconomic behavior and are used for counterfactual analysis, economic policy evaluation, and quantifying specific mechanisms in academic research.
 
@@ -15,149 +17,251 @@
 
 **Target audience:** Central bankers, regulators, graduate students, and researchers in DSGE modeling.
 
+**Timing convention:** End-of-period (not start-of-period like some other packages).
+
 ## Project Structure
 
 ```
 MacroModelling.jl/
 ├── src/                      # Main source code
-│   ├── MacroModelling.jl    # Main module file
+│   ├── MacroModelling.jl    # Main module, exports, type definitions
 │   ├── macros.jl            # @model and @parameters macros
-│   ├── get_functions.jl     # User-facing functions (IRFs, simulations)
-│   ├── perturbation.jl      # Perturbation solution algorithms
+│   ├── get_functions.jl     # User-facing API (IRFs, simulations, forecasts)
+│   ├── perturbation.jl      # Perturbation solution algorithms (1st-3rd order)
 │   ├── moments.jl           # Model moment calculations
-│   ├── algorithms/          # Core solution algorithms
-│   └── filter/              # Kalman and inversion filters
-├── test/                     # Test suite
-│   ├── runtests.jl          # Test runner with multiple test sets
-│   └── models/              # Test models
+│   ├── structures.jl        # Core data structures and types
+│   ├── options_and_caches.jl # Solution caching and calculation options
+│   ├── dynare.jl            # Dynare file import support
+│   ├── inspect.jl           # Model inspection utilities
+│   ├── solver_parameters.jl # Solver configuration parameters
+│   ├── default_options.jl   # Default option values
+│   ├── common_docstrings.jl # Shared documentation strings
+│   ├── algorithms/          # Matrix equation solvers (sylvester, lyapunov, quadratic_matrix_equation, nonlinear_solver)
+│   ├── filter/              # Kalman and inversion filters (kalman, inversion, find_shocks)
+│   └── custom_autodiff_rules/ # AD rules (forwarddiff, zygote)
+├── test/                     # Test suite with multiple test sets
 ├── models/                   # Example DSGE models from literature
-├── docs/                     # Documentation
-├── benchmark/                # Benchmark scripts
-├── ext/                      # Package extensions (StatsPlots, Turing)
-└── AGENTS.md                # Agent-specific instructions
+├── docs/                     # Documentation (Documenter.jl)
+├── benchmark/                # Benchmark scripts (BenchmarkTools)
+└── ext/                      # Package extensions (StatsPlots, Turing, Optim)
 ```
 
-## Development Guidelines
+## Development Setup
 
-### Testing
-
-**Important:** This repository has an extensive test suite organized into multiple test sets. Tests are automatically run via CI on push.
-
-- **Test sets:** `basic`, `estimation`, `higher_order_1-3`, `plots_1-4`, `estimate_sw07`, various estimation tests, and `jet`
-- **Running tests:**
-  - **Do NOT run the full test suite** (`julia --project -e "using Pkg; Pkg.test()"`) as it takes too long
-  - Instead, test specific functionality with a bespoke script using a few models from `test/models/`
-  - Example models for quick testing: Look at `test/models/test_models.jl` or simple models like RBC
-  - Set `TEST_SET` environment variable to run specific test sets during CI
-  
-- **When testing changes:**
-  ```julia
-  # Example: Test a specific feature with a simple model
-  using MacroModelling
-  
-  @model RBC begin
-      1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-      c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-      q[0] = exp(z[0]) * k[-1]^α
-      z[0] = ρ * z[-1] + std_z * eps_z[x]
-  end
-  
-  @parameters RBC begin
-      std_z = 0.01
-      ρ = 0.2
-      δ = 0.02
-      α = 0.5
-      β = 0.95
-  end
-  
-  # Test your changes here
-  ```
-- **Avoid precompiling** the whole package when testing new functionality; use standalone scripts instead
-
-### Julia Setup
-
-- **Julia version:** Requires Julia 1.10 or higher (tested on 1.10+, lts, and pre-release versions)
-- **Installation:**
-  ```bash
-  curl -fsSL https://install.julialang.org -o juliaup.sh
-  sh juliaup.sh --yes --default-channel release
-  export PATH="$HOME/.juliaup/bin:$PATH"
-  ```
+### Julia Requirements
+- **Julia version:** 1.10 or higher (tested on 1.10+, lts, and pre-release versions)
 - **Running Julia:** Always use `julia -t auto` to enable multi-threading
 
-### Building
+### Package Setup
+```julia
+using Pkg
+Pkg.activate(".")
+Pkg.instantiate()
+```
 
-- **Package installation:**
-  ```julia
-  using Pkg
-  Pkg.activate(".")
-  Pkg.instantiate()
-  ```
-- **Development mode:** Use `Pkg.develop(".")` if working on package code
+## Revise-Based Development Workflow (REQUIRED)
 
-### Benchmarking
+**ALWAYS use Revise.jl for interactive development.** This enables hot-reloading of code changes without restarting Julia, which is essential for efficient iteration.
 
-- Use the `BenchmarkTools` package for performance testing
-- See `benchmark/benchmarks.jl` for existing benchmark scripts
-- When comparing implementations, follow the structure in `benchmark/benchmarks.jl`
+### Setup Steps
 
-### Documentation
+1. **Start Julia REPL** with multi-threading enabled:
+   ```bash
+   cd /path/to/MacroModelling.jl
+   julia -t auto --project=.
+   ```
 
-- Documentation is built with Documenter.jl and deployed to GitHub Pages
-- Source files are in `docs/src/`
-- Build documentation locally: `julia --project=docs docs/make.jl`
+2. **Load Revise FIRST**, then MacroModelling:
+   ```julia
+   using Revise
+   using MacroModelling
+   ```
+
+3. **Define a test model** for quick testing:
+   ```julia
+   @model RBC begin
+       1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+       c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+       q[0] = exp(z[0]) * k[-1]^α
+       z[0] = ρ * z[-1] + std_z * eps_z[x]
+   end
+
+   @parameters RBC begin
+       std_z = 0.01
+       ρ = 0.2
+       δ = 0.02
+       α = 0.5
+       β = 0.95
+   end
+   ```
+
+### Development Workflow
+
+1. **Keep the Julia REPL running** throughout the session - never restart between edits
+2. **Edit source files** in `src/` directory
+3. **Revise automatically detects changes** and recompiles only affected functions
+4. **Test changes immediately** in the same REPL session
+5. **Iterate rapidly** - edit, test, fix, repeat without restarting
+
+### Practical Example
+
+```julia
+# Initial call (before any edits)
+julia> get_equations(RBC)
+4-element Vector{String}:
+ "1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0] ^ (α - 1) + (1 - δ))"
+ ...
+
+# Now edit src/inspect.jl to add a print statement:
+# println("🔍 get_equations called - Revise is working!")
+# Save the file - Revise detects the change automatically
+
+# Call again - no restart needed!
+julia> get_equations(RBC)
+🔍 get_equations called - Revise is working!
+4-element Vector{String}:
+ "1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0] ^ (α - 1) + (1 - δ))"
+ ...
+```
+
+### Why This Matters
+
+- **Eliminates precompilation delays** - changes apply in seconds, not minutes
+- **Preserves session state** - models, variables, and computations persist
+- **Enables rapid debugging** - add/remove print statements instantly
+- **Essential for this package** - MacroModelling has significant compile times
+
+### Important Caveats
+
+- **Revise must be loaded BEFORE MacroModelling** - order matters!
+- **Structural changes require restart** - new types, module reorganization, or changing `__init__` functions
+- **Manual refresh available** - if a change isn't detected, run `Revise.revise()`
+
+## Testing
+
+**Do NOT run the full test suite** - it takes too long. Instead:
+
+### Quick Feature Testing
+Write a bespoke script using the simple RBC model shown above, then test your changes:
+```julia
+# Test your changes here
+get_irf(RBC)
+simulate(RBC)
+```
+
+### Test Sets (CI Only)
+
+Tests are organized by test sets specified via `TEST_SET` environment variable:
+
+- `basic`, `estimation`, `higher_order_1-3`, `plots_1-5`, `estimate_sw07`, `jet`
+- Estimation tests: `1st_order_inversion_estimation`, `2nd_order_estimation`, `pruned_2nd_order_estimation`, `3rd_order_estimation`, `pruned_3rd_order_estimation`
+- Pigeons estimation tests: `estimation_pigeons`, `1st_order_inversion_estimation_pigeons`, `2nd_order_estimation_pigeons`, `pruned_2nd_order_estimation_pigeons`, `3rd_order_estimation_pigeons`, `pruned_3rd_order_estimation_pigeons`
+
+```bash
+TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'
+```
+
+### Test Environment Setup
+
+```julia
+using Pkg
+Pkg.activate("test")
+Pkg.instantiate()
+```
+
+## Documentation
+
+Build documentation locally:
+```bash
+julia --project=docs docs/make.jl
+```
+
+Documentation is built with Documenter.jl and deployed to GitHub Pages.
+
+## Benchmarking
+
+```julia
+using BenchmarkTools
+include("benchmark/benchmarks.jl")
+run(SUITE)
+```
+
+## Model Syntax
+
+- **Variables** use time indices: `...[2], [1], [0], [-1], [-2]...`
+- **Shocks** use `[x]`: `eps_z[x]`
+- **Calibration equations** use `|` syntax in `@parameters` block
+- **Custom steady state** can be provided via `steady_state_function` parameter
 
 ## Code Style and Conventions
 
 ### General Principles
-
 1. **Minimal changes:** Make the smallest possible changes to accomplish the task
 2. **Testing:** Test changes with simple models rather than running the full test suite
 3. **Performance:** This package emphasizes performance - be mindful of type stability and allocations
 4. **Documentation:** Update docstrings when modifying public APIs
 
-### Julia Conventions
+### Writing Style
+- Avoid second-person phrasing ("you") in docs and docstrings
 
-- Follow standard Julia style guidelines
-- Use meaningful variable names
-- Time indices in models: `...[2], [1], [0], [-1], [-2]...` for variables, `[x]` for shocks
-- Parameter definitions use the `@parameters` macro
-- Model definitions use the `@model` macro
+### Caching Guidance
+- For constant calculations that can be computed once and reused, compute lazily on first use and store in the model struct cache; subsequent use must read from the cache
 
-### Mathematical Notation
+## Key Design Considerations
 
-- The package uses end-of-period timing convention (not start-of-period like some other packages)
-- Models work with symbolic mathematics via Symbolics.jl
-- Solutions use perturbation methods (first, second, third order)
+- **Performance critical** - Package competes with Dynare/RISE. Be mindful of type stability and allocations.
+- **Symbolic mathematics** - Uses Symbolics.jl and SymPyPythonCall for symbolic derivatives compiled to efficient numerical code.
+- **Automatic differentiation** - Supports forward and reverse-mode AD for gradients w.r.t. parameters.
+- **Thread safety** - Important for estimation tasks.
 
-## Working with the Repository
+## Common Tasks
 
-### CI/CD Pipeline
+### Adding a New Feature
+1. Write the feature in the appropriate `src/` file
+2. Create a minimal test script (don't rely on full test suite)
+3. Test with the simple RBC model
+4. Update documentation if it's a user-facing feature
+
+### Fixing a Bug
+1. Identify the issue location in `src/`
+2. Write a minimal reproduction case
+3. Fix and verify with test script
+4. Ensure existing functionality isn't broken
+
+### Adding a New Model
+1. Place in `models/` directory
+2. Follow existing model structure
+3. Include citation information
+4. Test that it solves and produces IRFs
+
+### Common Change Points
+- **New API:** add in `src/get_functions.jl` and export from `src/MacroModelling.jl`
+- **New model:** add a file under `models/` using the model macros
+- **Solver changes:** look in `src/perturbation.jl` and `src/algorithms/`
+
+## CI/CD Pipeline
 
 - **CI runs on:** push (pull requests are commented out in workflow)
 - **Platforms:** Ubuntu, macOS, Windows (x64 and arm64 where applicable)
 - **Coverage:** Uploaded to Codecov
 - **Matrix testing:** Multiple test sets run in parallel across different OS/architecture combinations
 
-### Common Tasks
+## Session Progress Log
 
-1. **Adding a new feature:**
-   - Write the feature in the appropriate `src/` file
-   - Create a minimal test script (don't rely on full test suite)
-   - Test with a simple model like RBC
-   - Update documentation if it's a user-facing feature
+- Always take stock of what was done and what remains, and save it in `AGENT_PROGRESS.md`
+- At the start of a new session, always read `AGENT_PROGRESS.md` before making changes
 
-2. **Fixing a bug:**
-   - Identify the issue location in `src/`
-   - Write a minimal reproduction case
-   - Fix and verify with test script
-   - Ensure existing functionality isn't broken
+## CRITICAL WORKFLOW REQUIREMENTS
 
-3. **Adding a new model:**
-   - Place in `models/` directory
-   - Follow existing model structure
-   - Include citation information
-   - Test that it solves and produces IRFs
+**These rules are non-negotiable.**
+
+1. **NEVER claim something works without running a test to prove it.** After writing any code, immediately write and run a test. If you cannot test it, say so explicitly.
+
+2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results.
+
+3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
+
+4. **Be explicit about unknowns.** If you're uncertain about something, say so. Don't guess.
 
 ## Additional Resources
 
@@ -165,13 +269,3 @@ MacroModelling.jl/
 - **Issue tracker:** GitHub Issues
 - **Contributing guidelines:** See CONTRIBUTING.md
 - **Code of Conduct:** See CODE_OF_CONDUCT.md
-- **Agent-specific instructions:** See AGENTS.md for specialized agent guidance
-
-## Notes for Copilot Agents
-
-- This is a specialized numerical package for macroeconomics - solutions involve perturbation methods, Kalman filtering, and nonlinear equation solving
-- The package has complex dependencies (SymPy, Symbolics, optimization libraries) that must be handled carefully
-- Performance is critical - the package competes with established tools like Dynare and RISE
-- Many operations use symbolic mathematics that are compiled to efficient numerical code
-- Thread safety and multi-threading are important for estimation tasks
-- See AGENTS.md for specific instructions on testing, benchmarking, and package management
