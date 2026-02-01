@@ -147,6 +147,9 @@ Return the equations of the model. In case programmatic model writing was used t
 # Arguments
 - $MODEL®
 
+# Keyword Arguments
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Optionally include timing (e.g., `"k[-1]"` or `"eps[x]"`) to match exact timing.
+
 # Returns
 - `Vector{Expr}` of the parsed equations as expressions.
 
@@ -210,6 +213,9 @@ Note that the output assumes the equations are equal to 0. As in, `-z{δ} * ρ{�
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Time subscripts are ignored for steady state equations.
 
 # Returns
 - `Vector{Expr}` of the NSSS equations as expressions.
@@ -283,6 +289,9 @@ Note that the output assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹�
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Optionally include timing (e.g., `"k[-1]"` or `"eps[x]"`) to match exact timing.
 
 # Returns
 - `Vector{Expr}` of the dynamic model equations as expressions.
@@ -404,6 +413,9 @@ Note that the output assumes the equations are equal to 0. As in, `k / (q * 4) -
 
 # Arguments
 - $MODEL®
+
+# Keyword Arguments
+- `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Time subscripts (except `[ss]`) are ignored for calibration equations.
 
 # Returns
 - `Vector{Expr}` of the calibration equations as expressions.
