@@ -62,6 +62,25 @@ function process_model_equations(
     build_dynamic_and_ss_equations!(model_ex, dyn_equations, ss_equations, aux_vars_created, dyn_eq_aux_ind)
     create_nonnegativity_auxiliaries!(model_ex, ss_and_aux_equations, ➕_vars, bounds, ss_equations_with_aux_variables, unique_➕_eqs, precompile)
 
+    dyn_var_future_list, dyn_var_present_list, dyn_var_past_list, dyn_exo_list, dyn_ss_list = extract_dyn_symbol_lists(dyn_equations)
+
+    original_equations = []
+    for (i,arg) in enumerate(model_ex.args)
+        if isa(arg,Expr)
+            prs_exx = postwalk(x -> x isa Expr ? unblock(x) : x, model_ex.args[i])
+            push!(original_equations, unblock(prs_exx))
+        end
+    end
+
+    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
+                                                      collect.(dyn_var_present_list),
+                                                      collect.(dyn_var_past_list),
+                                                      collect.(dyn_exo_list))) .== 1)
+
+    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " *
+        repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...]) *
+        ". These equations contain only one dynamic variable and therefore fix its value; consider using a parameter instead."
+
     # go through changed SS equations including nonnegativity auxiliary variables
     var_list_aux_SS = []
     ss_list_aux_SS = []
@@ -86,7 +105,6 @@ function process_model_equations(
 
     # go through dynamic equations and label
     # create timings
-    dyn_var_future_list, dyn_var_present_list, dyn_var_past_list, dyn_exo_list, dyn_ss_list = extract_dyn_symbol_lists(dyn_equations)
 
     all_symbols = reduce(union,collect.(get_symbols.(dyn_equations)))
     parameters_in_equations = sort(collect(setdiff(all_symbols, filter_by_pattern(all_symbols, r"₎$"))))
@@ -238,21 +256,6 @@ function process_model_equations(
                 var_past_list_aux_SS,
                 ss_equations_with_aux_variables)
 
-    original_equations = []
-    for (i,arg) in enumerate(model_ex.args)
-        if isa(arg,Expr)
-            prs_exx = postwalk(x -> x isa Expr ? unblock(x) : x, model_ex.args[i])
-            push!(original_equations, unblock(prs_exx))
-        end
-    end
-
-    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
-                                                      collect.(dyn_var_present_list),
-                                                      collect.(dyn_var_past_list),
-                                                      collect.(dyn_exo_list))) .== 1)
-                                                    
-    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
-    
     duplicate_equations = []
     for item in unique(dyn_equations)
         indices = findall(x -> x == item, dyn_equations)
