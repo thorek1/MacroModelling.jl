@@ -165,7 +165,7 @@ using Test
         @test history[1].equation_index !== nothing
 
         updated_eqs = get_equations(model)
-        @test any(eq -> occursin("1.7", eq), updated_eqs)
+        @test any(eq -> occursin("1.7", string(eq)), updated_eqs)
 
         model = nothing
     end
@@ -923,5 +923,260 @@ end
         @test length(history) == 0
         
         RBC_empty = nothing
+    end
+end
+
+
+@testset verbose = true "Vector/Tuple batch operations" begin
+    @testset "Vector update_equations!" begin
+        @model RBC_vec_update begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_update begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Update two equations at once
+        update_equations!(RBC_vec_update, [
+            (3, :(q[0] = exp(z[0]) * k[-1]^α * 1.01)),
+            (4, :(z[0] = 0.25 * z[-1] + std_z * eps_z[x]))
+        ], silent = true)
+        
+        # Check revision history has 2 entries
+        history = get_revision_history(RBC_vec_update)
+        @test length(history) == 2
+        @test all(h.action == :update_equation for h in history)
+        
+        # Model should still solve
+        ss = get_steady_state(RBC_vec_update, derivatives = false)
+        @test !any(isnan, ss)
+        
+        RBC_vec_update = nothing
+    end
+
+    @testset "Vector update_equations! with Pair syntax" begin
+        @model RBC_vec_pair begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_pair begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Use Pair syntax
+        update_equations!(RBC_vec_pair, [
+            3 => :(q[0] = exp(z[0]) * k[-1]^α * 1.02),
+        ], silent = true)
+        
+        history = get_revision_history(RBC_vec_pair)
+        @test length(history) == 1
+        
+        RBC_vec_pair = nothing
+    end
+
+    @testset "Vector add_equation!" begin
+        @model RBC_vec_add begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_add begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        @test length(get_equations(RBC_vec_add)) == 4
+        @test length(get_variables(RBC_vec_add)) == 4
+        
+        # Add two equations at once
+        add_equation!(RBC_vec_add, [
+            :(i[0] = k[0] - (1 - δ) * k[-1]),
+            :(y[0] = q[0])
+        ], silent = true)
+        
+        @test length(get_equations(RBC_vec_add)) == 6
+        @test length(get_variables(RBC_vec_add)) == 6
+        @test "i" in get_variables(RBC_vec_add)
+        @test "y" in get_variables(RBC_vec_add)
+        
+        # Check revision history
+        history = get_revision_history(RBC_vec_add)
+        @test length(history) == 2
+        @test all(h.action == :add_equation for h in history)
+        
+        RBC_vec_add = nothing
+    end
+
+    @testset "Vector remove_equation!" begin
+        @model RBC_vec_remove begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+            i[0] = k[0] - (1 - δ) * k[-1]
+            y[0] = q[0]
+        end
+
+        @parameters RBC_vec_remove begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        @test length(get_equations(RBC_vec_remove)) == 6
+        
+        # Remove two equations at once (descending order)
+        remove_equation!(RBC_vec_remove, [6, 5], silent = true)
+        
+        @test length(get_equations(RBC_vec_remove)) == 4
+        @test !("i" in get_variables(RBC_vec_remove))
+        @test !("y" in get_variables(RBC_vec_remove))
+        
+        # Check revision history
+        history = get_revision_history(RBC_vec_remove)
+        @test length(history) == 2
+        @test all(h.action == :remove_equation for h in history)
+        
+        RBC_vec_remove = nothing
+    end
+
+    @testset "Vector add_calibration_equation!" begin
+        @model RBC_vec_add_calib begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_add_calib begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        @test length(get_calibration_equations(RBC_vec_add_calib)) == 0
+        
+        # Add calibration equation using vector
+        add_calibration_equation!(RBC_vec_add_calib, [
+            :(k[ss] / q[ss] = 10 | δ)
+        ], silent = true)
+        
+        @test length(get_calibration_equations(RBC_vec_add_calib)) == 1
+        @test "δ" in get_calibrated_parameters(RBC_vec_add_calib)
+        
+        RBC_vec_add_calib = nothing
+    end
+
+    @testset "Vector update_calibration_equations!" begin
+        @model RBC_vec_update_calib begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_update_calib begin
+            std_z = 0.01
+            ρ = 0.2
+            α = 0.5
+            β = 0.95
+            k[ss] / q[ss] = 10 | δ
+        end
+
+        @test "δ" in get_calibrated_parameters(RBC_vec_update_calib)
+        
+        # Update using vector
+        update_calibration_equations!(RBC_vec_update_calib, [
+            (1, :(k[ss] / q[ss] = 15 | δ))
+        ], silent = true)
+        
+        # Check revision history
+        history = get_revision_history(RBC_vec_update_calib)
+        @test length(history) == 1
+        @test history[1].action == :update_calibration_equation
+        
+        RBC_vec_update_calib = nothing
+    end
+
+    @testset "Vector remove_calibration_equation!" begin
+        @model RBC_vec_remove_calib begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_vec_remove_calib begin
+            std_z = 0.01
+            ρ = 0.2
+            α = 0.5
+            β = 0.95
+            k[ss] / q[ss] = 10 | δ
+        end
+
+        @test length(get_calibration_equations(RBC_vec_remove_calib)) == 1
+        @test "δ" in get_calibrated_parameters(RBC_vec_remove_calib)
+        
+        # Remove using vector
+        remove_calibration_equation!(RBC_vec_remove_calib, [1], silent = true)
+        
+        @test length(get_calibration_equations(RBC_vec_remove_calib)) == 0
+        @test !("δ" in get_calibrated_parameters(RBC_vec_remove_calib))
+        
+        RBC_vec_remove_calib = nothing
+    end
+
+    @testset "Calibration equation without [ss] variables" begin
+        @model RBC_no_ss begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_no_ss begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Add calibration equation without [ss] - using parameter relationship
+        # This calibrates δ based on ρ (both parameters used in model equations)
+        add_calibration_equation!(RBC_no_ss, :(δ = ρ / 10 | δ), silent = true)
+        
+        @test "δ" in get_calibrated_parameters(RBC_no_ss)
+        @test length(get_calibration_equations(RBC_no_ss)) == 1
+        
+        # Model should still solve
+        ss = get_steady_state(RBC_no_ss, derivatives = false)
+        @test !any(isnan, ss)
+        
+        RBC_no_ss = nothing
     end
 end
