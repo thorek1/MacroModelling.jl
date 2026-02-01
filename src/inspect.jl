@@ -428,6 +428,180 @@ function get_solution_counts(𝓂::ℳ)::SolveCounters
     return 𝓂.counters
 end
 
+
+"""
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose, silent)
+
+Internal function that reprocesses model equations after modifications.
+Called by `update_equations!`, `add_equation!`, and `remove_equation!`.
+
+This handles the common pattern of:
+1. Processing the updated equation block
+2. Updating constants, workspaces, equations
+3. Resetting solver state
+4. Processing parameter definitions
+5. Setting up and solving the steady state
+"""
+function reprocess_model_equations!(𝓂::ℳ, 
+                                    updated_original_equations::Vector{Expr};
+                                    verbose::Bool = false,
+                                    silent::Bool = true)
+    updated_block = Expr(:block, updated_original_equations...)
+    parameter_block = reconstruct_parameter_block(𝓂)
+
+    T, equations_struct = process_model_equations(
+        updated_block,
+        𝓂.constants.post_model_macro.max_obc_horizon,
+        𝓂.constants.post_parameters_macro.precompile,
+    )
+
+    𝓂.constants = Constants(T)
+    𝓂.workspaces = Workspaces()
+    𝓂.equations = equations_struct
+
+    reset_solver_state!(𝓂)
+    
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro
+    )
+    
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro,
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds
+    )
+    
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+    
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    finalize_model_update!(𝓂; verbose = verbose, silent = silent)
+    
+    return nothing
+end
+
+
+"""
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameter_overrides, verbose, silent)
+
+Internal function that reprocesses calibration equations after modifications.
+Called by `update_calibration_equations!`, `add_calibration_equation!`, and `remove_calibration_equation!`.
+
+This handles the common pattern of:
+1. Reconstructing the parameter block with updated calibration
+2. Processing parameter definitions
+3. Updating all calibration-related model fields
+4. Resetting solver state
+5. Setting up and solving the steady state
+"""
+function reprocess_calibration_equations!(𝓂::ℳ, 
+                                          updated_calibration_original::Vector{Expr};
+                                          parameter_overrides::Dict{Symbol, Float64} = Dict{Symbol, Float64}(),
+                                          verbose::Bool = false,
+                                          silent::Bool = true)
+    parameter_block = reconstruct_parameter_block(
+        𝓂;
+        calibration_original_override = updated_calibration_original,
+        parameter_overrides = parameter_overrides,
+    )
+
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro,
+    )
+
+    𝓂.constants.post_parameters_macro = post_parameters_macro(
+        parsed_parameters.calib_parameters_no_var,
+        𝓂.constants.post_parameters_macro.precompile,
+        𝓂.constants.post_parameters_macro.simplify,
+        𝓂.constants.post_parameters_macro.symbolic,
+        𝓂.constants.post_parameters_macro.guess,
+        parsed_parameters.ss_calib_list,
+        parsed_parameters.par_calib_list,
+        parsed_parameters.bounds,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+    )
+
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+        var_axis = Symbol[],
+        calib_axis = Symbol[],
+    )
+    
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    reset_solver_state!(𝓂)
+
+    finalize_model_update!(𝓂; verbose = verbose, silent = silent)
+    
+    return nothing
+end
+
+
+"""
+    finalize_model_update!(𝓂; verbose, silent)
+
+Internal function that finalizes a model update by setting up and solving the steady state.
+Called by both `reprocess_model_equations!` and `reprocess_calibration_equations!`.
+"""
+function finalize_model_update!(𝓂::ℳ; verbose::Bool = false, silent::Bool = true)
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
+    
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂,
+                verbose = verbose,
+                silent = silent,
+                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
+            )
+        end
+    end
+
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
+    
+    return nothing
+end
+
 """
 $(SIGNATURES)
 Print the solve counters for the model in a human-readable format.
@@ -1305,9 +1479,7 @@ function update_equations!(𝓂::ℳ,
     end
     
     # Parse string to Expr if needed
-    if new_equation isa String
-        new_equation = Meta.parse(new_equation)
-    end
+    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
     
     # Store old equation for revision history
     old_equation = 𝓂.equations.original[equation_index]
@@ -1318,105 +1490,22 @@ function update_equations!(𝓂::ℳ,
         action = :update_equation,
         equation_index = equation_index,
         old_equation = old_equation,
-        new_equation = new_equation
+        new_equation = parsed_new_equation
     )
     push!(𝓂.revision_history, revision_entry)
     
     # Update the original equation
     updated_original_equations = copy(𝓂.equations.original)
-    updated_original_equations[equation_index] = new_equation
+    updated_original_equations[equation_index] = parsed_new_equation
     
     if verbose
         println("Updated equation $equation_index:")
         println("  Old: ", replace(string(old_equation), "◖" => "{", "◗" => "}"))
-        println("  New: ", replace(string(new_equation), "◖" => "{", "◗" => "}"))
+        println("  New: ", replace(string(parsed_new_equation), "◖" => "{", "◗" => "}"))
     end
     
-    # Re-process the model equations and combine with existing calibration parts
-    updated_block = Expr(:block, updated_original_equations...)
-
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-
-    𝓂.workspaces = Workspaces()
-
-    𝓂.equations = equations_struct
-
-    # Store custom steady state function before resetting
-    # NSSS_custom = 𝓂.functions.NSSS_custom
-    # 𝓂.functions = Functions()
-    # 𝓂.functions.NSSS_custom = NSSS_custom
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -1518,81 +1607,8 @@ function update_equations!(𝓂::ℳ,
         end
     end
     
-    # Re-process the model equations once
-    updated_block = Expr(:block, updated_original_equations...)
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-    𝓂.workspaces = Workspaces()
-    𝓂.equations = equations_struct
-
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations once using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -1681,86 +1697,8 @@ function add_equation!(𝓂::ℳ,
     updated_original_equations = copy(𝓂.equations.original)
     push!(updated_original_equations, parsed_new_equation)
 
-    # Re-process the model equations and combine with existing calibration parts
-    updated_block = Expr(:block, updated_original_equations...)
-
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-
-    𝓂.workspaces = Workspaces()
-
-    𝓂.equations = equations_struct
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -1828,81 +1766,8 @@ function add_equation!(𝓂::ℳ,
         push!(updated_original_equations, parsed_new_equation)
     end
 
-    # Re-process the model equations once
-    updated_block = Expr(:block, updated_original_equations...)
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-    𝓂.workspaces = Workspaces()
-    𝓂.equations = equations_struct
-
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -2004,86 +1869,8 @@ function remove_equation!(𝓂::ℳ,
     updated_original_equations = copy(𝓂.equations.original)
     deleteat!(updated_original_equations, equation_index)
 
-    # Re-process the model equations and combine with existing calibration parts
-    updated_block = Expr(:block, updated_original_equations...)
-
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-
-    𝓂.workspaces = Workspaces()
-
-    𝓂.equations = equations_struct
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -2177,81 +1964,8 @@ function remove_equation!(𝓂::ℳ,
         deleteat!(updated_original_equations, equation_index)
     end
 
-    # Re-process the model equations once
-    updated_block = Expr(:block, updated_original_equations...)
-    parameter_block = reconstruct_parameter_block(𝓂)
-
-    T, equations_struct = process_model_equations(
-        updated_block,
-        𝓂.constants.post_model_macro.max_obc_horizon,
-        𝓂.constants.post_parameters_macro.precompile,
-    )
-
-    𝓂.constants = Constants(T)
-    𝓂.workspaces = Workspaces()
-    𝓂.equations = equations_struct
-
-    reset_solver_state!(𝓂)
-    
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro
-    )
-    
-    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
-        𝓂.constants.post_parameters_macro,
-        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
-        ss_calib_list = parsed_parameters.ss_calib_list,
-        par_calib_list = parsed_parameters.par_calib_list,
-        bounds = parsed_parameters.bounds
-    )
-    
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-    
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the model equations using common function
+    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
     
     return nothing
 end
@@ -2440,85 +2154,8 @@ function update_calibration_equations!(𝓂::ℳ,
     updated_calibration_original = copy(𝓂.equations.calibration_original)
     updated_calibration_original[equation_index] = parsed_new_equation
 
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    # Update post_parameters_macro (keeping existing options like guess, simplify, etc.)
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    # Update post_complete_parameters 
-    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],  # Reset so it gets recomputed
-        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
-    )
-    
-    # Update parameter values
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2619,80 +2256,8 @@ function update_calibration_equations!(𝓂::ℳ,
         updated_calibration_original[equation_index] = parsed_new_equation
     end
 
-    # Reconstruct and re-solve once
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],
-        calib_axis = Symbol[],
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params)."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2802,85 +2367,8 @@ function add_calibration_equation!(𝓂::ℳ,
     updated_calibration_original = copy(𝓂.equations.calibration_original)
     push!(updated_calibration_original, parsed_new_equation)
 
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    # Update post_parameters_macro (keeping existing options like guess, simplify, etc.)
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    # Update post_complete_parameters 
-    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],  # Reset so it gets recomputed
-        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
-    )
-    
-    # Update parameter values
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2969,80 +2457,8 @@ function add_calibration_equation!(𝓂::ℳ,
         push!(updated_calibration_original, parsed_new_equation)
     end
 
-    # Reconstruct and re-solve once
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],
-        calib_axis = Symbol[],
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params)."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -3158,87 +2574,10 @@ function remove_calibration_equation!(𝓂::ℳ,
     updated_calibration_original = copy(𝓂.equations.calibration_original)
     deleteat!(updated_calibration_original, equation_index)
 
-    # Reconstruct parameter block with removed calibration equation and new fixed parameter value
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-        parameter_overrides = Dict(calib_param => new_value),
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    # Update post_parameters_macro (keeping existing options)
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    # Update equations struct with calibration fields
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    # Update post_complete_parameters 
-    # Reset axis fields to empty so ensure_name_display_constants! will recompute them
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],  # Reset so it gets recomputed
-        calib_axis = Symbol[],  # Reset so it gets recomputed with new calibration_parameters
-    )
-    
-    # Update parameter values
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    # Reset solver state (caches, NSSS solve blocks, functions_written flag)
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; 
+                                     parameter_overrides = Dict{Symbol, Float64}(calib_param => Float64(new_value)),
+                                     verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -3330,7 +2669,7 @@ function remove_calibration_equation!(𝓂::ℳ,
             end
         end
         
-        parameter_overrides[calib_param] = new_val
+        parameter_overrides[calib_param] = Float64(new_val)
         
         if !silent
             println("\nRemoving calibration equation $equation_index:")
@@ -3360,81 +2699,10 @@ function remove_calibration_equation!(𝓂::ℳ,
         end
     end
 
-    # Reconstruct and re-solve once
-    parameter_block = reconstruct_parameter_block(
-        𝓂;
-        calibration_original_override = updated_calibration_original,
-        parameter_overrides = parameter_overrides,
-    )
-
-    parsed_parameters = process_parameter_definitions(
-        parameter_block,
-        𝓂.constants.post_model_macro,
-    )
-
-    𝓂.constants.post_parameters_macro = post_parameters_macro(
-        parsed_parameters.calib_parameters_no_var,
-        𝓂.constants.post_parameters_macro.precompile,
-        𝓂.constants.post_parameters_macro.simplify,
-        𝓂.constants.post_parameters_macro.symbolic,
-        𝓂.constants.post_parameters_macro.guess,
-        parsed_parameters.ss_calib_list,
-        parsed_parameters.par_calib_list,
-        parsed_parameters.bounds,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-        𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-    )
-
-    𝓂.equations.calibration = parsed_parameters.equations.calibration
-    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
-    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
-    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
-
-    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-        𝓂.constants.post_complete_parameters;
-        parameters = parsed_parameters.parameters,
-        missing_parameters = parsed_parameters.missing_parameters,
-        var_axis = Symbol[],
-        calib_axis = Symbol[],
-    )
-    
-    𝓂.parameter_values = parsed_parameters.parameter_values
-
-    reset_solver_state!(𝓂)
-
-    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
-    if !isnothing(𝓂.functions.NSSS_custom)
-        write_ss_check_function!(𝓂)
-    else
-        if !has_missing_parameters
-            set_up_steady_state_solver!(
-                𝓂,
-                verbose = verbose,
-                silent = silent,
-                avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                symbolic = 𝓂.constants.post_parameters_macro.symbolic,
-            )
-        end
-    end
-
-    if !has_missing_parameters
-        opts = merge_calculation_options(verbose = verbose)
-        solve_steady_state!(
-            𝓂,
-            opts,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
-            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
-            silent = silent,
-        )
-        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
-        𝓂.functions.functions_written = true
-    else
-        if !silent
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params)."
-        end
-    end
+    # Re-process the calibration equations using common function
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; 
+                                     parameter_overrides = parameter_overrides,
+                                     verbose = verbose, silent = silent)
 
     return nothing
 end
