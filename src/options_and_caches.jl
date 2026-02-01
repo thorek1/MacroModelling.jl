@@ -616,6 +616,37 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
 end
 
 
+"""
+    Functions()
+
+Create a default `model_functions` instance with placeholder functions.
+All function fields are initialized to identity or no-op functions,
+and `functions_written` is set to `false`.
+"""
+Functions() = model_functions(
+    (x->x),                                                    # NSSS_solve
+    (x->x),                                                    # NSSS_check
+    nothing,                                                   # NSSS_custom
+    (x->x),                                                    # NSSS_∂equations_∂parameters
+    (x->x),                                                    # NSSS_∂equations_∂SS_and_pars
+    jacobian_functions(x->x, x->x, x->x),                      # jacobian
+    hessian_functions(x->x, x->x, x->x),                       # hessian
+    third_order_derivatives_functions(x->x, x->x, x->x),       # third_order_derivatives
+    (x,y)->nothing,                                            # first_order_state_update
+    (x,y)->nothing,                                            # first_order_state_update_obc
+    (x,y)->nothing,                                            # second_order_state_update
+    (x,y)->nothing,                                            # second_order_state_update_obc
+    (x,y)->nothing,                                            # pruned_second_order_state_update
+    (x,y)->nothing,                                            # pruned_second_order_state_update_obc
+    (x,y)->nothing,                                            # third_order_state_update
+    (x,y)->nothing,                                            # third_order_state_update_obc
+    (x,y)->nothing,                                            # pruned_third_order_state_update
+    (x,y)->nothing,                                            # pruned_third_order_state_update_obc
+    x->x,                                                      # obc_violation
+    false                                                      # functions_written
+)
+
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
@@ -716,6 +747,21 @@ end
 function _convert_axis(axis, ::Type{S}) where {S <: Union{Symbol, String}}
     axis === nothing && return Vector{S}()
     return S === String ? string.(axis) : Symbol.(axis)
+end
+
+function update_post_parameters_macro(p::post_parameters_macro; kwargs...)
+    return post_parameters_macro(
+        get(kwargs, :parameters_as_function_of_parameters, p.parameters_as_function_of_parameters),
+        get(kwargs, :precompile, p.precompile),
+        get(kwargs, :simplify, p.simplify),
+        get(kwargs, :symbolic, p.symbolic),
+        get(kwargs, :guess, p.guess),
+        get(kwargs, :ss_calib_list, p.ss_calib_list),
+        get(kwargs, :par_calib_list, p.par_calib_list),
+        get(kwargs, :bounds, p.bounds),
+        get(kwargs, :ss_solver_parameters_algorithm, p.ss_solver_parameters_algorithm),
+        get(kwargs, :ss_solver_parameters_maxtime, p.ss_solver_parameters_maxtime),
+    )
 end
 
 function update_post_complete_parameters(p::post_complete_parameters; kwargs...)

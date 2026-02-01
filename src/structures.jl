@@ -694,7 +694,7 @@ mutable struct caches
 end
 
 # Default constructor: empty caches, all marked outdated
-caches() = caches(
+Caches() = caches(
     outdated_caches(),
     zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
     zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars

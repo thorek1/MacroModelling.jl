@@ -1239,33 +1239,55 @@ function update_equations!(𝓂::ℳ,
     
     # Re-process the model equations and combine with existing calibration parts
     updated_block = Expr(:block, updated_original_equations...)
+
+    parameter_block = reconstruct_parameter_block(𝓂)
+
     T, equations_struct = process_model_equations(
         updated_block,
         𝓂.constants.post_model_macro.max_obc_horizon,
         𝓂.constants.post_parameters_macro.precompile,
     )
 
-    equations_struct.calibration = 𝓂.equations.calibration
-    equations_struct.calibration_no_var = 𝓂.equations.calibration_no_var
-    equations_struct.calibration_parameters = 𝓂.equations.calibration_parameters
+    𝓂.constants = Constants(T)
 
-    𝓂.constants.post_model_macro = T
+    𝓂.workspaces = Workspaces()
+
+    𝓂.caches = Caches()
+    
     𝓂.equations = equations_struct
 
-    𝓂.caches.outdated.non_stochastic_steady_state = true
-    𝓂.caches.outdated.jacobian = true
-    𝓂.caches.outdated.hessian = true
-    𝓂.caches.outdated.third_order_derivatives = true
-    𝓂.caches.outdated.first_order_solution = true
-    𝓂.caches.outdated.second_order_solution = true
-    𝓂.caches.outdated.pruned_second_order_solution = true
-    𝓂.caches.outdated.third_order_solution = true
-    𝓂.caches.outdated.pruned_third_order_solution = true
-    𝓂.functions.functions_written = false
+    𝓂.functions = Functions()
+    
+    parsed_parameters = process_parameter_definitions(
+        parameter_block,
+        𝓂.constants.post_model_macro
+    )
+
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro,
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds
+    )
+    
+    # Update equations struct with calibration fields
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+
+    𝓂.parameter_values = parsed_parameters.parameter_values
 
     has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
     missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
-
+    
     if !isnothing(𝓂.functions.NSSS_custom)
         write_ss_check_function!(𝓂)
     else
@@ -1534,7 +1556,7 @@ function update_calibration_equations!(𝓂::ℳ,
     𝓂.parameter_values = parsed_parameters.parameter_values
 
     # Reinitialize caches (fresh empty state, all marked outdated)
-    𝓂.caches = caches()
+    𝓂.caches = Caches()
 
     # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
     𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
@@ -1735,7 +1757,7 @@ function add_calibration_equation!(𝓂::ℳ,
     𝓂.parameter_values = parsed_parameters.parameter_values
 
     # Reinitialize caches (fresh empty state, all marked outdated)
-    𝓂.caches = caches()
+    𝓂.caches = Caches()
 
     # Reset NSSS solve blocks (will be rebuilt by set_up_steady_state_solver!)
     𝓂.NSSS.solve_blocks_in_place = ss_solve_block[]
