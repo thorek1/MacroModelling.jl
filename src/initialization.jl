@@ -6,6 +6,298 @@
 # workspaces, caches, constants, and calculation options
 # =============================================================================
 
+"""
+    ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
+
+Ensure the doubling algorithm buffers are allocated in the workspace.
+"""
+function ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
+    n = ws.n
+    if size(ws.𝐂, 1) != n
+        ws.𝐂 = zeros(T, n, n)
+    end
+    if size(ws.𝐂¹, 1) != n
+        ws.𝐂¹ = zeros(T, n, n)
+    end
+    if size(ws.𝐀, 1) != n
+        ws.𝐀 = zeros(T, n, n)
+    end
+    if size(ws.𝐂A, 1) != n
+        ws.𝐂A = zeros(T, n, n)
+    end
+    if size(ws.𝐀², 1) != n
+        ws.𝐀² = zeros(T, n, n)
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
+
+Ensure the Krylov method buffers are allocated in the workspace.
+"""
+function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
+    n = ws.n
+    if size(ws.tmp̄, 1) != n
+        ws.tmp̄ = zeros(T, n, n)
+    end
+    if size(ws.𝐗, 1) != n
+        ws.𝐗 = zeros(T, n, n)
+    end
+    if length(ws.b) != n * n
+        ws.b = zeros(T, n * n)
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+
+Ensure the bicgstab solver workspace is allocated.
+"""
+function ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if length(ws.bicgstab_workspace.x) != n * n && n > 0
+        ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+    end
+    return ws
+end
+
+"""
+    ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
+
+Ensure the gmres solver workspace is allocated.
+"""
+function ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if length(ws.gmres_workspace.x) != n * n && n > 0
+        ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+    end
+    return ws
+end
+
+"""
+    ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+
+Ensure the doubling algorithm buffers are allocated in the workspace.
+`n` is the row dimension (size of A), `m` is the column dimension (size of B).
+"""
+function ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+    # Update stored dimensions
+    ws.n = n
+    ws.m = m
+    
+    # A-related buffers (n×n)
+    if size(ws.𝐀, 1) != n || size(ws.𝐀, 2) != n
+        ws.𝐀 = zeros(T, n, n)
+    end
+    if size(ws.𝐀¹, 1) != n || size(ws.𝐀¹, 2) != n
+        ws.𝐀¹ = zeros(T, n, n)
+    end
+    
+    # B-related buffers (m×m)
+    if size(ws.𝐁, 1) != m || size(ws.𝐁, 2) != m
+        ws.𝐁 = zeros(T, m, m)
+    end
+    if size(ws.𝐁¹, 1) != m || size(ws.𝐁¹, 2) != m
+        ws.𝐁¹ = zeros(T, m, m)
+    end
+    
+    # C-related buffers (n×m)
+    if size(ws.𝐂_dbl, 1) != n || size(ws.𝐂_dbl, 2) != m
+        ws.𝐂_dbl = zeros(T, n, m)
+    end
+    if size(ws.𝐂¹, 1) != n || size(ws.𝐂¹, 2) != m
+        ws.𝐂¹ = zeros(T, n, m)
+    end
+    if size(ws.𝐂B, 1) != n || size(ws.𝐂B, 2) != m
+        ws.𝐂B = zeros(T, n, m)
+    end
+    
+    return ws
+end
+
+"""
+    ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+
+Ensure the Krylov method buffers are allocated in the workspace.
+"""
+function ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+    ws.n = n
+    ws.m = m
+    
+    # All are n×m matrices
+    if size(ws.tmp, 1) != n || size(ws.tmp, 2) != m
+        ws.tmp = zeros(T, n, m)
+    end
+    if size(ws.𝐗, 1) != n || size(ws.𝐗, 2) != m
+        ws.𝐗 = zeros(T, n, m)
+    end
+    if size(ws.𝐂, 1) != n || size(ws.𝐂, 2) != m
+        ws.𝐂 = zeros(T, n, m)
+    end
+    
+    return ws
+end
+
+"""
+    ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
+
+Ensure the find_shocks workspaces are allocated for the given number of shocks.
+Only allocates 3rd order buffers if third_order=true.
+Buffer sizes: kron_buffer (n_exo^2), kron_buffer2 (n_exo^2 × n_exo), 
+              kron_buffer² (n_exo^3), kron_buffer3 (n_exo^3 × n_exo), kron_buffer4 (n_exo^3 × n_exo^2)
+"""
+function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
+    ws.n_exo = n_exo
+    
+    n_exo² = n_exo^2
+    n_exo³ = n_exo^3
+    
+    # 2nd order buffers (always needed)
+    if length(ws.kron_buffer) != n_exo²
+        ws.kron_buffer = zeros(T, n_exo²)
+    end
+    if size(ws.kron_buffer2, 1) != n_exo² || size(ws.kron_buffer2, 2) != n_exo
+        ws.kron_buffer2 = zeros(T, n_exo², n_exo)
+    end
+    
+    # 3rd order buffers (only if needed)
+    if third_order
+        if length(ws.kron_buffer²) != n_exo³
+            ws.kron_buffer² = zeros(T, n_exo³)
+        end
+        if size(ws.kron_buffer3, 1) != n_exo³ || size(ws.kron_buffer3, 2) != n_exo
+            ws.kron_buffer3 = zeros(T, n_exo³, n_exo)
+        end
+        if size(ws.kron_buffer4, 1) != n_exo³ || size(ws.kron_buffer4, 2) != n_exo²
+            ws.kron_buffer4 = zeros(T, n_exo³, n_exo²)
+        end
+    end
+    
+    return ws
+end
+
+
+"""
+    ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
+
+Ensure the inversion workspaces are allocated for the given dimensions.
+Only allocates 3rd order buffers if third_order=true.
+"""
+function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
+    ws.n_exo = n_exo
+    ws.n_past = n_past
+    
+    n_exo² = n_exo^2
+    n_exo³ = n_exo^3
+    n_state_vol = n_past + 1
+    n_aug = n_past + 1 + n_exo
+    
+    # Shock-related kron buffers (2nd order)
+    if length(ws.kron_buffer) != n_exo²
+        ws.kron_buffer = zeros(T, n_exo²)
+    end
+    if size(ws.kron_buffer2, 1) != n_exo² || size(ws.kron_buffer2, 2) != n_exo
+        ws.kron_buffer2 = zeros(T, n_exo², n_exo)
+    end
+    
+    # Shock-related kron buffers (3rd order)
+    if third_order
+        if length(ws.kron_buffer²) != n_exo³
+            ws.kron_buffer² = zeros(T, n_exo³)
+        end
+        if size(ws.kron_buffer3, 1) != n_exo³ || size(ws.kron_buffer3, 2) != n_exo
+            ws.kron_buffer3 = zeros(T, n_exo³, n_exo)
+        end
+        if size(ws.kron_buffer4, 1) != n_exo³ || size(ws.kron_buffer4, 2) != n_exo²
+            ws.kron_buffer4 = zeros(T, n_exo³, n_exo²)
+        end
+    end
+    
+    # State-related kron buffers
+    # kron_buffer_state holds kron(J, state_vol) where J is (n_exo, n_exo) and state_vol is (n_state_vol,)
+    if size(ws.kron_buffer_state, 1) != n_exo * n_state_vol || size(ws.kron_buffer_state, 2) != n_exo
+        ws.kron_buffer_state = zeros(T, n_exo * n_state_vol, n_exo)
+    end
+    if length(ws.kronstate_vol) != n_state_vol^2
+        ws.kronstate_vol = zeros(T, n_state_vol^2)
+    end
+    if length(ws.kronaug_state) != n_aug^2
+        ws.kronaug_state = zeros(T, n_aug^2)
+    end
+    if third_order
+        if length(ws.kron_kron_aug_state) != n_aug^3
+            ws.kron_kron_aug_state = zeros(T, n_aug^3)
+        end
+    end
+    
+    # State vectors
+    if length(ws.state_vol) != n_state_vol
+        ws.state_vol = zeros(T, n_state_vol)
+    end
+    if length(ws.aug_state₁) != n_aug
+        ws.aug_state₁ = zeros(T, n_aug)
+    end
+    if length(ws.aug_state₂) != n_aug
+        ws.aug_state₂ = zeros(T, n_aug)
+    end
+    
+    return ws
+end
+
+
+"""
+    ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+
+Ensure the Kalman workspaces are allocated for the given dimensions.
+"""
+function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+    # Check if dimensions changed
+    if ws.n_obs == n_obs && ws.n_states == n_states
+        return ws
+    end
+    
+    ws.n_obs = n_obs
+    ws.n_states = n_states
+    
+    # State and observation vectors
+    if length(ws.u) != n_states
+        ws.u = zeros(T, n_states)
+    end
+    if length(ws.z) != n_obs
+        ws.z = zeros(T, n_obs)
+    end
+    if length(ws.ztmp) != n_obs
+        ws.ztmp = zeros(T, n_obs)
+    end
+    if length(ws.utmp) != n_states
+        ws.utmp = zeros(T, n_states)
+    end
+    
+    # Matrix buffers
+    if size(ws.Ctmp, 1) != n_obs || size(ws.Ctmp, 2) != n_states
+        ws.Ctmp = zeros(T, n_obs, n_states)
+    end
+    if size(ws.F, 1) != n_obs || size(ws.F, 2) != n_obs
+        ws.F = zeros(T, n_obs, n_obs)
+    end
+    if size(ws.K, 1) != n_states || size(ws.K, 2) != n_obs
+        ws.K = zeros(T, n_states, n_obs)
+    end
+    if size(ws.tmp, 1) != n_states || size(ws.tmp, 2) != n_states
+        ws.tmp = zeros(T, n_states, n_states)
+    end
+    if size(ws.Ptmp, 1) != n_states || size(ws.Ptmp, 2) != n_states
+        ws.Ptmp = zeros(T, n_states, n_states)
+    end
+    
+    return ws
+end
+
+
 function _axis_has_string(axis)
     axis === nothing && return false
     T = eltype(axis)
