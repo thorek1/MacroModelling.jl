@@ -624,9 +624,6 @@ mutable struct outdated_caches
     pruned_third_order_solution::Bool
 end
 
-# Convenience constructor: all caches outdated (true)
-outdated_caches() = outdated_caches(true, true, true, true, true, true, true, true, true)
-
 
 """
 Stored computation results that can be reused across function calls.
@@ -693,19 +690,6 @@ mutable struct caches
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}       # SS Jacobian
 end
 
-# Default constructor: empty caches, all marked outdated
-Caches() = caches(
-    outdated_caches(),
-    zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
-    zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
-    zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
-    zeros(0,0), zeros(0,0),              # first_order_solution_matrix, qme_solution
-    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 2nd order
-    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 3rd order
-    Float64[],                           # non_stochastic_steady_state
-    CircularBuffer{Vector{Vector{Float64}}}(500),  # solver_cache
-    zeros(0,0), zeros(0,0),              # ∂equations_∂parameters, ∂equations_∂SS_and_pars
-)
 
 # Structs for perturbation derivative functions (used for AD)
 struct jacobian_functions
@@ -1078,8 +1062,6 @@ mutable struct SolveCounters
     third_order_solves_failed_estimation::Int
 end
 
-# Constructor with default values
-SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 """
 The main model struct containing all model data, organized into four categories:
@@ -1144,4 +1126,488 @@ mutable struct ℳ
     counters::SolveCounters                   # Solve counters (steady state and perturbation)
 
     revision_history::Vector{RevisionEntry}   # History of equation modifications
+end
+
+
+# =============================================================================
+# STRUCT CONSTRUCTORS
+# =============================================================================
+# Constructors for all structs defined above. Organized by category:
+# 1. Index structs (second_order_indices, third_order_indices)
+# 2. Workspace structs (nonlinear_solver_workspace, krylov_workspace, etc.)
+# 3. Cache structs (outdated_caches, caches)
+# 4. Function structs (model_functions)
+# 5. Top-level structs (workspaces, constants, SolveCounters)
+# =============================================================================
+
+"""
+    Second_order_indices()
+
+Create an empty `second_order_indices` struct with all fields initialized to empty/zero values.
+These will be lazily populated by various ensure_*! functions as needed.
+
+See [`second_order_indices`](@ref) for field documentation.
+"""
+function Second_order_indices()
+    empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_sparse_float = spzeros(Float64, 0, 0)
+    empty_matrix_float = Matrix{Float64}(undef, 0, 0)
+    return second_order_indices(
+        # Auxiliary matrices (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        # Computational index caches (BitVectors)
+        BitVector(),         # s_in_s⁺
+        BitVector(),         # s_in_s
+        BitVector(),         # kron_s⁺_s⁺
+        BitVector(),         # kron_s⁺_s
+        BitVector(),         # e_in_s⁺
+        BitVector(),         # v_in_s⁺
+        BitVector(),         # kron_s_s
+        BitVector(),         # kron_e_e
+        BitVector(),         # kron_v_v
+        BitVector(),         # kron_s_e
+        BitVector(),         # kron_e_s
+        BitVector(),         # kron_s⁺_s⁺_s⁺
+        BitVector(),         # kron_s_s⁺_s⁺
+        # Index arrays
+        Int[],               # shockvar_idxs
+        Int[],               # shock_idxs
+        Int[],               # shock_idxs2
+        Int[],               # shock²_idxs
+        Int[],               # var_vol²_idxs
+        # Conditional forecast indices
+        Int[],               # var²_idxs
+        Int[],               # shockvar²_idxs
+        # Moment computation caches
+        BitVector(),         # kron_states
+        empty_sparse_float,  # I_plus_s_s
+        Float64[],           # e4
+        Float64[],           # vec_Iₑ
+        empty_matrix_float,  # e4_nᵉ²_nᵉ²
+        empty_matrix_float,  # e4_nᵉ_nᵉ³
+        empty_matrix_float,  # e4_minus_vecIₑ_outer
+    )
+end
+
+"""
+    Third_order_indices()
+
+Create an empty `third_order_indices` struct with all fields initialized to empty/zero values.
+These will be lazily populated by various ensure_*! functions as needed.
+
+See [`third_order_indices`](@ref) for field documentation.
+"""
+function Third_order_indices()
+    empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_matrix_float = Matrix{Float64}(undef, 0, 0)
+    return third_order_indices(
+        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
+        empty_sparse_int,    # 𝐂₃
+        empty_sparse_int,    # 𝐔₃
+        Dict{Vector{Int}, Int}(),  # 𝐈₃
+        empty_sparse_int,    # 𝐂∇₃
+        empty_sparse_int,    # 𝐔∇₃
+        empty_sparse_int,    # 𝐏
+        empty_sparse_int,    # 𝐏₁ₗ
+        empty_sparse_int,    # 𝐏₁ᵣ
+        empty_sparse_int,    # 𝐏₁ₗ̂
+        empty_sparse_int,    # 𝐏₂ₗ̂
+        empty_sparse_int,    # 𝐏₁ₗ̄
+        empty_sparse_int,    # 𝐏₂ₗ̄
+        empty_sparse_int,    # 𝐏₁ᵣ̃
+        empty_sparse_int,    # 𝐏₂ᵣ̃
+        empty_sparse_int,    # 𝐒𝐏
+        # Conditional forecast index caches
+        Int[],               # var_vol³_idxs
+        Int[],               # shock_idxs2
+        Int[],               # shock_idxs3
+        Int[],               # shock³_idxs
+        Int[],               # shockvar1_idxs
+        Int[],               # shockvar2_idxs
+        Int[],               # shockvar3_idxs
+        Int[],               # shockvar³2_idxs
+        Int[],               # shockvar³_idxs
+        # Moment computation caches
+        Float64[],           # e6
+        BitVector(),         # kron_e_v
+        empty_matrix_float,  # e6_nᵉ³_nᵉ³
+        # Substate index Dict caches
+        Dict{Int, moments_substate_indices}(),
+        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_indices}(),
+    )
+end
+
+
+"""
+Create a workspace for nonlinear solvers (Levenberg-Marquardt and Newton).
+
+# Arguments
+- `func_buffer::Vector{T}`: Pre-allocated buffer for function evaluation
+- `jac_buffer::AbstractMatrix{T}`: Pre-allocated buffer for Jacobian
+- `chol_buffer::LinearCache`: Pre-allocated Cholesky factorization cache
+- `lu_buffer::LinearCache`: Pre-allocated LU factorization cache
+"""
+function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
+                                    chol_buffer::𝒮.LinearCache, lu_buffer::𝒮.LinearCache) where T <: Real
+    n = length(func_buffer)
+    nonlinear_solver_workspace(
+        func_buffer,          # func_buffer
+        jac_buffer,           # jac_buffer
+        chol_buffer,          # chol_buffer
+        lu_buffer,            # lu_buffer
+        zeros(T, n),          # current_guess
+        zeros(T, n),          # previous_guess
+        zeros(T, n),          # guess_update
+        zeros(T, n),          # current_guess_untransformed
+        zeros(T, n),          # previous_guess_untransformed
+        zeros(T, n),          # best_previous_guess
+        zeros(T, n),          # best_current_guess
+        zeros(T, n),          # factor
+        zeros(T, n),          # u_bounds
+        zeros(T, n),          # l_bounds
+    )
+end
+
+
+function Krylov_workspace(;S::Type = Float64)
+    krylov_workspace(  GmresWorkspace(0,0,Vector{S}),
+                    DqgmresWorkspace(0,0,Vector{S}),
+                    BicgstabWorkspace(0,0,Vector{S}))
+end
+
+function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
+    sylvester_workspace(
+        0, 0,                   # n, m dimensions
+        zeros(S,0,0),           # tmp (Krylov)
+        zeros(S,0,0),           # 𝐗 (Krylov)
+        zeros(S,0,0),           # 𝐂 (Krylov)
+        zeros(S,0,0),           # 𝐀 (doubling)
+        zeros(S,0,0),           # 𝐀¹ (doubling)
+        zeros(S,0,0),           # 𝐁 (doubling)
+        zeros(S,0,0),           # 𝐁¹ (doubling)
+        zeros(S,0,0),           # 𝐂_dbl (doubling)
+        zeros(S,0,0),           # 𝐂¹ (doubling)
+        zeros(S,0,0),           # 𝐂B (doubling)
+        Krylov_workspace(S = S),
+        # ForwardDiff partials buffers
+        zeros(T,0,0),           # P̃
+        zeros(T,0,0),           # Ã_fd
+        zeros(T,0,0),           # B̃_fd
+        zeros(T,0,0))           # C̃_fd
+end
+
+"""
+    Find_shocks_workspace(;T::Type = Float64)
+
+Create a workspace for find_shocks conditional forecast with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_find_shocks_buffers!.
+"""
+function Find_shocks_workspace(;T::Type = Float64)
+    find_shocks_workspace{T}(
+        0,                      # n_exo dimension
+        zeros(T,0),             # kron_buffer (n_exo^2)
+        zeros(T,0,0),           # kron_buffer2 (n_exo × n_exo)
+        zeros(T,0),             # kron_buffer² (n_exo^3)
+        zeros(T,0,0),           # kron_buffer3 (n_exo × n_exo^2)
+        zeros(T,0,0))           # kron_buffer4 (n_exo^2 × n_exo)
+end
+
+function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
+    higher_order_workspace(spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        zeros(T,0,0),
+                        Sylvester_workspace(S = S),
+                        # Second order pullback gradient buffers (lazily allocated)
+                        zeros(T,0,0),  # ∂∇₂
+                        zeros(T,0,0),  # ∂∇₁
+                        zeros(T,0,0),  # ∂𝐒₁
+                        zeros(T,0,0),  # ∂spinv
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎
+                        zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+                        # Third order pullback gradient buffers (only dense matrices)
+                        zeros(T,0,0),  # ∂∇₁_3rd
+                        zeros(T,0,0),  # ∂𝐒₁_3rd
+                        zeros(T,0,0),  # ∂spinv_3rd
+                        # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
+                        zeros(S,0,0),  # ∂x_second_order
+                        zeros(S,0,0))  # ∂x_third_order
+end
+
+"""
+    Qme_workspace(n::Int; T::Type = Float64)
+
+Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
+`n` is the dimension of the square matrices (nVars - nPresent_only).
+"""
+function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
+    qme_workspace(  zeros(T, n, n),  # E
+                    zeros(T, n, n),  # F
+                    zeros(T, n, n),  # X
+                    zeros(T, n, n),  # Y
+                    zeros(T, n, n),  # X_new
+                    zeros(T, n, n),  # Y_new
+                    zeros(T, n, n),  # E_new
+                    zeros(T, n, n),  # F_new
+                    zeros(T, n, n),  # temp1
+                    zeros(T, n, n),  # temp2
+                    zeros(T, n, n),  # temp3
+                    zeros(T, n, n),  # B̄
+                    zeros(T, n, n),  # AXX
+                    Sylvester_workspace(S = T),  # sylvester_ws
+                    # ForwardDiff partials buffers
+                    zeros(S, 0, 0),  # X̃
+                    zeros(S, 0, 0),  # X̃_first_order
+                    zeros(S, 0, 0),  # p_tmp
+                    zeros(S, 0, 0),  # ∂SS_and_pars
+                    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
+                    ℒ.I(n),             # I_n
+                    ℒ.I(nPast))         # I_nPast
+end
+
+"""
+    Lyapunov_workspace(n::Int; T::Type = Float64)
+
+Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
+`n` is the dimension of the square matrices.
+Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
+"""
+function Lyapunov_workspace(n::Int; T::Type = Float64)
+    lyapunov_workspace{T, T}(
+        n,                      # dimension
+        zeros(T, 0, 0),         # 𝐂 (doubling)
+        zeros(T, 0, 0),         # 𝐂¹ (doubling)
+        zeros(T, 0, 0),         # 𝐀 (doubling)
+        zeros(T, 0, 0),         # 𝐂A (doubling)
+        zeros(T, 0, 0),         # 𝐀² (doubling)
+        zeros(T, 0, 0),         # tmp̄ (Krylov)
+        zeros(T, 0, 0),         # 𝐗 (Krylov)
+        zeros(T, 0),            # b (Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
+        # ForwardDiff partials buffers
+        zeros(T, 0, 0),         # P̃
+        zeros(T, 0, 0),         # Ã_fd
+        zeros(T, 0, 0)          # C̃_fd
+    )
+end
+
+"""
+    Inversion_workspace(;T::Type = Float64)
+
+Create a workspace for inversion filter computations with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_inversion_buffers!.
+"""
+function Inversion_workspace(;T::Type = Float64)
+    inversion_workspace{T}(
+        0, 0,                   # n_exo, n_past dimensions
+        zeros(T, 0),            # kron_buffer (n_exo^2)
+        zeros(T, 0, 0),         # kron_buffer2 (n_exo^2 × n_exo)
+        zeros(T, 0),            # kron_buffer² (n_exo^3)
+        zeros(T, 0, 0),         # kron_buffer3 (n_exo^3 × n_exo)
+        zeros(T, 0, 0),         # kron_buffer4 (n_exo^3 × n_exo^2)
+        zeros(T, 0, 0),         # kron_buffer_state (n_exo × n_past+1)
+        zeros(T, 0),            # kronstate_vol ((n_past+1)^2)
+        zeros(T, 0),            # kronaug_state ((n_past+1+n_exo)^2)
+        zeros(T, 0),            # kron_kron_aug_state ((n_past+1+n_exo)^3)
+        zeros(T, 0),            # state_vol (n_past+1)
+        zeros(T, 0),            # aug_state₁ (n_past+1+n_exo)
+        zeros(T, 0),            # aug_state₂ (n_past+1+n_exo)
+        # Pullback buffers (for reverse-mode AD)
+        zeros(T, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
+        zeros(T, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
+        zeros(T, 0),            # ∂_tmp3 (n_past+n_exo)
+        zeros(T, 0, 0),         # ∂𝐒t⁻ (n_past × n_past+n_exo)
+        zeros(T, 0, 0),         # ∂data (n_past × n_periods)
+        # Pullback buffers for pruned second order
+        zeros(T, 0, 0),         # ∂𝐒ⁱ²ᵉtmp (n_exo × n_exo*n_obs)
+        zeros(T, 0, 0),         # ∂𝐒ⁱ²ᵉtmp2 (n_obs × n_exo^2)
+        zeros(T, 0),            # kronSλ (n_obs * n_exo)
+        zeros(T, 0))            # kronxS (n_exo * n_obs)
+end
+
+
+"""
+    Kalman_workspace(;T::Type = Float64)
+
+Create a workspace for Kalman filter computations with lazy buffer allocation.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_buffers!.
+"""
+function Kalman_workspace(;T::Type = Float64)
+    kalman_workspace{T}(
+        0, 0,                   # n_obs, n_states dimensions
+        zeros(T, 0),            # u (n_states)
+        zeros(T, 0),            # z (n_obs)
+        zeros(T, 0),            # ztmp (n_obs)
+        zeros(T, 0),            # utmp (n_states)
+        zeros(T, 0, 0),         # Ctmp (n_obs × n_states)
+        zeros(T, 0, 0),         # F (n_obs × n_obs)
+        zeros(T, 0, 0),         # K (n_states × n_obs)
+        zeros(T, 0, 0),         # tmp (n_states × n_states)
+        zeros(T, 0, 0))         # Ptmp (n_states × n_states)
+end
+
+
+"""
+    Functions()
+
+Create a default `model_functions` instance with placeholder functions.
+All function fields are initialized to identity or no-op functions,
+and `functions_written` is set to `false`.
+"""
+Functions() = model_functions(
+    (x->x),                                                    # NSSS_solve
+    (x->x),                                                    # NSSS_check
+    nothing,                                                   # NSSS_custom
+    (x->x),                                                    # NSSS_∂equations_∂parameters
+    (x->x),                                                    # NSSS_∂equations_∂SS_and_pars
+    jacobian_functions(x->x, x->x, x->x),                      # jacobian
+    hessian_functions(x->x, x->x, x->x),                       # hessian
+    third_order_derivatives_functions(x->x, x->x, x->x),       # third_order_derivatives
+    (x,y)->nothing,                                            # first_order_state_update
+    (x,y)->nothing,                                            # first_order_state_update_obc
+    (x,y)->nothing,                                            # second_order_state_update
+    (x,y)->nothing,                                            # second_order_state_update_obc
+    (x,y)->nothing,                                            # pruned_second_order_state_update
+    (x,y)->nothing,                                            # pruned_second_order_state_update_obc
+    (x,y)->nothing,                                            # third_order_state_update
+    (x,y)->nothing,                                            # third_order_state_update_obc
+    (x,y)->nothing,                                            # pruned_third_order_state_update
+    (x,y)->nothing,                                            # pruned_third_order_state_update_obc
+    x->x,                                                      # obc_violation
+    false                                                      # functions_written
+)
+
+
+function Workspaces(;T::Type = Float64, S::Type = Float64)
+    workspaces(Higher_order_workspace(T = T, S = S),
+                Higher_order_workspace(T = T, S = S),
+                Float64[],
+                Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
+                Lyapunov_workspace(0, T = T),  # 1st order - will be resized
+                Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
+                Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
+                Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
+                Find_shocks_workspace(T = T),  # conditional forecast - will be resized
+                Inversion_workspace(T = T),  # inversion filter - will be resized
+                Kalman_workspace(T = T))  # Kalman filter - will be resized
+end
+
+
+"""
+    outdated_caches()
+
+Create an `outdated_caches` struct with all fields set to `true` (all caches outdated).
+This is the default state when parameters change.
+
+See [`outdated_caches`](@ref) for field documentation.
+"""
+outdated_caches() = outdated_caches(true, true, true, true, true, true, true, true, true)
+
+
+"""
+    Caches()
+
+Create a default `caches` struct with empty arrays and all caches marked as outdated.
+All cache buffers are initialized to 0-dimensional objects and will be resized as needed.
+
+See [`caches`](@ref) for field documentation.
+"""
+Caches() = caches(
+    outdated_caches(),
+    zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
+    zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
+    zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
+    zeros(0,0), zeros(0,0),              # first_order_solution_matrix, qme_solution
+    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 2nd order
+    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 3rd order
+    Float64[],                           # non_stochastic_steady_state
+    CircularBuffer{Vector{Vector{Float64}}}(500),  # solver_cache
+    zeros(0,0), zeros(0,0),              # ∂equations_∂parameters, ∂equations_∂SS_and_pars
+)
+
+
+"""
+    SolveCounters()
+
+Create a `SolveCounters` struct with all counters initialized to zero.
+
+See [`SolveCounters`](@ref) for field documentation.
+"""
+SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+
+function Constants(model_struct; T::Type = Float64, S::Type = Float64)
+    constants( model_struct,
+            post_parameters_macro(
+                Symbol[],
+                false,
+                true,
+                false,
+                Dict{Symbol, Float64}(),
+                Set{Symbol}[],
+                Set{Symbol}[],
+                # Set{Symbol}[],
+                # Set{Symbol}[],
+                Dict{Symbol,Tuple{Float64,Float64}}(),
+                :ESCH,
+                120.0
+                ),
+            post_complete_parameters{Symbol}(
+                Symbol[],
+                Symbol[],
+                Int[],
+                Int[],
+                Int[],
+                Int[],
+                # Int[],
+                ℒ.I(0),
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                # false,
+                # false,
+                Symbol[],
+                # Symbol[],
+                # Symbol[],
+                # Int[],
+                # Symbol[],
+                Symbol[],
+                spzeros(Float64, 0, 0),
+                spzeros(Float64, 0, 0),
+                Symbol[],
+                Symbol[],
+                Symbol[],
+                # Symbol[],
+                Int[],
+                Int[],
+                Int[],
+                false,
+                1:0,
+                Int[],
+                Int[],
+                Int[],
+                Int[],
+                ℒ.I(0),
+                1:0,
+                1:0,
+                1,
+                zeros(Bool, 0, 0),
+                zeros(Bool, 0, 0)),
+            Second_order_indices(),
+            Third_order_indices())
 end
