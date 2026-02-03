@@ -1,0 +1,169 @@
+# Shared helper functions for steady-state solver generation
+# These functions eliminate code duplication between the two versions of
+# write_steady_state_solver_function! (symbolic and precompiled/numerical)
+
+"""
+    compute_block_triangularization(unknowns, eq_list)
+
+Compute block triangular form ordering for the steady-state equation system.
+Uses BlockTriangularForm.order to decompose the system into ordered blocks.
+
+# Arguments
+- `unknowns`: Vector of unknown variables/parameters to solve for
+- `eq_list`: Vector of sets, each containing symbols that appear in that equation
+
+# Returns
+- `vars`: Variable ordering with block assignments (2×n matrix)
+- `eqs`: Equation ordering with block assignments (2×n matrix)
+- `n_blocks`: Number of blocks
+- `incidence_matrix`: Sparse incidence matrix
+"""
+function compute_block_triangularization(unknowns, eq_list)
+    incidence_matrix = spzeros(Int, length(unknowns), length(unknowns))
+
+    for (i, u) in enumerate(unknowns)
+        for (k, e) in enumerate(eq_list)
+            incidence_matrix[i, k] = u ∈ e
+        end
+    end
+
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
+    R̂ = Int[]
+    for i in 1:n_blocks
+        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1]-1]
+    end
+    push!(R̂, 1)
+
+    vars = hcat(P, R̂)'
+    eqs = hcat(Q, R̂)'
+    
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant equations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now."
+    
+    return vars, eqs, n_blocks, incidence_matrix
+end
+
+
+"""
+    build_parameters_in_equations(𝓂, atoms_in_equations, relevant_pars_across)
+
+Build the parameter assignment expressions for use in the generated solve_SS function.
+
+# Returns
+Vector of expressions like `:(param = parameters[i])` for parameters that appear
+in the steady-state equations.
+"""
+function build_parameters_in_equations(𝓂, atoms_in_equations, relevant_pars_across)
+    parameters_in_equations = []
+
+    for (i, parss) in enumerate(𝓂.constants.post_complete_parameters.parameters) 
+        if parss ∈ union(atoms_in_equations, relevant_pars_across)
+            push!(parameters_in_equations, :($parss = parameters[$i]))
+        end
+    end
+    
+    return parameters_in_equations
+end
+
+
+"""
+    build_dependencies!(𝓂, atoms_in_equations_list, solved_vars)
+
+Build and store the dependency tracking information in 𝓂.NSSS.dependencies.
+Tracks which parameters and variables each solved variable depends on.
+
+# Returns
+The dependencies vector.
+"""
+function build_dependencies!(𝓂, atoms_in_equations_list, solved_vars)
+    dependencies = []
+    for (i, a) in enumerate(atoms_in_equations_list)
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
+    end
+
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
+
+    𝓂.NSSS.dependencies = dependencies
+    
+    return dependencies
+end
+
+
+"""
+    build_dyn_exos_expressions(𝓂)
+
+Build expressions that set dynamic exogenous variables (past/future) to zero for steady state.
+
+# Returns
+Vector of expressions like `:(exo_var = 0)`.
+"""
+function build_dyn_exos_expressions(𝓂)
+    dyn_exos = []
+    for dex in union(𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
+        push!(dyn_exos, :($dex = 0))
+    end
+    return dyn_exos
+end
+
+
+"""
+    build_parameter_bounds_expressions(𝓂, atoms_in_equations, relevant_pars_across)
+
+Build expressions that clamp parameters to their defined bounds.
+
+# Returns
+Vector of bound-clamping expressions like `:(param = min(max(param, lb), ub))`.
+"""
+function build_parameter_bounds_expressions(𝓂, atoms_in_equations, relevant_pars_across)
+    par_bounds = []
+    
+    for varpar in intersect(𝓂.constants.post_complete_parameters.parameters, union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.constants.post_parameters_macro.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.constants.post_parameters_macro.bounds[varpar][1])),$(𝓂.constants.post_parameters_macro.bounds[varpar][2]))))
+        end
+    end
+    
+    return par_bounds
+end
+
+
+"""
+    collect_calibration_no_var_parameters!(atoms_in_equations::Set{Symbol}, 𝓂)
+
+Add parameters from calibration_no_var equations to the atoms_in_equations set.
+Also returns a set of parameters_only_in_par_defs for internal use.
+"""
+function collect_calibration_no_var_parameters!(atoms_in_equations::Set{Symbol}, 𝓂)
+    parameters_only_in_par_defs = Set()
+    if length(𝓂.equations.calibration_no_var) > 0
+        atoms = reduce(union, get_symbols.(𝓂.equations.calibration_no_var))
+        [push!(atoms_in_equations, a) for a in atoms]
+        [push!(parameters_only_in_par_defs, a) for a in atoms]
+    end
+    return parameters_only_in_par_defs
+end
+
+
+"""
+    build_return_variables(𝓂)
+
+Build the return variable list for solve_SS function.
+
+# Returns
+- Symbols for variables in return statement
+- Length of return vector
+"""
+function build_return_variables(𝓂)
+    vars_expr = Symbol.(replace.(string.(sort(union(
+        𝓂.constants.post_model_macro.var,
+        𝓂.constants.post_model_macro.exo_past,
+        𝓂.constants.post_model_macro.exo_future
+    ))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    
+    return_length = length(union(
+        𝓂.constants.post_model_macro.var,
+        𝓂.constants.post_model_macro.exo_past,
+        𝓂.constants.post_model_macro.exo_future
+    )) + length(𝓂.equations.calibration_parameters)
+    
+    return vars_expr, return_length
+end
