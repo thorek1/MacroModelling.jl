@@ -690,20 +690,6 @@ mutable struct caches
     ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}       # SS Jacobian
 end
 
-# Default constructor: empty caches, all marked outdated
-Caches() = caches(
-    outdated_caches(true, true, true, true, true, true, true, true, true),
-    zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
-    zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
-    zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
-    zeros(0,0), zeros(0,0),              # first_order_solution_matrix, qme_solution
-    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 2nd order
-    Float64[], SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), Float64[],  # 3rd order
-    Float64[],                           # non_stochastic_steady_state
-    CircularBuffer{Vector{Vector{Float64}}}(500),  # solver_cache
-    zeros(0,0), zeros(0,0),              # ∂equations_∂parameters, ∂equations_∂SS_and_pars
-)
-
 # Structs for perturbation derivative functions (used for AD)
 struct jacobian_functions
     f::Function                     # The main jacobian function
@@ -1520,16 +1506,6 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
 end
 
 
-"""
-    outdated_caches()
-
-Create an `outdated_caches` struct with all fields set to `true` (all caches outdated).
-This is the default state when parameters change.
-
-See [`outdated_caches`](@ref) for field documentation.
-"""
-outdated_caches() = outdated_caches(true, true, true, true, true, true, true, true, true)
-
 
 """
     Caches()
@@ -1540,7 +1516,7 @@ All cache buffers are initialized to 0-dimensional objects and will be resized a
 See [`caches`](@ref) for field documentation.
 """
 Caches() = caches(
-    outdated_caches(),
+    outdated_caches(true, true, true, true, true, true, true, true, true),
     zeros(0,0), zeros(0,0), zeros(0,0),  # jacobian, jacobian_parameters, jacobian_SS_and_pars
     zeros(0,0), zeros(0,0), zeros(0,0),  # hessian, hessian_parameters, hessian_SS_and_pars
     zeros(0,0), zeros(0,0), zeros(0,0),  # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
