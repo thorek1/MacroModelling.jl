@@ -175,6 +175,10 @@ end
 Build a RuntimeGeneratedFunction that contains all model-specific steady-state solving logic.
 This function takes a parameter vector and returns solved variables and calibration parameters.
 
+The function returns a status code:
+- 0: Success
+- 1: Failed intermediate check (caller should retry with adjusted scale)
+
 # Arguments
 - `𝓂`: The model struct
 - `parameters_in_equations`: Parameter assignment expressions
@@ -187,11 +191,26 @@ A RuntimeGeneratedFunction that processes parameters and solves for steady state
 function build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
     vars_expr, _ = build_return_variables(𝓂)
     
-    core_func_exp = quote
+    # Replace continue statements with early returns
+    # Continue statements indicate intermediate failures that should trigger scale adjustment
+    modified_SS_solve_func = []
+    for expr in SS_solve_func
+        # Replace "continue" with "return status=1" to signal need for scale adjustment
+        modified_expr = postwalk(expr) do x
+            if x == :(continue)
+                return :(return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], NSSS_solver_cache_tmp, solution_error, iters, 1)
+            end
+            x
+        end
+        push!(modified_SS_solve_func, modified_expr)
+    end
+    
+    # Build the function expression directly (not wrapped in quote)
+    core_func_exp = :(
         function solve_SS_core(parameters::Vector{<:Real}, 𝓂::ℳ, closest_solution,
                               fail_fast_solvers_only::Bool, cold_start::Bool,
                               solver_parameters::Vector{solver_parameters},
-                              verbose::Bool, tol::Tolerances)
+                              verbose::Bool, tol::Tolerances, scale::Float64, solved_scale::Float64)
             params_flt = parameters
             $(parameters_in_equations...)
             $(par_bounds...)
@@ -199,11 +218,14 @@ function build_model_specific_solver_core_function(𝓂, parameters_in_equations
             NSSS_solver_cache_tmp = []
             solution_error = 0.0
             iters = 0
-            $(SS_solve_func...)
+            # Compute current_best for cache management
+            current_best = sqrt(sum(abs2,𝓂.caches.solver_cache[end][end] - params_flt))
+            $(modified_SS_solve_func...)
             
-            return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], NSSS_solver_cache_tmp, solution_error, iters
+            # Success - return with status=0
+            return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], NSSS_solver_cache_tmp, solution_error, iters, 0
         end
-    end
+    )
     
     return @RuntimeGeneratedFunction(core_func_exp)
 end
@@ -249,7 +271,7 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
     
     # This is now a normal function (not an RGF) that orchestrates the solving process
     # It calls the model-specific RGF (solver_core) for all parameter/variable operations
-    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
+    solve_exp = :(function solve_SS(initial_parameters::Vector{<:Real}, 
                                     𝓂::ℳ,
                                     tol::Tolerances,
                                     verbose::Bool, 
@@ -317,9 +339,15 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
                         end
 
                         # Call the model-specific RGF to do all parameter processing and variable solving
-                        output, NSSS_solver_cache_tmp, solution_error, iters = 𝓂.functions.NSSS_solver_core(
+                        output, NSSS_solver_cache_tmp, solution_error, iters, status = 𝓂.functions.NSSS_solver_core(
                             parameters, 𝓂, closest_solution, fail_fast_solvers_only, 
-                            cold_start, solver_parameters, verbose, tol)
+                            cold_start, solver_parameters, verbose, tol, scale, solved_scale)
+
+                        # If status==1, it means an intermediate check failed - adjust scale and continue
+                        if status == 1
+                            scale = scale * .3 + solved_scale * .7
+                            continue
+                        end
 
                         if solution_error < tol.NSSS_acceptance_tol
                             solved_scale = scale
