@@ -2,10 +2,15 @@
 using MacroModelling
 using Test
 
-# Helper to reload SW07 model for fresh state
+# Load SW07 model once at module level
+include("../models/Smets_Wouters_2007.jl")
+
+# Helper to get a fresh copy of the SW07 model for testing
+# We need to reload to get a clean state without revision history
 function load_sw07()
-    include("../models/Smets_Wouters_2007.jl")
-    return Smets_Wouters_2007
+    # Re-include the model file to get a fresh model instance
+    Base.invokelatest(include, "../models/Smets_Wouters_2007.jl")
+    return Base.invokelatest(() -> Smets_Wouters_2007)
 end
 
 @testset verbose = true "SW07 update_equations! functionality" begin
