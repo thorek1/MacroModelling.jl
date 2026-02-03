@@ -23,8 +23,16 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     if length(initial_guess) > 0
         X = initial_guess
-
-        AXX = A * X^2
+        AXX = if typeof(A) === typeof(workspace.AXX) &&
+                    size(workspace.AXX) == size(A) &&
+                    typeof(X) === typeof(workspace.temp1) &&
+                    size(workspace.temp1) == size(X)
+            ℒ.mul!(workspace.temp1, X, X)
+            ℒ.mul!(workspace.AXX, A, workspace.temp1)
+            workspace.AXX
+        else
+            A * X^2
+        end
 
         AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
         

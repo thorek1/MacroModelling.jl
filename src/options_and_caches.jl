@@ -616,6 +616,96 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
 end
 
 
+"""
+    First_order_workspace(;T::Type = Float64)
+
+Create a pre-allocated workspace for the first-order perturbation solution.
+All buffers are initialized to 0-dimensional and resized on first use via ensure_first_order_workspace!.
+"""
+function First_order_workspace(;T::Type = Float64)
+    first_order_workspace{T}(
+        0, 0, 0, 0, 0, 0, 0, 0,  # dimensions: n_eqns, n_future, n_vars, n_past, n_exo, n_dyn, n_comb, n_present_only
+        zeros(T, 0, 0),          # A₊
+        zeros(T, 0, 0),          # A₀
+        zeros(T, 0, 0),          # A₋
+        zeros(T, 0, 0),          # Ã₊
+        zeros(T, 0, 0),          # Ã₀
+        zeros(T, 0, 0),          # Ã₋
+        zeros(T, 0, 0),          # A_vcat
+        zeros(T, 0, 0),          # result
+        zeros(T, 0, 0),          # M
+        zeros(T, 0, 0))          # nₚ₋
+end
+
+
+"""
+    ensure_first_order_workspace!(ws::first_order_workspace{T}, n_eqns::Int, n_future::Int, n_vars::Int, n_past::Int, n_exo::Int, n_dyn::Int, n_comb::Int, n_present_only::Int) where T
+
+Ensure the first-order solution workspaces are allocated for the given dimensions.
+"""
+function ensure_first_order_workspace!(ws::first_order_workspace{T}, n_eqns::Int, n_future::Int, n_vars::Int, n_past::Int, n_exo::Int, n_dyn::Int, n_comb::Int, n_present_only::Int) where T
+    # Check if dimensions changed
+    if ws.n_eqns == n_eqns && ws.n_future == n_future && ws.n_vars == n_vars && 
+       ws.n_past == n_past && ws.n_exo == n_exo && ws.n_dyn == n_dyn && 
+       ws.n_comb == n_comb && ws.n_present_only == n_present_only
+        return ws
+    end
+    
+    ws.n_eqns = n_eqns
+    ws.n_future = n_future
+    ws.n_vars = n_vars
+    ws.n_past = n_past
+    ws.n_exo = n_exo
+    ws.n_dyn = n_dyn
+    ws.n_comb = n_comb
+    ws.n_present_only = n_present_only
+    
+    # QR decomposition products: A = Q.Q' * ∇
+    if size(ws.A₊, 1) != n_eqns || size(ws.A₊, 2) != n_future
+        ws.A₊ = zeros(T, n_eqns, n_future)
+    end
+    if size(ws.A₀, 1) != n_eqns || size(ws.A₀, 2) != n_vars
+        ws.A₀ = zeros(T, n_eqns, n_vars)
+    end
+    if size(ws.A₋, 1) != n_eqns || size(ws.A₋, 2) != n_past
+        ws.A₋ = zeros(T, n_eqns, n_past)
+    end
+    
+    # Sorted matrices for QME
+    if size(ws.Ã₊, 1) != n_dyn || size(ws.Ã₊, 2) != n_comb
+        ws.Ã₊ = zeros(T, n_dyn, n_comb)
+    end
+    if size(ws.Ã₀, 1) != n_dyn || size(ws.Ã₀, 2) != n_comb
+        ws.Ã₀ = zeros(T, n_dyn, n_comb)
+    end
+    if size(ws.Ã₋, 1) != n_dyn || size(ws.Ã₋, 2) != n_comb
+        ws.Ã₋ = zeros(T, n_dyn, n_comb)
+    end
+    
+    # Combined output (before reorder)
+    if size(ws.A_vcat, 1) != n_vars || size(ws.A_vcat, 2) != n_past
+        ws.A_vcat = zeros(T, n_vars, n_past)
+    end
+    
+    # Final result
+    if size(ws.result, 1) != n_vars || size(ws.result, 2) != (n_past + n_exo)
+        ws.result = zeros(T, n_vars, n_past + n_exo)
+    end
+    
+    # M matrix
+    if size(ws.M, 1) != n_future || size(ws.M, 2) != n_vars
+        ws.M = zeros(T, n_future, n_vars)
+    end
+    
+    # nₚ₋ temporary
+    if size(ws.nₚ₋, 1) != n_present_only || size(ws.nₚ₋, 2) != n_past
+        ws.nₚ₋ = zeros(T, n_present_only, n_past)
+    end
+    
+    return ws
+end
+
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
@@ -627,7 +717,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T))  # Kalman filter - will be resized
+                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                First_order_workspace(T = T))  # First order solution - will be resized
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -660,7 +751,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 # false,
                 Symbol[],
                 # Symbol[],
-                # Symbol[],
+                Symbol[],
                 # Int[],
                 # Symbol[],
                 Symbol[],
@@ -744,7 +835,7 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         # get(kwargs, :exo_has_curly, p.exo_has_curly),
         get(kwargs, :SS_and_pars_names, p.SS_and_pars_names),
         # get(kwargs, :all_variables, p.all_variables),
-        # get(kwargs, :NSSS_labels, p.NSSS_labels),
+        get(kwargs, :NSSS_labels, p.NSSS_labels),
         # get(kwargs, :aux_indices, p.aux_indices),
         # get(kwargs, :processed_all_variables, p.processed_all_variables),
         full_NSSS_display,
@@ -1226,6 +1317,30 @@ end
 
 
 """
+    ensure_first_order_solution_workspace!(𝓂)
+
+Ensure the first-order perturbation solution workspace is properly sized for the model.
+Uses dimensions from post_model_macro and post_complete_parameters (for comb).
+"""
+function ensure_first_order_solution_workspace!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    idx_constants = ensure_first_order_constants!(𝓂.constants)
+    
+    n_eqns = T.nVars
+    n_future = T.nFuture_not_past_and_mixed
+    n_vars = T.nVars
+    n_past = T.nPast_not_future_and_mixed
+    n_exo = T.nExo
+    n_dyn = T.nVars - T.nPresent_only
+    n_comb = length(idx_constants.comb)
+    n_present_only = T.nPresent_only
+    
+    ensure_first_order_workspace!(𝓂.workspaces.first_order, n_eqns, n_future, n_vars, n_past, n_exo, n_dyn, n_comb, n_present_only)
+    return 𝓂.workspaces.first_order
+end
+
+
+"""
     ensure_lyapunov_workspace!(workspaces, n, order::Symbol)
 
 Ensure the Lyapunov workspace for the specified moment order is properly sized.
@@ -1237,19 +1352,19 @@ Note: buffers are still lazily allocated when algorithms are actually used.
 function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbol)
     if order == :first_order
         ws = workspaces.lyapunov_1st_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_1st_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_1st_order
     elseif order == :second_order
         ws = workspaces.lyapunov_2nd_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_2nd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_2nd_order
     elseif order == :third_order
         ws = workspaces.lyapunov_3rd_order
-        if ws.n != n
+        if ws.n == 0
             workspaces.lyapunov_3rd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_3rd_order
@@ -1352,7 +1467,7 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
             constants.post_complete_parameters;
             SS_and_pars_names = SS_and_pars_names,
             # all_variables = all_variables,
-            # NSSS_labels = NSSS_labels,
+            NSSS_labels = NSSS_labels,
             # aux_indices = aux_indices,
             # processed_all_variables = processed_all_variables,
             full_NSSS_display = full_NSSS_display,

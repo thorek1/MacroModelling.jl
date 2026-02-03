@@ -63,7 +63,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
 
     shocks² = 0.0
@@ -191,7 +191,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = @ignore_derivatives indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -439,7 +439,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -675,7 +675,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = @ignore_derivatives indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -1105,7 +1105,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -1438,11 +1438,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
     
@@ -1461,7 +1463,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     observables = get_and_check_observables(T, data_in_deviations)
 
-    cond_var_idx = indexin(observables, sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables, T.aux_var_exo_present_sorted)
 
     jac = zeros(0, 0)
 
@@ -1583,7 +1585,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
     sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
@@ -1803,7 +1805,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
     sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
@@ -2074,7 +2076,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     s_in_s⁺ = get_computational_constants(𝓂).s_in_s
     sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
@@ -2387,7 +2389,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = indexin(observables,T.aux_var_exo_present_sorted)
 
     s_in_s⁺ = get_computational_constants(𝓂).s_in_s
     sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺

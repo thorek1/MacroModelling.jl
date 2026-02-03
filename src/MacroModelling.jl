@@ -6348,11 +6348,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
 
@@ -6541,11 +6543,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -6856,11 +6860,13 @@ function solve!(𝓂::ℳ;
 
             qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
             sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+            first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
             
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 qme_ws,
-                                                                sylv_ws;
+                                                                sylv_ws,
+                                                                first_order_ws;
                                                                 opts = opts,
                                                                 initial_guess = 𝓂.caches.qme_solution)
     
@@ -6886,7 +6892,8 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
                                                                     qme_ws,
-                                                                    sylv_ws;
+                                                                    sylv_ws,
+                                                                    first_order_ws;
                                                                     opts = opts,
                                                                     initial_guess = 𝓂.caches.qme_solution)
                 if solved 𝓂.caches.qme_solution = qme_sol end
@@ -6904,7 +6911,7 @@ function solve!(𝓂::ℳ;
                 state_update₁̂ = (x,y)->nothing
             end
             
-            𝓂.caches.first_order_solution_matrix = S₁
+            𝓂.caches.first_order_solution_matrix = copy(S₁)
             𝓂.functions.first_order_state_update = state_update₁
             𝓂.functions.first_order_state_update_obc = state_update₁̂
             𝓂.caches.outdated.first_order_solution = false
@@ -8718,7 +8725,9 @@ function irf(state_update::Function,
     always_solved = true
 
     if shocks == :simulate
-        shock_history = randn(T.nExo,periods) * shock_size
+        shock_history = zeros(T.nExo, periods)
+        Random.randn!(Random.default_rng(), shock_history)
+        shock_history .*= shock_size
 
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 
@@ -9949,11 +9958,13 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
     sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = @ignore_derivatives ensure_first_order_solution_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)

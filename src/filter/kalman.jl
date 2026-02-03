@@ -43,7 +43,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,T.aux_var_exo_present_sorted))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
@@ -61,7 +61,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,T.aux_var_exo_present_sorted))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
@@ -82,10 +82,12 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     T = constants.post_model_macro
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
-    A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+    II = @view constants.post_complete_parameters.diag_nVars[1:length(observables_and_states), 1:length(observables_and_states)]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
+    A = @view(𝐒[observables_and_states,1:T.nPast_not_future_and_mixed]) * @view(II[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:])
+    B = @view 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+
+    C = II[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
 
     𝐁 = B * B'
 
@@ -128,14 +130,14 @@ end
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
-                                C::Matrix{Float64}, 
+                                C::Matrix{T}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
+                                verbose::Bool = false)::S where {S <: Float64, T <: Real, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
     # Ensure workspaces are properly sized
@@ -162,12 +164,12 @@ function run_kalman_iterations(A::Matrix{S},
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
-        if !all(isfinite.(z)) 
+        if any(x -> !isfinite(x), z)
             if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood 
+            return on_failure_loglikelihood
         end
 
-        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)
         # v = data_in_deviations[:, t] - z
 
         ℒ.mul!(Ctmp, C, P) # use Octavian.jl
@@ -290,11 +292,13 @@ function filter_and_smooth(𝓂::ℳ,
 
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
     
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws; 
+                                                            sylv_ws,
+                                                            first_order_ws; 
                                                             opts = opts)
 
     if solved 𝓂.caches.qme_solution = qme_sol end
