@@ -164,7 +164,12 @@ using Test
         @test history[1].equation_index !== nothing
 
         updated_eqs = get_equations(model)
-        @test any(eq -> occursin("1.7", string(eq)), updated_eqs)
+        # Verify the updated Taylor rule no longer contains the crdy growth term
+        taylor_rule_eq = updated_eqs[history[1].equation_index]
+        @test !occursin("crdy", string(taylor_rule_eq))
+        # Verify the equation still contains the expected components
+        @test occursin("ms", string(taylor_rule_eq))
+        @test occursin("crr", string(taylor_rule_eq))
 
         model = nothing
     end
