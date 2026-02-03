@@ -170,10 +170,52 @@ end
 
 
 """
+    build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
+
+Build a RuntimeGeneratedFunction that contains all model-specific steady-state solving logic.
+This function takes a parameter vector and returns solved variables and calibration parameters.
+
+# Arguments
+- `𝓂`: The model struct
+- `parameters_in_equations`: Parameter assignment expressions
+- `par_bounds`: Parameter bounds expressions
+- `SS_solve_func`: Block solving expressions
+
+# Returns
+A RuntimeGeneratedFunction that processes parameters and solves for steady state.
+"""
+function build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
+    vars_expr, _ = build_return_variables(𝓂)
+    
+    core_func_exp = quote
+        function solve_SS_core(parameters::Vector{<:Real}, 𝓂::ℳ, closest_solution,
+                              fail_fast_solvers_only::Bool, cold_start::Bool,
+                              solver_parameters::Vector{solver_parameters},
+                              verbose::Bool, tol::Tolerances)
+            params_flt = parameters
+            $(parameters_in_equations...)
+            $(par_bounds...)
+            $(𝓂.equations.calibration_no_var...)
+            NSSS_solver_cache_tmp = []
+            solution_error = 0.0
+            iters = 0
+            $(SS_solve_func...)
+            
+            return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], NSSS_solver_cache_tmp, solution_error, iters
+        end
+    end
+    
+    return @RuntimeGeneratedFunction(core_func_exp)
+end
+
+
+"""
     build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
 
-Build the solve_SS function expression that will be compiled with @RuntimeGeneratedFunction.
-This is shared between both versions of write_steady_state_solver_function!.
+Build the solve_SS function that separates generic solver logic from model-specific computations.
+This is the REFACTORED version where:
+- Model-specific parts (parameter processing, variable computation) are in a RuntimeGeneratedFunction
+- Generic solver logic (iteration, scaling, caching) is in a normal function wrapper
 
 # Arguments
 - `𝓂`: The model struct
@@ -188,6 +230,12 @@ An Expr representing the solve_SS function.
 function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled::Bool = false)
     vars_expr, return_length = build_return_variables(𝓂)
     
+    # Build the model-specific RGF that handles all parameter/variable operations
+    solver_core = build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
+    
+    # Store this RGF in the model for use by the normal wrapper function
+    𝓂.functions.NSSS_solver_core = solver_core
+    
     # Zero initial value check only for precompiled version (V2) which has multi-element cache entries
     zero_init_check = precompiled ? quote
         # Zero initial value if starting without guess
@@ -199,6 +247,8 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
         end
     end : :()
     
+    # This is now a normal function (not an RGF) that orchestrates the solving process
+    # It calls the model-specific RGF (solver_core) for all parameter/variable operations
     solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
                                     𝓂::ℳ,
                                     tol::Tolerances,
@@ -210,7 +260,6 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
                     initial_parameters_tmp = copy(initial_parameters)
 
                     parameters = copy(initial_parameters)
-                    params_flt = copy(initial_parameters)
                     
                     current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
                     closest_solution_init = 𝓂.caches.solver_cache[end]
@@ -266,20 +315,16 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
                         else
                             parameters = copy(initial_parameters)
                         end
-                        params_flt = parameters
 
-                        $(parameters_in_equations...)
-                        $(par_bounds...)
-                        $(𝓂.equations.calibration_no_var...)
-                        NSSS_solver_cache_tmp = []
-                        solution_error = 0.0
-                        iters = 0
-                        $(SS_solve_func...)
+                        # Call the model-specific RGF to do all parameter processing and variable solving
+                        output, NSSS_solver_cache_tmp, solution_error, iters = 𝓂.functions.NSSS_solver_core(
+                            parameters, 𝓂, closest_solution, fail_fast_solvers_only, 
+                            cold_start, solver_parameters, verbose, tol)
 
                         if solution_error < tol.NSSS_acceptance_tol
                             solved_scale = scale
                             if scale == 1
-                                return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
+                                return output, (solution_error, iters)
                             else
                                 reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
                             end

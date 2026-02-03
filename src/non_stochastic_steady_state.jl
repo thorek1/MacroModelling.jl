@@ -234,8 +234,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     solve_exp = build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
 
-    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.functions.NSSS_solve = eval(solve_exp)
+    # REFACTORED: solve_SS is now a normal function (not an RGF) that calls model-specific RGFs
+    𝓂.functions.NSSS_solve = eval(solve_exp)
 
     return nothing
 end
@@ -681,8 +681,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     solve_exp = build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled = true)
 
-    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.functions.NSSS_solve = eval(solve_exp)
+    # REFACTORED: solve_SS is now a normal function (not an RGF) that calls model-specific RGFs
+    𝓂.functions.NSSS_solve = eval(solve_exp)
 
     return nothing
 end
