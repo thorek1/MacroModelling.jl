@@ -167,3 +167,132 @@ function build_return_variables(𝓂)
     
     return vars_expr, return_length
 end
+
+
+"""
+    build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
+
+Build the solve_SS function expression that will be compiled with @RuntimeGeneratedFunction.
+This is shared between both versions of write_steady_state_solver_function!.
+
+# Arguments
+- `𝓂`: The model struct
+- `parameters_in_equations`: Parameter assignment expressions
+- `par_bounds`: Parameter bounds expressions  
+- `SS_solve_func`: Block solving expressions
+- `precompiled::Bool`: Whether this is the precompiled version (V2) with multi-element cache structure
+
+# Returns
+An Expr representing the solve_SS function.
+"""
+function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled::Bool = false)
+    vars_expr, return_length = build_return_variables(𝓂)
+    
+    # Zero initial value check only for precompiled version (V2) which has multi-element cache entries
+    zero_init_check = precompiled ? quote
+        # Zero initial value if starting without guess
+        if !isfinite(sum(abs,closest_solution[2]))
+            closest_solution = copy(closest_solution)
+            for i in 1:2:length(closest_solution)
+                closest_solution[i] = zeros(length(closest_solution[i]))
+            end
+        end
+    end : :()
+    
+    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
+                                    𝓂::ℳ,
+                                    tol::Tolerances,
+                                    verbose::Bool, 
+                                    cold_start::Bool,
+                                    solver_parameters::Vector{solver_parameters})
+                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
+
+                    initial_parameters_tmp = copy(initial_parameters)
+
+                    parameters = copy(initial_parameters)
+                    params_flt = copy(initial_parameters)
+                    
+                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.caches.solver_cache[end]
+                    
+                    for pars in 𝓂.caches.solver_cache
+                        copy!(initial_parameters_tmp, pars[end])
+
+                        ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
+
+                        latest = sum(abs2,initial_parameters_tmp)
+                        if latest <= current_best
+                            current_best = latest
+                            closest_solution_init = pars
+                        end
+                    end
+
+                    range_iters = 0
+                    solution_error = 1.0
+                    solved_scale = 0
+                    scale = 1.0
+
+                    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+                    push!(NSSS_solver_cache_scale, closest_solution_init)
+
+                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
+                        range_iters += 1
+                        fail_fast_solvers_only = range_iters > 1 ? true : false
+
+                        if abs(solved_scale - scale) < 1e-2
+                            break 
+                        end
+
+                        current_best = sum(abs2,NSSS_solver_cache_scale[end][end] - initial_parameters)
+                        closest_solution = NSSS_solver_cache_scale[end]
+
+                        for pars in NSSS_solver_cache_scale
+                            copy!(initial_parameters_tmp, pars[end])
+                            
+                            ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
+
+                            latest = sum(abs2,initial_parameters_tmp)
+
+                            if latest <= current_best
+                                current_best = latest
+                                closest_solution = pars
+                            end
+                        end
+
+                        $zero_init_check
+
+                        if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
+                            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+                        else
+                            parameters = copy(initial_parameters)
+                        end
+                        params_flt = parameters
+
+                        $(parameters_in_equations...)
+                        $(par_bounds...)
+                        $(𝓂.equations.calibration_no_var...)
+                        NSSS_solver_cache_tmp = []
+                        solution_error = 0.0
+                        iters = 0
+                        $(SS_solve_func...)
+
+                        if solution_error < tol.NSSS_acceptance_tol
+                            solved_scale = scale
+                            if scale == 1
+                                return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
+                            else
+                                reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
+                            end
+
+                            if scale > .95
+                                scale = 1
+                            else
+                                scale = scale * .4 + .6
+                            end
+                        end
+                    end
+                    return zeros($return_length), (1, 0)
+                end)
+    
+    return solve_exp
+end
