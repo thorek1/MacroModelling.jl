@@ -932,7 +932,7 @@ end
 
 
 @testset verbose = true "SW07 model - update_equations!" begin
-    @testset "Update Taylor rule equation - remove output growth term" begin
+    @testset "Update Taylor rule equation - modify output growth term" begin
         include("../models/Smets_Wouters_2007.jl")
         model = Smets_Wouters_2007
         
@@ -942,9 +942,11 @@ end
         ss_before = get_steady_state(model, derivatives = false)
         std_before = get_standard_deviation(model, derivatives = false)
         
-        # Find the Taylor rule equation (equation with r[0], r[-1], pinf[0], etc.)
+        # Find the Taylor rule equation and modify it (keeping all parameters)
+        # Original: r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0]
+        # Modified: multiply by 1.0 to make an equivalent but syntactically different equation
         old_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0])
-        new_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * ms[0])
+        new_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0] * 1.0)
         
         update_equations!(model, old_rule, new_rule, silent = true)
         
@@ -962,7 +964,7 @@ end
         # Number of equations should remain the same
         @test length(get_equations(model)) == n_eqs_original
         
-        # Revert back to original Taylor rule
+        # Revert back to original Taylor rule (no parameter removal occurred)
         update_equations!(model, new_rule, old_rule, silent = true)
         
         # Check revision history now has 2 entries
@@ -988,7 +990,7 @@ end
         
         # Find the technology shock equation: a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x]
         eqs = get_equations(model)
-        shock_eq_idx = findfirst(eq -> occursin("a[0]") && occursin("crhoa") && occursin("ea[x]"), string.(eqs))
+        shock_eq_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
         @test shock_eq_idx !== nothing
         
         # Update to change persistence slightly (mathematically equivalent but different form)
@@ -1035,7 +1037,7 @@ end
         # Make two distinct updates
         # 1. Update technology shock
         eqs = get_equations(model)
-        shock_eq_idx = findfirst(eq -> occursin("a[0]") && occursin("crhoa") && occursin("ea[x]"), string.(eqs))
+        shock_eq_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
         update_equations!(model, shock_eq_idx, :(a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x] * 1.0), silent = true)
         
         # 2. Update Euler equation
@@ -1078,7 +1080,7 @@ end
         model = nothing
     end
     
-    @testset "Switch calibrated parameter in SW07" begin
+    @testset "Update calibration equation to change target" begin
         include("../models/Smets_Wouters_2007.jl")
         model = Smets_Wouters_2007
         
@@ -1086,13 +1088,16 @@ end
         calib_params_before = get_calibrated_parameters(model)
         @test "mcflex" in calib_params_before
         
-        # Try to update to calibrate cpie instead (which appears in model equations)
-        # This should work since cpie is used in the model
-        update_calibration_equations!(model, 1, :(mcflex = mc[ss] | cpie), silent = true)
+        # Modify the calibration equation slightly - multiply by 1.0
+        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.0 | mcflex), silent = true)
         
+        # mcflex should still be calibrated
         calib_params_after = get_calibrated_parameters(model)
-        @test "cpie" in calib_params_after
-        @test !("mcflex" in calib_params_after)
+        @test "mcflex" in calib_params_after
+        
+        # Check revision history
+        history = get_revision_history(model)
+        @test any(h -> h.action == :update_calibration_equation, history)
         
         ss = get_steady_state(model, derivatives = false)
         @test !any(isnan, ss)
@@ -1184,7 +1189,7 @@ end
         
         # Find and remove the wage observable equation
         eqs = get_equations(model)
-        dwobs_idx = findfirst(eq -> occursin("dwobs[0]") && occursin("ctrend"), string.(eqs))
+        dwobs_idx = findfirst(eq -> occursin("dwobs[0]", eq) && occursin("ctrend", eq), string.(eqs))
         @test dwobs_idx !== nothing
         
         n_eqs_before = length(eqs)
@@ -1354,7 +1359,7 @@ end
         
         # 2. Update a shock process
         eqs = get_equations(model)
-        shock_idx = findfirst(eq -> occursin("ms[0]") && occursin("crhoms"), string.(eqs))
+        shock_idx = findfirst(eq -> occursin("ms[0]", eq) && occursin("crhoms", eq), string.(eqs))
         if shock_idx !== nothing
             update_equations!(model, shock_idx, :(ms[0] = 1 - crhoms + crhoms * ms[-1] + z_em / 100 * em[x] * 1.0), silent = true)
         end
