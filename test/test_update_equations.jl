@@ -1,3 +1,4 @@
+
 using MacroModelling
 using Test
 
@@ -163,7 +164,12 @@ using Test
         @test history[1].equation_index !== nothing
 
         updated_eqs = get_equations(model)
-        @test any(eq -> occursin("1.7", string(eq)), updated_eqs)
+        # Verify the updated Taylor rule no longer contains the crdy growth term
+        taylor_rule_eq = updated_eqs[history[1].equation_index]
+        @test !occursin("crdy", string(taylor_rule_eq))
+        # Verify the equation still contains the expected components
+        @test occursin("ms", string(taylor_rule_eq))
+        @test occursin("crr", string(taylor_rule_eq))
 
         model = nothing
     end
@@ -921,6 +927,484 @@ end
         @test length(history) == 0
         
         RBC_empty = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - update_equations!" begin
+    @testset "Update Taylor rule equation - modify output growth term" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Get original equations and steady state
+        original_eqs = get_equations(model)
+        n_eqs_original = length(original_eqs)
+        ss_before = get_steady_state(model, derivatives = false)
+        std_before = get_standard_deviation(model, derivatives = false)
+        
+        # Find the Taylor rule equation and modify it (keeping all parameters)
+        # Original: r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0]
+        # Modified: multiply by 1.0 to make an equivalent but syntactically different equation
+        old_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0])
+        new_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0] * 1.0)
+        
+        update_equations!(model, old_rule, new_rule, silent = true)
+        
+        # Check revision history
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :update_equation
+        @test history[1].equation_index !== nothing
+        
+        # Model should still solve
+        ss_after = get_steady_state(model, derivatives = false)
+        std_after = get_standard_deviation(model, derivatives = false)
+        @test !any(isnan, ss_after)
+        
+        # Number of equations should remain the same
+        @test length(get_equations(model)) == n_eqs_original
+        
+        # Revert back to original Taylor rule (no parameter removal occurred)
+        update_equations!(model, new_rule, old_rule, silent = true)
+        
+        # Check revision history now has 2 entries
+        history = get_revision_history(model)
+        @test length(history) == 2
+        @test history[2].action == :update_equation
+        
+        # Model should still solve
+        ss_reverted = get_steady_state(model, derivatives = false)
+        std_reverted = get_standard_deviation(model, derivatives = false)
+        @test !any(isnan, ss_reverted)
+        
+        # Steady state and standard deviation should match original
+        @test isapprox(collect(ss_before), collect(ss_reverted), rtol = 1e-10)
+        @test isapprox(collect(std_before), collect(std_reverted), rtol = 1e-10)
+        
+        model = nothing
+    end
+    
+    @testset "Update shock equation by index" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Find the technology shock equation: a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x]
+        eqs = get_equations(model)
+        shock_eq_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
+        @test shock_eq_idx !== nothing
+        
+        # Update to change persistence slightly (mathematically equivalent but different form)
+        new_eq = :(a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x] * 1.0)
+        update_equations!(model, shock_eq_idx, new_eq, silent = true)
+        
+        # Check revision history
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].equation_index == shock_eq_idx
+        
+        # Model should still solve
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Update consumption Euler equation" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # The consumption Euler equation involves xi[0] = xi[1] * b[0] * r[0] * cbetabar / pinf[1]
+        old_eq = :(xi[0] = xi[1] * b[0] * r[0] * cbetabar / pinf[1])
+        # Multiply by 1.0 (identity transformation)
+        new_eq = :(xi[0] = xi[1] * b[0] * r[0] * cbetabar / pinf[1] * 1.0)
+        
+        update_equations!(model, old_eq, new_eq, silent = true)
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :update_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Multiple updates on SW07" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Make two distinct updates
+        # 1. Update technology shock
+        eqs = get_equations(model)
+        shock_eq_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
+        update_equations!(model, shock_eq_idx, :(a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x] * 1.0), silent = true)
+        
+        # 2. Update Euler equation
+        old_eq = :(xi[0] = xi[1] * b[0] * r[0] * cbetabar / pinf[1])
+        new_eq = :(xi[0] = xi[1] * b[0] * r[0] * cbetabar / pinf[1] * 1.0)
+        update_equations!(model, old_eq, new_eq, silent = true)
+        
+        # Check revision history has both
+        history = get_revision_history(model)
+        @test length(history) == 2
+        @test all(h -> h.action == :update_equation, history)
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - update_calibration_equations!" begin
+    @testset "Update flexible price markup calibration" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # SW07 has calibration equation: mcflex = mc[ss] | mcflex
+        calib_eqs = get_calibration_equations(model)
+        @test length(calib_eqs) >= 1
+        
+        # Update the mcflex calibration (just change RHS symbolically)
+        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.0 | mcflex), silent = true)
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :update_calibration_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Update calibration equation to change target" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Original: mcflex = mc[ss] | mcflex (mcflex is calibrated)
+        calib_params_before = get_calibrated_parameters(model)
+        @test "mcflex" in calib_params_before
+        
+        # Modify the calibration equation slightly - multiply by 1.0
+        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.0 | mcflex), silent = true)
+        
+        # mcflex should still be calibrated
+        calib_params_after = get_calibrated_parameters(model)
+        @test "mcflex" in calib_params_after
+        
+        # Check revision history
+        history = get_revision_history(model)
+        @test any(h -> h.action == :update_calibration_equation, history)
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - add_equation!" begin
+    @testset "Add auxiliary variable equation" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        n_eqs_before = length(get_equations(model))
+        n_vars_before = length(get_variables(model))
+        
+        # Add an auxiliary equation: inflation_gap[0] = pinf[0] - cpie
+        add_equation!(model, :(inflation_gap[0] = pinf[0] - cpie), silent = true)
+        
+        @test length(get_equations(model)) == n_eqs_before + 1
+        @test length(get_variables(model)) == n_vars_before + 1
+        @test "inflation_gap" in get_variables(model)
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :add_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Add multiple equations to SW07" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        n_eqs_before = length(get_equations(model))
+        
+        # Add two auxiliary variables
+        add_equation!(model, :(real_wage[0] = w[0] / pinf[0]), silent = true)
+        add_equation!(model, :(output_gap_pct[0] = 100 * (y[0] - yflex[0]) / yflex[0]), silent = true)
+        
+        @test length(get_equations(model)) == n_eqs_before + 2
+        @test "real_wage" in get_variables(model)
+        @test "output_gap_pct" in get_variables(model)
+        
+        history = get_revision_history(model)
+        @test length(history) == 2
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - remove_equation!" begin
+    @testset "Remove observable equation from SW07" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        n_eqs_before = length(get_equations(model))
+        n_vars_before = length(get_variables(model))
+        
+        # Remove the labor observable equation: labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1)
+        old_eq = :(labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1))
+        remove_equation!(model, old_eq, silent = true)
+        
+        @test length(get_equations(model)) == n_eqs_before - 1
+        @test length(get_variables(model)) == n_vars_before - 1
+        @test !("labobs" in get_variables(model))
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :remove_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Remove equation by index in SW07" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Find and remove the wage observable equation
+        eqs = get_equations(model)
+        dwobs_idx = findfirst(eq -> occursin("dwobs[0]", eq) && occursin("ctrend", eq), string.(eqs))
+        @test dwobs_idx !== nothing
+        
+        n_eqs_before = length(eqs)
+        remove_equation!(model, dwobs_idx, silent = true)
+        
+        @test length(get_equations(model)) == n_eqs_before - 1
+        @test !("dwobs" in get_variables(model))
+        
+        model = nothing
+    end
+    
+    @testset "Add then remove in SW07 - round trip" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        n_eqs_original = length(get_equations(model))
+        ss_before = get_steady_state(model, derivatives = false)
+        
+        # Add then remove an equation
+        add_equation!(model, :(temp_var[0] = y[0] + c[0]), silent = true)
+        @test length(get_equations(model)) == n_eqs_original + 1
+        
+        remove_equation!(model, n_eqs_original + 1, silent = true)
+        @test length(get_equations(model)) == n_eqs_original
+        
+        # Steady state should be approximately the same
+        ss_after = get_steady_state(model, derivatives = false)
+        @test isapprox(collect(ss_before), collect(ss_after), rtol = 1e-8)
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - add_calibration_equation!" begin
+    @testset "Add calibration for fixed parameter" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # In SW07, ctou = .025 is a fixed parameter (depreciation rate)
+        # Let's add a calibration equation for it
+        calib_params_before = get_calibrated_parameters(model)
+        @test !("ctou" in calib_params_before)
+        
+        # Add calibration: capital-to-output ratio determines depreciation
+        # k[ss] / y[ss] = 10 | ctou (example calibration)
+        add_calibration_equation!(model, :(k[ss] / y[ss] = 10 | ctou), silent = true)
+        
+        calib_params_after = get_calibrated_parameters(model)
+        @test "ctou" in calib_params_after
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :add_calibration_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Error when adding calibration for non-existent parameter" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # Try to add calibration for a parameter not in the model
+        @test_throws ErrorException add_calibration_equation!(
+            model,
+            :(y[ss] = 1.5 | fake_param),
+            silent = true,
+        )
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - remove_calibration_equation!" begin
+    @testset "Remove existing calibration from SW07" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # SW07 has calibration equations - let's remove one
+        calib_eqs_before = get_calibration_equations(model)
+        n_calib_before = length(calib_eqs_before)
+        @test n_calib_before >= 1
+        
+        calib_params_before = get_calibrated_parameters(model)
+        
+        # Remove first calibration equation with explicit value
+        remove_calibration_equation!(model, 1, new_value = 0.5, silent = true)
+        
+        calib_eqs_after = get_calibration_equations(model)
+        @test length(calib_eqs_after) == n_calib_before - 1
+        
+        # The previously calibrated parameter should now be fixed
+        calib_params_after = get_calibrated_parameters(model)
+        @test length(calib_params_after) == length(calib_params_before) - 1
+        
+        history = get_revision_history(model)
+        @test length(history) == 1
+        @test history[1].action == :remove_calibration_equation
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Remove calibration - use current value" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        calib_eqs_before = get_calibration_equations(model)
+        @test length(calib_eqs_before) >= 1
+        
+        # Remove without specifying new_value - should use the current calibrated value
+        remove_calibration_equation!(model, 1, silent = true)
+        
+        calib_eqs_after = get_calibration_equations(model)
+        @test length(calib_eqs_after) == length(calib_eqs_before) - 1
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+end
+
+
+@testset verbose = true "SW07 model - complex modification scenarios" begin
+    @testset "Update Taylor rule and add auxiliary variables" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # 1. Update Taylor rule to remove output growth term
+        old_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * (y[0] / yflex[0] / (y[-1] / yflex[-1])) ^ crdy * ms[0])
+        new_rule = :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * ms[0])
+        update_equations!(model, old_rule, new_rule, silent = true)
+        
+        # 2. Add auxiliary variables for analysis
+        add_equation!(model, :(interest_rate_gap[0] = r[0] - r[ss]), silent = true)
+        add_equation!(model, :(inflation_deviation[0] = pinf[0] - cpie), silent = true)
+        
+        # 3. Check everything worked
+        history = get_revision_history(model)
+        @test length(history) == 3
+        @test history[1].action == :update_equation
+        @test history[2].action == :add_equation
+        @test history[3].action == :add_equation
+        
+        @test "interest_rate_gap" in get_variables(model)
+        @test "inflation_deviation" in get_variables(model)
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Modify calibration and update multiple equations" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        # 1. Update a calibration equation
+        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.0 | mcflex), silent = true)
+        
+        # 2. Update a shock process
+        eqs = get_equations(model)
+        shock_idx = findfirst(eq -> occursin("ms[0]", eq) && occursin("crhoms", eq), string.(eqs))
+        if shock_idx !== nothing
+            update_equations!(model, shock_idx, :(ms[0] = 1 - crhoms + crhoms * ms[-1] + z_em / 100 * em[x] * 1.0), silent = true)
+        end
+        
+        # 3. Add an equation
+        add_equation!(model, :(policy_rate_ann[0] = 400 * (r[0] - 1)), silent = true)
+        
+        history = get_revision_history(model)
+        @test length(history) >= 2
+        
+        ss = get_steady_state(model, derivatives = false)
+        @test !any(isnan, ss)
+        
+        model = nothing
+    end
+    
+    @testset "Complex sequence: add, update, remove" begin
+        include("../models/Smets_Wouters_2007.jl")
+        model = Smets_Wouters_2007
+        
+        n_eqs_start = length(get_equations(model))
+        ss_start = get_steady_state(model, derivatives = false)
+        
+        # 1. Add two equations
+        add_equation!(model, :(temp1[0] = y[0]), silent = true)
+        add_equation!(model, :(temp2[0] = c[0]), silent = true)
+        @test length(get_equations(model)) == n_eqs_start + 2
+        
+        # 2. Update one of them
+        update_equations!(model, n_eqs_start + 1, :(temp1[0] = y[0] * 1.0), silent = true)
+        
+        # 3. Remove both
+        remove_equation!(model, n_eqs_start + 2, silent = true)
+        remove_equation!(model, n_eqs_start + 1, silent = true)
+        @test length(get_equations(model)) == n_eqs_start
+        
+        # 4. Verify we're back to original state
+        ss_end = get_steady_state(model, derivatives = false)
+        @test isapprox(collect(ss_start), collect(ss_end), rtol = 1e-8)
+        
+        # 5. Check history tracked everything
+        history = get_revision_history(model)
+        @test length(history) == 5  # 2 adds + 1 update + 2 removes
+        
+        model = nothing
     end
 end
 
