@@ -260,10 +260,17 @@ function solve_NSSS(initial_parameters::Vector{<:Real},
             parameters = copy(initial_parameters)
         end
 
-        # Call the model-specific RGF to do all parameter processing and variable solving
+        # Initialize variables that will be populated/modified by model-specific code
+        NSSS_solver_cache_tmp = []
+        solution_error = 0.0
+        iters = 0
+        current_best = sqrt(sum(abs2, 𝓂.caches.solver_cache[end][end] - parameters))
+        
+        # Call the model-specific RGF to do parameter processing and variable solving
         output, NSSS_solver_cache_tmp, solution_error, iters, status = 𝓂.functions.NSSS_solver_core(
             parameters, 𝓂, closest_solution, fail_fast_solvers_only, 
-            cold_start, solver_parameters, verbose, tol, scale, solved_scale)
+            cold_start, solver_parameters, verbose, tol, scale, solved_scale,
+            NSSS_solver_cache_tmp, solution_error, iters, current_best)
 
         # If status==1, it means an intermediate check failed - adjust scale and continue
         if status == 1
@@ -301,8 +308,11 @@ end
 """
     build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
 
-Build a RuntimeGeneratedFunction that contains all model-specific steady-state solving logic.
-This function takes a parameter vector and returns solved variables and calibration parameters.
+Build a RuntimeGeneratedFunction that contains ONLY model-specific steady-state solving logic.
+Non-model-specific initializations and computations are done in the wrapper function solve_NSSS.
+
+This RGF processes parameters by name, applies bounds, evaluates calibration equations, 
+and solves model blocks. It receives pre-initialized state variables from the wrapper.
 
 The function returns a status code:
 - 0: Success
@@ -310,9 +320,9 @@ The function returns a status code:
 
 # Arguments
 - `𝓂`: The model struct
-- `parameters_in_equations`: Parameter assignment expressions
-- `par_bounds`: Parameter bounds expressions
-- `SS_solve_func`: Block solving expressions
+- `parameters_in_equations`: Parameter assignment expressions (model-specific)
+- `par_bounds`: Parameter bounds expressions (model-specific)
+- `SS_solve_func`: Block solving expressions (model-specific)
 
 # Returns
 A RuntimeGeneratedFunction that processes parameters and solves for steady state.
@@ -339,16 +349,15 @@ function build_model_specific_solver_core_function(𝓂, parameters_in_equations
         function solve_SS_core(parameters::Vector{<:Real}, 𝓂::ℳ, closest_solution,
                               fail_fast_solvers_only::Bool, cold_start::Bool,
                               solver_parameters::Vector{solver_parameters},
-                              verbose::Bool, tol::Tolerances, scale::Float64, solved_scale::Float64)
+                              verbose::Bool, tol::Tolerances, scale::Float64, solved_scale::Float64,
+                              NSSS_solver_cache_tmp::Vector, solution_error::Float64, iters::Int, current_best::Float64)
+            # Model-specific parameter processing
             params_flt = parameters
             $(parameters_in_equations...)
             $(par_bounds...)
             $(𝓂.equations.calibration_no_var...)
-            NSSS_solver_cache_tmp = []
-            solution_error = 0.0
-            iters = 0
-            # Compute current_best for cache management
-            current_best = sqrt(sum(abs2,𝓂.caches.solver_cache[end][end] - params_flt))
+            
+            # Model-specific block solving (modifies solution_error, iters, NSSS_solver_cache_tmp, etc.)
             $(modified_SS_solve_func...)
             
             # Success - return with status=0
