@@ -170,6 +170,135 @@ end
 
 
 """
+    solve_NSSS(initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters; precompiled)
+
+Generic steady-state solver function that calls model-specific RuntimeGeneratedFunctions.
+This is a normal, pre-written function (not generated via eval) that implements the generic
+iteration, scaling, and caching logic. It calls 𝓂.functions.NSSS_solver_core which is a 
+RuntimeGeneratedFunction containing all model-specific parameter/variable operations.
+
+# Arguments
+- `initial_parameters`: Initial parameter values
+- `𝓂`: Model struct containing the model-specific RGF
+- `tol`: Tolerance settings
+- `verbose`: Whether to print verbose output
+- `cold_start`: Whether to use cold start
+- `solver_parameters`: Solver configuration parameters
+- `precompiled`: Whether this is the precompiled version (affects zero initialization)
+
+# Returns
+- Tuple of (solution_vector, (error, iterations))
+"""
+function solve_NSSS(initial_parameters::Vector{<:Real}, 
+                    𝓂::ℳ,
+                    tol::Tolerances,
+                    verbose::Bool, 
+                    cold_start::Bool,
+                    solver_parameters::Vector{solver_parameters};
+                    precompiled::Bool = false)
+    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
+
+    initial_parameters_tmp = copy(initial_parameters)
+
+    parameters = copy(initial_parameters)
+    
+    current_best = sum(abs2, 𝓂.caches.solver_cache[end][end] - initial_parameters)
+    closest_solution_init = 𝓂.caches.solver_cache[end]
+    
+    for pars in 𝓂.caches.solver_cache
+        copy!(initial_parameters_tmp, pars[end])
+        ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+        latest = sum(abs2, initial_parameters_tmp)
+        if latest <= current_best
+            current_best = latest
+            closest_solution_init = pars
+        end
+    end
+
+    range_iters = 0
+    solution_error = 1.0
+    solved_scale = 0
+    scale = 1.0
+
+    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+    push!(NSSS_solver_cache_scale, closest_solution_init)
+
+    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
+        range_iters += 1
+        fail_fast_solvers_only = range_iters > 1 ? true : false
+
+        if abs(solved_scale - scale) < 1e-2
+            break 
+        end
+
+        current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
+        closest_solution = NSSS_solver_cache_scale[end]
+
+        for pars in NSSS_solver_cache_scale
+            copy!(initial_parameters_tmp, pars[end])
+            ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+            latest = sum(abs2, initial_parameters_tmp)
+            if latest <= current_best
+                current_best = latest
+                closest_solution = pars
+            end
+        end
+
+        # Zero initial value check only for precompiled version (V2)
+        if precompiled
+            if !isfinite(sum(abs, closest_solution[2]))
+                closest_solution = copy(closest_solution)
+                for i in 1:2:length(closest_solution)
+                    closest_solution[i] = zeros(length(closest_solution[i]))
+                end
+            end
+        end
+
+        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+        else
+            parameters = copy(initial_parameters)
+        end
+
+        # Call the model-specific RGF to do all parameter processing and variable solving
+        output, NSSS_solver_cache_tmp, solution_error, iters, status = 𝓂.functions.NSSS_solver_core(
+            parameters, 𝓂, closest_solution, fail_fast_solvers_only, 
+            cold_start, solver_parameters, verbose, tol, scale, solved_scale)
+
+        # If status==1, it means an intermediate check failed - adjust scale and continue
+        if status == 1
+            scale = scale * .3 + solved_scale * .7
+            continue
+        end
+
+        if solution_error < tol.NSSS_acceptance_tol
+            solved_scale = scale
+            if scale == 1
+                return output, (solution_error, iters)
+            else
+                reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
+            end
+
+            if scale > .95
+                scale = 1
+            else
+                scale = scale * .4 + .6
+            end
+        end
+    end
+    
+    # Failed to converge - return zeros
+    return_length = length(union(
+        𝓂.constants.post_model_macro.var,
+        𝓂.constants.post_model_macro.exo_past,
+        𝓂.constants.post_model_macro.exo_future
+    )) + length(𝓂.equations.calibration_parameters)
+    
+    return zeros(return_length), (1, 0)
+end
+
+
+"""
     build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
 
 Build a RuntimeGeneratedFunction that contains all model-specific steady-state solving logic.
@@ -232,140 +361,28 @@ end
 
 
 """
-    build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
+    setup_NSSS_solver!(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled)
 
-Build the solve_SS function that separates generic solver logic from model-specific computations.
-This is the REFACTORED version where:
-- Model-specific parts (parameter processing, variable computation) are in a RuntimeGeneratedFunction
-- Generic solver logic (iteration, scaling, caching) is in a normal function wrapper
+Set up the NSSS solver by building the model-specific RuntimeGeneratedFunction.
+This function only creates the model-specific RGF (NSSS_solver_core) and stores it.
+The generic solver logic is in the pre-written solve_NSSS function.
 
 # Arguments
 - `𝓂`: The model struct
 - `parameters_in_equations`: Parameter assignment expressions
 - `par_bounds`: Parameter bounds expressions  
 - `SS_solve_func`: Block solving expressions
-- `precompiled::Bool`: Whether this is the precompiled version (V2) with multi-element cache structure
+- `precompiled::Bool`: Whether this is the precompiled version
 
 # Returns
-An Expr representing the solve_SS function.
+Nothing - the RGF is stored in 𝓂.functions.NSSS_solver_core
 """
-function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled::Bool = false)
-    vars_expr, return_length = build_return_variables(𝓂)
-    
+function setup_NSSS_solver!(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled::Bool = false)
     # Build the model-specific RGF that handles all parameter/variable operations
     solver_core = build_model_specific_solver_core_function(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
     
-    # Store this RGF in the model for use by the normal wrapper function
+    # Store this RGF in the model for use by the pre-written solve_NSSS function
     𝓂.functions.NSSS_solver_core = solver_core
     
-    # Zero initial value check only for precompiled version (V2) which has multi-element cache entries
-    zero_init_check = precompiled ? quote
-        # Zero initial value if starting without guess
-        if !isfinite(sum(abs,closest_solution[2]))
-            closest_solution = copy(closest_solution)
-            for i in 1:2:length(closest_solution)
-                closest_solution[i] = zeros(length(closest_solution[i]))
-            end
-        end
-    end : :()
-    
-    # This is now a normal function (not an RGF) that orchestrates the solving process
-    # It calls the model-specific RGF (solver_core) for all parameter/variable operations
-    solve_exp = :(function solve_SS(initial_parameters::Vector{<:Real}, 
-                                    𝓂::ℳ,
-                                    tol::Tolerances,
-                                    verbose::Bool, 
-                                    cold_start::Bool,
-                                    solver_parameters::Vector{solver_parameters})
-                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
-
-                    initial_parameters_tmp = copy(initial_parameters)
-
-                    parameters = copy(initial_parameters)
-                    
-                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.caches.solver_cache[end]
-                    
-                    for pars in 𝓂.caches.solver_cache
-                        copy!(initial_parameters_tmp, pars[end])
-
-                        ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                        latest = sum(abs2,initial_parameters_tmp)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
-
-                    range_iters = 0
-                    solution_error = 1.0
-                    solved_scale = 0
-                    scale = 1.0
-
-                    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
-                    push!(NSSS_solver_cache_scale, closest_solution_init)
-
-                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
-                        range_iters += 1
-                        fail_fast_solvers_only = range_iters > 1 ? true : false
-
-                        if abs(solved_scale - scale) < 1e-2
-                            break 
-                        end
-
-                        current_best = sum(abs2,NSSS_solver_cache_scale[end][end] - initial_parameters)
-                        closest_solution = NSSS_solver_cache_scale[end]
-
-                        for pars in NSSS_solver_cache_scale
-                            copy!(initial_parameters_tmp, pars[end])
-                            
-                            ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                            latest = sum(abs2,initial_parameters_tmp)
-
-                            if latest <= current_best
-                                current_best = latest
-                                closest_solution = pars
-                            end
-                        end
-
-                        $zero_init_check
-
-                        if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
-                            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
-                        else
-                            parameters = copy(initial_parameters)
-                        end
-
-                        # Call the model-specific RGF to do all parameter processing and variable solving
-                        output, NSSS_solver_cache_tmp, solution_error, iters, status = 𝓂.functions.NSSS_solver_core(
-                            parameters, 𝓂, closest_solution, fail_fast_solvers_only, 
-                            cold_start, solver_parameters, verbose, tol, scale, solved_scale)
-
-                        # If status==1, it means an intermediate check failed - adjust scale and continue
-                        if status == 1
-                            scale = scale * .3 + solved_scale * .7
-                            continue
-                        end
-
-                        if solution_error < tol.NSSS_acceptance_tol
-                            solved_scale = scale
-                            if scale == 1
-                                return output, (solution_error, iters)
-                            else
-                                reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
-                            end
-
-                            if scale > .95
-                                scale = 1
-                            else
-                                scale = scale * .4 + .6
-                            end
-                        end
-                    end
-                    return zeros($return_length), (1, 0)
-                end)
-    
-    return solve_exp
+    return nothing
 end
