@@ -293,6 +293,127 @@ function build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS
                     end
                     return zeros($return_length), (1, 0)
                 end)
-    
+
     return solve_exp
+end
+
+
+"""
+    build_model_specific_rtgfs!(𝓂, parameters_in_equations, par_bounds, dyn_exos,
+                                 block_calib_pars_input, block_other_vars_input,
+                                 block_result_exprs, block_lbs, block_ubs)
+
+Build and store model-specific RuntimeGeneratedFunctions for the refactored steady state solver.
+This creates separate RTGFs for:
+1. setup_parameters_and_bounds: parameter vector → named parameters with bounds
+2. get_block_inputs (per block): named vars → block input vector
+3. update_solution (per block): named vars + solution → updated named vars
+4. set_dynamic_exogenous: named vars → named vars (with exogenous = 0)
+5. extract_solution_vector: named vars → solution vector
+
+# Arguments
+- `𝓂`: The model struct
+- `parameters_in_equations`: Parameter assignment expressions
+- `par_bounds`: Parameter bounds expressions
+- `dyn_exos`: Dynamic exogenous variable assignments
+- `block_calib_pars_input`: Vector of vectors of calibration parameter symbols per block
+- `block_other_vars_input`: Vector of vectors of other variable symbols per block
+- `block_result_exprs`: Vector of vectors of result assignment expressions per block
+- `block_lbs`: Vector of lower bound vectors per block
+- `block_ubs`: Vector of upper bound vectors per block
+"""
+function build_model_specific_rtgfs!(𝓂, parameters_in_equations, par_bounds, dyn_exos,
+                                      block_calib_pars_input, block_other_vars_input,
+                                      block_result_exprs, block_lbs, block_ubs)
+    # 1. Build setup_parameters_and_bounds RTGF
+    # This takes the parameter vector and returns a NamedTuple with all named parameters
+    vars_expr, _ = build_return_variables(𝓂)
+
+    # Create NamedTuple fields for all variables and calibration parameters
+    all_var_names = sort(union(𝓂.constants.post_model_macro.var,
+                                𝓂.constants.post_model_macro.exo_past,
+                                𝓂.constants.post_model_macro.exo_future))
+    all_names = vcat(all_var_names, 𝓂.equations.calibration_parameters)
+
+    # Initialize all variables to NaN (will be set by block solutions)
+    init_exprs = [:($(nm) = NaN) for nm in all_names]
+
+    setup_expr = :(function setup_params(parameters::Vector{T}) where T <: Real
+        $(parameters_in_equations...)
+        $(par_bounds...)
+        $(𝓂.equations.calibration_no_var...)
+        $(init_exprs...)
+        return (; $(all_names...))
+    end)
+
+    𝓂.NSSS.setup_parameters_and_bounds = @RuntimeGeneratedFunction(setup_expr)
+
+    # 2. Build per-block get_block_inputs RTGFs
+    # Each takes a NamedTuple and returns a Vector of the required inputs for that block
+    n_blocks = length(block_calib_pars_input)
+    𝓂.NSSS.block_metadata = ss_block_metadata[]
+
+    for i in 1:n_blocks
+        inputs = vcat(block_calib_pars_input[i], block_other_vars_input[i])
+
+        if length(inputs) == 0
+            get_inputs_expr = :(function get_inputs(named_vars::NamedTuple)
+                return Float64[]
+            end)
+        else
+            get_inputs_expr = :(function get_inputs(named_vars::NamedTuple)
+                $([:($nm = named_vars.$nm) for nm in inputs]...)
+                return [$(inputs...)]
+            end)
+        end
+
+        get_inputs_func = @RuntimeGeneratedFunction(get_inputs_expr)
+
+        # 3. Build per-block update_solution RTGFs
+        # Each takes a NamedTuple and solution vector, returns updated NamedTuple
+        result_assignments = block_result_exprs[i]
+        update_expr = :(function update_sol(named_vars::NamedTuple, sol::Vector{T}) where T <: Real
+            # Unpack current named variables
+            $([:($nm = named_vars.$nm) for nm in all_names]...)
+            # Apply solution
+            $(result_assignments...)
+            # Return updated NamedTuple
+            return (; $(all_names...))
+        end)
+
+        update_func = @RuntimeGeneratedFunction(update_expr)
+
+        # Store in block_metadata
+        push!(𝓂.NSSS.block_metadata, ss_block_metadata(
+            block_lbs[i],
+            block_ubs[i],
+            get_inputs_func,
+            update_func
+        ))
+    end
+
+    # 4. Build set_dynamic_exogenous RTGF
+    set_exo_expr = :(function set_exo(named_vars::NamedTuple)
+        # Unpack current named variables
+        $([:($nm = named_vars.$nm) for nm in all_names]...)
+        # Set dynamic exogenous to zero
+        $(dyn_exos...)
+        # Return updated NamedTuple
+        return (; $(all_names...))
+    end)
+
+    𝓂.NSSS.set_dynamic_exogenous = @RuntimeGeneratedFunction(set_exo_expr)
+
+    # 5. Build extract_solution_vector RTGF
+    extract_expr = :(function extract_sol(named_vars::NamedTuple)
+        $([:($nm = named_vars.$nm) for nm in all_names]...)
+        return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)]
+    end)
+
+    𝓂.NSSS.extract_solution_vector = @RuntimeGeneratedFunction(extract_expr)
+
+    # Store solution vector length
+    𝓂.NSSS.solution_vector_length = length(all_names)
+
+    return nothing
 end

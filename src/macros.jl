@@ -105,7 +105,12 @@ macro model(𝓂,ex...)
 
                         non_stochastic_steady_state(
                             ss_solve_block[], # NSSS_solve_blocks_in_place
-                            nothing # NSSS_dependencies
+                            nothing, # NSSS_dependencies
+                            nothing, # setup_parameters_and_bounds
+                            ss_block_metadata[], # block_metadata
+                            nothing, # set_dynamic_exogenous
+                            nothing, # extract_solution_vector
+                            0 # solution_vector_length
                         ),
 
                         $equations_struct, 

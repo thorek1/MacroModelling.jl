@@ -275,6 +275,13 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     solved_vars = []
     solved_vals = []
 
+    # Collect block-specific data for refactored solver
+    block_calib_pars_input = []
+    block_other_vars_input = []
+    block_result_exprs = []
+    block_lbs = []
+    block_ubs = []
+
     n_block = 1
 
     while n > 0
@@ -631,12 +638,19 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
         ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
 
-        push!(𝓂.NSSS.solve_blocks_in_place, 
+        push!(𝓂.NSSS.solve_blocks_in_place,
             ss_solve_block(
                 function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
                 function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
             )
         )
+
+        # Collect block-specific data for refactored solver
+        push!(block_calib_pars_input, calib_pars_input)
+        push!(block_other_vars_input, other_vars_input)
+        push!(block_result_exprs, result)
+        push!(block_lbs, lbs)
+        push!(block_ubs, ubs)
 
         n_block += 1
         
@@ -679,10 +693,16 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # fix parameter bounds
     par_bounds = build_parameter_bounds_expressions(𝓂, atoms_in_equations, relevant_pars_across)
 
-    solve_exp = build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled = true)
+    dyn_exos = build_dyn_exos_expressions(𝓂)
 
-    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.functions.NSSS_solve = eval(solve_exp)
+    # Build model-specific RTGFs for the refactored solver
+    build_model_specific_rtgfs!(𝓂, parameters_in_equations, par_bounds, dyn_exos,
+                                 block_calib_pars_input, block_other_vars_input,
+                                 block_result_exprs, block_lbs, block_ubs)
+
+    # Set the NSSS_solve function to the general orchestration function
+    𝓂.functions.NSSS_solve = (parameters, model, tol, verbose, cold_start, solver_params) ->
+        solve_steady_state_precompiled(parameters, model, tol, verbose, cold_start, solver_params)
 
     return nothing
 end

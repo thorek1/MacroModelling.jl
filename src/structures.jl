@@ -596,9 +596,26 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+"""
+Metadata for a single block in the steady state solver.
+Contains bounds and RTGFs for extracting/updating block-specific variables.
+"""
+struct ss_block_metadata
+    lower_bounds::Vector{Float64}
+    upper_bounds::Vector{Float64}
+    get_block_inputs::Function      # Named vars → block input vector
+    update_solution::Function       # Named vars + solution → updated named vars
+end
+
 mutable struct non_stochastic_steady_state
     solve_blocks_in_place::Vector{ss_solve_block}
     dependencies::Any
+    # New fields for refactored solver
+    setup_parameters_and_bounds::Union{Function, Nothing}  # parameters vector → named parameters
+    block_metadata::Vector{ss_block_metadata}
+    set_dynamic_exogenous::Union{Function, Nothing}        # named vars → named vars (exo=0)
+    extract_solution_vector::Union{Function, Nothing}      # named vars → solution vector
+    solution_vector_length::Int
 end
 
 """
