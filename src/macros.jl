@@ -110,7 +110,9 @@ macro model(𝓂,ex...)
                             ss_block_metadata[], # block_metadata
                             nothing, # set_dynamic_exogenous
                             nothing, # extract_solution_vector
-                            0 # solution_vector_length
+                            0, # solution_vector_length
+                            nothing, # evaluate_symbolic_solutions
+                            nothing # check_minmax_errors
                         ),
 
                         $equations_struct, 

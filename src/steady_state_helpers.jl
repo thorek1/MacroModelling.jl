@@ -417,3 +417,112 @@ function build_model_specific_rtgfs!(𝓂, parameters_in_equations, par_bounds, 
 
     return nothing
 end
+
+
+"""
+    build_symbolic_rtgfs!(𝓂, solved_vars, solved_vals, min_max_errors,
+                          parameters_in_equations, par_bounds, dyn_exos)
+
+Build model-specific RuntimeGeneratedFunctions for the symbolic steady state solver.
+This creates RTGFs for:
+1. evaluate_symbolic_solutions: evaluates symbolically-solved variables and checks for domain errors
+2. check_minmax_errors: checks error terms for variables that were inside min/max constraints
+
+# Arguments
+- `𝓂`: The model struct
+- `solved_vars`: Vector of variable symbols that were solved symbolically
+- `solved_vals`: Vector of expressions for symbolic solutions
+- `min_max_errors`: Vector of error check expressions for min/max terms
+- `parameters_in_equations`: Parameter assignment expressions
+- `par_bounds`: Parameter bounds expressions
+- `dyn_exos`: Dynamic exogenous variable assignments
+"""
+function build_symbolic_rtgfs!(𝓂, solved_vars, solved_vals, min_max_errors,
+                                parameters_in_equations, par_bounds, dyn_exos)
+    # Get all variable names for NamedTuple
+    vars_expr, _ = build_return_variables(𝓂)
+    all_var_names = sort(union(𝓂.constants.post_model_macro.var,
+                                𝓂.constants.post_model_macro.exo_past,
+                                𝓂.constants.post_model_macro.exo_future))
+    all_names = vcat(all_var_names, 𝓂.equations.calibration_parameters)
+
+    # 1. Build evaluate_symbolic_solutions RTGF
+    if length(solved_vars) > 0
+        # Have symbolic solutions to evaluate
+        symbolic_assignments = []
+        for (i, var) in enumerate(solved_vars)
+            val = solved_vals[i]
+            # Check if variable has min/max constraints (➕_vars)
+            if var ∈ 𝓂.constants.post_model_macro.➕_vars
+                # For bounded positive variables, check bounds and accumulate error
+                push!(symbolic_assignments, quote
+                    _bounds = get($(𝓂.constants.post_parameters_macro.bounds), $(QuoteNode(var)), (eps(), 1e12))
+                    _val = $val
+                    $var = min(max(_bounds[1], _val), _bounds[2])
+                    sym_error += abs($var - _val)
+                end)
+            else
+                # For unbounded variables, check if there are user-defined bounds
+                if haskey(𝓂.constants.post_parameters_macro.bounds, var)
+                    push!(symbolic_assignments, quote
+                        $var = $val
+                        sym_error += abs(min(max($(𝓂.constants.post_parameters_macro.bounds[var][1]), $var),
+                                             $(𝓂.constants.post_parameters_macro.bounds[var][2])) - $var)
+                    end)
+                else
+                    push!(symbolic_assignments, :($var = $val))
+                end
+            end
+        end
+
+        eval_symbolic_expr = :(function eval_symbolic(named_vars::NamedTuple)
+            # Unpack all current named variables
+            $([:($nm = named_vars.$nm) for nm in all_names]...)
+
+            # Initialize error accumulator
+            sym_error = 0.0
+
+            # Evaluate symbolic solutions
+            $(symbolic_assignments...)
+
+            # Return updated NamedTuple and error
+            return (; $(all_names...)), sym_error
+        end)
+
+        𝓂.NSSS.evaluate_symbolic_solutions = @RuntimeGeneratedFunction(eval_symbolic_expr)
+    else
+        # No symbolic solutions - create no-op function
+        eval_symbolic_expr = :(function eval_symbolic(named_vars::NamedTuple)
+            return named_vars, 0.0
+        end)
+
+        𝓂.NSSS.evaluate_symbolic_solutions = @RuntimeGeneratedFunction(eval_symbolic_expr)
+    end
+
+    # 2. Build check_minmax_errors RTGF
+    if length(min_max_errors) > 0
+        check_minmax_expr = :(function check_minmax(named_vars::NamedTuple)
+            # Unpack all current named variables
+            $([:($nm = named_vars.$nm) for nm in all_names]...)
+
+            # Initialize error accumulator
+            minmax_error = 0.0
+
+            # Check min/max errors
+            $(min_max_errors...)
+
+            return minmax_error
+        end)
+
+        𝓂.NSSS.check_minmax_errors = @RuntimeGeneratedFunction(check_minmax_expr)
+    else
+        # No min/max errors - create no-op function
+        check_minmax_expr = :(function check_minmax(named_vars::NamedTuple)
+            return 0.0
+        end)
+
+        𝓂.NSSS.check_minmax_errors = @RuntimeGeneratedFunction(check_minmax_expr)
+    end
+
+    return nothing
+end

@@ -616,6 +616,9 @@ mutable struct non_stochastic_steady_state
     set_dynamic_exogenous::Union{Function, Nothing}        # named vars → named vars (exo=0)
     extract_solution_vector::Union{Function, Nothing}      # named vars → solution vector
     solution_vector_length::Int
+    # Symbolic-specific fields
+    evaluate_symbolic_solutions::Union{Function, Nothing}  # named vars → (named vars, error)
+    check_minmax_errors::Union{Function, Nothing}          # named vars → error
 end
 
 """
