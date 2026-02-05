@@ -332,12 +332,14 @@ function build_model_specific_solver_core_function(𝓂, parameters_in_equations
     
     # Replace continue statements with early returns
     # Continue statements indicate intermediate failures that should trigger scale adjustment
+    # When continuing early, we return empty vectors since variables haven't been fully computed yet
+    return_length = length(vars_expr) + length(𝓂.equations.calibration_parameters)
     modified_SS_solve_func = []
     for expr in SS_solve_func
         # Replace "continue" with "return status=1" to signal need for scale adjustment
         modified_expr = postwalk(expr) do x
             if x == :(continue)
-                return :(return [$(vars_expr...), $(𝓂.equations.calibration_parameters...)], NSSS_solver_cache_tmp, solution_error, iters, 1)
+                return :(return zeros($return_length), NSSS_solver_cache_tmp, solution_error, iters, 1)
             end
             x
         end
