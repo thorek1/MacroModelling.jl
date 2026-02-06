@@ -132,24 +132,20 @@ end
 Normalize an equation expression by removing line-number nodes and collapsing
 single-expression blocks introduced by parsing.
 """
-function normalize_equation_expr(node::Expr)
-    if node isa LineNumberNode
-        return nothing
-    elseif node isa Expr
-        new_args = Any[]
-        for arg in node.args
-            cleaned = strip_and_collapse(arg)
-            cleaned === nothing && continue
-            push!(new_args, cleaned)
+function normalize_equation_expr(eq::Expr)
+    cleaned_eq = rmlines(eq)
+
+    normalized_eq = postwalk(cleaned_eq) do node
+        if @capture(node, begin arg_ end)
+            arg
+        else
+            node
         end
-        if node.head == :block && length(new_args) == 1
-            return new_args[1]
-        end
-        return Expr(node.head, new_args...)
-    else
-        return node
     end
+
+    return normalized_eq
 end
+
 
 normalize_equation_input(eq::String) = normalize_equation_expr(Meta.parse(eq))
 normalize_equation_input(eq::Expr) = normalize_equation_expr(eq)
