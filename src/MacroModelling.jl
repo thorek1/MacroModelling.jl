@@ -48,7 +48,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer, OrderedDict
-import MacroTools: unblock, postwalk, prewalk, @capture, flatten
+import MacroTools: unblock, postwalk, prewalk, @capture, flatten, rmlines
 
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
@@ -5257,6 +5257,11 @@ function solve!(𝓂::ℳ;
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
     
+    # Check for missing parameters after processing input
+    if !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+        error("Cannot solve model: missing parameter values for $(𝓂.constants.post_complete_parameters.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
+    end
+    
     if 𝓂.functions.functions_written &&
         isnothing(𝓂.functions.NSSS_custom) &&
         !(𝓂.functions.NSSS_solve isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
@@ -5276,11 +5281,6 @@ function solve!(𝓂::ℳ;
         write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
 
         𝓂.functions.functions_written = true
-    end
-
-    # Check for missing parameters after processing input
-    if !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
-        error("Cannot solve model: missing parameter values for $(𝓂.constants.post_complete_parameters.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
     end
 
     # end # timeit_debug
