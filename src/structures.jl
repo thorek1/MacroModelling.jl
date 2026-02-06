@@ -716,6 +716,9 @@ mutable struct model_functions
     NSSS_custom::Union{Nothing, Function}
     NSSS_∂equations_∂parameters::Function
     NSSS_∂equations_∂SS_and_pars::Function
+    # Model-specific RGF for NSSS solver (refactored architecture)
+    # This contains all parameter processing and variable solving logic
+    NSSS_solver_core::Function
     # Perturbation derivative functions
     jacobian::jacobian_functions
     hessian::hessian_functions
@@ -1473,6 +1476,7 @@ Functions() = model_functions(
     nothing,                                                   # NSSS_custom
     (x->x),                                                    # NSSS_∂equations_∂parameters
     (x->x),                                                    # NSSS_∂equations_∂SS_and_pars
+    (x->x),                                                    # NSSS_solver_core
     jacobian_functions(x->x, x->x, x->x),                      # jacobian
     hessian_functions(x->x, x->x, x->x),                       # hessian
     third_order_derivatives_functions(x->x, x->x, x->x),       # third_order_derivatives

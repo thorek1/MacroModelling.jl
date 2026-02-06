@@ -232,10 +232,12 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     # fix parameter bounds
     par_bounds = build_parameter_bounds_expressions(𝓂, atoms_in_equations, relevant_pars_across)
 
-    solve_exp = build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func)
-
-    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.functions.NSSS_solve = eval(solve_exp)
+    # Set up the model-specific RGF (no eval needed - solve_NSSS is pre-written)
+    setup_NSSS_solver!(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled = false)
+    
+    # Assign the pre-written solve_NSSS function with precompiled=false
+    𝓂.functions.NSSS_solve = (initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters) -> 
+        solve_NSSS(initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters; precompiled = false)
 
     return nothing
 end
@@ -679,10 +681,12 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # fix parameter bounds
     par_bounds = build_parameter_bounds_expressions(𝓂, atoms_in_equations, relevant_pars_across)
 
-    solve_exp = build_solve_SS_expression(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled = true)
+    # Set up the model-specific RGF (no eval needed - solve_NSSS is pre-written)
+    setup_NSSS_solver!(𝓂, parameters_in_equations, par_bounds, SS_solve_func; precompiled = true)
 
-    𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.functions.NSSS_solve = eval(solve_exp)
+    # Assign the pre-written solve_NSSS function with precompiled=true
+    𝓂.functions.NSSS_solve = (initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters) -> 
+        solve_NSSS(initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters; precompiled = true)
 
     return nothing
 end
