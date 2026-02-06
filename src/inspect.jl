@@ -1471,7 +1471,7 @@ function update_equations!(𝓂::ℳ,
         @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations. Use `get_equations(model)` to see current equations."
     else
         # Parse string to Expr if needed
-        old_eq_to_match = old_equation_or_index isa String ? Meta.parse(old_equation_or_index) : old_equation_or_index
+        old_eq_to_match = normalize_equation_input(old_equation_or_index)
         
         # Find the equation index by matching
         equation_index = find_equation_index(𝓂.equations.original, old_eq_to_match)
@@ -1479,7 +1479,7 @@ function update_equations!(𝓂::ℳ,
     end
     
     # Parse string to Expr if needed
-    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+    parsed_new_equation = normalize_equation_input(new_equation)
     
     # Store old equation for revision history
     old_equation = 𝓂.equations.original[equation_index]
@@ -1576,13 +1576,13 @@ function update_equations!(𝓂::ℳ,
             equation_index = old_eq_or_idx
             @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations."
         else
-            old_eq_to_match = old_eq_or_idx isa String ? Meta.parse(old_eq_or_idx) : old_eq_or_idx
+            old_eq_to_match = normalize_equation_input(old_eq_or_idx)
             equation_index = find_equation_index(updated_original_equations, old_eq_to_match)
             @assert equation_index !== nothing "Could not find equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}"))"
         end
         
         # Parse new equation
-        parsed_new_eq = new_eq isa String ? Meta.parse(new_eq) : new_eq
+        parsed_new_eq = normalize_equation_input(new_eq)
         
         # Store old equation for revision history
         old_equation = updated_original_equations[equation_index]
@@ -1665,7 +1665,7 @@ function add_equation!(𝓂::ℳ,
                        verbose::Bool = false,
                        silent::Bool = true)
     # Parse string to Expr if needed
-    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+    parsed_new_equation = normalize_equation_input(new_equation)
 
     # Validate the equation has proper structure (should be an assignment or equality)
     if !(parsed_new_equation isa Expr && parsed_new_equation.head in (:(=), :call))
@@ -1736,7 +1736,7 @@ function add_equation!(𝓂::ℳ,
     
     for new_equation in new_equations
         # Parse string to Expr if needed
-        parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+        parsed_new_equation = normalize_equation_input(new_equation)
 
         # Validate the equation has proper structure
         if !(parsed_new_equation isa Expr && parsed_new_equation.head in (:(=), :call))
@@ -1831,7 +1831,7 @@ function remove_equation!(𝓂::ℳ,
         @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations. Use `get_equations(model)` to see current equations."
     else
         # Parse string to Expr if needed
-        eq_to_match = equation_or_index isa String ? Meta.parse(equation_or_index) : equation_or_index
+        eq_to_match = normalize_equation_input(equation_or_index)
         
         # Find the equation index by matching
         equation_index = find_equation_index(𝓂.equations.original, eq_to_match)
@@ -1922,7 +1922,7 @@ function remove_equation!(𝓂::ℳ,
             @assert 1 <= equation_index <= length(𝓂.equations.original) "Equation index must be between 1 and $(length(𝓂.equations.original))."
             push!(indices_to_remove, equation_index)
         else
-            eq_to_match = eq_or_idx isa String ? Meta.parse(eq_or_idx) : eq_or_idx
+            eq_to_match = normalize_equation_input(eq_or_idx)
             equation_index = find_equation_index(𝓂.equations.original, eq_to_match)
             @assert equation_index !== nothing "Could not find equation matching: $(replace(string(eq_to_match), "◖" => "{", "◗" => "}"))"
             push!(indices_to_remove, equation_index)
@@ -2004,13 +2004,44 @@ end
 
 
 """
+Normalize an equation expression by removing line-number nodes and collapsing
+single-expression blocks introduced by parsing.
+"""
+function normalize_equation_expr(eq::Expr)
+    function strip_and_collapse(node)
+        if node isa LineNumberNode
+            return nothing
+        elseif node isa Expr
+            new_args = Any[]
+            for arg in node.args
+                cleaned = strip_and_collapse(arg)
+                cleaned === nothing && continue
+                push!(new_args, cleaned)
+            end
+            if node.head == :block && length(new_args) == 1
+                return new_args[1]
+            end
+            return Expr(node.head, new_args...)
+        else
+            return node
+        end
+    end
+
+    return strip_and_collapse(eq)
+end
+
+normalize_equation_input(eq::String) = normalize_equation_expr(Meta.parse(eq))
+normalize_equation_input(eq::Expr) = normalize_equation_expr(eq)
+
+
+"""
 $(SIGNATURES)
 Modify or replace a calibration equation. This function updates the calibration equations and automatically re-parses, re-solves, and recomputes derivatives.
 
 # Arguments
 - $MODEL®
 - `old_equation_or_index::Union{Int, Expr, String}`: Either the index of the calibration equation to modify (1-based), or the old equation itself (as `Expr` or `String`) to be matched and replaced. Use `get_calibration_equations` to see current calibration equations.
-- `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`). When provided as `lhs = rhs | param`, the `param` portion is accepted and ignored in this stub.
+- `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`). When provided as `lhs = rhs | param`, the `param` portion determines which parameter is calibrated.
 
 # Keyword Arguments
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
@@ -2057,7 +2088,7 @@ function update_calibration_equations!(𝓂::ℳ,
                                        verbose::Bool = false,
                                        silent::Bool = true)
     # Parse string to Expr if needed
-    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+    parsed_new_equation = normalize_equation_input(new_equation)
 
     # Determine equation index
     n_equations = length(𝓂.equations.calibration_original)
@@ -2067,7 +2098,7 @@ function update_calibration_equations!(𝓂::ℳ,
         equation_index = old_equation_or_index
         @assert 1 <= equation_index <= n_equations "Calibration equation index must be between 1 and $n_equations. Use `get_calibration_equations(model)` to see current calibration equations."
     else
-        old_eq_to_match = old_equation_or_index isa String ? Meta.parse(old_equation_or_index) : old_equation_or_index
+        old_eq_to_match = normalize_equation_input(old_equation_or_index)
         equation_index = find_equation_index(𝓂.equations.calibration_original, old_eq_to_match)
         @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}")). Use `get_calibration_equations(model)` to see current calibration equations."
     end
@@ -2213,14 +2244,14 @@ function update_calibration_equations!(𝓂::ℳ,
         end
         
         # Parse new equation
-        parsed_new_equation = new_eq isa String ? Meta.parse(new_eq) : new_eq
+        parsed_new_equation = normalize_equation_input(new_eq)
         
         # Determine equation index
         if old_eq_or_idx isa Int
             equation_index = old_eq_or_idx
             @assert 1 <= equation_index <= n_equations "Calibration equation index must be between 1 and $n_equations."
         else
-            old_eq_to_match = old_eq_or_idx isa String ? Meta.parse(old_eq_or_idx) : old_eq_or_idx
+            old_eq_to_match = normalize_equation_input(old_eq_or_idx)
             equation_index = find_equation_index(updated_calibration_original, old_eq_to_match)
             @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}"))"
         end
@@ -2310,7 +2341,7 @@ function add_calibration_equation!(𝓂::ℳ,
                                    verbose::Bool = false,
                                    silent::Bool = false)
     # Parse string to Expr if needed
-    parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+    parsed_new_equation = normalize_equation_input(new_equation)
 
     # Validate that the calibrated parameter is specified
     new_calib_param = extract_calibrated_parameter(parsed_new_equation)
@@ -2406,7 +2437,7 @@ function add_calibration_equation!(𝓂::ℳ,
     
     for new_equation in new_equations
         # Parse string to Expr if needed
-        parsed_new_equation = new_equation isa String ? Meta.parse(new_equation) : new_equation
+        parsed_new_equation = normalize_equation_input(new_equation)
 
         # Validate that the calibrated parameter is specified
         new_calib_param = extract_calibrated_parameter(parsed_new_equation)
@@ -2526,7 +2557,7 @@ function remove_calibration_equation!(𝓂::ℳ,
         @assert 1 <= equation_index <= n_calib_equations "Calibration equation index must be between 1 and $n_calib_equations. Use `get_calibration_equations(model)` to see current calibration equations."
     else
         # Parse string to Expr if needed
-        eq_to_match = equation_or_index isa String ? Meta.parse(equation_or_index) : equation_or_index
+        eq_to_match = normalize_equation_input(equation_or_index)
         
         # Find the equation index by matching
         equation_index = find_equation_index(𝓂.equations.calibration_original, eq_to_match)
@@ -2632,7 +2663,7 @@ function remove_calibration_equation!(𝓂::ℳ,
             @assert 1 <= equation_index <= n_calib_equations "Calibration equation index must be between 1 and $n_calib_equations."
             push!(indices_to_remove, equation_index)
         else
-            eq_to_match = eq_or_idx isa String ? Meta.parse(eq_or_idx) : eq_or_idx
+            eq_to_match = normalize_equation_input(eq_or_idx)
             equation_index = find_equation_index(𝓂.equations.calibration_original, eq_to_match)
             @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(eq_to_match), "◖" => "{", "◗" => "}"))"
             push!(indices_to_remove, equation_index)
