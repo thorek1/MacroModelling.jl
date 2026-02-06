@@ -11,7 +11,7 @@
         tol::Tolerances,
         verbose::Bool,
         cold_start::Bool,
-        solver_parameters::Vector{solver_parameters}
+        solver_params::Vector{solver_parameters}
     )::Tuple{Vector{Float64}, Tuple{Float64, Int}}
 
 Normal Julia function wrapper for NSSS solving.
@@ -26,7 +26,7 @@ model-specific RTGF `𝓂.functions.NSSS_solve`.
 - `tol`: Tolerance settings
 - `verbose`: Whether to print verbose output
 - `cold_start`: Whether this is a cold start
-- `solver_parameters`: Solver configuration
+- `solver_params`: Solver configuration
 
 # Returns
 - Tuple of (solution_vector, (solution_error, iterations))
@@ -37,7 +37,7 @@ function solve_nsss_wrapper(
     tol::Tolerances,
     verbose::Bool,
     cold_start::Bool,
-    solver_parameters::Vector{solver_parameters}
+    solver_params::Vector{solver_parameters}
 )::Tuple{Vector, Tuple{Real, Int}}
     
     # Call the model-specific RTGF
@@ -49,6 +49,6 @@ function solve_nsss_wrapper(
         tol,
         verbose,
         cold_start,
-        solver_parameters
+        solver_params
     )
 end
