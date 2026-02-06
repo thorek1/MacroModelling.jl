@@ -116,6 +116,25 @@ function parse_filter_term(term::Union{Symbol, String})
 end
 
 """
+    parse_dynamic_filter_term(term::Union{Symbol, String}) -> (Any, Union{Expr, Nothing})
+
+Parse a filter term into a base expression and an optional timing pattern that
+match the dynamic equation representation (bracket timing and curly braces).
+"""
+function parse_dynamic_filter_term(term::Union{Symbol, String})
+    term_str = string(term)
+    m = match(r"^(.+)\[(.+)\]$", term_str)
+    if m === nothing
+        base_expr = replace_curly_braces_in_symbols(Meta.parse(term_str))
+        return (base_expr, nothing)
+    end
+
+    pattern_expr = replace_curly_braces_in_symbols(Meta.parse(term_str))
+    base_expr = pattern_expr isa Expr && pattern_expr.head == :ref ? pattern_expr.args[1] : pattern_expr
+    return (base_expr, pattern_expr)
+end
+
+"""
 Helper function to normalize equation strings for comparison.
 Removes whitespace variations and normalizes special characters.
 """
@@ -191,6 +210,51 @@ function expr_contains(expr, sym::Symbol, pattern)
         x
     end
     found[]
+end
+
+"""
+    expr_contains_dynamic(expr, base_expr, pattern) -> Bool
+
+Check if `expr` contains a base expression or exact timing pattern in dynamic equations.
+This is aware of auxiliary variables with lead/lag superscripts.
+"""
+function expr_contains_dynamic(expr, base_expr, pattern)
+    function base_matches(candidate, base)
+        candidate == base && return true
+
+        base_str = string(base)
+        cand_str = string(candidate)
+
+        cand_str == base_str && return true
+
+        if startswith(cand_str, base_str)
+            rest_index = nextind(cand_str, 1, length(base_str))
+            if rest_index <= lastindex(cand_str)
+                rest = cand_str[rest_index:end]
+                return startswith(rest, "ᴸ⁽") && endswith(rest, "⁾")
+            end
+        end
+
+        return false
+    end
+
+    found = Ref(false)
+    postwalk(expr) do x
+        if pattern === nothing
+            if x isa Expr && x.head == :ref
+                base_matches(x.args[1], base_expr) && (found[] = true)
+            elseif x isa Expr && x.head == :curly
+                base_matches(x, base_expr) && (found[] = true)
+            elseif x isa Symbol
+                base_matches(x, base_expr) && (found[] = true)
+            end
+        else
+            x == pattern && (found[] = true)
+        end
+        x
+    end
+
+    return found[]
 end
 
 
@@ -446,9 +510,9 @@ function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing}
     end
     
     # Parse filter term (uses user-friendly format with [-1], [0], etc.)
-    sym, pattern = parse_filter_term(filter)
-    
-    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.dynamic) if expr_contains(orig, sym, pattern)]
+    base_expr, pattern = parse_dynamic_filter_term(filter)
+
+    return [expr for expr in exprs if expr_contains_dynamic(expr, base_expr, pattern)]
 end
 
 
