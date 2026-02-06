@@ -115,6 +115,45 @@ function parse_filter_term(term::Union{Symbol, String})
     return (Symbol(m.captures[1]), Meta.parse(term_str))
 end
 
+"""
+Helper function to normalize equation strings for comparison.
+Removes whitespace variations and normalizes special characters.
+"""
+function normalize_equation_string(s::String)::String
+    # Replace special characters used internally
+    s = replace(s, "◖" => "{", "◗" => "}")
+    # Remove all whitespace for comparison
+    s = replace(s, r"\s+" => "")
+    return s
+end
+
+
+"""
+Normalize an equation expression by removing line-number nodes and collapsing
+single-expression blocks introduced by parsing.
+"""
+function normalize_equation_expr(node::Expr)
+    if node isa LineNumberNode
+        return nothing
+    elseif node isa Expr
+        new_args = Any[]
+        for arg in node.args
+            cleaned = strip_and_collapse(arg)
+            cleaned === nothing && continue
+            push!(new_args, cleaned)
+        end
+        if node.head == :block && length(new_args) == 1
+            return new_args[1]
+        end
+        return Expr(node.head, new_args...)
+    else
+        return node
+    end
+end
+
+normalize_equation_input(eq::String) = normalize_equation_expr(Meta.parse(eq))
+normalize_equation_input(eq::Expr) = normalize_equation_expr(eq)
+
 @stable default_mode = "disable" begin
 
 """
@@ -1989,49 +2028,6 @@ function find_equation_index(equations::Vector{Expr}, target_eq::Expr)::Union{In
     return nothing
 end
 
-
-"""
-Helper function to normalize equation strings for comparison.
-Removes whitespace variations and normalizes special characters.
-"""
-function normalize_equation_string(s::String)::String
-    # Replace special characters used internally
-    s = replace(s, "◖" => "{", "◗" => "}")
-    # Remove all whitespace for comparison
-    s = replace(s, r"\s+" => "")
-    return s
-end
-
-
-"""
-Normalize an equation expression by removing line-number nodes and collapsing
-single-expression blocks introduced by parsing.
-"""
-function normalize_equation_expr(eq::Expr)
-    function strip_and_collapse(node)
-        if node isa LineNumberNode
-            return nothing
-        elseif node isa Expr
-            new_args = Any[]
-            for arg in node.args
-                cleaned = strip_and_collapse(arg)
-                cleaned === nothing && continue
-                push!(new_args, cleaned)
-            end
-            if node.head == :block && length(new_args) == 1
-                return new_args[1]
-            end
-            return Expr(node.head, new_args...)
-        else
-            return node
-        end
-    end
-
-    return strip_and_collapse(eq)
-end
-
-normalize_equation_input(eq::String) = normalize_equation_expr(Meta.parse(eq))
-normalize_equation_input(eq::Expr) = normalize_equation_expr(eq)
 
 
 """
