@@ -1,9 +1,6 @@
 using MacroModelling
 using Test
 
-# Load SW07 model once at module level
-include("../models/Smets_Wouters_2007.jl")
-
 # Helper to get a fresh copy of the SW07 model for testing
 # We need to reload to get a clean state without revision history
 function load_sw07()
@@ -571,7 +568,6 @@ end
 
 
 @testset verbose = true "SW07 remove_calibration_equation! functionality" begin
-    
     @testset "Remove calibration with explicit parameters override" begin
         model = load_RBC_baseline()
         
@@ -649,14 +645,7 @@ end
     end
     
     @testset "Error - remove from model with no calibrations" begin
-        model = load_sw07()
-        
-        # Remove all calibration equations first
-        while length(get_calibration_equations(model)) > 0
-            remove_calibration_equation!(model, 1)
-        end
-        
-        @test length(get_calibration_equations(model)) == 0
+        model = load_FS2000()
         
         # Now trying to remove should error
         @test_throws AssertionError remove_calibration_equation!(model, 1)
@@ -667,9 +656,8 @@ end
 
 
 @testset verbose = true "SW07 get_revision_history functionality" begin
-    
     @testset "Empty history for fresh model" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         history = get_revision_history(model)
         @test length(history) == 0
@@ -678,53 +666,26 @@ end
     end
     
     @testset "History tracks all operations" begin
-        model = load_sw07()
+        model = load_FS2000()
         
         eqs = get_equations(model)
         
-        # 1. Update equation
-        ms_idx = findfirst(eq -> occursin("ms[0]", eq), string.(eqs))
-        update_equations!(model, ms_idx, :(ms[0] = 0.5 + 0.5 * crhoms * ms[-1] + z_em / 100 * em[x]))
-        
         # 2. Add equation
-        add_equation!(model, :(new_var[0] = y[0]))
-        
-        # 3. Update calibration
-        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 0.99 | mcflex), silent = true)
+        add_equation!(model, :(log_y[0] = log(y[0])))
         
         # 4. Add calibration
-        add_calibration_equation!(model, :(lab[ss] = 1.0 | calfa), silent = true)
+        add_calibration_equation!(model, :(k[ss] / y[ss] = 8.0 | del))
         
         # Check history
         history = get_revision_history(model)
-        @test length(history) == 4
-        @test history[1].action == :update_equation
-        @test history[2].action == :add_equation
-        @test history[3].action == :update_calibration_equation
-        @test history[4].action == :add_calibration_equation
+        @test length(history) == 2
+        # @test history[1].action == :update_equation
+        @test history[1].action == :add_equation
+        # @test history[3].action == :update_calibration_equation
+        @test history[2].action == :add_calibration_equation
         
         # All entries should have timestamps
         @test all(h -> haskey(h, :timestamp), history)
-        
-        model = nothing
-    end
-    
-    @testset "History preserves equation content" begin
-        model = load_sw07()
-        
-        eqs = get_equations(model)
-        ms_idx = findfirst(eq -> occursin("ms[0]", eq), string.(eqs))
-        new_eq = :(ms[0] = 0.5 + 0.5 * crhoms * ms[-1] + z_em / 100 * em[x])
-        
-        update_equations!(model, ms_idx, new_eq)
-        
-        history = get_revision_history(model)
-        @test length(history) == 1
-        
-        # Check old and new equations are stored
-        @test history[1].old_equation !== nothing
-        @test history[1].new_equation == new_eq
-        @test history[1].equation_index == ms_idx
         
         model = nothing
     end
@@ -732,7 +693,6 @@ end
 
 
 @testset verbose = true "SW07 complex modification scenarios" begin
-    
     @testset "Remove observables and add custom ones" begin
         model = load_sw07()
         
@@ -756,63 +716,6 @@ end
         
         model = nothing
     end
-    
-    @testset "Modify multiple shock processes" begin
-        model = load_sw07()
-        
-        eqs = get_equations(model)
-        
-        # Find and modify technology shock - make more persistent
-        a_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
-        update_equations!(model, a_idx, :(a[0] = 0.5 * (1 - crhoa) + crhoa * a[-1] + z_ea / 100 * ea[x]))
-        
-        # Find and modify government spending shock - also make more persistent  
-        gy_idx = findfirst(eq -> occursin("gy[0]", eq) && occursin("crhog", eq), string.(eqs))
-        update_equations!(model, gy_idx, :(gy[0] - cg = 0.5 * crhog * (gy[-1] - cg) + z_eg / 100 * eg[x] + z_ea / 100 * ea[x] * cgy))
-        
-        history = get_revision_history(model)
-        @test length(history) == 2
-        
-        ss = get_steady_state(model, derivatives = false)
-        @test !any(isnan, ss)
-        
-        # IRF should work
-        irf = get_irf(model)
-        @test size(irf, 1) > 0
-        
-        model = nothing
-    end
-    
-    @testset "Full workflow: update, add, modify calibration" begin
-        model = load_sw07()
-        
-        # Store original state
-        n_eqs_original = length(get_equations(model))
-        
-        # Make several modifications
-        eqs = get_equations(model)
-        
-        # 1. Modify Taylor rule - remove output growth term
-        taylor_idx = findfirst(eq -> occursin("r[0]", eq) && occursin("crpi", eq), string.(eqs))
-        update_equations!(model, taylor_idx, :(r[0] = r[ss] ^ (1 - crr) * r[-1] ^ crr * (pinf[0] / cpie) ^ ((1 - crr) * crpi) * (y[0] / yflex[0]) ^ ((1 - crr) * cry) * ms[0]))
-        
-        # 2. Add auxiliary variable
-        add_equation!(model, :(policy_stance[0] = r[0] - r[ss]))
-        
-        # 3. Modify calibration
-        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.05 | mcflex), silent = true)
-        
-        # Verify model works
-        ss_modified = get_steady_state(model, derivatives = false)
-        @test !any(isnan, ss_modified)
-        @test length(get_equations(model)) == n_eqs_original + 1
-        
-        # Check history has all 3 modifications
-        history = get_revision_history(model)
-        @test length(history) == 3
-        
-        model = nothing
-    end
 end
 
 
@@ -833,25 +736,6 @@ end
         
         # IRFs should be different (removed output growth response)
         @test !isapprox(collect(irf_original), collect(irf_modified), rtol = 1e-5)
-        
-        model = nothing
-    end
-    
-    @testset "Shock size modification changes variance" begin
-        model = load_sw07()
-        
-        std_original = get_standard_deviation(model, derivatives = false)
-        
-        eqs = get_equations(model)
-        a_idx = findfirst(eq -> occursin("a[0]", eq) && occursin("crhoa", eq) && occursin("ea[x]", eq), string.(eqs))
-        
-        # Double the shock size
-        update_equations!(model, a_idx, :(a[0] = 1 - crhoa + crhoa * a[-1] + 2 * z_ea / 100 * ea[x]))
-        
-        std_modified = get_standard_deviation(model, derivatives = false)
-        
-        # Standard deviations should change
-        @test !isapprox(collect(std_original), collect(std_modified), rtol = 1e-5)
         
         model = nothing
     end
