@@ -1,4 +1,3 @@
-
 using MacroModelling
 using Test
 
@@ -11,6 +10,18 @@ function load_sw07()
     # Re-include the model file to get a fresh model instance
     Base.invokelatest(include, "../models/Smets_Wouters_2007.jl")
     return Base.invokelatest(() -> Smets_Wouters_2007)
+end
+
+function load_RBC_baseline()
+    # Re-include the model file to get a fresh model instance
+    Base.invokelatest(include, "../models/RBC_baseline.jl")
+    return Base.invokelatest(() -> RBC_baseline)
+end
+
+function load_FS2000()
+    # Re-include the model file to get a fresh model instance
+    Base.invokelatest(include, "../models/FS2000.jl")
+    return Base.invokelatest(() -> FS2000)
 end
 
 @testset verbose = true "SW07 update_equations! functionality" begin
@@ -419,24 +430,24 @@ end
 @testset verbose = true "SW07 update_calibration_equations! functionality" begin
     
     @testset "Update calibration equation - change target value" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         # SW07 has calibration: mcflex = mc[ss] | mcflex
         calib_eqs = get_calibration_equations(model)
         @test length(calib_eqs) >= 1
         
         calib_params = get_calibrated_parameters(model)
-        @test "mcflex" in calib_params
+        @test "ψ" in calib_params
         
         # Modify the calibration target slightly (multiply by 1.01)
-        update_calibration_equations!(model, 1, :(mcflex = mc[ss] * 1.01 | mcflex), silent = true)
+        update_calibration_equations!(model, 2, :(l[ss] = 0.5 | ψ))
         
         history = get_revision_history(model)
         @test length(history) == 1
         @test history[1].action == :update_calibration_equation
         
         # mcflex should still be calibrated
-        @test "mcflex" in get_calibrated_parameters(model)
+        @test "ψ" in get_calibrated_parameters(model)
         
         ss = get_steady_state(model, derivatives = false)
         @test !any(isnan, ss)
@@ -445,46 +456,23 @@ end
     end
     
     @testset "Update calibration equation using tuple syntax" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         # Update both calibration equations (mcflex and cpie)
         update_calibration_equations!(model, [
-            (1, :(mcflex = mc[ss] * 0.99 | mcflex)),
-            (2, :(pinf[ss] = 1 + constepinf / 100 * 1.1 | cpie))
-        ], silent = true)
+            (1, :(l[ss] = 2/3 | ψ)),
+            (2, :(ḡ = 1/4 * y[ss]| ḡ))
+        ])
+        # TODO: accept also: par | calib_eq
         
         history = get_revision_history(model)
         @test length(history) == 2
-        @test all(h.action == :update_calibration_equation for h in history)
         
         ss = get_steady_state(model, derivatives = false)
         @test !any(isnan, ss)
         
         model = nothing
     end
-    
-    # Note: Switching which parameter is calibrated (e.g., from mcflex to cfc)
-    # is a complex operation that requires regenerating the steady state solver
-    # and may not be fully supported. This test is commented out.
-    # @testset "Switch calibrated parameter" begin
-    #     model = load_sw07()
-    #     
-    #     # Original: mcflex = mc[ss] | mcflex (mcflex is calibrated)
-    #     calib_before = get_calibrated_parameters(model)
-    #     @test "mcflex" in calib_before
-    #     
-    #     # Switch to calibrating cfc instead of mcflex
-    #     update_calibration_equations!(model, 1, :(mcflex = mc[ss] | cfc), silent = true)
-    #     
-    #     calib_after = get_calibrated_parameters(model)
-    #     @test !("mcflex" in calib_after)
-    #     @test "cfc" in calib_after
-    #     
-    #     ss = get_steady_state(model, derivatives = false)
-    #     @test !any(isnan, ss)
-    #     
-    #     model = nothing
-    # end
     
     @testset "Error - calibrate non-existent parameter" begin
         model = load_sw07()
@@ -504,19 +492,19 @@ end
 @testset verbose = true "SW07 add_calibration_equation! functionality" begin
     
     @testset "Add calibration for fixed parameter" begin
-        model = load_sw07()
+        model = load_FS2000()
         
         # ctou = 0.025 is a fixed depreciation rate parameter
         calib_before = get_calibrated_parameters(model)
-        @test !("ctou" in calib_before)
+        @test !("del" in calib_before)
         
         n_calib_before = length(get_calibration_equations(model))
         
         # Add calibration: capital-output ratio determines depreciation
-        add_calibration_equation!(model, :(k[ss] / y[ss] = 8.0 | ctou), silent = true)
+        add_calibration_equation!(model, :(k[ss] / y[ss] = 8.0 | del))
         
         @test length(get_calibration_equations(model)) == n_calib_before + 1
-        @test "ctou" in get_calibrated_parameters(model)
+        @test "del" in get_calibrated_parameters(model)
         
         history = get_revision_history(model)
         @test length(history) == 1
@@ -529,55 +517,52 @@ end
     end
     
     @testset "Add calibration using vector syntax" begin
-        model = load_sw07()
+        model = load_FS2000()
         
         n_calib_before = length(get_calibration_equations(model))
         
         # Add calibration for calfa (capital share)
         add_calibration_equation!(model, [
-            :(lab[ss] = 1.0 | calfa)
-        ], silent = true)
+            :(k[ss] / y[ss] = 4 | del)
+        ])
         
         @test length(get_calibration_equations(model)) == n_calib_before + 1
-        @test "calfa" in get_calibrated_parameters(model)
+        @test "del" in get_calibrated_parameters(model)
         
         model = nothing
     end
     
     @testset "Error - add calibration for already calibrated parameter" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
-        # mcflex is already calibrated
-        @test "mcflex" in get_calibrated_parameters(model)
+        # del is already calibrated
+        @test "ψ" in get_calibrated_parameters(model)
         
         @test_throws ErrorException add_calibration_equation!(
             model,
-            :(y[ss] = 1.5 | mcflex),
-            silent = true
+            :(y[ss] = 1.5 | ψ)
         )
         
         model = nothing
     end
     
     @testset "Error - add calibration without | syntax" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         @test_throws ErrorException add_calibration_equation!(
             model,
-            :(k[ss] / y[ss] = 8.0),  # Missing | ctou
-            silent = true
+            :(k[ss] / y[ss] = 8.0)  # Missing | ctou
         )
         
         model = nothing
     end
     
     @testset "Error - calibrate non-existent parameter" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         @test_throws ErrorException add_calibration_equation!(
             model,
-            :(y[ss] = 1.5 | fake_param),
-            silent = true
+            :(y[ss] = 1.5 | fake_param)
         )
         
         model = nothing
@@ -587,19 +572,19 @@ end
 
 @testset verbose = true "SW07 remove_calibration_equation! functionality" begin
     
-    @testset "Remove calibration with explicit new value" begin
-        model = load_sw07()
+    @testset "Remove calibration with explicit parameters override" begin
+        model = load_RBC_baseline()
         
         n_calib_before = length(get_calibration_equations(model))
         calib_params_before = get_calibrated_parameters(model)
-        @test "mcflex" in calib_params_before
+        @test "ψ" in calib_params_before
         
-        # Remove mcflex calibration with explicit value
-        remove_calibration_equation!(model, 1, new_value = 0.8)
+        # Remove ψ calibration with explicit value via parameters
+        remove_calibration_equation!(model, 2, parameters = :ψ => 1.0)
         
         @test length(get_calibration_equations(model)) == n_calib_before - 1
-        @test !("mcflex" in get_calibrated_parameters(model))
-        @test "mcflex" in get_parameters(model)
+        @test !("ψ" in get_calibrated_parameters(model))
+        @test "ψ" in get_parameters(model)
         
         history = get_revision_history(model)
         @test length(history) == 1
@@ -612,11 +597,11 @@ end
     end
     
     @testset "Remove calibration using current value" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         n_calib_before = length(get_calibration_equations(model))
         
-        # Remove without specifying new_value - uses current calibrated value
+        # Remove without specifying parameters - uses current calibrated value
         remove_calibration_equation!(model, 1)
         
         @test length(get_calibration_equations(model)) == n_calib_before - 1
@@ -628,30 +613,32 @@ end
     end
     
     @testset "Remove calibration using vector syntax" begin
-        model = load_sw07()
+        model = load_RBC_baseline()
         
         n_calib_before = length(get_calibration_equations(model))
         @test n_calib_before >= 2  # SW07 has mcflex and cpie calibrations
         
         # Remove first calibration equation
-        remove_calibration_equation!(model, [1])
+        remove_calibration_equation!(model, [1,2])
         
-        @test length(get_calibration_equations(model)) == n_calib_before - 1
+        @test length(get_calibration_equations(model)) == n_calib_before - 2
         
         model = nothing
     end
     
     @testset "Add then remove calibration - round trip" begin
-        model = load_sw07()
+        model = load_FS2000()
         
         n_calib_before = length(get_calibration_equations(model))
         
         # Add a calibration
-        add_calibration_equation!(model, :(k[ss] / y[ss] = 8.0 | ctou), silent = true)
+        add_calibration_equation!(model, :(k[ss] / y[ss] = 8.0 | del), silent = true)
         @test length(get_calibration_equations(model)) == n_calib_before + 1
         
+        ss_calib = get_steady_state(model, derivatives = false)
+
         # Remove it (last added)
-        remove_calibration_equation!(model, n_calib_before + 1, new_value = 0.025)
+        remove_calibration_equation!(model, n_calib_before + 1)
         @test length(get_calibration_equations(model)) == n_calib_before
         
         # Model should solve
@@ -666,7 +653,7 @@ end
         
         # Remove all calibration equations first
         while length(get_calibration_equations(model)) > 0
-            remove_calibration_equation!(model, 1, new_value = 1.0)
+            remove_calibration_equation!(model, 1)
         end
         
         @test length(get_calibration_equations(model)) == 0

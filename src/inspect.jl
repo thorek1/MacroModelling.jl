@@ -479,8 +479,13 @@ This handles the common pattern of:
 """
 function reprocess_model_equations!(𝓂::ℳ, 
                                     updated_original_equations::Vector{Expr};
+                                    parameters::ParameterType = nothing,
                                     verbose::Bool = false,
                                     silent::Bool = true)
+    if parameters !== nothing
+        write_parameters_input!(𝓂, parameters, verbose = verbose)
+    end
+    
     updated_block = Expr(:block, updated_original_equations...)
     parameter_block = reconstruct_parameter_block(𝓂)
 
@@ -529,7 +534,7 @@ end
 
 
 """
-    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameter_overrides, verbose, silent)
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameters, parameter_overrides, verbose, silent)
 
 Internal function that reprocesses calibration equations after modifications.
 Called by `update_calibration_equations!`, `add_calibration_equation!`, and `remove_calibration_equation!`.
@@ -543,9 +548,14 @@ This handles the common pattern of:
 """
 function reprocess_calibration_equations!(𝓂::ℳ, 
                                           updated_calibration_original::Vector{Expr};
+                                          parameters::ParameterType = nothing,
                                           parameter_overrides::Dict{Symbol, Float64} = Dict{Symbol, Float64}(),
                                           verbose::Bool = false,
                                           silent::Bool = true)
+    if parameters !== nothing
+        write_parameters_input!(𝓂, parameters, verbose = verbose)
+    end
+
     parameter_block = reconstruct_parameter_block(
         𝓂;
         calibration_original_override = updated_calibration_original,
@@ -692,7 +702,7 @@ Note that the output assumes the equations are equal to 0. As in, `k / (q * 4) -
 - `filter` [Default: `nothing`, Type: `Union{Symbol, String, Nothing}`]: filter equations by variable name. Specify a variable name (e.g., `:k` or `"k"`) to return only equations containing that variable. Time subscripts (except `[ss]`) are ignored for calibration equations.
 
 # Returns
-- `Vector{Expr}` of the calibration equations as expressions.
+- `Vector{Expr}` of the calibration equations as expressions (including the `|` calibrated parameter).
 
 # Examples
 ```jldoctest
@@ -722,12 +732,22 @@ end
 get_calibration_equations(RBC)
 # output
 1-element Vector{Expr}:
- :(k / (q * 4) - capital_to_output)
+ :(k[ss] / (4 * q[ss]) = capital_to_output | δ)
 ```
 """
 function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{Expr}
+    parameter_block = reconstruct_parameter_block(𝓂)
+
+    calibration_original = Expr[]
+    for line in parameter_block.args
+        line isa LineNumberNode && continue
+        line isa Expr || continue
+        extract_calibrated_parameter(line) === nothing && continue
+        push!(calibration_original, line)
+    end
+
     # Replace ◖/◗ with {/} in symbols within expression tree
-    exprs = replace_curly_braces_in_symbols.(𝓂.equations.calibration)
+    exprs = replace_curly_braces_in_symbols.(calibration_original)
     
     if filter === nothing
         return exprs
@@ -744,7 +764,7 @@ function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Noth
     end
     
     # Always ignore timing for calibration equations
-    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.calibration) if expr_contains(orig, sym, nothing)]
+    return [expr for (expr, orig) in zip(exprs, calibration_original) if expr_contains(orig, sym, nothing)]
 end
 
 
@@ -1453,6 +1473,7 @@ Modify or replace a model equation. This function updates the model equations an
 - `new_equation::Union{Expr, String}`: The new equation to replace the old one. Can be an `Expr` or a `String` that will be parsed.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
 - `silent` [Default: `true`, Type: `Bool`]: Suppress all output during reprocessing.
 
@@ -1497,6 +1518,7 @@ get_revision_history(RBC)
 function update_equations!(𝓂::ℳ, 
                           old_equation_or_index::Union{Int, Expr, String}, 
                           new_equation::Union{Expr, String}; 
+                          parameters::ParameterType = nothing,
                           verbose::Bool = false,
                           silent::Bool = true)
     # Determine equation index
@@ -1540,7 +1562,10 @@ function update_equations!(𝓂::ℳ,
     end
     
     # Re-process the model equations using common function
-    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
+    reprocess_model_equations!(𝓂, updated_original_equations; 
+                                parameters = parameters,
+                                verbose = verbose, 
+                                silent = silent)
     
     return nothing
 end
@@ -1568,6 +1593,7 @@ Update multiple model equations at once. The model is only re-solved once after 
   - A `Pair` like `3 => :(new_eq)` or `:(old_eq) => :(new_eq)`
 
 # Keyword Arguments  
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information
 - `silent::Bool = true`: Suppress output during model re-solving
 
@@ -1588,6 +1614,7 @@ update_equations!(model, [
 """
 function update_equations!(𝓂::ℳ, 
                           updates::Union{Vector, Tuple};
+                          parameters::ParameterType = nothing,
                           verbose::Bool = false,
                           silent::Bool = true)
     isempty(updates) && return nothing
@@ -1643,7 +1670,10 @@ function update_equations!(𝓂::ℳ,
     end
     
     # Re-process the model equations once using common function
-    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
+    reprocess_model_equations!(𝓂, updated_original_equations; 
+                                parameters = parameters, 
+                                verbose = verbose, 
+                                silent = silent)
     
     return nothing
 end
@@ -1663,6 +1693,7 @@ introduced by the equation.
   using the `:(...)` syntax or a string that will be parsed.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information about the update process
 - `silent::Bool = true`: Suppress output during model re-solving
 
@@ -1697,6 +1728,7 @@ get_equations(RBC)
 """
 function add_equation!(𝓂::ℳ, 
                        new_equation::Union{Expr, String};
+                       parameters::ParameterType = nothing,
                        verbose::Bool = false,
                        silent::Bool = true)
     # Parse string to Expr if needed
@@ -1733,7 +1765,10 @@ function add_equation!(𝓂::ℳ,
     push!(updated_original_equations, parsed_new_equation)
 
     # Re-process the model equations using common function
-    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
+    reprocess_model_equations!(𝓂, updated_original_equations; 
+                                parameters = parameters,
+                                verbose = verbose, 
+                                silent = silent)
     
     return nothing
 end
@@ -1749,6 +1784,7 @@ Add multiple new equations to the model at once. The model is only re-solved onc
   an `Expr` or a `String` that will be parsed.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information
 - `silent::Bool = true`: Suppress output during model re-solving
 
@@ -1763,6 +1799,7 @@ add_equation!(model, [
 """
 function add_equation!(𝓂::ℳ, 
                        new_equations::Union{Vector, Tuple};
+                       parameters::ParameterType = nothing,
                        verbose::Bool = false,
                        silent::Bool = true)
     isempty(new_equations) && return nothing
@@ -1802,7 +1839,10 @@ function add_equation!(𝓂::ℳ,
     end
 
     # Re-process the model equations using common function
-    reprocess_model_equations!(𝓂, updated_original_equations; verbose = verbose, silent = silent)
+    reprocess_model_equations!(𝓂, updated_original_equations; 
+                                parameters = parameters,
+                                verbose = verbose, 
+                                silent = silent)
     
     return nothing
 end
@@ -2036,6 +2076,7 @@ Modify or replace a calibration equation. This function updates the calibration 
 - `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`). When provided as `lhs = rhs | param`, the `param` portion determines which parameter is calibrated.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
 - `silent` [Default: `true`, Type: `Bool`]: Suppress all output during reprocessing.
 
@@ -2077,6 +2118,7 @@ get_revision_history(RBC_calibrated)
 function update_calibration_equations!(𝓂::ℳ, 
                                        old_equation_or_index::Union{Int, Expr, String}, 
                                        new_equation::Union{Expr, String};
+                                       parameters::ParameterType = nothing,
                                        verbose::Bool = false,
                                        silent::Bool = true)
     # Parse string to Expr if needed
@@ -2178,7 +2220,7 @@ function update_calibration_equations!(𝓂::ℳ,
     updated_calibration_original[equation_index] = parsed_new_equation
 
     # Re-process the calibration equations using common function
-    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameters = parameters, verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2201,7 +2243,8 @@ Update multiple calibration equations at once. The model is only re-solved once 
   - `(old_equation, new_equation)`: Match and replace old_equation with new_equation
   - A `Pair` like `1 => :(new_eq)` or `:(old_eq) => :(new_eq)`
 
-# Keyword Arguments  
+# Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information
 - `silent::Bool = true`: Suppress output during model re-solving
 
@@ -2216,6 +2259,7 @@ update_calibration_equations!(model, [
 """
 function update_calibration_equations!(𝓂::ℳ, 
                                        updates::Union{Vector, Tuple};
+                                       parameters::ParameterType = nothing,
                                        verbose::Bool = false,
                                        silent::Bool = true)
     isempty(updates) && return nothing
@@ -2280,7 +2324,7 @@ function update_calibration_equations!(𝓂::ℳ,
     end
 
     # Re-process the calibration equations using common function
-    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameters = parameters, verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2299,6 +2343,7 @@ The calibration equation specifies a steady-state relationship that determines t
   `:(lhs = rhs | parameter)` where `parameter` is the parameter to be calibrated.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information about the update process
 - `silent::Bool = false`: Suppress all output including warnings
 
@@ -2330,6 +2375,7 @@ add_calibration_equation!(RBC, :(k[ss] / (4 * q[ss]) = 1.5 | α))
 """
 function add_calibration_equation!(𝓂::ℳ, 
                                    new_equation::Union{Expr, String};
+                                   parameters::ParameterType = nothing,
                                    verbose::Bool = false,
                                    silent::Bool = false)
     # Parse string to Expr if needed
@@ -2391,7 +2437,7 @@ function add_calibration_equation!(𝓂::ℳ,
     push!(updated_calibration_original, parsed_new_equation)
 
     # Re-process the calibration equations using common function
-    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameters = parameters, verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2407,6 +2453,7 @@ Add multiple calibration equations to the model at once. The model is only re-so
   must use the format `:(lhs = rhs | parameter)`.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information
 - `silent::Bool = false`: Suppress output during model re-solving
 
@@ -2421,6 +2468,7 @@ add_calibration_equation!(model, [
 """
 function add_calibration_equation!(𝓂::ℳ, 
                                    new_equations::Union{Vector, Tuple};
+                                   parameters::ParameterType = nothing,
                                    verbose::Bool = false,
                                    silent::Bool = false)
     isempty(new_equations) && return nothing
@@ -2481,7 +2529,7 @@ function add_calibration_equation!(𝓂::ℳ,
     end
 
     # Re-process the calibration equations using common function
-    reprocess_calibration_equations!(𝓂, updated_calibration_original; verbose = verbose, silent = silent)
+    reprocess_calibration_equations!(𝓂, updated_calibration_original; parameters = parameters, verbose = verbose, silent = silent)
 
     return nothing
 end
@@ -2500,8 +2548,7 @@ The previously calibrated parameter becomes a regular (fixed) parameter, and the
   or the calibration equation expression to match and remove.
 
 # Keyword Arguments
-- `new_value::Union{Real, Nothing} = nothing`: The value to assign to the parameter that was calibrated.
-  If `nothing`, the parameter's most recent solved value is used.
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information about the removal process
 - `silent::Bool = false`: Suppress all output including warnings
 
@@ -2528,7 +2575,7 @@ end
 end
 
 # Remove by index - δ becomes a fixed parameter
-remove_calibration_equation!(RBC, 1, new_value = 0.025)
+remove_calibration_equation!(RBC, 1, parameters = :δ => 0.025)
 
 # Or remove by matching (partial match on calibrated parameter)
 remove_calibration_equation!(RBC, 1)  # Uses the current calibrated value
@@ -2536,7 +2583,7 @@ remove_calibration_equation!(RBC, 1)  # Uses the current calibrated value
 """
 function remove_calibration_equation!(𝓂::ℳ, 
                                       equation_or_index::Union{Int, Expr, String};
-                                      new_value::Union{Real, Nothing} = nothing,
+                                      parameters::ParameterType = nothing,
                                       verbose::Bool = false,
                                       silent::Bool = false)
     n_calib_equations = length(𝓂.equations.calibration_original)
@@ -2562,14 +2609,28 @@ function remove_calibration_equation!(𝓂::ℳ,
     # Get the calibrated parameter name
     calib_param = 𝓂.equations.calibration_parameters[equation_index]
     
-    # Determine the value for the now-fixed parameter
-    if new_value === nothing
-        # Try to get the current calibrated value
-        param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.SS_and_pars_names)
-        
-        new_value = 𝓂.caches.non_stochastic_steady_state[param_idx]
+    new_value = nothing
+    if parameters !== nothing
+        write_parameters_input!(𝓂, parameters, verbose = verbose)
+        param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.parameters)
+        if param_idx !== nothing
+            candidate = 𝓂.parameter_values[param_idx]
+            if !isnan(candidate)
+                new_value = candidate
+            end
+        end
     end
-    
+
+    if new_value === nothing
+        # Determine the value for the now-fixed parameter from current calibrated solution
+        param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.SS_and_pars_names)
+        if param_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
+            new_value = 𝓂.caches.non_stochastic_steady_state[param_idx]
+        else
+            error("Could not determine current value for calibrated parameter `$calib_param`. Provide a value via `parameters`.")
+        end
+    end
+
     if !silent
         println("\nRemoving calibration equation $equation_index:")
         println("  Equation: ", replace(string(removed_equation), "◖" => "{", "◗" => "}"))
@@ -2599,6 +2660,7 @@ function remove_calibration_equation!(𝓂::ℳ,
 
     # Re-process the calibration equations using common function
     reprocess_calibration_equations!(𝓂, updated_calibration_original; 
+                                     parameters = parameters,
                                      parameter_overrides = Dict{Symbol, Float64}(calib_param => Float64(new_value)),
                                      verbose = verbose, silent = silent)
 
@@ -2615,17 +2677,16 @@ Remove multiple calibration equations from the model at once. The model is only 
 - `equations_or_indices::Union{Vector, Tuple}`: A collection of calibration equations to remove. Each element can be:
   - An `Int` index of the calibration equation to remove
   - An `Expr` or `String` to match and remove
-- `new_values::Union{Dict, Nothing} = nothing`: Optional dictionary mapping parameter symbols to their new fixed values.
-  If not provided, the current calibrated values are used.
 
 # Keyword Arguments
+- $PARAMETERS®
 - `verbose::Bool = false`: Print detailed information
 - `silent::Bool = false`: Suppress output during model re-solving
 
 # Examples
 ```julia
 # Remove multiple calibration equations by index
-remove_calibration_equation!(model, [1, 2], new_values = Dict(:α => 0.33, :β => 0.99))
+remove_calibration_equation!(model, [1, 2], parameters = Dict(:α => 0.33, :β => 0.99))
 
 # Remove by matching equations
 remove_calibration_equation!(model, [
@@ -2636,7 +2697,7 @@ remove_calibration_equation!(model, [
 """
 function remove_calibration_equation!(𝓂::ℳ, 
                                       equations_or_indices::Union{Vector, Tuple};
-                                      new_values::Union{Dict, Nothing} = nothing,
+                                      parameters::ParameterType = nothing,
                                       verbose::Bool = false,
                                       silent::Bool = false)
     isempty(equations_or_indices) && return nothing
@@ -2647,6 +2708,10 @@ function remove_calibration_equation!(𝓂::ℳ,
     updated_calibration_original = copy(𝓂.equations.calibration_original)
     indices_to_remove = Int[]
     parameter_overrides = Dict{Symbol, Float64}()
+
+    if parameters !== nothing
+        write_parameters_input!(𝓂, parameters, verbose = verbose)
+    end
     
     # First pass: collect all indices to remove
     for eq_or_idx in equations_or_indices
@@ -2672,9 +2737,16 @@ function remove_calibration_equation!(𝓂::ℳ,
         calib_param = 𝓂.equations.calibration_parameters[equation_index]
         
         # Determine new value for the parameter
-        if new_values !== nothing && haskey(new_values, calib_param)
-            new_val = new_values[calib_param]
-        else
+        new_val = nothing
+        param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.parameters)
+        if param_idx !== nothing
+            candidate = 𝓂.parameter_values[param_idx]
+            if !isnan(candidate)
+                new_val = candidate
+            end
+        end
+
+        if new_val === nothing
             # Get current calibrated value - first try SS_and_pars_names
             param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.SS_and_pars_names)
             if param_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
@@ -2687,7 +2759,7 @@ function remove_calibration_equation!(𝓂::ℳ,
                 if calib_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state) && (n_vars + calib_idx) <= length(𝓂.caches.non_stochastic_steady_state)
                     new_val = 𝓂.caches.non_stochastic_steady_state[n_vars + calib_idx]
                 else
-                    error("Could not determine current value for calibrated parameter `$calib_param`. Please provide a value using the `new_values` argument.")
+                    error("Could not determine current value for calibrated parameter `$calib_param`. Provide a value via `parameters`.")
                 end
             end
         end
@@ -2724,6 +2796,7 @@ function remove_calibration_equation!(𝓂::ℳ,
 
     # Re-process the calibration equations using common function
     reprocess_calibration_equations!(𝓂, updated_calibration_original; 
+                                     parameters = parameters,
                                      parameter_overrides = parameter_overrides,
                                      verbose = verbose, silent = silent)
 
