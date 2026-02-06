@@ -2624,10 +2624,18 @@ function remove_calibration_equation!(𝓂::ℳ,
     if new_value === nothing
         # Determine the value for the now-fixed parameter from current calibrated solution
         param_idx = findfirst(==(calib_param), 𝓂.constants.post_complete_parameters.SS_and_pars_names)
-        if param_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state)
+        if param_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state) && param_idx <= length(𝓂.caches.non_stochastic_steady_state)
             new_value = 𝓂.caches.non_stochastic_steady_state[param_idx]
         else
-            error("Could not determine current value for calibrated parameter `$calib_param`. Provide a value via `parameters`.")
+            # Fallback: look up in the NSSS cache using calibration parameter index
+            n_vars = 𝓂.constants.post_model_macro.nVars
+            calib_param_list = 𝓂.equations.calibration_parameters
+            calib_idx = findfirst(==(calib_param), calib_param_list)
+            if calib_idx !== nothing && !isempty(𝓂.caches.non_stochastic_steady_state) && (n_vars + calib_idx) <= length(𝓂.caches.non_stochastic_steady_state)
+                new_value = 𝓂.caches.non_stochastic_steady_state[n_vars + calib_idx]
+            else
+                error("Could not determine current value for calibrated parameter `$calib_param`. Provide a value via `parameters`.")
+            end
         end
     end
 
