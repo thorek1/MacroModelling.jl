@@ -5076,8 +5076,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
         end
     end
 
-    # RTGF with minimal loop for block-level continuation (needed for continue statements in SS_solve_func)
-    # Cache handling and outer iteration moved to solve_nsss_wrapper
+    # RTGF: Simplified to focus on model-specific equation solving
+    # Cache handling and continuation method moved to solve_nsss_wrapper
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ,
                                     tol::Tolerances,
@@ -5100,6 +5100,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     current_best = 0.0
                     inner_iters = 0
                     solution_error = 1.0
+                    SS_and_pars = Float64[]
+                    NSSS_solver_cache_tmp = []
+                    iters = 0
                     
                     while inner_iters < 10 && solution_error > tol.NSSS_acceptance_tol
                         inner_iters += 1
@@ -5111,14 +5114,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                         $(SS_solve_func...)
                         
                         if solution_error < tol.NSSS_acceptance_tol
+                            # Build solution vector from solved variables
+                            SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
                             break
                         end
                     end
                     
-                    # Build solution vector with model-specific variable names
-                    SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
-                    
-                    # Note: current_best is computed inside SS_solve_func, so we don't need to compute it again here
+                    # If failed to converge, return zeros
+                    if solution_error >= tol.NSSS_acceptance_tol
+                        SS_and_pars = zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters)))
+                    end
                     
                     return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
                  end)
@@ -5705,8 +5710,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         end
     end
 
-    # RTGF with minimal loop for block-level continuation (needed for continue statements in SS_solve_func)
-    # Cache handling and outer iteration moved to solve_nsss_wrapper
+    # RTGF: Simplified to focus on model-specific equation solving
+    # Cache handling and continuation method moved to solve_nsss_wrapper
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ, 
                                     tol::Tolerances,
@@ -5729,6 +5734,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                     current_best = 0.0
                     inner_iters = 0
                     solution_error = 1.0
+                    SS_and_pars = Float64[]
+                    NSSS_solver_cache_tmp = []
+                    iters = 0
                     
                     while inner_iters < 10 && solution_error > tol.NSSS_acceptance_tol
                         inner_iters += 1
@@ -5740,14 +5748,16 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                         $(SS_solve_func...)
                         
                         if solution_error < tol.NSSS_acceptance_tol
+                            # Build solution vector from solved variables
+                            SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
                             break
                         end
                     end
                     
-                    # Build solution vector with model-specific variable names
-                    SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
-                    
-                    # Note: current_best is computed inside SS_solve_func, so we don't need to compute it again here
+                    # If failed to converge, return zeros
+                    if solution_error >= tol.NSSS_acceptance_tol
+                        SS_and_pars = zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters)))
+                    end
                     
                     return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
                 end)
