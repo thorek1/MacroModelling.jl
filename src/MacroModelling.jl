@@ -163,6 +163,7 @@ include("common_docstrings.jl")
 include("structures.jl")
 include("solver_parameters.jl")
 include("options_and_caches.jl")
+include("nsss_solver.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
@@ -5075,130 +5076,57 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
         end
     end
 
-    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
+    # RTGF: Simplified to focus on model-specific equation solving
+    # Cache handling and continuation method moved to solve_nsss_wrapper
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ,
-                                    # fail_fast_solvers_only::Bool, 
                                     tol::Tolerances,
                                     verbose::Bool, 
-                                    cold_start::Bool,
+                                    fail_fast_solvers_only::Bool,
                                     solver_parameters::Vector{solver_parameters})
-                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
-
-                    initial_parameters_tmp = copy(initial_parameters)
-
-                    parameters = copy(initial_parameters)
-                    params_flt = copy(initial_parameters)
+                    parameters = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     
-                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.caches.solver_cache[end]
+                    params_flt = parameters
                     
-                    for pars in 𝓂.caches.solver_cache
-                        copy!(initial_parameters_tmp, pars[end])
-
-                        ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                        latest = sum(abs2,initial_parameters_tmp)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
-
-                    # closest_solution = copy(closest_solution_init)
-                    # solution_error = 1.0
-                    # iters = 0
-                    range_iters = 0
-                    solution_error = 1.0
-                    solved_scale = 0
-                    # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
+                    # Apply parameter bounds and calibration equations
+                    $(parameters_in_equations...)
+                    $(par_bounds...)
+                    $(𝓂.equations.calibration_no_var...)
+                    
+                    # Inner loop for block-level solving with continuation
+                    # (SS_solve_func contains continue statements that need this loop)
                     scale = 1.0
-
-                    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
-                    push!(NSSS_solver_cache_scale, closest_solution_init)
-                    # fail_fast_solvers_only = true
-                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
-                        range_iters += 1
-                        fail_fast_solvers_only = range_iters > 1 ? true : false
-
-                        if abs(solved_scale - scale) < 1e-2
-                            # println(NSSS_solver_cache_scale[end])
-                            break 
+                    solved_scale = 0.0
+                    current_best = 0.0
+                    inner_iters = 0
+                    solution_error = 1.0
+                    SS_and_pars = Float64[]
+                    NSSS_solver_cache_tmp = []
+                    iters = 0
+                    
+                    while inner_iters < 10 && solution_error > tol.NSSS_acceptance_tol
+                        inner_iters += 1
+                        NSSS_solver_cache_tmp = []
+                        solution_error = 0.0
+                        iters = 0
+                        
+                        # Solve model-specific equations
+                        $(SS_solve_func...)
+                        
+                        if solution_error < tol.NSSS_acceptance_tol
+                            # Build solution vector from solved variables
+                            SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
+                            break
                         end
-
-                        # println("i: $range_iters - scale: $scale - solved_scale: $solved_scale")
-                        # println(closest_solution[end])
-                    # for range_ in range_length
-                        # rangee = range(0,1,range_+1)
-                        # for scale in rangee[2:end]
-                            # scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
-
-                            # if scale <= solved_scale continue end
-
-                            
-                            current_best = sum(abs2,NSSS_solver_cache_scale[end][end] - initial_parameters)
-                            closest_solution = NSSS_solver_cache_scale[end]
-
-                            for pars in NSSS_solver_cache_scale
-                                copy!(initial_parameters_tmp, pars[end])
-                                
-                                ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                                latest = sum(abs2,initial_parameters_tmp)
-
-                                if latest <= current_best
-                                    current_best = latest
-                                    closest_solution = pars
-                                end
-                            end
-
-                            # println(closest_solution)
-
-                            if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
-                                parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
-                            else
-                                parameters = copy(initial_parameters)
-                            end
-                            params_flt = parameters
-                            
-                            # println(parameters)
-
-                            $(parameters_in_equations...)
-                            $(par_bounds...)
-                            $(𝓂.equations.calibration_no_var...)
-                            NSSS_solver_cache_tmp = []
-                            solution_error = 0.0
-                            iters = 0
-                            $(SS_solve_func...)
-
-                            if solution_error < tol.NSSS_acceptance_tol
-                                # println("solved for $scale; $range_iters")
-                                solved_scale = scale
-                                if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
-                                else
-                                    reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
-                                end
-
-                                if scale > .95
-                                    scale = 1
-                                else
-                                    # scale = (scale + 1) / 2
-                                    scale = scale * .4 + .6
-                                end
-                            # else
-                            #     println("no sol")
-                            #     scale  = (scale + solved_scale) / 2
-                            #     println("scale $scale")
-                            # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            end
-                    #     end
                     end
-                    return zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters))), (1, 0)
-                end)
+                    
+                    # If failed to converge, return zeros
+                    if solution_error >= tol.NSSS_acceptance_tol
+                        SS_and_pars = zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters)))
+                    end
+                    
+                    return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
+                 end)
 
 
     𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
@@ -5782,115 +5710,56 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         end
     end
 
-    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
+    # RTGF: Simplified to focus on model-specific equation solving
+    # Cache handling and continuation method moved to solve_nsss_wrapper
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ, 
                                     tol::Tolerances,
-                                    # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
-                                    cold_start::Bool,
+                                    fail_fast_solvers_only::Bool,
                                     solver_parameters::Vector{solver_parameters})
-                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
-
-                    parameters = copy(initial_parameters)
-                    params_flt = copy(initial_parameters)
+                    parameters = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     
-                    current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.caches.solver_cache[end]
+                    params_flt = parameters
                     
-                    for pars in 𝓂.caches.solver_cache
-                        latest = sum(abs2,pars[end] - initial_parameters)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
+                    # Apply parameter bounds and calibration equations
+                    $(parameters_in_equations...)
+                    $(par_bounds...)
+                    $(𝓂.equations.calibration_no_var...)
+                    
+                    # Inner loop for block-level solving with continuation
+                    # (SS_solve_func contains continue statements that need this loop)
+                    scale = 1.0
+                    solved_scale = 0.0
+                    current_best = 0.0
+                    inner_iters = 0
+                    solution_error = 1.0
+                    SS_and_pars = Float64[]
+                    NSSS_solver_cache_tmp = []
+                    iters = 0
+                    
+                    while inner_iters < 10 && solution_error > tol.NSSS_acceptance_tol
+                        inner_iters += 1
+                        NSSS_solver_cache_tmp = []
+                        solution_error = 0.0
+                        iters = 0
+                        
+                        # Solve model-specific equations
+                        $(SS_solve_func...)
+                        
+                        if solution_error < tol.NSSS_acceptance_tol
+                            # Build solution vector from solved variables
+                            SS_and_pars = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)]
+                            break
                         end
                     end
-
-                    # closest_solution = closest_solution_init
-                    # solution_error = 1.0
-                    # iters = 0
-                    range_iters = 0
-                    solution_error = 1.0
-                    solved_scale = 0
-                    # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
-                    scale = 1.0
-
-                    while range_iters <= 500 && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
-                        range_iters += 1
-                        fail_fast_solvers_only = range_iters > 1 ? true : false
-
-                    # for range_ in range_length
-                        # rangee = range(0,1,range_+1)
-                        # for scale in rangee[2:end]
-                            # scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
-
-                            # if scale <= solved_scale continue end
-
-                            current_best = sum(abs2,𝓂.caches.solver_cache[end][end] - initial_parameters)
-                            closest_solution = 𝓂.caches.solver_cache[end]
-
-                            for pars in 𝓂.caches.solver_cache
-                                latest = sum(abs2,pars[end] - initial_parameters)
-                                if latest <= current_best
-                                    current_best = latest
-                                    closest_solution = pars
-                                end
-                            end
-
-                            # Zero initial value if starting without guess
-                            if !isfinite(sum(abs,closest_solution[2]))
-                                closest_solution = copy(closest_solution)
-                                for i in 1:2:length(closest_solution)
-                                    closest_solution[i] = zeros(length(closest_solution[i]))
-                                end
-                            end
-
-                            # println(closest_solution)
-
-                            if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
-                                parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
-                            else
-                                parameters = copy(initial_parameters)
-                            end
-                            params_flt = parameters
-                            
-                            # println(parameters)
-
-                            $(parameters_in_equations...)
-                            $(par_bounds...)
-                            $(𝓂.equations.calibration_no_var...)
-                            NSSS_solver_cache_tmp = []
-                            solution_error = 0.0
-                            iters = 0
-                            $(SS_solve_func...)
-
-                            if solution_error < tol.NSSS_acceptance_tol
-                                # println("solved for $scale; $range_iters")
-                                solved_scale = scale
-                                if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.constants.post_model_macro.exo_present,𝓂.constants.post_model_macro.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.equations.calibration_parameters...)], (solution_error, iters)
-                                else
-                                    reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
-                                end
-
-                                if scale > .95
-                                    scale = 1
-                                else
-                                    # scale = (scale + 1) / 2
-                                    scale = scale * .4 + .6
-                                end
-                            # else
-                            #     println("no sol")
-                            #     scale  = (scale + solved_scale) / 2
-                            #     println("scale $scale")
-                            # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            end
-                    #     end
+                    
+                    # If failed to converge, return zeros
+                    if solution_error >= tol.NSSS_acceptance_tol
+                        SS_and_pars = zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters)))
                     end
-                    return zeros($(length(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_past,𝓂.constants.post_model_macro.exo_future)) + length(𝓂.equations.calibration_parameters))), (1, 0)
+                    
+                    return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
                 end)
 
     𝓂.functions.NSSS_solve = @RuntimeGeneratedFunction(solve_exp)
@@ -5918,7 +5787,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
         pop!(𝓂.caches.solver_cache)
     end
 
-    runtime = @elapsed outmodel = try 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
+    runtime = @elapsed outmodel = try solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > tol.NSSS_acceptance_tol) || !isfinite(outmodel[2][1]) ? 
@@ -5974,7 +5843,7 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
         push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
@@ -6004,7 +5873,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
                 pop!(𝓂.caches.solver_cache)
             end
 
-            SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [p])
+            SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
             elapsed_time = time() - start_time
 
@@ -9800,7 +9669,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
     end
 
     # Update counters
