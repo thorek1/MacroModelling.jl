@@ -1,12 +1,260 @@
 # Non-stochastic steady state (NSSS) solver
 # 
-# This file contains the normal Julia function wrapper for NSSS solving.
-# The wrapper handles cache management and continuation method, while delegating
-# model-specific equation solving to the RTGF.
+# This file contains:
+# 1. Step execution functions for individual NSSS solve steps
+# 2. The solve_nsss_steps orchestrator that iterates over steps
+# 3. The solve_nsss_wrapper that handles cache management and continuation method
 
 using DataStructures: CircularBuffer
 import LinearAlgebra as ℒ
 import ChainRulesCore: @ignore_derivatives
+
+
+# ============================================================================
+# Step execution functions
+# ============================================================================
+
+"""
+    execute_step!(step::AnalyticalNSSSStep, sol_vec, params_vec, args...)
+
+Execute an analytical NSSS solve step. Evaluates the compiled symbolic function
+to compute one or more unknowns and writes them to the solution vector.
+
+Returns: (error, iterations, cache_entries)
+"""
+function execute_step!(step::AnalyticalNSSSStep, sol_vec::Vector{Float64}, 
+                       params_vec::Vector{Float64},
+                       closest_solution, 𝓂, tol, fail_fast_solvers_only,
+                       cold_start, solver_parameters, verbose)
+    error = 0.0
+    
+    # Phase 1: Compute auxiliary variables (domain-safety ➕_vars)
+    if step.aux_func! !== nothing
+        step.aux_func!(step.aux_buffer, sol_vec, params_vec)
+        for (i, idx) in enumerate(step.aux_write_indices)
+            sol_vec[idx] = step.aux_buffer[i]
+        end
+        
+        # Domain safety error check
+        if step.error_func! !== nothing
+            step.error_func!(step.error_buffer, sol_vec, params_vec)
+            error += sum(abs, step.error_buffer)
+        end
+    end
+    
+    # Phase 2: Compute target variable(s)
+    step.eval_func!(step.buffer, sol_vec, params_vec)
+    
+    # Apply bounds and compute clamping error
+    for (i, idx) in enumerate(step.write_indices)
+        raw = step.buffer[i]
+        if step.has_bounds[i]
+            clamped = clamp(raw, step.lower_bounds[i], step.upper_bounds[i])
+            error += abs(clamped - raw)
+            sol_vec[idx] = clamped
+        else
+            sol_vec[idx] = raw
+        end
+    end
+    
+    return error, 0, Vector{Float64}[]
+end
+
+
+"""
+    execute_step!(step::NumericalNSSSStep, sol_vec, params_vec, args...)
+
+Execute a numerical NSSS solve step. Gathers parameters and solved variables,
+then calls `block_solver` to numerically solve for the unknowns.
+
+Returns: (error, iterations, cache_entries)
+"""
+function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64}, 
+                       params_vec::Vector{Float64},
+                       closest_solution, 𝓂, tol, fail_fast_solvers_only,
+                       cold_start, solver_parameters, verbose)
+    error = 0.0
+    
+    # Phase 1: Compute auxiliary variables (domain-safety, if any)
+    if step.aux_func! !== nothing
+        step.aux_func!(step.aux_buffer, sol_vec, params_vec)
+        for (i, idx) in enumerate(step.aux_write_indices)
+            sol_vec[idx] = step.aux_buffer[i]
+        end
+        
+        # Domain safety error check
+        if step.aux_error_func! !== nothing
+            step.aux_error_func!(step.aux_error_buffer, sol_vec, params_vec)
+            error += sum(abs, step.aux_error_buffer)
+            if error > tol.NSSS_acceptance_tol
+                if verbose
+                    println("Failed for aux variables with error $error")
+                end
+                return error, 0, Vector{Float64}[]
+            end
+        end
+    end
+    
+    # Gather params_and_solved_vars from the solution and parameter vectors
+    n_params = length(step.param_gather_indices)
+    n_vars = length(step.var_gather_indices)
+    params_and_solved_vars = Vector{Float64}(undef, n_params + n_vars)
+    for (i, idx) in enumerate(step.param_gather_indices)
+        params_and_solved_vars[i] = params_vec[idx]
+    end
+    for (i, idx) in enumerate(step.var_gather_indices)
+        params_and_solved_vars[n_params + i] = sol_vec[idx]
+    end
+    
+    # Build initial guesses from closest cached solution
+    n = step.block_index
+    cache_sol = closest_solution[2*(n-1)+1]
+    cache_par = closest_solution[2*n]
+    inits = [
+        max.(step.lbs[1:length(cache_sol)], min.(step.ubs[1:length(cache_sol)], cache_sol)),
+        cache_par
+    ]
+    
+    # Call block solver
+    solution = block_solver(
+        params_and_solved_vars,
+        n,
+        𝓂.NSSS.solve_blocks_in_place[n],
+        inits,
+        step.lbs,
+        step.ubs,
+        solver_parameters,
+        fail_fast_solvers_only,
+        cold_start,
+        verbose
+    )
+    
+    # Accumulate error and iterations
+    error += solution[2][1]
+    iters = solution[2][2]
+    
+    # Write results to solution vector
+    sol = solution[1]
+    for (i, idx) in enumerate(step.write_indices)
+        sol_vec[idx] = sol[i]
+    end
+    
+    # Build cache entries for this block
+    cache_entries = [
+        typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol),
+        typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)
+    ]
+    
+    return error, iters, cache_entries
+end
+
+
+# ============================================================================
+# Orchestrator: solve_nsss_steps
+# ============================================================================
+
+"""
+    solve_nsss_steps(parameters, 𝓂, tol, verbose, fail_fast_solvers_only,
+                     closest_solution, cold_start, solver_params)
+
+Solve the NSSS by iterating over pre-compiled solve steps.
+
+Each step is either an `AnalyticalNSSSStep` (compiled symbolic evaluation)
+or a `NumericalNSSSStep` (calls block_solver). Steps are executed in order,
+filling the solution vector progressively.
+
+This replaces the monolithic RTGF `solve_SS` with a modular step-based approach.
+"""
+function solve_nsss_steps(
+    parameters::Vector{Float64},
+    𝓂::ℳ,
+    tol::Tolerances,
+    verbose::Bool,
+    fail_fast_solvers_only::Bool,
+    closest_solution,
+    cold_start::Bool,
+    solver_params::Vector{solver_parameters}
+)
+    nsss = 𝓂.NSSS
+    
+    # Prepare extended parameter vector (raw params → bounded + calibration_no_var)
+    params_vec = Vector{Float64}(undef, nsss.n_ext_params)
+    nsss.param_prep!(params_vec, parameters)
+    
+    # Initialize solution vector
+    sol_vec = zeros(Float64, nsss.n_sol)
+    
+    # Retry loop (mirrors the old inner while loop with continue)
+    NSSS_solver_cache_tmp = Vector{Float64}[]
+    solution_error = 1.0
+    iters = 0
+    
+    for attempt in 1:10
+        fill!(sol_vec, 0.0)
+        empty!(NSSS_solver_cache_tmp)
+        solution_error = 0.0
+        iters = 0
+        
+        failed = false
+        for step in nsss.solve_steps
+            step_error, step_iters, step_cache = execute_step!(
+                step, sol_vec, params_vec, closest_solution, 𝓂, tol,
+                fail_fast_solvers_only, cold_start, solver_params, verbose
+            )
+            
+            solution_error += step_error
+            iters += step_iters
+            append!(NSSS_solver_cache_tmp, step_cache)
+            
+            if solution_error > tol.NSSS_acceptance_tol
+                if verbose
+                    println("Step '$(step.description)' failed with accumulated error $solution_error")
+                end
+                failed = true
+                break
+            end
+        end
+        
+        if !failed && solution_error < tol.NSSS_acceptance_tol
+            break
+        end
+    end
+    
+    # Build SS_and_pars from solution vector (output only, excluding ➕_vars at the end)
+    n_output = 𝓂.NSSS.n_output
+    SS_and_pars = sol_vec[1:n_output]
+    
+    # Cache management
+    if isempty(NSSS_solver_cache_tmp)
+        NSSS_solver_cache_tmp = [copy(parameters)]
+    else
+        push!(NSSS_solver_cache_tmp, copy(parameters))
+    end
+    
+    current_best = sqrt(sum(abs2, 𝓂.caches.solver_cache[end][end] - parameters))
+    for pars in 𝓂.caches.solver_cache
+        latest = sqrt(sum(abs2, pars[end] - parameters))
+        if latest <= current_best
+            current_best = latest
+        end
+    end
+    
+    if current_best > 1e-8 && solution_error < tol.NSSS_acceptance_tol
+        reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
+    end
+    
+    # If failed to converge, return zeros
+    if solution_error >= tol.NSSS_acceptance_tol
+        SS_and_pars = zeros(Float64, n_output)
+    end
+    
+    return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
+end
+
+
+# ============================================================================
+# Wrapper: solve_nsss_wrapper (handles cache + continuation method)
+# ============================================================================
 
 """
     solve_nsss_wrapper(
@@ -105,13 +353,15 @@ function solve_nsss_wrapper(
             parameters = copy(initial_parameters)
         end
         
-        # Call model-specific RTGF to solve equations at scaled parameters
-        SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp = 𝓂.functions.NSSS_solve(
+        # Call step-based solver with closest_solution and cold_start passed explicitly
+        SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp = solve_nsss_steps(
             parameters,
             𝓂,
             tol,
             verbose,
             fail_fast_solvers_only,
+            closest_solution,
+            cold_start,
             solver_params
         )
         

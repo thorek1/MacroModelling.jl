@@ -592,9 +592,88 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+
+"""
+A single analytical solve step in the NSSS solve sequence.
+Uses `Symbolics.build_function` to compile the evaluation function.
+
+The evaluation function has signature `eval_func!(out, sol_vec, params_vec)`
+where `sol_vec` is the flat solution vector and `params_vec` is the extended
+parameter vector (raw parameters + calibration_no_var results with bounds applied).
+
+Phase 1 (optional): Compute auxiliary variables (domain-safety ➕_vars) and check error.
+Phase 2: Compute target variable(s) and apply bounds.
+"""
+struct AnalyticalNSSSStep
+    # Phase 1: Auxiliary computation (optional, for domain-safety ➕_vars)
+    aux_func!::Union{Nothing, Function}       # f!(out, sol_vec, params_vec)
+    aux_write_indices::Vector{Int}            # where in sol_vec to write aux results
+    aux_buffer::Vector{Float64}               # pre-allocated output buffer
+
+    # Phase 1 error: domain safety check (optional)
+    error_func!::Union{Nothing, Function}     # g!(out, sol_vec, params_vec)
+    error_buffer::Vector{Float64}             # pre-allocated error buffer
+
+    # Phase 2: Main computation
+    eval_func!::Function                      # f!(out, sol_vec, params_vec)
+    write_indices::Vector{Int}                # where in sol_vec to write results
+    buffer::Vector{Float64}                   # pre-allocated output buffer
+
+    # Phase 2 bounds clamping
+    lower_bounds::Vector{Float64}             # per-output lower bounds
+    upper_bounds::Vector{Float64}             # per-output upper bounds
+    has_bounds::BitVector                     # which outputs have bounds to check
+
+    # Description for debugging
+    description::String
+end
+
+
+"""
+A numerical block solve step in the NSSS solve sequence.
+Calls `block_solver` to numerically solve for unknowns.
+
+The block's compiled residual/Jacobian functions are stored in the
+`ss_solve_block` referenced by `block_index` in `𝓂.NSSS.solve_blocks_in_place`.
+"""
+struct NumericalNSSSStep
+    # Index of the ss_solve_block in 𝓂.NSSS.solve_blocks_in_place
+    block_index::Int
+    # Which indices in sol_vec this step writes to
+    write_indices::Vector{Int}
+    # Indices for gathering params_and_solved_vars:
+    #   params_and_solved_vars = vcat(params_vec[param_gather_indices], sol_vec[var_gather_indices])
+    param_gather_indices::Vector{Int}
+    var_gather_indices::Vector{Int}
+    # Bounds for the block solver
+    lbs::Vector{Float64}
+    ubs::Vector{Float64}
+    # Compiled aux equation function (for domain-safe equations evaluated before block solve)
+    aux_func!::Union{Nothing, Function}       # f!(out, sol_vec, params_vec)
+    aux_write_indices::Vector{Int}            # where in sol_vec to write aux results
+    aux_buffer::Vector{Float64}               # pre-allocated output buffer
+    # Compiled aux error function (domain safety check)
+    aux_error_func!::Union{Nothing, Function} # g!(out, sol_vec, params_vec)
+    aux_error_buffer::Vector{Float64}         # pre-allocated error buffer
+    # Description for debugging
+    description::String
+end
+
+const NSSSSolveStep = Union{AnalyticalNSSSStep, NumericalNSSSStep}
+
+
 mutable struct non_stochastic_steady_state
     solve_blocks_in_place::Vector{ss_solve_block}
     dependencies::Any
+    # Step-based solving infrastructure (populated by write_steady_state_solver_function!)
+    solve_steps::Vector{NSSSSolveStep}         # Ordered sequence of solve steps
+    param_prep!::Union{Nothing, Function}      # Compiled parameter preparation: f!(ext_params, raw_params)
+    n_sol::Int                                 # Length of solution vector (includes ➕_vars)
+    n_output::Int                              # Length of output vector (excludes ➕_vars) = SS_and_pars length
+    n_ext_params::Int                          # Length of extended parameter vector
+    sol_names::Vector{Symbol}                  # Names in solution vector (for output)
+    exo_zero_indices::Vector{Int}              # Indices of dynamic exogenous vars (set to 0)
+    param_names_ext::Vector{Symbol}            # Names in extended parameter vector
 end
 
 """
