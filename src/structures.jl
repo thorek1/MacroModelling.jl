@@ -669,9 +669,9 @@ mutable struct non_stochastic_steady_state
     solve_steps::Vector{NSSSSolveStep}         # Ordered sequence of solve steps
     param_prep!::Union{Nothing, Function}      # Compiled parameter preparation: f!(ext_params, raw_params)
     n_sol::Int                                 # Length of solution vector (includes ➕_vars)
-    n_output::Int                              # Length of output vector (excludes ➕_vars) = SS_and_pars length
+    output_indices::Vector{Int}                # Indices into sol_vec for output (SS_and_pars), may have repeats
     n_ext_params::Int                          # Length of extended parameter vector
-    sol_names::Vector{Symbol}                  # Names in solution vector (for output)
+    sol_names::Vector{Symbol}                  # Names in solution vector (unique, for indexing)
     exo_zero_indices::Vector{Int}              # Indices of dynamic exogenous vars (set to 0)
     param_names_ext::Vector{Symbol}            # Names in extended parameter vector
 end

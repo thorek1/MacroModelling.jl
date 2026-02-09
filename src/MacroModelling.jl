@@ -4952,21 +4952,47 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)
 
+    # Clear state from any previous call (set_up_steady_state_solver! can be called multiple times)
+    empty!(𝓂.NSSS.solve_blocks_in_place)
+
     # =========================================================================
     # Build global index maps for step-based solving
     # =========================================================================
     
     # Solution vector: output vars first, then calibration params, then ➕_vars (internal only)
-    output_var_names = Symbol.(replace.(string.(sort(union(
+    # NOTE: make_equation_robust_to_domain_errors may add MORE ➕_vars during the loop,
+    # so we pre-allocate extra Symbolics slots and dynamically extend the index maps.
+    output_var_names = unique(Symbol.(replace.(string.(sort(union(
         𝓂.constants.post_model_macro.var,
         𝓂.constants.post_model_macro.exo_past,
-        𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
     plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
     all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names)
     n_sol = length(all_sol_names)
-    n_output = length(output_var_names) + length(calib_param_names)
     sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
+    plus_var_count_at_start = length(plus_var_names)  # track for dynamic ➕_var registration
+    
+    # Add alias entries for unstripped (lag-annotated) variable names → same index as stripped
+    for d in union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
+        raw_name = Symbol(d)
+        stripped_name = Symbol(replace(string(d), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        if raw_name != stripped_name && haskey(sol_name_to_index, stripped_name)
+            sol_name_to_index[raw_name] = sol_name_to_index[stripped_name]
+        end
+    end
+    
+    # Build output_indices: maps the FULL SS_and_pars_names order (with duplicates from stripping)
+    # to sol_vec positions. This matches what SS_and_pars_names expects downstream.
+    # SS_and_pars_names = vcat(Symbol.(string.(sort(union(var, exo_past, exo_future)))), calibration_parameters)
+    output_names_full = vcat(
+        Symbol.(replace.(string.(sort(union(
+            𝓂.constants.post_model_macro.var,
+            𝓂.constants.post_model_macro.exo_past,
+            𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
+        calib_param_names
+    )
+    output_indices = [sol_name_to_index[name] for name in output_names_full]
     
     # Extended parameter vector: raw parameters + calibration_no_var results
     raw_param_names = collect(𝓂.constants.post_complete_parameters.parameters)
@@ -4986,7 +5012,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     end
     
     # Global Symbolics variables for step compilation
-    MacroModelling.Symbolics.@variables 𝔖[1:n_sol] 𝔓_ext[1:n_ext_params]
+    # Pre-allocate extra slots for ➕_vars that make_equation_robust_to_domain_errors may create
+    n_sol_max = n_sol + 2 * length(ss_equations)  # generous upper bound
+    MacroModelling.Symbolics.@variables 𝔖[1:n_sol_max] 𝔓_ext[1:n_ext_params]
     
     # Global mapping: symbol name → placeholder + back-to-array dict
     global_placeholder = Dict{Symbol, Symbol}()
@@ -5134,6 +5162,23 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                 block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                 
+                # Register any newly created ➕_vars from write_block_solution!'s domain-safety processing
+                current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                if current_plus_count > plus_var_count_at_start
+                    for pvi in (plus_var_count_at_start + 1):current_plus_count
+                        pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                        if !haskey(sol_name_to_index, pv)
+                            push!(all_sol_names, pv)
+                            idx = length(all_sol_names)
+                            sol_name_to_index[pv] = idx
+                            sym = Symbol("𝔖_$idx")
+                            global_placeholder[pv] = sym
+                            global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                        end
+                    end
+                    plus_var_count_at_start = current_plus_count
+                end
+                
                 push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
                                                          𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
                 
@@ -5199,6 +5244,23 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.constants.post_model_macro.➕_vars), Symbol[]]
                     
                     rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([val_expr], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+    
+                    # Register any newly created ➕_vars from domain-safety processing
+                    current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                    if current_plus_count > plus_var_count_at_start
+                        for pvi in (plus_var_count_at_start + 1):current_plus_count
+                            pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                            if !haskey(sol_name_to_index, pv)
+                                push!(all_sol_names, pv)
+                                idx = length(all_sol_names)
+                                sol_name_to_index[pv] = idx
+                                sym = Symbol("𝔖_$idx")
+                                global_placeholder[pv] = sym
+                                global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                            end
+                        end
+                        plus_var_count_at_start = current_plus_count
+                    end
     
                     # Build aux function (domain-safety ➕_vars)
                     all_aux_eqs = vcat(ss_and_aux_equations, ss_and_aux_equations_dep)
@@ -5337,6 +5399,23 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
                 end
                 
+                # Register any newly created ➕_vars from write_block_solution!'s domain-safety processing
+                current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                if current_plus_count > plus_var_count_at_start
+                    for pvi in (plus_var_count_at_start + 1):current_plus_count
+                        pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                        if !haskey(sol_name_to_index, pv)
+                            push!(all_sol_names, pv)
+                            idx = length(all_sol_names)
+                            sol_name_to_index[pv] = idx
+                            sym = Symbol("𝔖_$idx")
+                            global_placeholder[pv] = sym
+                            global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                        end
+                    end
+                    plus_var_count_at_start = current_plus_count
+                end
+                
                 push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
                                                          𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
 
@@ -5395,8 +5474,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     𝓂.NSSS.solve_steps = solve_steps
     𝓂.NSSS.param_prep! = param_prep_func!
+    n_sol = length(all_sol_names)  # update after dynamic ➕_var additions during the while loop
     𝓂.NSSS.n_sol = n_sol
-    𝓂.NSSS.n_output = n_output
+    𝓂.NSSS.output_indices = output_indices
     𝓂.NSSS.n_ext_params = n_ext_params
     𝓂.NSSS.sol_names = all_sol_names
     𝓂.NSSS.exo_zero_indices = exo_zero_indices
@@ -5538,20 +5618,41 @@ function write_steady_state_solver_function!(𝓂::ℳ;
 
     ss_equations = vcat(𝓂.equations.steady_state_aux,𝓂.equations.calibration)
 
+    # Clear state from any previous call (set_up_steady_state_solver! can be called multiple times)
+    empty!(𝓂.NSSS.solve_blocks_in_place)
+
     # =========================================================================
     # Build global index maps for step-based solving
     # =========================================================================
     
-    sol_var_names = Symbol.(replace.(string.(sort(union(
+    sol_var_names = unique(Symbol.(replace.(string.(sort(union(
         𝓂.constants.post_model_macro.var,
         𝓂.constants.post_model_macro.exo_past,
-        𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
     plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
     all_sol_names = vcat(sol_var_names, calib_param_names, plus_var_names)
     n_sol = length(all_sol_names)
-    n_output = length(sol_var_names) + length(calib_param_names)
     sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
+    
+    # Build output_indices: maps FULL SS_and_pars_names order (with duplicates) to sol_vec positions
+    output_names_full = vcat(
+        Symbol.(replace.(string.(sort(union(
+            𝓂.constants.post_model_macro.var,
+            𝓂.constants.post_model_macro.exo_past,
+            𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
+        calib_param_names
+    )
+    output_indices = [sol_name_to_index[name] for name in output_names_full]
+    
+    # Add alias entries for unstripped (lag-annotated) variable names → same index as stripped
+    for d in union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
+        raw_name = Symbol(d)
+        stripped_name = Symbol(replace(string(d), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        if raw_name != stripped_name && haskey(sol_name_to_index, stripped_name)
+            sol_name_to_index[raw_name] = sol_name_to_index[stripped_name]
+        end
+    end
     
     raw_param_names = collect(𝓂.constants.post_complete_parameters.parameters)
     n_raw_params = length(raw_param_names)
@@ -6005,7 +6106,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     𝓂.NSSS.solve_steps = solve_steps
     𝓂.NSSS.param_prep! = param_prep_func!
     𝓂.NSSS.n_sol = n_sol
-    𝓂.NSSS.n_output = n_output
+    𝓂.NSSS.output_indices = output_indices
     𝓂.NSSS.n_ext_params = n_ext_params
     𝓂.NSSS.sol_names = all_sol_names
     𝓂.NSSS.exo_zero_indices = exo_zero_indices

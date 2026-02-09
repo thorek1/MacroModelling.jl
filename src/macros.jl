@@ -872,7 +872,7 @@ macro model(𝓂,ex...)
                             NSSSSolveStep[],   # solve_steps (populated later by write_steady_state_solver_function!)
                             nothing,           # param_prep!
                             0,                 # n_sol
-                            0,                 # n_output
+                            Int[],             # output_indices
                             0,                 # n_ext_params
                             Symbol[],          # sol_names
                             Int[],             # exo_zero_indices

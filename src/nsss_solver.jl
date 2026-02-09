@@ -157,13 +157,13 @@ end
     solve_nsss_steps(parameters, 𝓂, tol, verbose, fail_fast_solvers_only,
                      closest_solution, cold_start, solver_params)
 
-Solve the NSSS by iterating over pre-compiled solve steps.
+Solve the NSSS by executing pre-compiled solve steps in a single pass.
 
 Each step is either an `AnalyticalNSSSStep` (compiled symbolic evaluation)
 or a `NumericalNSSSStep` (calls block_solver). Steps are executed in order,
 filling the solution vector progressively.
 
-This replaces the monolithic RTGF `solve_SS` with a modular step-based approach.
+Returns: (SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp)
 """
 function solve_nsss_steps(
     parameters::Vector{Float64},
@@ -184,68 +184,42 @@ function solve_nsss_steps(
     # Initialize solution vector
     sol_vec = zeros(Float64, nsss.n_sol)
     
-    # Retry loop (mirrors the old inner while loop with continue)
+    # Single pass through all steps
     NSSS_solver_cache_tmp = Vector{Float64}[]
-    solution_error = 1.0
+    solution_error = 0.0
     iters = 0
     
-    for attempt in 1:10
-        fill!(sol_vec, 0.0)
-        empty!(NSSS_solver_cache_tmp)
-        solution_error = 0.0
-        iters = 0
+    for step in nsss.solve_steps
+        step_error, step_iters, step_cache = execute_step!(
+            step, sol_vec, params_vec, closest_solution, 𝓂, tol,
+            fail_fast_solvers_only, cold_start, solver_params, verbose
+        )
         
-        failed = false
-        for step in nsss.solve_steps
-            step_error, step_iters, step_cache = execute_step!(
-                step, sol_vec, params_vec, closest_solution, 𝓂, tol,
-                fail_fast_solvers_only, cold_start, solver_params, verbose
-            )
-            
-            solution_error += step_error
-            iters += step_iters
-            append!(NSSS_solver_cache_tmp, step_cache)
-            
-            if solution_error > tol.NSSS_acceptance_tol
-                if verbose
-                    println("Step '$(step.description)' failed with accumulated error $solution_error")
-                end
-                failed = true
-                break
+        solution_error += step_error
+        iters += step_iters
+        append!(NSSS_solver_cache_tmp, step_cache)
+        
+        if solution_error > tol.NSSS_acceptance_tol
+            if verbose
+                println("Step '$(step.description)' failed with accumulated error $solution_error")
             end
-        end
-        
-        if !failed && solution_error < tol.NSSS_acceptance_tol
             break
         end
     end
     
-    # Build SS_and_pars from solution vector (output only, excluding ➕_vars at the end)
-    n_output = 𝓂.NSSS.n_output
-    SS_and_pars = sol_vec[1:n_output]
+    # Build SS_and_pars from solution vector using output indices
+    SS_and_pars = sol_vec[nsss.output_indices]
     
-    # Cache management
+    # If failed to converge, return zeros
+    if solution_error >= tol.NSSS_acceptance_tol
+        SS_and_pars = zeros(Float64, length(nsss.output_indices))
+    end
+    
+    # Append parameters to cache 
     if isempty(NSSS_solver_cache_tmp)
         NSSS_solver_cache_tmp = [copy(parameters)]
     else
         push!(NSSS_solver_cache_tmp, copy(parameters))
-    end
-    
-    current_best = sqrt(sum(abs2, 𝓂.caches.solver_cache[end][end] - parameters))
-    for pars in 𝓂.caches.solver_cache
-        latest = sqrt(sum(abs2, pars[end] - parameters))
-        if latest <= current_best
-            current_best = latest
-        end
-    end
-    
-    if current_best > 1e-8 && solution_error < tol.NSSS_acceptance_tol
-        reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
-    end
-    
-    # If failed to converge, return zeros
-    if solution_error >= tol.NSSS_acceptance_tol
-        SS_and_pars = zeros(Float64, n_output)
     end
     
     return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
@@ -317,6 +291,11 @@ function solve_nsss_wrapper(
     solution_error = 1.0
     solved_scale = 0.0
     scale = 1.0
+    SS_and_pars = Float64[]
+    
+    # Local intermediate cache for warm starts at intermediate scales
+    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+    push!(NSSS_solver_cache_scale, closest_solution_init)
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : 500
@@ -325,11 +304,16 @@ function solve_nsss_wrapper(
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
         
-        # Find closest solution in cache for this iteration
-        current_best = sum(abs2, 𝓂.caches.solver_cache[end][end] - initial_parameters)
-        closest_solution = 𝓂.caches.solver_cache[end]
+        # Stall detection: stop if scale hasn't moved
+        if abs(solved_scale - scale) < 1e-2
+            break
+        end
         
-        for pars in 𝓂.caches.solver_cache
+        # Find closest solution from LOCAL intermediate cache
+        current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
+        closest_solution = NSSS_solver_cache_scale[end]
+        
+        for pars in NSSS_solver_cache_scale
             latest = sum(abs2, pars[end] - initial_parameters)
             if latest <= current_best
                 current_best = latest
@@ -338,7 +322,6 @@ function solve_nsss_wrapper(
         end
         
         # Zero initial value if starting without valid guess
-        # Only applies to non-CircularBuffer version with solution cache structure
         if length(closest_solution) > 1 && !isfinite(sum(abs, closest_solution[2]))
             closest_solution = copy(closest_solution)
             for i in 1:2:length(closest_solution)
@@ -346,14 +329,14 @@ function solve_nsss_wrapper(
             end
         end
         
-        # Interpolate parameters between current and cached solution
-        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
-            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+        # Interpolate parameters between target and cached solution
+        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution[end]
+            parameters = scale * initial_parameters + (1 - scale) * closest_solution[end]
         else
             parameters = copy(initial_parameters)
         end
         
-        # Call step-based solver with closest_solution and cold_start passed explicitly
+        # Call step-based solver
         SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp = solve_nsss_steps(
             parameters,
             𝓂,
@@ -370,26 +353,38 @@ function solve_nsss_wrapper(
             solved_scale = scale
             
             if scale == 1
-                # Fully converged at target parameters
+                # Fully converged at target parameters — update global cache and return
+                current_best_global = sqrt(sum(abs2, 𝓂.caches.solver_cache[end][end] - initial_parameters))
+                for pars in 𝓂.caches.solver_cache
+                    latest = sqrt(sum(abs2, pars[end] - initial_parameters))
+                    if latest <= current_best_global
+                        current_best_global = latest
+                    end
+                end
+                if current_best_global > 1e-8
+                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
+                end
+                
                 return SS_and_pars, (solution_error, iters)
             end
             
-            # Update scale for next iteration
+            # Cache intermediate result for warm starts
+            push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
+            
+            # Advance scale toward 1.0
             if scale > 0.95
                 scale = 1.0
             else
                 scale = scale * 0.4 + 0.6
             end
+        else
+            # Failed: pull scale back toward last successful scale
+            scale = scale * 0.3 + solved_scale * 0.7
         end
     end
     
-    # Failed to converge - return zeros
-    n_vars = length(union(
-        𝓂.constants.post_model_macro.var,
-        𝓂.constants.post_model_macro.exo_past,
-        𝓂.constants.post_model_macro.exo_future
-    ))
-    n_params = length(𝓂.equations.calibration_parameters)
+    # Failed to converge - return zeros with matching output length
+    n_output = length(𝓂.NSSS.output_indices)
     
-    return zeros(n_vars + n_params), (1.0, 0)
+    return zeros(n_output), (1.0, 0)
 end
