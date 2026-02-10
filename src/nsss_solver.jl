@@ -324,6 +324,12 @@ function solve_nsss_wrapper(
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
         
+        # Stall detection: if scale and solved_scale are very close, break
+        # Matches main branch logic at line ~5088
+        if abs(solved_scale - scale) < 1e-2
+            break
+        end
+        
         # Find closest solution from LOCAL intermediate cache
         current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
         closest_solution = NSSS_solver_cache_scale[end]
@@ -384,15 +390,10 @@ function solve_nsss_wrapper(
             else
                 scale = scale * 0.4 + 0.6
             end
-        else
-            # Failed: pull scale back toward last successful scale
-            # Matches main branch pattern: scale = scale * .3 + solved_scale * .7
-            old_scale = scale
-            scale = scale * 0.3 + solved_scale * 0.7
-            if _nsss_debug_counter[] <= 5
-                println("  [NSSS] Failure branch: error=$solution_error, scale $old_scale → $scale, solved_scale=$solved_scale, iter=$range_iters")
-            end
         end
+        # Note: Main branch has NO explicit failure-case scale adjustment.
+        # When solution_error >= tol, the loop simply continues with the same scale,
+        # relying on stall detection (abs(solved_scale - scale) < 1e-2) to break.
     end
     
     # Failed to converge - return zeros with matching output length
