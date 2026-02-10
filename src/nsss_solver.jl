@@ -390,10 +390,11 @@ function solve_nsss_wrapper(
             else
                 scale = scale * 0.4 + 0.6
             end
+        else
+            # Failed: pull scale back toward last successful scale
+            # This matches main branch: every error check does "scale = scale * .3 + solved_scale * .7; continue"
+            scale = scale * 0.3 + solved_scale * 0.7
         end
-        # Note: Main branch has NO explicit failure-case scale adjustment.
-        # When solution_error >= tol, the loop simply continues with the same scale,
-        # relying on stall detection (abs(solved_scale - scale) < 1e-2) to break.
     end
     
     # Failed to converge - return zeros with matching output length
