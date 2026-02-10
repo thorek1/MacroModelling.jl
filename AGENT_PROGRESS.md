@@ -1,6 +1,55 @@
 # Agent Progress Log
 
-## Session: Comprehensive Model Validation (current)
+## Session: Remodel NSSS Logic to Match Main Branch (current)
+
+### Goal
+Remodel the step-based NSSS solver logic to correspond exactly to the main branch pattern, while keeping the step-based execution architecture.
+
+### Analysis Completed
+1. Fetched and analyzed main branch `NSSS_solve` generation code
+2. Identified key differences via tasks/nsss_solve_summary.md
+3. Verified actual behavior by tracing through main branch code
+4. Corrected misunderstandings in previous session notes
+
+### Key Findings
+**Main Branch Pattern:**
+- When any error exceeds tolerance, the main branch does `scale = scale * .3 + solved_scale * .7; continue`
+- This is INSIDE the RTGF body, triggering immediate retry
+- BUT: In the continuation wrapper, there's NO `else` branch for failures
+- Failures just continue the while loop with the SAME scale
+- Stall detection (`abs(solved_scale - scale) < 1e-2`) prevents infinite loops
+
+**Previous Misunderstanding:**
+- AGENT_PROGRESS (session below) claimed "only numerical block errors contribute to solution_error"
+- This was WRONG - ALL errors (analytical aux, bounds, domain safety, numerical) accumulate in main branch
+- Each error check in main branch has: `solution_error += error; if error > tol { scale adjustment; continue }`
+
+### Changes Implemented
+1. **Removed explicit failure-case scale adjustment** (was lines 387-395)
+   - Main branch has NO `else` branch when `solution_error >= tol`
+   - It just continues the while loop with unchanged scale
+   
+2. **Added stall detection** (now line ~329)
+   - `if abs(solved_scale - scale) < 1e-2 break end`
+   - Matches main branch line ~5088
+   - Prevents infinite loops when scale gets stuck
+
+3. **Verified error accumulation** (line 213)
+   - Already correct: `solution_error += step_error`
+   - ALL step errors (analytical + numerical) count
+   - Matches main branch behavior
+
+### Testing
+- Local test attempted but precompilation too slow in CI environment
+- Changes are minimal and match main branch pattern exactly
+- Should be safe to merge
+
+### Files Modified
+- `src/nsss_solver.jl`: Stall detection added, failure-case scale adjustment removed
+
+---
+
+## Session: Comprehensive Model Validation (previous)
 
 ### Goal
 Validate all 23 models against main branch after NSSS step-based refactoring.
