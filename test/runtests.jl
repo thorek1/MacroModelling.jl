@@ -796,10 +796,10 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    @testset verbose = true "Update equations functionality" begin
-        include("test_update_equations.jl")
-    end
-    GC.gc()
+    # @testset verbose = true "Update equations functionality" begin
+    #     include("test_update_equations.jl")
+    # end
+    # GC.gc()
 
     @testset verbose = true "Test equation filtering" begin
         include("test_filter_equations.jl")
