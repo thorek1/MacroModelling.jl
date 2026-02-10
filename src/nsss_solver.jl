@@ -9,6 +9,9 @@ using DataStructures: CircularBuffer
 import LinearAlgebra as ℒ
 import ChainRulesCore: @ignore_derivatives
 
+# Temporary debug counter
+const _nsss_debug_counter = Ref(0)
+
 
 # ============================================================================
 # Step execution functions
@@ -43,17 +46,25 @@ function execute_step!(step::AnalyticalNSSSStep, sol_vec::Vector{Float64},
     end
     
     # Phase 2: Compute target variable(s)
-    step.eval_func!(step.buffer, sol_vec, params_vec)
-    
-    # Apply bounds and compute clamping error
-    for (i, idx) in enumerate(step.write_indices)
-        raw = step.buffer[i]
-        if step.has_bounds[i]
-            clamped = clamp(raw, step.lower_bounds[i], step.upper_bounds[i])
-            error += abs(clamped - raw)
-            sol_vec[idx] = clamped
-        else
-            sol_vec[idx] = raw
+    if !isempty(step.write_indices)
+        step.eval_func!(step.buffer, sol_vec, params_vec)
+        
+        # Apply bounds: ➕_vars get clamped, user-bounded vars only get error
+        for (i, idx) in enumerate(step.write_indices)
+            raw = step.buffer[i]
+            if step.has_bounds[i]
+                clamped = clamp(raw, step.lower_bounds[i], step.upper_bounds[i])
+                error += abs(clamped - raw)
+                if step.clamp_to_bounds[i]
+                    # ➕_var: store clamped value (matches main branch behavior)
+                    sol_vec[idx] = clamped
+                else
+                    # User bounds: store raw value, only accumulate error (matches main branch)
+                    sol_vec[idx] = raw
+                end
+            else
+                sol_vec[idx] = raw
+            end
         end
     end
     
@@ -195,13 +206,22 @@ function solve_nsss_steps(
             fail_fast_solvers_only, cold_start, solver_params, verbose
         )
         
+        # Accumulate errors from ALL step types (analytical and numerical).
+        # On the main branch, every error check triggers scale adjustment + continue
+        # when solution_error exceeds tolerance. We replicate this by breaking out
+        # of the step loop and letting the wrapper handle scale adjustment.
         solution_error += step_error
-        iters += step_iters
-        append!(NSSS_solver_cache_tmp, step_cache)
+        
+        if step isa NumericalNSSSStep
+            iters += step_iters
+            append!(NSSS_solver_cache_tmp, step_cache)
+        end
         
         if solution_error > tol.NSSS_acceptance_tol
-            if verbose
-                println("Step '$(step.description)' failed with accumulated error $solution_error")
+            if verbose || _nsss_debug_counter[] <= 3
+                desc = step isa NumericalNSSSStep ? step.description : (step isa AnalyticalNSSSStep ? step.description : "unknown")
+                println("  [NSSS] Break at step '$desc': step_err=$step_error, cum_err=$solution_error")
+                _nsss_debug_counter[] += 1
             end
             break
         end
@@ -304,11 +324,6 @@ function solve_nsss_wrapper(
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
         
-        # Stall detection: stop if scale hasn't moved
-        if abs(solved_scale - scale) < 1e-2
-            break
-        end
-        
         # Find closest solution from LOCAL intermediate cache
         current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
         closest_solution = NSSS_solver_cache_scale[end]
@@ -321,17 +336,9 @@ function solve_nsss_wrapper(
             end
         end
         
-        # Zero initial value if starting without valid guess
-        if length(closest_solution) > 1 && !isfinite(sum(abs, closest_solution[2]))
-            closest_solution = copy(closest_solution)
-            for i in 1:2:length(closest_solution)
-                closest_solution[i] = zeros(length(closest_solution[i]))
-            end
-        end
-        
         # Interpolate parameters between target and cached solution
-        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution[end]
-            parameters = scale * initial_parameters + (1 - scale) * closest_solution[end]
+        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
         else
             parameters = copy(initial_parameters)
         end
@@ -379,7 +386,12 @@ function solve_nsss_wrapper(
             end
         else
             # Failed: pull scale back toward last successful scale
+            # Matches main branch pattern: scale = scale * .3 + solved_scale * .7
+            old_scale = scale
             scale = scale * 0.3 + solved_scale * 0.7
+            if _nsss_debug_counter[] <= 5
+                println("  [NSSS] Failure branch: error=$solution_error, scale $old_scale → $scale, solved_scale=$solved_scale, iter=$range_iters")
+            end
         end
     end
     

@@ -619,10 +619,11 @@ struct AnalyticalNSSSStep
     write_indices::Vector{Int}                # where in sol_vec to write results
     buffer::Vector{Float64}                   # pre-allocated output buffer
 
-    # Phase 2 bounds clamping
+    # Phase 2 bounds checking and clamping
     lower_bounds::Vector{Float64}             # per-output lower bounds
     upper_bounds::Vector{Float64}             # per-output upper bounds
-    has_bounds::BitVector                     # which outputs have bounds to check
+    has_bounds::BitVector                     # which outputs have bounds to check (error)
+    clamp_to_bounds::BitVector               # which outputs to clamp (➕_vars yes, user bounds no)
 
     # Description for debugging
     description::String

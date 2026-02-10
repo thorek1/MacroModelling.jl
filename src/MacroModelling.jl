@@ -4623,16 +4623,6 @@ end
 
 
 
-function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
-    postwalk(node ->
-          if node isa Symbol && haskey(remap, node)
-              remap[node]
-          else
-              node
-          end, 
-          exprs)
-end
-
 function write_ss_check_function!(𝓂::ℳ;
                                     cse = true,
                                     skipzeros = true, 
@@ -4798,6 +4788,17 @@ function write_ss_check_function!(𝓂::ℳ;
     return nothing
 end
 
+end # dispatch_doctor (close @stable block before helper functions that return abstract Function types)
+
+function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
+    postwalk(node ->
+          if node isa Symbol && haskey(remap, node)
+              remap[node]
+          else
+              node
+          end, 
+          exprs)
+end
 
 """
     compile_exprs_to_func(exprs, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict; ...)
@@ -4813,8 +4814,6 @@ Each expression is:
 
 Returns: compiled in-place function `f!(out, sol_vec, params_vec)`
 """
-end # dispatch_doctor (close @stable block before helper functions that return abstract Function types)
-
 function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
                                 cse = true, skipzeros = true, nnz_parallel_threshold::Int = 1000000)
     sym_exprs = Symbolics.Num[]
@@ -5207,7 +5206,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     nothing, Int[], Float64[],           # no aux
                     nothing, Float64[],                   # no error
                     eval_func!, [widx], zeros(Float64, 1), # main
-                    Float64[], Float64[], falses(1),       # no bounds
+                    Float64[], Float64[], falses(1), falses(1),  # no bounds
                     "Constant: $var_name = $val"
                 ))
 
@@ -5228,13 +5227,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     bounds_tuple = get(𝓂.constants.post_parameters_macro.bounds, var_name, (eps(), 1e12))
                     lb, ub = Float64(bounds_tuple[1]), Float64(bounds_tuple[2])
                     
+                    # DEBUG: trace bounds lookup
+                    println("  [STEP_CREATE] ➕ var $var_name: bounds_tuple=$bounds_tuple, lb=$lb, ub=$ub, in_dict=$(haskey(𝓂.constants.post_parameters_macro.bounds, var_name))")
+                    
                     eval_func! = compile_exprs_to_func([val_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
                     
                     push!(solve_steps, AnalyticalNSSSStep(
                         nothing, Int[], Float64[],                        # no aux
                         nothing, Float64[],                               # no error func (bounds do the error)
                         eval_func!, [widx], zeros(Float64, 1),            # main
-                        [lb], [ub], trues(1),                             # bounds
+                        [lb], [ub], trues(1), trues(1),                   # bounds + clamp (➕_var)
                         "Analytical ➕: $var_name"
                     ))
                     
@@ -5319,7 +5321,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             aux_func!, aux_write_indices, aux_buffer,
                             error_func!, error_buffer,
                             eval_func!, [widx], zeros(Float64, 1),
-                            [lb], [ub], trues(1),
+                            [lb], [ub], trues(1), falses(1),              # bounds error only, no clamp (user bounds)
                             "Analytical bounded: $var_name"
                         ))
                     else
@@ -5327,7 +5329,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             aux_func!, aux_write_indices, aux_buffer,
                             error_func!, error_buffer,
                             eval_func!, [widx], zeros(Float64, 1),
-                            Float64[], Float64[], falses(1),
+                            Float64[], Float64[], falses(1), falses(1),   # no bounds
                             "Analytical: $var_name"
                         ))
                     end
@@ -5377,7 +5379,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                         nothing, Int[], Float64[],
                         nothing, Float64[],
                         eval_func!, step_write_indices, zeros(Float64, length(step_exprs)),
-                        Float64[], Float64[], falses(length(step_exprs)),
+                        Float64[], Float64[], falses(length(step_exprs)), falses(length(step_exprs)),
                         "Analytical multi: $(join(string.(Symbol.(vars_to_solve)), ", "))"
                     ))
                 end
@@ -5463,7 +5465,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
             minmax_error_func!, zeros(Float64, n_errors),   # error func computes the validation error
             compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array),  # no-op main
             Int[], Float64[],                                # empty write_indices
-            Float64[], Float64[], falses(0),
+            Float64[], Float64[], falses(0), falses(0),
             "Min/Max validation"
         ))
     end
