@@ -3915,7 +3915,7 @@ function write_block_solution!(𝓂,
 
 
     
-    solved_vals_local = Expr[]
+    solved_vals_local = Union{Expr, Symbol}[]
     for (i,val) in enumerate(rewritten_eqs)
         push!(solved_vals_local, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
         # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
@@ -3985,9 +3985,9 @@ function write_block_solution!(𝓂,
         push!(aux_expr, v.args[2])
     end
     
-    aux_replacements = Dict{Symbol,Any}()
+    aux_replacements = Dict{Symbol, Union{Expr, Symbol, Number}}()
     for (i,x) in enumerate(aux_vars)
-        replacement = Dict(x => aux_expr[i])
+        replacement = Dict{Symbol, Union{Expr, Symbol, Number}}(x => aux_expr[i])
         for ii in i+1:length(aux_vars)
             aux_expr[ii] = replace_symbols(aux_expr[ii], replacement)
         end
@@ -4623,14 +4623,17 @@ end
 
 
 
-function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
-    postwalk(node ->
-          if node isa Symbol && haskey(remap, node)
-              remap[node]
-          else
-              node
-          end, 
-          exprs)
+@unstable begin
+    replace_symbols(expr::Symbol, remap::AbstractDict{Symbol, <:Any}) = get(remap, expr, expr)
+
+    function replace_symbols(expr::Expr, remap::AbstractDict{Symbol, <:Any})
+        new_args = map(arg -> replace_symbols(arg, remap), expr.args)
+        return Expr(expr.head, new_args...)
+    end
+
+    replace_symbols(exprs::AbstractVector, remap::AbstractDict{Symbol, <:Any}) = map(x -> replace_symbols(x, remap), exprs)
+
+    replace_symbols(expr, remap::AbstractDict{Symbol, <:Any}) = expr
 end
 
 function write_ss_check_function!(𝓂::ℳ;
@@ -4674,9 +4677,9 @@ function write_ss_check_function!(𝓂::ℳ;
         # push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
     end
 
-    calib_replacements = Dict{Symbol,Any}()
+    calib_replacements = Dict{Symbol, Union{Expr, Symbol, Number}}()
     for (i,x) in enumerate(calib_vars)
-        replacement = Dict(x => calib_expr[i])
+        replacement = Dict{Symbol, Union{Expr, Symbol, Number}}(x => calib_expr[i])
         for ii in i+1:length(calib_vars)
             calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
         end
@@ -4853,7 +4856,7 @@ Create a `NumericalNSSSStep` from the metadata returned by `write_block_solution
 """
 function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
                                𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
-                               global_solvetime_aux_sub::Dict{Symbol, Any} = Dict{Symbol, Any}())
+                               global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
     write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
     param_gather_indices = [ext_param_to_index[p] for p in block_meta.calib_pars_input]
     var_gather_indices = [sol_name_to_index[v] for v in block_meta.other_vars_input]
@@ -5044,7 +5047,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     end
     
     # Build bounded parameter expressions (as Expr for substitution into calibration_no_var)
-    bounded_param_exprs_for_sub = Dict{Symbol, Any}()
+    bounded_param_exprs_for_sub = Dict{Symbol, Union{Symbol, Expr}}()
     for (i, par) in enumerate(raw_param_names)
         if haskey(𝓂.constants.post_parameters_macro.bounds, par)
             lb, ub = 𝓂.constants.post_parameters_macro.bounds[par]
@@ -5066,7 +5069,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     end
     
     # Calibration_no_var results — fully expand in terms of raw params
-    calib_expr_replacements = Dict{Symbol, Any}()
+    calib_expr_replacements = Dict{Symbol, Union{Symbol, Expr}}()
     for expr in 𝓂.equations.calibration_no_var
         lhs = expr.args[1]
         rhs = expr.args[2]
@@ -5109,7 +5112,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     
     # Accumulate solve-time ➕_var definitions for inlining
     # (these are created by make_equation_robust_to_domain_errors and are NOT model variables)
-    global_solvetime_aux_sub = Dict{Symbol, Any}()
+    global_solvetime_aux_sub = Dict{Symbol, Union{Symbol, Expr}}()
     
     # New: step accumulator
     solve_steps = NSSSSolveStep[]
@@ -5148,7 +5151,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
-            if avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if !symbolic_SS
+                soll = nothing
+            elseif avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
                 soll = solve_symbolically(eq_to_solve,var_to_solve_for)
@@ -5156,7 +5161,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
             if isnothing(soll) || isempty(soll)
                 # --- Case: symbolic solve fails → numerical block ---
-                println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
+                if verbose && symbolic_SS
+                    println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
+                end
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
@@ -5678,7 +5685,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         pp_back[Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = P_raw[i]
     end
     
-    bounded_param_exprs_for_sub = Dict{Symbol, Any}()
+    bounded_param_exprs_for_sub = Dict{Symbol, Union{Symbol, Expr}}()
     for (i, par) in enumerate(raw_param_names)
         if haskey(𝓂.constants.post_parameters_macro.bounds, par)
             lb, ub = 𝓂.constants.post_parameters_macro.bounds[par]
@@ -5698,7 +5705,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         end
     end
     
-    calib_expr_replacements = Dict{Symbol, Any}()
+    calib_expr_replacements = Dict{Symbol, Union{Symbol, Expr}}()
     for expr in 𝓂.equations.calibration_no_var
         lhs = expr.args[1]
         rhs = expr.args[2]
@@ -5788,7 +5795,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
         # nnaux_linear = []
         # nnaux_error = []
         # push!(nnaux_error, :(aux_error = 0))
-        solved_vals_local = Expr[]
+        solved_vals_local = Union{Expr, Symbol}[]
         # solved_vals_in_place = Expr[]
         
         eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
@@ -7880,9 +7887,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
 
-    calib_replacements = Dict{Symbol,Any}()
+    calib_replacements = Dict{Symbol, Union{Expr, Symbol, Number}}()
     for (i,x) in enumerate(calib_vars)
-        replacement = Dict(x => calib_expr[i])
+        replacement = Dict{Symbol, Union{Expr, Symbol, Number}}(x => calib_expr[i])
         for ii in i+1:length(calib_vars)
             calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
         end

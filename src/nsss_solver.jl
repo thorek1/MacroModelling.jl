@@ -81,18 +81,6 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
         for (i, idx) in enumerate(step.aux_write_indices)
             sol_vec[idx] = step.aux_buffer[i]
         end
-        
-        # Domain safety error check
-        if step.aux_error_func! !== nothing
-            step.aux_error_func!(step.aux_error_buffer, sol_vec, params_vec)
-            error += sum(abs, step.aux_error_buffer)
-            if error > tol.NSSS_acceptance_tol
-                if verbose
-                    println("Failed for aux variables with error $error")
-                end
-                return error, 0, Vector{Float64}[]
-            end
-        end
     end
     
     # Gather params_and_solved_vars from the solution and parameter vectors
@@ -132,6 +120,24 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
     # Accumulate error and iterations
     error += solution[2][1]
     iters = solution[2][2]
+    if error > tol.NSSS_acceptance_tol
+        if verbose
+            println("Failed after solving block with error $error")
+        end
+        return error, iters, Vector{Float64}[]
+    end
+
+    # Domain safety error check (after block solve, like main branch)
+    if step.aux_error_func! !== nothing
+        step.aux_error_func!(step.aux_error_buffer, sol_vec, params_vec)
+        error += sum(abs, step.aux_error_buffer)
+        if error > tol.NSSS_acceptance_tol
+            if verbose
+                println("Failed for aux variables with error $error")
+            end
+            return error, iters, Vector{Float64}[]
+        end
+    end
     
     # Write results to solution vector
     sol = solution[1]
@@ -321,17 +327,9 @@ function solve_nsss_wrapper(
             end
         end
         
-        # Zero initial value if starting without valid guess
-        if length(closest_solution) > 1 && !isfinite(sum(abs, closest_solution[2]))
-            closest_solution = copy(closest_solution)
-            for i in 1:2:length(closest_solution)
-                closest_solution[i] = zeros(length(closest_solution[i]))
-            end
-        end
-        
         # Interpolate parameters between target and cached solution
-        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution[end]
-            parameters = scale * initial_parameters + (1 - scale) * closest_solution[end]
+        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
         else
             parameters = copy(initial_parameters)
         end
