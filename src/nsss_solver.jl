@@ -5,11 +5,6 @@
 # 2. The solve_nsss_steps orchestrator that iterates over steps
 # 3. The solve_nsss_wrapper that handles cache management and continuation method
 
-using DataStructures: CircularBuffer
-import LinearAlgebra as ℒ
-import ChainRulesCore: @ignore_derivatives
-
-
 # ============================================================================
 # Step execution functions
 # ============================================================================
@@ -128,7 +123,7 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
         return error, iters, Vector{Float64}[]
     end
 
-    # Domain safety error check (after block solve, like main branch)
+    # Domain safety error check after block solve
     if step.aux_error_func! !== nothing
         step.aux_error_func!(step.aux_error_buffer, sol_vec, params_vec)
         error += sum(abs, step.aux_error_buffer)
@@ -249,9 +244,8 @@ end
 
 Normal Julia function wrapper for NSSS solving.
 
-This function handles the cache management and continuation method for solving
-the non-stochastic steady state. It delegates model-specific equation solving
-to the RTGF `𝓂.functions.NSSS_solve`.
+This function handles cache management and continuation scaling for solving
+the non-stochastic steady state using the step-based NSSS solver.
 
 The continuation method gradually transitions from a cached solution to the
 target parameters using a scaling approach, which improves convergence.
@@ -264,6 +258,15 @@ target parameters using a scaling approach, which improves convergence.
 - `cold_start`: Whether this is a cold start (limits iterations to 1)
 - `solver_params`: Solver configuration
 
+# Keyword arguments
+- `continuation_cache_capacity`: Size of local continuation cache buffer
+- `continuation_max_iters`: Maximum continuation iterations for warm starts
+- `stall_tolerance`: Threshold to stop when continuation scale no longer moves
+- `cache_push_distance_tol`: Distance threshold before pushing solved cache to model cache
+- `scale_snap_threshold`: Scale above which continuation snaps directly to `1.0`
+- `scale_success_weight`: Weight on current scale after successful continuation step
+- `scale_failure_weight`: Weight on current scale after failed continuation step
+
 # Returns
 - Tuple of (solution_vector, (solution_error, iterations))
 """
@@ -274,6 +277,14 @@ function solve_nsss_wrapper(
     verbose::Bool,
     cold_start::Bool,
     solver_params::Vector{solver_parameters}
+    ;
+    continuation_cache_capacity::Int = 500,
+    continuation_max_iters::Int = 500,
+    stall_tolerance::Float64 = 1e-2,
+    cache_push_distance_tol::Float64 = 1e-8,
+    scale_snap_threshold::Float64 = 0.95,
+    scale_success_weight::Float64 = 0.4,
+    scale_failure_weight::Float64 = 0.3,
 )::Tuple{Vector, Tuple{Real, Int}}
     
     # Type conversion for AD compatibility
@@ -301,22 +312,22 @@ function solve_nsss_wrapper(
     SS_and_pars = Float64[]
     
     # Local intermediate cache for warm starts at intermediate scales
-    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
     push!(NSSS_solver_cache_scale, closest_solution_init)
     
     # Continuation method: iterate with scaling to gradually approach target
-    max_iters = cold_start ? 1 : 500
+    max_iters = cold_start ? 1 : continuation_max_iters
 
     while range_iters <= max_iters && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
 
         # Stall detection: stop if scale hasn't moved
-        if abs(solved_scale - scale) < 1e-2
+        if abs(solved_scale - scale) < stall_tolerance
             break
         end
 
-        # Find closest solution from LOCAL intermediate cache
+        # Find closest solution from local intermediate cache
         current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
         closest_solution = NSSS_solver_cache_scale[end]
 
@@ -352,7 +363,7 @@ function solve_nsss_wrapper(
             solved_scale = scale
             
             if scale == 1
-                if current_best > 1e-8
+                if current_best > cache_push_distance_tol
                     reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                 end
                 return SS_and_pars, (solution_error, iters)
@@ -362,14 +373,14 @@ function solve_nsss_wrapper(
             push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
             
             # Advance scale toward 1.0
-            if scale > 0.95
+            if scale > scale_snap_threshold
                 scale = 1.0
             else
-                scale = scale * 0.4 + 0.6
+                scale = scale * scale_success_weight + (1 - scale_success_weight)
             end
         else
             # Failed: pull scale back toward last successful scale
-            scale = scale * 0.3 + solved_scale * 0.7
+            scale = scale * scale_failure_weight + solved_scale * (1 - scale_failure_weight)
         end
     end
     
