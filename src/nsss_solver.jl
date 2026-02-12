@@ -306,20 +306,20 @@ function solve_nsss_wrapper(
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : 500
-    
+
     while range_iters <= max_iters && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
-        
+
         # Stall detection: stop if scale hasn't moved
         if abs(solved_scale - scale) < 1e-2
             break
         end
-        
+
         # Find closest solution from LOCAL intermediate cache
         current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
         closest_solution = NSSS_solver_cache_scale[end]
-        
+
         for pars in NSSS_solver_cache_scale
             latest = sum(abs2, pars[end] - initial_parameters)
             if latest <= current_best
@@ -352,18 +352,9 @@ function solve_nsss_wrapper(
             solved_scale = scale
             
             if scale == 1
-                # Fully converged at target parameters — update global cache and return
-                current_best_global = sqrt(sum(abs2, 𝓂.caches.solver_cache[end][end] - initial_parameters))
-                for pars in 𝓂.caches.solver_cache
-                    latest = sqrt(sum(abs2, pars[end] - initial_parameters))
-                    if latest <= current_best_global
-                        current_best_global = latest
-                    end
-                end
-                if current_best_global > 1e-8
+                if current_best > 1e-8
                     reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
                 end
-                
                 return SS_and_pars, (solution_error, iters)
             end
             
