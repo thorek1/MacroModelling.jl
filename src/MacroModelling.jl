@@ -4624,16 +4624,12 @@ end
 
 
 @unstable begin
-    replace_symbols(expr::Symbol, remap::AbstractDict{Symbol, <:Any}) = get(remap, expr, expr)
-
-    function replace_symbols(expr::Expr, remap::AbstractDict{Symbol, <:Any})
-        new_args = map(arg -> replace_symbols(arg, remap), expr.args)
-        return Expr(expr.head, new_args...)
+    function replace_symbols(exprs, remap::AbstractDict{Symbol, <:Any})
+        postwalk(node ->
+            (node isa Symbol && haskey(remap, node)) ? remap[node] : node,
+            exprs,
+        )
     end
-
-    replace_symbols(exprs::AbstractVector, remap::AbstractDict{Symbol, <:Any}) = map(x -> replace_symbols(x, remap), exprs)
-
-    replace_symbols(expr, remap::AbstractDict{Symbol, <:Any}) = expr
 end
 
 function write_ss_check_function!(𝓂::ℳ;
@@ -4872,14 +4868,17 @@ function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
         # Separate model-level ➕_vars (in sol_vec) from solve-time ➕_vars (inline)
         model_aux_names = Symbol[]
         model_aux_rhs = Any[]
+        model_aux_sub = Dict{Symbol, Any}()
         for eq in block_meta.ss_and_aux_equations
             if eq isa Expr && eq.head == :(=)
                 lhs = eq.args[1]
                 rhs = eq.args[2]
                 expanded_rhs = isempty(global_solvetime_aux_sub) ? rhs : replace_symbols(rhs, global_solvetime_aux_sub)
+                expanded_rhs = isempty(model_aux_sub) ? expanded_rhs : replace_symbols(expanded_rhs, model_aux_sub)
                 if haskey(sol_name_to_index, lhs)
                     push!(model_aux_names, lhs)
                     push!(model_aux_rhs, expanded_rhs)
+                    model_aux_sub[lhs] = expanded_rhs
                 else
                     global_solvetime_aux_sub[lhs] = expanded_rhs
                 end
@@ -5151,9 +5150,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
-            if !symbolic_SS
-                soll = nothing
-            elseif avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
                 soll = solve_symbolically(eq_to_solve,var_to_solve_for)
@@ -5282,6 +5279,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     # Separate model-level ➕_vars (in sol_vec) from solve-time ➕_vars (inline)
                     model_aux_names = Symbol[]
                     model_aux_rhs = Any[]
+                    model_aux_sub = Dict{Symbol, Any}()
                     
                     for eq in all_aux_eqs
                         if eq isa Expr && eq.head == :(=)
@@ -5289,10 +5287,12 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                             rhs = eq.args[2]
                             # Inline previously-defined solve-time vars in this RHS
                             expanded_rhs = isempty(global_solvetime_aux_sub) ? rhs : replace_symbols(rhs, global_solvetime_aux_sub)
+                            expanded_rhs = isempty(model_aux_sub) ? expanded_rhs : replace_symbols(expanded_rhs, model_aux_sub)
                             if haskey(sol_name_to_index, lhs)
                                 # Model-level ➕_var: write to sol_vec
                                 push!(model_aux_names, lhs)
                                 push!(model_aux_rhs, expanded_rhs)
+                                model_aux_sub[lhs] = expanded_rhs
                             else
                                 # Solve-time ➕_var: accumulate for inlining
                                 global_solvetime_aux_sub[lhs] = expanded_rhs
@@ -5478,6 +5478,39 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     # =========================================================================
     # Store step-based solve infrastructure in 𝓂.NSSS
     # =========================================================================
+
+    # Some ➕_var bounds are registered lazily during the solve-step construction
+    # (via `make_equation_robust_to_domain_errors`). Analytical steps for ➕_vars
+    # can therefore be created before their final bounds exist, which would
+    # incorrectly default to (eps(), 1e12) and spuriously fail (e.g. FS2000,
+    # Aguiar_Gopinath_2007). Refresh bounds for all Analytical ➕ steps here.
+    if !isempty(𝓂.constants.post_parameters_macro.bounds)
+        for i in eachindex(solve_steps)
+            st = solve_steps[i]
+            if st isa AnalyticalNSSSStep && startswith(st.description, "Analytical ➕:")
+                lbs = copy(st.lower_bounds)
+                ubs = copy(st.upper_bounds)
+                hasb = copy(st.has_bounds)
+                @inbounds for j in eachindex(st.write_indices)
+                    name = all_sol_names[st.write_indices[j]]
+                    if haskey(𝓂.constants.post_parameters_macro.bounds, name)
+                        bt = 𝓂.constants.post_parameters_macro.bounds[name]
+                        lbs[j] = Float64(bt[1])
+                        ubs[j] = Float64(bt[2])
+                        hasb[j] = true
+                    end
+                end
+
+                solve_steps[i] = AnalyticalNSSSStep(
+                    st.aux_func!, st.aux_write_indices, st.aux_buffer,
+                    st.error_func!, st.error_buffer,
+                    st.eval_func!, st.write_indices, st.buffer,
+                    lbs, ubs, hasb,
+                    st.description,
+                )
+            end
+        end
+    end
     
     𝓂.NSSS.solve_steps = solve_steps
     𝓂.NSSS.param_prep! = param_prep_func!
@@ -6109,6 +6142,35 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     # =========================================================================
     # Store step-based solve infrastructure in 𝓂.NSSS
     # =========================================================================
+
+    # Refresh bounds for Analytical ➕ steps (see comment in the symbolic path).
+    if !isempty(𝓂.constants.post_parameters_macro.bounds)
+        for i in eachindex(solve_steps)
+            st = solve_steps[i]
+            if st isa AnalyticalNSSSStep && startswith(st.description, "Analytical ➕:")
+                lbs = copy(st.lower_bounds)
+                ubs = copy(st.upper_bounds)
+                hasb = copy(st.has_bounds)
+                @inbounds for j in eachindex(st.write_indices)
+                    name = all_sol_names[st.write_indices[j]]
+                    if haskey(𝓂.constants.post_parameters_macro.bounds, name)
+                        bt = 𝓂.constants.post_parameters_macro.bounds[name]
+                        lbs[j] = Float64(bt[1])
+                        ubs[j] = Float64(bt[2])
+                        hasb[j] = true
+                    end
+                end
+
+                solve_steps[i] = AnalyticalNSSSStep(
+                    st.aux_func!, st.aux_write_indices, st.aux_buffer,
+                    st.error_func!, st.error_buffer,
+                    st.eval_func!, st.write_indices, st.buffer,
+                    lbs, ubs, hasb,
+                    st.description,
+                )
+            end
+        end
+    end
     
     𝓂.NSSS.solve_steps = solve_steps
     𝓂.NSSS.param_prep! = param_prep_func!

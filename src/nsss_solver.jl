@@ -98,6 +98,7 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
     n = step.block_index
     cache_sol = closest_solution[2*(n-1)+1]
     cache_par = closest_solution[2*n]
+
     inits = [
         max.(step.lbs[1:length(cache_sol)], min.(step.ubs[1:length(cache_sol)], cache_sol)),
         cache_par
