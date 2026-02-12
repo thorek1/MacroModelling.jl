@@ -5174,6 +5174,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
             var_to_solve_for = unknowns[vars[:,vars[2,:] .== n][1]]
 
             eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
+            minmax_rewritten = false
 
             # Eliminate min/max from equations if solving for variables inside min/max
             parsed_eq_to_solve_for = eq_to_solve |> string |> Meta.parse
@@ -5195,10 +5196,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
             if parsed_eq_to_solve_for != minmax_fixed_eqs
                 [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
                 push!(min_max_error_exprs, parsed_eq_to_solve_for)
-                eq_to_solve = eval(minmax_fixed_eqs)
+                eq_to_solve = minmax_fixed_eqs
+                minmax_rewritten = true
             end
             
-            if !symbolic_SS || avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if !symbolic_SS || avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
                 soll = solve_symbolically(eq_to_solve,var_to_solve_for)
