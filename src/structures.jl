@@ -646,6 +646,8 @@ struct NumericalNSSSStep
     param_gather_indices::Vector{Int}
     var_gather_indices::Vector{Int}
     params_and_solved_vars_buffer::Vector{Float64}
+    initial_guess_buffer::Vector{Float64}
+    inits_buffer::Vector{Vector{Float64}}
     # Bounds for the block solver
     lbs::Vector{Float64}
     ubs::Vector{Float64}
