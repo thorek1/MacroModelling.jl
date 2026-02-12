@@ -16,7 +16,6 @@ using Aqua
 import LinearAlgebra as ℒ
 using CSV, DataFrames
 using Dates
-using RuntimeGeneratedFunctions
 
 function quarterly_dates(start_date::Date, len::Int)
     dates = Vector{Date}(undef, len)
@@ -1005,16 +1004,18 @@ if test_set == "basic"
             beta = 0.95
         end
 
-        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+        @test RBC_macro_switch.functions.NSSS_custom isa Function
+        @test isempty(RBC_macro_switch.NSSS.solve_steps)
 
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] > 0
-        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+        @test RBC_macro_switch.functions.NSSS_custom isa Function
+        @test isempty(RBC_macro_switch.NSSS.solve_steps)
 
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.functions.NSSS_custom)
-        @test RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction
+        @test !isempty(RBC_macro_switch.NSSS.solve_steps)
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
