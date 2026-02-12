@@ -4218,7 +4218,18 @@ end
 
 
 
-function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::Tuple{Vector{T}, Vector{T}, Vector{E}, Vector{T}} where {E, T}
+struct PartialSolveResult{T,E}
+    remaining_vars::Vector{T}
+    solved_vars::Vector{T}
+    remaining_eqs::Vector{E}
+    solved_exprs::Vector{E}
+    remaining_var_indices::Vector{Int}
+    solved_var_indices::Vector{Int}
+    remaining_eq_indices::Vector{Int}
+    solved_eq_indices::Vector{Int}
+end
+
+function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
             var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
@@ -4236,19 +4247,29 @@ function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incide
                     end
                     
                     if !(isnothing(soll) || isempty(soll))
-                        soll_collected = collect(values(soll))
+                        soll_collected = E.(collect(values(soll)))
+                        solved_var_indices = Int[var_combo...]
+                        remaining_var_indices = [i for i in 1:length(eqs_to_solve) if i ∉ solved_var_indices]
+                        solved_eq_indices = Int[eq_combo...]
+                        remaining_eq_indices = [i for i in 1:length(eqs_to_solve) if i ∉ solved_eq_indices]
                         
-                        return (vars_to_solve[setdiff(1:length(eqs_to_solve),var_combo)],
-                                vars_to_solve[var_combo],
-                                eqs_to_solve[setdiff(1:length(eqs_to_solve),eq_combo)],
-                                soll_collected)
+                        return PartialSolveResult(
+                            vars_to_solve[remaining_var_indices],
+                            vars_to_solve[solved_var_indices],
+                            eqs_to_solve[remaining_eq_indices],
+                            soll_collected,
+                            remaining_var_indices,
+                            solved_var_indices,
+                            remaining_eq_indices,
+                            solved_eq_indices,
+                        )
                     end
                 end
             end
         end
     end
     
-    return (T[], T[], E[], T[])
+    return PartialSolveResult(T[], T[], E[], E[], Int[], Int[], Int[], Int[])
 end
 
 
@@ -5449,34 +5470,82 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 pv = sortperm(vars_to_solve, by = Symbol)
                 pe = sortperm(eqs_to_solve, by = string)
 
+                vars_to_solve_reduced = vars_to_solve
+                eqs_to_solve_reduced = eqs_to_solve
+                eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
+
                 if length(pe) > 5
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
+                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
                 else
                     if symbolic_SS
-                        partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
-                    end
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
-                end
-                
-                # Register any newly created ➕_vars from write_block_solution!'s domain-safety processing
-                current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
-                if current_plus_count > plus_var_count_at_start
-                    for pvi in (plus_var_count_at_start + 1):current_plus_count
-                        pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
-                        if !haskey(sol_name_to_index, pv)
-                            push!(all_sol_names, pv)
-                            idx = length(all_sol_names)
-                            sol_name_to_index[pv] = idx
-                            sym = Symbol("𝔖_$idx")
-                            global_placeholder[pv] = sym
-                            global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                        solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
+
+                        if !isempty(solved_system.solved_vars)
+                            step_exprs = Any[]
+                            step_write_indices = Int[]
+
+                            for (v, expr) in zip(solved_system.solved_vars, solved_system.solved_exprs)
+                                v_sym = Symbol(v)
+                                val_expr = Meta.parse(string(expr))
+
+                                push!(solved_vars, v_sym)
+                                push!(solved_vals, val_expr)
+
+                                v_atoms = Set(Symbol.(expr.atoms()))
+                                for a in v_atoms
+                                    push!(atoms_in_equations, a)
+                                end
+                                push!(atoms_in_equations_list, v_atoms)
+
+                                push!(step_exprs, val_expr)
+                                push!(step_write_indices, sol_name_to_index[v_sym])
+                            end
+
+                            eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+
+                            push!(solve_steps, AnalyticalNSSSStep(
+                                nothing, Int[], Float64[],
+                                nothing, Float64[],
+                                eval_func!, step_write_indices, zeros(Float64, length(step_exprs)),
+                                Float64[], Float64[], falses(length(step_exprs)),
+                                "Analytical partial: $(join(string.(Symbol.(solved_system.solved_vars)), ", "))"
+                            ))
+
+                            eq_idx_sorted = eq_idx_in_block_to_solve[pe]
+                            vars_to_solve_reduced = solved_system.remaining_vars
+                            eqs_to_solve_reduced = solved_system.remaining_eqs
+                            eq_idx_in_block_to_solve_reduced = eq_idx_sorted[solved_system.remaining_eq_indices]
                         end
                     end
-                    plus_var_count_at_start = current_plus_count
+
+                    if isempty(vars_to_solve_reduced)
+                        block_meta = nothing
+                    else
+                        block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
+                    end
                 end
                 
-                push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
-                                                         𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
+                if !isnothing(block_meta)
+                    # Register any newly created ➕_vars from write_block_solution!'s domain-safety processing
+                    current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                    if current_plus_count > plus_var_count_at_start
+                        for pvi in (plus_var_count_at_start + 1):current_plus_count
+                            pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                            if !haskey(sol_name_to_index, pv)
+                                push!(all_sol_names, pv)
+                                idx = length(all_sol_names)
+                                sol_name_to_index[pv] = idx
+                                sym = Symbol("𝔖_$idx")
+                                global_placeholder[pv] = sym
+                                global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                            end
+                        end
+                        plus_var_count_at_start = current_plus_count
+                    end
+
+                    push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
+                                                             𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
+                end
 
                 if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
