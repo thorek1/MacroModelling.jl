@@ -9,6 +9,21 @@
 # Step execution functions
 # ============================================================================
 
+function find_closest_solution(cache, initial_parameters::Vector{Float64})
+    current_best = sum(abs2, cache[end][end] - initial_parameters)
+    closest_solution = cache[end]
+
+    for pars in cache
+        latest = sum(abs2, pars[end] - initial_parameters)
+        if latest <= current_best
+            current_best = latest
+            closest_solution = pars
+        end
+    end
+
+    return current_best, closest_solution
+end
+
 """
     execute_step!(step::AnalyticalNSSSStep, sol_vec, params_vec, args...)
 
@@ -81,7 +96,10 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
     # Gather params_and_solved_vars from the solution and parameter vectors
     n_params = length(step.param_gather_indices)
     n_vars = length(step.var_gather_indices)
-    params_and_solved_vars = Vector{Float64}(undef, n_params + n_vars)
+    params_and_solved_vars = step.params_and_solved_vars_buffer
+    if length(params_and_solved_vars) != n_params + n_vars
+        resize!(params_and_solved_vars, n_params + n_vars)
+    end
     for (i, idx) in enumerate(step.param_gather_indices)
         params_and_solved_vars[i] = params_vec[idx]
     end
@@ -293,16 +311,7 @@ function solve_nsss_wrapper(
                         ℱ.value.(parameter_values)
     
     # Find closest cached solution as starting point
-    current_best = sum(abs2, 𝓂.caches.solver_cache[end][end] - initial_parameters)
-    closest_solution_init = 𝓂.caches.solver_cache[end]
-    
-    for pars in 𝓂.caches.solver_cache
-        latest = sum(abs2, pars[end] - initial_parameters)
-        if latest <= current_best
-            current_best = latest
-            closest_solution_init = pars
-        end
-    end
+    _, closest_solution_init = find_closest_solution(𝓂.caches.solver_cache, initial_parameters)
     
     # Initialize continuation method variables
     range_iters = 0
@@ -328,16 +337,7 @@ function solve_nsss_wrapper(
         end
 
         # Find closest solution from local intermediate cache
-        current_best = sum(abs2, NSSS_solver_cache_scale[end][end] - initial_parameters)
-        closest_solution = NSSS_solver_cache_scale[end]
-
-        for pars in NSSS_solver_cache_scale
-            latest = sum(abs2, pars[end] - initial_parameters)
-            if latest <= current_best
-                current_best = latest
-                closest_solution = pars
-            end
-        end
+        current_best, closest_solution = find_closest_solution(NSSS_solver_cache_scale, initial_parameters)
         
         # Interpolate parameters between target and cached solution
         if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]

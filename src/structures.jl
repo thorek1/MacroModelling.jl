@@ -645,6 +645,7 @@ struct NumericalNSSSStep
     #   params_and_solved_vars = vcat(params_vec[param_gather_indices], sol_vec[var_gather_indices])
     param_gather_indices::Vector{Int}
     var_gather_indices::Vector{Int}
+    params_and_solved_vars_buffer::Vector{Float64}
     # Bounds for the block solver
     lbs::Vector{Float64}
     ubs::Vector{Float64}
