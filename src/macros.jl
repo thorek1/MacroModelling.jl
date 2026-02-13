@@ -1065,7 +1065,7 @@ macro parameters(𝓂,ex...)
     # parse options
     verbose = false
     silent = false
-    symbolic = true
+    symbolic = false
     precompile = false
     report_missing_parameters = true
     perturbation_order = 1

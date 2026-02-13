@@ -1063,7 +1063,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 minmax_rewritten = true
             end
 
-            if !symbolic_SS || avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
                 soll = solve_symbolically(eq_to_solve,var_to_solve_for)
