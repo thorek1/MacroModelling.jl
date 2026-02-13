@@ -4977,7 +4977,7 @@ function solve!(𝓂::ℳ;
     
     if 𝓂.functions.functions_written &&
         isnothing(𝓂.functions.NSSS_custom) &&
-        isempty(𝓂.NSSS.solve_steps)
+        isempty(𝓂.functions.nsss_solve_steps)
 
         set_up_steady_state_solver!(𝓂,
                                     verbose = opts.verbose,
@@ -6439,8 +6439,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
-                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false
+                if isnothing(𝓂.constants.post_complete_parameters.nsss_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.constants.post_complete_parameters.nsss_dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
+                # if !isnothing(𝓂.constants.post_complete_parameters.nsss_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.constants.post_complete_parameters.nsss_dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false
                     𝓂.caches.outdated.non_stochastic_steady_state = true
                 end
                 

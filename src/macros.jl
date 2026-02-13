@@ -87,14 +87,12 @@ macro model(𝓂,ex...)
     
     # NSSS struct fields
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    NSSS_solve_func = x->x
     NSSS_check_func = x->x
     NSSS_custom_function = nothing
     NSSS_∂equations_∂parameters = zeros(0,0)
     NSSS_∂equations_∂parameters_func = x->x
     NSSS_∂equations_∂SS_and_pars = zeros(0,0)
     NSSS_∂equations_∂SS_and_pars_func = x->x
-    NSSS_dependencies = nothing
 
     original_equations = []
     calibration_equations = []
@@ -865,18 +863,6 @@ macro model(𝓂,ex...)
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
-                        non_stochastic_steady_state(
-                            $NSSS_dependencies,
-                            NSSSSolveStep[],   # solve_steps (populated later by write_steady_state_solver_function!)
-                            nothing,           # param_prep!
-                            0,                 # n_sol
-                            Int[],             # output_indices
-                            0,                 # n_ext_params
-                            Symbol[],          # sol_names
-                            Int[],             # exo_zero_indices
-                            Symbol[],          # param_names_ext
-                        ),
-
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
                         caches(
@@ -930,11 +916,12 @@ macro model(𝓂,ex...)
                         $𝓦,
 
                         model_functions(
-                            $NSSS_solve_func,
                             $NSSS_check_func,
                             $NSSS_custom_function,
                             $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
+                            NSSSSolveStep[],
+                            nothing,
                             jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
                             hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
                             third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars

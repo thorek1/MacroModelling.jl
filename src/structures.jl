@@ -89,7 +89,7 @@
 #    - outdated: Flags indicating which caches need recomputation
 #
 # 4. FUNCTIONS (𝓂.functions) - Compiled model functions:
-#    - NSSS_solve/check: Steady state solvers
+#    - NSSS_check + step-based NSSS metadata/functions
 #    - jacobian/hessian/third_order_derivatives: Derivative functions
 #    - state_update functions: Policy function evaluators
 #
@@ -663,20 +663,6 @@ end
 
 const NSSSSolveStep = Union{AnalyticalNSSSStep, NumericalNSSSStep}
 
-
-mutable struct non_stochastic_steady_state
-    dependencies::Any
-    # Step-based solving infrastructure (populated by write_steady_state_solver_function!)
-    solve_steps::Vector{NSSSSolveStep}         # Ordered sequence of solve steps
-    param_prep!::Union{Nothing, Function}      # Compiled parameter preparation: f!(ext_params, raw_params)
-    n_sol::Int                                 # Length of solution vector (includes ➕_vars)
-    output_indices::Vector{Int}                # Indices into sol_vec for output (SS_and_pars), may have repeats
-    n_ext_params::Int                          # Length of extended parameter vector
-    sol_names::Vector{Symbol}                  # Names in solution vector (unique, for indexing)
-    exo_zero_indices::Vector{Int}              # Indices of dynamic exogenous vars (set to 0)
-    param_names_ext::Vector{Symbol}            # Names in extended parameter vector
-end
-
 """
 Tracks which cache elements are outdated and need recalculation.
 
@@ -787,11 +773,12 @@ end
 
 mutable struct model_functions
     # NSSS-related functions
-    NSSS_solve::Function
     NSSS_check::Function
     NSSS_custom::Union{Nothing, Function}
     NSSS_∂equations_∂parameters::Function
     NSSS_∂equations_∂SS_and_pars::Function
+    nsss_solve_steps::Vector{NSSSSolveStep}
+    nsss_param_prep!::Union{Nothing, Function}
     # Perturbation derivative functions
     jacobian::jacobian_functions
     hessian::hessian_functions
@@ -1040,6 +1027,13 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    nsss_dependencies::Any
+    nsss_n_sol::Int
+    nsss_output_indices::Vector{Int}
+    nsss_n_ext_params::Int
+    nsss_sol_names::Vector{Symbol}
+    nsss_exo_zero_indices::Vector{Int}
+    nsss_param_names_ext::Vector{Symbol}
 end
 
 """
@@ -1180,11 +1174,6 @@ mutable struct ℳ
     # =========================================================================
     model_name::Any                           # Model identifier
     parameter_values::Vector{Float64}         # Current parameter values (mutable)
-
-    # =========================================================================
-    # STEADY STATE SOLVER INFRASTRUCTURE
-    # =========================================================================
-    NSSS::non_stochastic_steady_state         # Steady state solver blocks
 
     # =========================================================================
     # MODEL EQUATIONS (various representations)

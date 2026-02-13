@@ -1348,8 +1348,6 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
-    𝓂.NSSS.dependencies = dependencies
-
     if !isempty(min_max_error_exprs)
         minmax_error_func! = compile_exprs_to_func(min_max_error_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
         n_errors = length(min_max_error_exprs)
@@ -1391,17 +1389,19 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
         end
     end
 
-    𝓂.NSSS.solve_steps = solve_steps
-    𝓂.NSSS.param_prep! = param_prep_func!
+    𝓂.functions.nsss_solve_steps = solve_steps
+    𝓂.functions.nsss_param_prep! = param_prep_func!
     n_sol = length(all_sol_names)
-    𝓂.NSSS.n_sol = n_sol
-    𝓂.NSSS.output_indices = output_indices
-    𝓂.NSSS.n_ext_params = n_ext_params
-    𝓂.NSSS.sol_names = all_sol_names
-    𝓂.NSSS.exo_zero_indices = exo_zero_indices
-    𝓂.NSSS.param_names_ext = ext_param_names
-
-    𝓂.functions.NSSS_solve = (args...) -> error("NSSS_solve RTGF is no longer used. Use solve_nsss_steps instead.")
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        nsss_dependencies = dependencies,
+        nsss_n_sol = n_sol,
+        nsss_output_indices = output_indices,
+        nsss_n_ext_params = n_ext_params,
+        nsss_sol_names = all_sol_names,
+        nsss_exo_zero_indices = exo_zero_indices,
+        nsss_param_names_ext = ext_param_names,
+    )
 
     return nothing
 end
@@ -1622,21 +1622,25 @@ function solve_nsss_steps(
     cold_start::Bool,
     solver_params::Vector{solver_parameters}
 )
-    nsss = 𝓂.NSSS
+    nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
+    nsss_param_prep! = 𝓂.functions.nsss_param_prep!
+    nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
+    nsss_solve_steps = 𝓂.functions.nsss_solve_steps
+    nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
     
     # Prepare extended parameter vector (raw params → bounded + calibration_no_var)
-    params_vec = Vector{Float64}(undef, nsss.n_ext_params)
-    nsss.param_prep!(params_vec, parameters)
+    params_vec = Vector{Float64}(undef, nsss_n_ext_params)
+    nsss_param_prep!(params_vec, parameters)
     
     # Initialize solution vector
-    sol_vec = zeros(Float64, nsss.n_sol)
+    sol_vec = zeros(Float64, nsss_n_sol)
     
     # Single pass through all steps
     NSSS_solver_cache_tmp = Vector{Float64}[]
     solution_error = 0.0
     iters = 0
     
-    for step in nsss.solve_steps
+    for step in nsss_solve_steps
         step_error, step_iters, step_cache = execute_step!(
             step, sol_vec, params_vec, closest_solution, 𝓂, tol,
             fail_fast_solvers_only, cold_start, solver_params, verbose
@@ -1657,11 +1661,11 @@ function solve_nsss_steps(
     end
     
     # Build SS_and_pars from solution vector using output indices
-    SS_and_pars = sol_vec[nsss.output_indices]
+    SS_and_pars = sol_vec[nsss_output_indices]
     
     # If failed to converge, return zeros
     if solution_error >= tol.NSSS_acceptance_tol
-        SS_and_pars = zeros(Float64, length(nsss.output_indices))
+        SS_and_pars = zeros(Float64, length(nsss_output_indices))
     end
     
     # Append parameters to cache 
@@ -1734,7 +1738,7 @@ function solve_nsss_wrapper(
     scale_failure_weight::Float64 = 0.3,
 )::Tuple{Vector, Tuple{Real, Int}}
 
-    n_numerical_steps = count(step -> step isa NumericalNSSSStep, 𝓂.NSSS.solve_steps)
+    n_numerical_steps = count(step -> step isa NumericalNSSSStep, 𝓂.functions.nsss_solve_steps)
     
     # Type conversion for AD compatibility
     initial_parameters = typeof(parameter_values) == Vector{Float64} ? 
@@ -1817,7 +1821,7 @@ function solve_nsss_wrapper(
     end
     
     # Failed to converge - return zeros with matching output length
-    n_output = length(𝓂.NSSS.output_indices)
+    n_output = length(𝓂.constants.post_complete_parameters.nsss_output_indices)
     
     return zeros(n_output), (1.0, 0)
 end

@@ -686,7 +686,14 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1:0,
                 1,
                 zeros(Bool, 0, 0),
-                zeros(Bool, 0, 0)),
+                zeros(Bool, 0, 0),
+                nothing,
+                0,
+                Int[],
+                0,
+                Symbol[],
+                Int[],
+                Symbol[]),
             Second_order_indices(),
             Third_order_indices())
 end
@@ -771,6 +778,13 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :nsss_dependencies, p.nsss_dependencies),
+        get(kwargs, :nsss_n_sol, p.nsss_n_sol),
+        get(kwargs, :nsss_output_indices, p.nsss_output_indices),
+        get(kwargs, :nsss_n_ext_params, p.nsss_n_ext_params),
+        get(kwargs, :nsss_sol_names, p.nsss_sol_names),
+        get(kwargs, :nsss_exo_zero_indices, p.nsss_exo_zero_indices),
+        get(kwargs, :nsss_param_names_ext, p.nsss_param_names_ext),
     )
 end
 
