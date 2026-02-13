@@ -795,16 +795,6 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    @testset verbose = true "Test equation filtering" begin
-        include("test_filter_equations.jl")
-    end
-    GC.gc()
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
-    end
-    GC.gc()
-
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
@@ -924,6 +914,16 @@ if test_set == "basic"
         @test isapprox(conditional_variance_decomposition_nopre, conditional_variance_decomposition_pre)
         @test isapprox(irf_nopre, irf_pre)
     end
+
+    @testset verbose = true "Test equation filtering" begin
+        include("test_filter_equations.jl")
+    end
+    GC.gc()
+
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
 
     @testset "Custom steady state assignment" begin
         @model RBC_switch begin

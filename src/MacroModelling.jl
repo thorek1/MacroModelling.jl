@@ -4900,7 +4900,8 @@ end
 
 
 
-function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol)
+function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::Bool = false)
+    precompile && (ss_symbolic_mode = :none)
     ss_symbolic_mode == :none && return true, false
     ss_symbolic_mode == :single_equation && return false, false
     ss_symbolic_mode == :full && return false, true
@@ -4908,7 +4909,7 @@ function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol)
 end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
-    avoid_solve, symbolic = steady_state_symbolic_mode_flags(ss_symbolic_mode)
+    avoid_solve, symbolic = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
 
     if !𝓂.constants.post_parameters_macro.precompile
         start_time = time()
@@ -4941,7 +4942,7 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
 
         write_ss_check_function!(𝓂)
 
-        write_steady_state_solver_function!(𝓂, false, nothing, verbose = verbose)
+        write_steady_state_solver_function!(𝓂, false, nothing, verbose = verbose, avoid_solve = avoid_solve)
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
     end
