@@ -4969,7 +4969,11 @@ function solve!(𝓂::ℳ;
         isnothing(𝓂.functions.NSSS_custom) &&
         isempty(𝓂.NSSS.solve_steps)
 
-        set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
+        set_up_steady_state_solver!(𝓂,
+                                    verbose = opts.verbose,
+                                    silent = silent,
+                                    avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                                    symbolic = 𝓂.constants.post_parameters_macro.symbolic)
     end
     
     if !𝓂.functions.functions_written
@@ -4977,9 +4981,17 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
 
-        set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
+        set_up_steady_state_solver!(𝓂,
+                        verbose = verbose,
+                        silent = silent,
+                        avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
+                        symbolic = 𝓂.constants.post_parameters_macro.symbolic)
     
-        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, opts, :ESCH, 120.0, silent = silent)
+        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂,
+                                                                           opts,
+                                                                           𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+                                                                           𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime,
+                                                                           silent = silent)
             
         write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
 

@@ -1296,52 +1296,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 if length(pe) > 5
                     block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
                 else
-                    if symbolic_SS
-                        solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
-
-                        if !isempty(solved_system.solved_vars)
-                            step_exprs = Any[]
-                            step_write_indices = Int[]
-
-                            for (v, expr) in zip(solved_system.solved_vars, solved_system.solved_exprs)
-                                v_sym = Symbol(v)
-                                val_expr = Meta.parse(string(expr))
-
-                                push!(solved_vars, v_sym)
-                                push!(solved_vals, val_expr)
-
-                                v_atoms = Set(Symbol.(expr.atoms()))
-                                for a in v_atoms
-                                    push!(atoms_in_equations, a)
-                                end
-                                push!(atoms_in_equations_list, v_atoms)
-
-                                push!(step_exprs, val_expr)
-                                push!(step_write_indices, sol_name_to_index[v_sym])
-                            end
-
-                            eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
-
-                            push!(solve_steps, AnalyticalNSSSStep(
-                                nothing, Int[], Float64[],
-                                nothing, Float64[],
-                                eval_func!, step_write_indices, zeros(Float64, length(step_exprs)),
-                                Float64[], Float64[], falses(length(step_exprs)),
-                                "Analytical partial: $(join(string.(Symbol.(solved_system.solved_vars)), ", "))"
-                            ))
-
-                            eq_idx_sorted = eq_idx_in_block_to_solve[pe]
-                            vars_to_solve_reduced = solved_system.remaining_vars
-                            eqs_to_solve_reduced = solved_system.remaining_eqs
-                            eq_idx_in_block_to_solve_reduced = eq_idx_sorted[solved_system.remaining_eq_indices]
-                        end
-                    end
-
-                    if isempty(vars_to_solve_reduced)
-                        block_meta = nothing
-                    else
-                        block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
-                    end
+                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
                 end
 
                 if !isnothing(block_meta)
