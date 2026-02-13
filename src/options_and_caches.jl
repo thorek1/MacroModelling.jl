@@ -635,8 +635,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             post_parameters_macro(
                 Symbol[],
                 false,
-                true,
-                true,
+                :single_equation,
                 :ESCH,
                 120.0,
                 Dict{Symbol, Float64}(),

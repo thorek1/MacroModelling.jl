@@ -3342,7 +3342,7 @@ if test_set == "basic"
         end
 
 
-        @parameters RBC_CME symbolic = true verbose = true begin
+        @parameters RBC_CME ss_symbolic_mode = :full verbose = true begin
             # alpha | k[ss] / (4 * y[ss]) = cap_share
             # cap_share = 1.66
             alpha = .157
@@ -3483,7 +3483,7 @@ if test_set == "basic"
         end
 
 
-        @parameters RBC_CME symbolic = true verbose = true begin
+        @parameters RBC_CME ss_symbolic_mode = :full verbose = true begin
             alpha | k[ss] / (4 * y[ss]) = cap_share
             cap_share = 1.66
             # alpha = .157

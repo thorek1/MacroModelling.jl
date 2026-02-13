@@ -4900,7 +4900,16 @@ end
 
 
 
-function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
+function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol)
+    ss_symbolic_mode == :none && return true, false
+    ss_symbolic_mode == :single_equation && return false, false
+    ss_symbolic_mode == :full && return false, true
+    error("Invalid ss_symbolic_mode $(ss_symbolic_mode). Expected :none, :single_equation, or :full.")
+end
+
+function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
+    avoid_solve, symbolic = steady_state_symbolic_mode_flags(ss_symbolic_mode)
+
     if !𝓂.constants.post_parameters_macro.precompile
         start_time = time()
 
@@ -4972,8 +4981,7 @@ function solve!(𝓂::ℳ;
         set_up_steady_state_solver!(𝓂,
                                     verbose = opts.verbose,
                                     silent = silent,
-                                    avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                                    symbolic = 𝓂.constants.post_parameters_macro.symbolic)
+                                    ss_symbolic_mode = 𝓂.constants.post_parameters_macro.ss_symbolic_mode)
     end
     
     if !𝓂.functions.functions_written
@@ -4984,8 +4992,7 @@ function solve!(𝓂::ℳ;
         set_up_steady_state_solver!(𝓂,
                         verbose = verbose,
                         silent = silent,
-                        avoid_solve = !𝓂.constants.post_parameters_macro.simplify,
-                        symbolic = 𝓂.constants.post_parameters_macro.symbolic)
+                        ss_symbolic_mode = 𝓂.constants.post_parameters_macro.ss_symbolic_mode)
     
         SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂,
                                                                            opts,

@@ -983,9 +983,8 @@ Parameters can be defined in either of the following ways:
 - $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
-- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `ss_symbolic_mode` [Default: `:single_equation`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks.
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
-- `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 - `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
 - `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
 
@@ -1065,12 +1064,11 @@ macro parameters(𝓂,ex...)
     # parse options
     verbose = false
     silent = false
-    symbolic = false
+    ss_symbolic_mode = :single_equation
     precompile = false
     report_missing_parameters = true
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
-    simplify = true
     steady_state_function = nothing
     ss_solver_parameters_algorithm = :ESCH
     ss_solver_parameters_maxtime = 120.0
@@ -1079,8 +1077,8 @@ macro parameters(𝓂,ex...)
         postwalk(x -> 
             x isa Expr ?
                 x.head == :(=) ?  
-                    (x.args[1] == :symbolic && x.args[2] isa Bool) ?
-                        symbolic = x.args[2] :
+                    (x.args[1] == :ss_symbolic_mode && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
+                        ss_symbolic_mode = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
                     (x.args[1] == :verbose && x.args[2] isa Bool) ?
                         verbose = x.args[2] :
                     (x.args[1] == :silent && x.args[2] isa Bool) ?
@@ -1095,8 +1093,6 @@ macro parameters(𝓂,ex...)
                         guess = x.args[2] :
                     (x.args[1] == :ss_solver_parameters_algorithm && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
                         ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
-                    (x.args[1] == :simplify && x.args[2] isa Bool) ?
-                        simplify = x.args[2] :
                     (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ? # allow Symbol, anonymous fn, or any callable expr
                         steady_state_function = esc(x.args[2]) :
                     (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
@@ -1109,6 +1105,8 @@ macro parameters(𝓂,ex...)
             x,
         exp)
     end
+
+    @assert ss_symbolic_mode ∈ [:none, :single_equation, :full] "ss_symbolic_mode must be :none, :single_equation, or :full. Got $ss_symbolic_mode."
     
     @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
     
@@ -1526,8 +1524,7 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
             calib_parameters_no_var,
             $precompile,
-            $simplify,
-            $symbolic,
+            $(QuoteNode(ss_symbolic_mode)),
             $(QuoteNode(ss_solver_parameters_algorithm)),
             $ss_solver_parameters_maxtime,
             guess_dict,
@@ -1558,7 +1555,7 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
         # mod.$𝓂.caches.outdated_NSSS = true
         
-        # Store precompile and simplify flag in model container
+        # Store precompile and steady-state mode flag in model container
         
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
@@ -1573,7 +1570,7 @@ macro parameters(𝓂,ex...)
             write_ss_check_function!(mod.$𝓂)
         else
             if !has_missing_parameters
-                set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
+                set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, ss_symbolic_mode = $(QuoteNode(ss_symbolic_mode)))
             end
         end
 
