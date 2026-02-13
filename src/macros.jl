@@ -86,7 +86,6 @@ macro model(𝓂,ex...)
     par_calib_list = []
     
     # NSSS struct fields
-    NSSS_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     NSSS_solve_func = x->x
     NSSS_check_func = x->x
@@ -867,7 +866,6 @@ macro model(𝓂,ex...)
                         $parameter_values,
 
                         non_stochastic_steady_state(
-                            $NSSS_solve_blocks_in_place,
                             $NSSS_dependencies,
                             NSSSSolveStep[],   # solve_steps (populated later by write_steady_state_solver_function!)
                             nothing,           # param_prep!

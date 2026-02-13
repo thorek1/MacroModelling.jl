@@ -30,6 +30,7 @@ function write_block_solution!(𝓂,
                                 atoms_in_equations_list,
                                 solved_vars,
                                 solved_vals;
+                                block_index::Int,
                                 cse = true,
                                 skipzeros = true,
                                 density_threshold::Float64 = .1,
@@ -273,12 +274,12 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(lbs = [$(lbs...)]))
     push!(SS_solve_func,:(ubs = [$(ubs...)]))
 
-    n_block = length(𝓂.NSSS.solve_blocks_in_place) + 1
+    n_block = block_index
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
     push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block),
-                                                            𝓂.NSSS.solve_blocks_in_place[$(n_block)],
+                                                            nothing,
                                                             inits,
                                                             lbs,
                                                             ubs,
@@ -305,11 +306,10 @@ function write_block_solution!(𝓂,
     workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
     ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
 
-    push!(𝓂.NSSS.solve_blocks_in_place, ss_solve_block(
+    solve_block = ss_solve_block(
             function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
             function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
         )
-    )
 
     return (sorted_vars = sorted_vars,
             calib_pars_input = Symbol.(calib_pars_input),
@@ -317,6 +317,7 @@ function write_block_solution!(𝓂,
             lbs = lbs,
             ubs = ubs,
             n_block = n_block,
+            solve_block = solve_block,
             ss_and_aux_equations = ss_and_aux_equations,
             ss_and_aux_equations_error = ss_and_aux_equations_error)
 end
@@ -809,6 +810,7 @@ function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
     desc = "Numerical block $(block_meta.n_block): $(join(string.(block_meta.sorted_vars), ", "))"
 
     return NumericalNSSSStep(
+        block_meta.solve_block,
         block_meta.n_block,
         write_indices,
         param_gather_indices,
@@ -909,8 +911,6 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     else
         vcat(symbolics_data.ss_equations, symbolics_data.calibration_equations)
     end
-
-    empty!(𝓂.NSSS.solve_blocks_in_place)
 
     output_var_names = unique(Symbol.(replace.(string.(sort(union(
         𝓂.constants.post_model_macro.var,
@@ -1032,6 +1032,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
     global_solvetime_aux_sub = Dict{Symbol, Union{Symbol, Expr}}()
     solve_steps = NSSSSolveStep[]
+    numerical_block_count = 0
 
     while n > 0
         if length(eqs[:,eqs[2,:] .== n]) == 2
@@ -1076,7 +1077,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals)
+                numerical_block_count += 1
+                block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
 
                 current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
                 if current_plus_count > plus_var_count_at_start
@@ -1294,9 +1296,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
 
                 if length(pe) > 5
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
+                    numerical_block_count += 1
+                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
                 else
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals)
+                    numerical_block_count += 1
+                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
                 end
 
                 if !isnothing(block_meta)
@@ -1544,7 +1548,7 @@ function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64},
     solution = block_solver(
         params_and_solved_vars,
         n,
-        𝓂.NSSS.solve_blocks_in_place[n],
+        step.solve_block,
         inits,
         step.lbs,
         step.ubs,
@@ -1729,6 +1733,8 @@ function solve_nsss_wrapper(
     scale_success_weight::Float64 = 0.4,
     scale_failure_weight::Float64 = 0.3,
 )::Tuple{Vector, Tuple{Real, Int}}
+
+    n_numerical_steps = count(step -> step isa NumericalNSSSStep, 𝓂.NSSS.solve_steps)
     
     # Type conversion for AD compatibility
     initial_parameters = typeof(parameter_values) == Vector{Float64} ? 
@@ -1736,7 +1742,7 @@ function solve_nsss_wrapper(
                         ℱ.value.(parameter_values)
     
     # Find closest cached solution as starting point
-    expected_cache_length = 2 * length(𝓂.NSSS.solve_blocks_in_place) + 1
+    expected_cache_length = 2 * n_numerical_steps + 1
     _, closest_solution_init = find_closest_solution(𝓂.caches.solver_cache, initial_parameters, expected_cache_length)
     
     # Initialize continuation method variables

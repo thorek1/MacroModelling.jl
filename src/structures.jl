@@ -632,12 +632,11 @@ end
 """
 A numerical block solve step in the NSSS solve sequence.
 Calls `block_solver` to numerically solve for unknowns.
-
-The block's compiled residual/Jacobian functions are stored in the
-`ss_solve_block` referenced by `block_index` in `𝓂.NSSS.solve_blocks_in_place`.
 """
 struct NumericalNSSSStep
-    # Index of the ss_solve_block in 𝓂.NSSS.solve_blocks_in_place
+    # Compiled residual/Jacobian functions for this numerical block
+    solve_block::ss_solve_block
+    # Block index used for cache slot mapping (2*(n-1)+1, 2*n)
     block_index::Int
     # Which indices in sol_vec this step writes to
     write_indices::Vector{Int}
@@ -666,7 +665,6 @@ const NSSSSolveStep = Union{AnalyticalNSSSStep, NumericalNSSSStep}
 
 
 mutable struct non_stochastic_steady_state
-    solve_blocks_in_place::Vector{ss_solve_block}
     dependencies::Any
     # Step-based solving infrastructure (populated by write_steady_state_solver_function!)
     solve_steps::Vector{NSSSSolveStep}         # Ordered sequence of solve steps
