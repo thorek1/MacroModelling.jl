@@ -13,7 +13,7 @@
 const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 
 """
-Mutable accumulator used during `create_nsss_solver!` to collect step data.
+Mutable accumulator used during `write_steady_state_solver_function!` to collect step data.
 After all steps are appended, call `build_nsss_solver!(𝓂, builder, param_prep!)` to assign
 data into the model's functions, constants, and workspaces sub-structs.
 """
@@ -233,7 +233,7 @@ function write_block_solution!(𝓂,
                                 vars_to_solve,
                                 eqs_to_solve,
                                 relevant_pars_across,
-                                NSSS_solver_cache_init_tmp,
+                                nsss_solver_cache_init_tmp,
                                 eq_idx_in_block_to_solve,
                                 atoms_in_equations_list,
                                 solved_vars,
@@ -460,8 +460,8 @@ function write_block_solution!(𝓂,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.constants.post_parameters_macro.guess, v) ? 𝓂.constants.post_parameters_macro.guess[v] : Inf for v in sorted_vars])
-    push!(NSSS_solver_cache_init_tmp, [Inf])
+    push!(nsss_solver_cache_init_tmp, [haskey(𝓂.constants.post_parameters_macro.guess, v) ? 𝓂.constants.post_parameters_macro.guess[v] : Inf for v in sorted_vars])
+    push!(nsss_solver_cache_init_tmp, [Inf])
 
     lbs = Float64[]
     ubs = Float64[]
@@ -508,8 +508,8 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(sol = solution[1]))
     push!(SS_solve_func,:($(result...)))
 
-    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
-    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+    push!(SS_solve_func,:(nsss_solver_cache_tmp = [nsss_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+    push!(SS_solve_func,:(nsss_solver_cache_tmp = [nsss_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
     workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
     ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
@@ -1031,10 +1031,10 @@ function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name
     )
 end
 
-function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
+function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
                                             verbose::Bool = false,
                                             avoid_solve::Bool = false)
-    symbolic_SS = symbolic_SS && (symbolics_data !== nothing)
+    symbolic_enabled = symbolic_enabled && (symbolics_data !== nothing)
 
     unknowns = if symbolics_data === nothing
         union(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.equations.calibration_parameters)
@@ -1225,7 +1225,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     atoms_in_equations = Set{Symbol}()
     atoms_in_equations_list = []
     relevant_pars_across = Symbol[]
-    NSSS_solver_cache_init_tmp = []
+    nsss_solver_cache_init_tmp = []
 
     solved_vars = []
     solved_vals = []
@@ -1273,14 +1273,14 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
             end
 
             if isnothing(soll) || isempty(soll)
-                if verbose && symbolic_SS
+                if verbose && symbolic_enabled
                     println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
                 end
 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
                 numerical_block_count += 1
-                block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+                block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
 
                 current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
                 if current_plus_count > plus_var_count_at_start
@@ -1451,7 +1451,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
             numerical_sol = false
 
-            if symbolic_SS
+            if symbolic_enabled
                 if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
                     soll = nothing
                 else
@@ -1491,21 +1491,13 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
             eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
             incidence_matrix_subset = incidence_matrix[vars[:,vars[2,:] .== n][1,:], eq_idx_in_block_to_solve]
 
-            if numerical_sol || !symbolic_SS
-                pv = sortperm(vars_to_solve, by = Symbol)
-                pe = sortperm(eqs_to_solve, by = string)
-
+            if numerical_sol || !symbolic_enabled
                 vars_to_solve_reduced = vars_to_solve
                 eqs_to_solve_reduced = eqs_to_solve
                 eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
 
-                if length(pe) > 5
-                    numerical_block_count += 1
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
-                else
-                    numerical_block_count += 1
-                    block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
-                end
+                numerical_block_count += 1
+                block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
 
                 if !isnothing(block_meta)
                     current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
@@ -1528,7 +1520,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                                            𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
                 end
 
-                if !symbolic_SS && verbose
+                if !symbolic_enabled && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
                 end
             end
@@ -1536,8 +1528,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
         n -= 1
     end
 
-    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.caches.solver_cache, NSSS_solver_cache_init_tmp)
+    push!(nsss_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
+    push!(𝓂.caches.solver_cache, nsss_solver_cache_init_tmp)
 
     parameters_only_in_par_defs = Set()
     if length(𝓂.equations.calibration_no_var) > 0
@@ -1609,13 +1601,13 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
         if length(pars) < expected_length || !(pars[end] isa Vector{Float64}) || length(pars[end]) != length(initial_parameters)
             continue
         end
-        latest = 0.0
+        squared_distance = 0.0
         @inbounds for i in eachindex(initial_parameters)
             d = pars[end][i] - initial_parameters[i]
-            latest += d * d
+            squared_distance += d * d
         end
-        if latest <= current_best
-            current_best = latest
+        if squared_distance <= current_best
+            current_best = squared_distance
             closest_solution = pars
         end
     end
@@ -1812,7 +1804,7 @@ Steps are dispatched via `execute_step!` which uses the pipeline's shared
 workspace buffers. Steps are executed in order, filling the solution vector
 progressively.
 
-Returns: (SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp)
+Returns: (SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp)
 """
 function solve_nsss_steps(
     parameters::Vector{Float64},
@@ -1837,7 +1829,7 @@ function solve_nsss_steps(
     sol_vec = zeros(Float64, nsss_n_sol)
     
     # Single pass through all steps
-    NSSS_solver_cache_tmp = Vector{Float64}[]
+    nsss_solver_cache_tmp = Vector{Float64}[]
     solution_error = 0.0
     iters = 0
     
@@ -1851,7 +1843,7 @@ function solve_nsss_steps(
         solution_error += step_error
         iters += step_iters
         if !isempty(step_cache)
-            append!(NSSS_solver_cache_tmp, step_cache)
+            append!(nsss_solver_cache_tmp, step_cache)
         end
         
         if solution_error > tol.NSSS_acceptance_tol
@@ -1871,13 +1863,13 @@ function solve_nsss_steps(
     end
     
     # Append parameters to cache 
-    if isempty(NSSS_solver_cache_tmp)
-        NSSS_solver_cache_tmp = [copy(parameters)]
+    if isempty(nsss_solver_cache_tmp)
+        nsss_solver_cache_tmp = [copy(parameters)]
     else
-        push!(NSSS_solver_cache_tmp, copy(parameters))
+        push!(nsss_solver_cache_tmp, copy(parameters))
     end
     
-    return SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp
+    return SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp
 end
 
 
@@ -1943,7 +1935,7 @@ function solve_nsss_wrapper(
     n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
     
     # Type conversion for AD compatibility
-    initial_parameters = typeof(parameter_values) == Vector{Float64} ? 
+    initial_parameters = parameter_values isa Vector{Float64} ? 
                         parameter_values : 
                         ℱ.value.(parameter_values)
     
@@ -1959,8 +1951,8 @@ function solve_nsss_wrapper(
     SS_and_pars = Float64[]
     
     # Local intermediate cache for warm starts at intermediate scales
-    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
-    push!(NSSS_solver_cache_scale, closest_solution_init)
+    continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
+    push!(continuation_cache, closest_solution_init)
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters
@@ -1975,7 +1967,7 @@ function solve_nsss_wrapper(
         end
 
         # Find closest solution from local intermediate cache
-        current_best, closest_solution = find_closest_solution(NSSS_solver_cache_scale, initial_parameters, expected_cache_length)
+        current_best, closest_solution = find_closest_solution(continuation_cache, initial_parameters, expected_cache_length)
         
         # Interpolate parameters between target and cached solution
         if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
@@ -1985,7 +1977,7 @@ function solve_nsss_wrapper(
         end
         
         # Call step-based solver
-        SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp = solve_nsss_steps(
+        SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp = solve_nsss_steps(
             parameters,
             𝓂,
             tol,
@@ -2002,13 +1994,13 @@ function solve_nsss_wrapper(
             
             if scale == 1
                 if current_best > cache_push_distance_tol
-                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, NSSS_solver_cache_tmp)
+                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
                 end
                 return SS_and_pars, (solution_error, iters)
             end
             
             # Cache intermediate result for warm starts
-            push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
+            push!(continuation_cache, nsss_solver_cache_tmp)
             
             # Advance scale toward 1.0
             if scale > scale_snap_threshold

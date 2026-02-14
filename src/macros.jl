@@ -86,7 +86,7 @@ macro model(𝓂,ex...)
     par_calib_list = []
     
     # NSSS struct fields
-    NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
+    nsss_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     NSSS_check_func = x->x
     NSSS_custom_function = nothing
     NSSS_∂equations_∂parameters = zeros(0,0)
@@ -895,7 +895,7 @@ macro model(𝓂,ex...)
                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
                             Float64[],  # pruned_third_order_stochastic_steady_state
                             Float64[],  # non_stochastic_steady_state
-                            $NSSS_solver_cache,  # solver_cache
+                            $nsss_solver_cache,  # solver_cache
                             $NSSS_∂equations_∂parameters,  # ∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars,  # ∂equations_∂SS_and_pars
                         ),
@@ -964,7 +964,7 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
+- `guess` [Type: `Dict{Symbol, <:Real}` or `Dict{String, <:Real}`]: Guess for the non-stochastic steady state. The keys must be variable (and calibrated parameter) names and the values the guesses. Missing values are filled with standard starting values.
 - $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
@@ -1540,8 +1540,6 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
         # mod.$𝓂.caches.outdated_NSSS = true
         
-        # Store precompile and steady-state mode flag in model container
-        
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
@@ -1570,7 +1568,7 @@ macro parameters(𝓂,ex...)
         end
 
         if has_missing_parameters && $report_missing_parameters
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
         end
 
         if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end

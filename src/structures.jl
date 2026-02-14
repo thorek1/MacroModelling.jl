@@ -89,7 +89,7 @@
 #    - outdated: Flags indicating which caches need recomputation
 #
 # 4. FUNCTIONS (𝓂.functions) - Compiled model functions:
-#    - NSSS_check + step-based NSSS metadata/functions
+#    - NSSS_check + step-based NSSS solver functions
 #    - jacobian/hessian/third_order_derivatives: Derivative functions
 #    - state_update functions: Policy function evaluators
 #

@@ -4909,7 +4909,7 @@ function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::
 end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
-    avoid_solve, symbolic = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
+    avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
 
     if !𝓂.constants.post_parameters_macro.precompile
         start_time = time()
@@ -4928,7 +4928,7 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
 
         write_ss_check_function!(𝓂)
 
-        write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+        write_steady_state_solver_function!(𝓂, symbolic_enabled, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
         𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
         
@@ -6386,8 +6386,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         )
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
         
-        # Clear the NSSS_solver_cache since parameter order/count has changed
-        # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
+        # Clear NSSS solver cache because parameter order/count changed.
+        # It will be rebuilt during the next NSSS setup.
         while length(𝓂.caches.solver_cache) > 0
             pop!(𝓂.caches.solver_cache)
         end
@@ -6440,7 +6440,6 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
                 if isnothing(𝓂.constants.post_complete_parameters.nsss_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.constants.post_complete_parameters.nsss_dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
-                # if !isnothing(𝓂.constants.post_complete_parameters.nsss_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.constants.post_complete_parameters.nsss_dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false
                     𝓂.caches.outdated.non_stochastic_steady_state = true
                 end
                 
