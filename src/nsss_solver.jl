@@ -1266,10 +1266,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 minmax_rewritten = true
             end
 
-            if avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if symbolics_data === nothing || avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
-                soll = solve_symbolically(eq_to_solve,var_to_solve_for)
+                soll = solve_symbolically(eq_to_solve::SPyPyC.Sym{PythonCall.Core.Py}, var_to_solve_for::SPyPyC.Sym{PythonCall.Core.Py})
             end
 
             if isnothing(soll) || isempty(soll)
@@ -1302,7 +1302,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                                        𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
 
             elseif soll[1].is_number == true
-                ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
+                ss_equations = [replace_symbolic(eq::SPyPyC.Sym{PythonCall.Core.Py}, var_to_solve_for::SPyPyC.Sym{PythonCall.Core.Py}, soll[1]) for eq in ss_equations]
 
                 push!(solved_vars, Symbol(var_to_solve_for))
                 push!(solved_vals, Meta.parse(string(soll[1])))
@@ -1455,7 +1455,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                 if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
                     soll = nothing
                 else
-                    soll = solve_symbolically(eqs_to_solve,vars_to_solve)
+                    soll = solve_symbolically(eqs_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, vars_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}})
                 end
 
                 if isnothing(soll) || isempty(soll) || length(intersect((union(SPyPyC.free_symbols.(collect(values(soll)))...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
