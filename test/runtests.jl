@@ -1015,7 +1015,7 @@ if test_set == "basic"
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.functions.NSSS_custom)
-        @test !RBC_macro_switch.constants.nsss_solver.n_steps == 0
+        @test RBC_macro_switch.constants.nsss_solver.n_steps != 0
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
