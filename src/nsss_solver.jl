@@ -1272,7 +1272,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
             if symbolics_data === nothing || avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
-                soll = solve_symbolically(eq_to_solve::SPyPyC.Sym{PythonCall.Core.Py}, var_to_solve_for::SPyPyC.Sym{PythonCall.Core.Py})
+                if eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
+                    soll = solve_symbolically(eq_to_solve, var_to_solve_for)
+                else
+                    soll = nothing
+                end
             end
 
             if isnothing(soll) || isempty(soll)
@@ -1305,7 +1309,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                                        𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
 
             elseif soll[1].is_number == true
-                ss_equations = [replace_symbolic(eq::SPyPyC.Sym{PythonCall.Core.Py}, var_to_solve_for::SPyPyC.Sym{PythonCall.Core.Py}, soll[1]) for eq in ss_equations]
+                if var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py} && soll[1] isa SPyPyC.Sym{PythonCall.Core.Py}
+                    ss_equations = [eq isa SPyPyC.Sym{PythonCall.Core.Py} ? replace_symbolic(eq, var_to_solve_for, soll[1]) : eq for eq in ss_equations]
+                end
 
                 push!(solved_vars, Symbol(var_to_solve_for))
                 push!(solved_vals, Meta.parse(string(soll[1])))
@@ -1759,10 +1765,18 @@ function execute_step!(step_idx::Int,
         end
 
         # Call block solver
+        solve_block = f.solve_blocks[step_idx]
+        if solve_block === nothing
+            if verbose
+                println("Missing numerical solve block for step $(step_idx)")
+            end
+            return Inf, 0, EMPTY_NSSS_STEP_CACHE
+        end
+
         solution = block_solver(
             params_and_solved_vars,
             block_idx,
-            f.solve_blocks[step_idx],
+            solve_block,
             w.inits,
             lbs,
             ubs,
