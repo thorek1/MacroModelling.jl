@@ -1,15 +1,223 @@
 # Non-stochastic steady state (NSSS) solver
 # 
 # This file contains:
-# 1. Step execution functions for individual NSSS solve steps
-# 2. The solve_nsss_steps orchestrator that iterates over steps
-# 3. The solve_nsss_wrapper that handles cache management and continuation method
+# 1. Builder for accumulating step data into model sub-structs
+# 2. Step execution function dispatching on step type
+# 3. The solve_nsss_steps orchestrator that iterates over steps
+# 4. The solve_nsss_wrapper that handles cache management and continuation method
 
 # ============================================================================
-# Step execution functions
+# Pipeline builder
 # ============================================================================
 
 const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
+
+"""
+Mutable accumulator used during `create_nsss_solver!` to collect step data.
+After all steps are appended, call `build_nsss_solver!(𝓂, builder, param_prep!)` to assign
+data into the model's functions, constants, and workspaces sub-structs.
+"""
+mutable struct NSSSSolverBuilder
+    # Per-step parallel vectors (functions)
+    aux_funcs::Vector{Union{Nothing, Function}}
+    error_funcs::Vector{Union{Nothing, Function}}
+    eval_funcs::Vector{Union{Nothing, Function}}
+    solve_blocks::Vector{Union{Nothing, ss_solve_block}}
+    # Per-step metadata
+    step_types::Vector{UInt8}
+    descriptions::Vector{String}
+    block_indices::Vector{Int}
+    # Flat index accumulators
+    write_indices::Vector{Int}
+    write_ranges::Vector{UnitRange{Int}}
+    aux_write_indices::Vector{Int}
+    aux_write_ranges::Vector{UnitRange{Int}}
+    param_gather_indices::Vector{Int}
+    param_gather_ranges::Vector{UnitRange{Int}}
+    var_gather_indices::Vector{Int}
+    var_gather_ranges::Vector{UnitRange{Int}}
+    # Flat bounds accumulators (analytical)
+    lower_bounds::Vector{Float64}
+    upper_bounds::Vector{Float64}
+    has_bounds::BitVector
+    bounds_ranges::Vector{UnitRange{Int}}
+    # Flat bounds accumulators (numerical)
+    numerical_lbs::Vector{Float64}
+    numerical_ubs::Vector{Float64}
+    numerical_bounds_ranges::Vector{UnitRange{Int}}
+    # Error sizes
+    error_sizes::Vector{Int}
+    aux_error_sizes::Vector{Int}
+    # Workspace size tracking
+    max_main_buffer::Int
+    max_aux_buffer::Int
+    max_error_buffer::Int
+    max_guess_buffer::Int
+end
+
+function NSSSSolverBuilder()
+    NSSSSolverBuilder(
+        Union{Nothing,Function}[], Union{Nothing,Function}[],
+        Union{Nothing,Function}[], Union{Nothing,ss_solve_block}[],
+        UInt8[], String[], Int[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Float64[], Float64[], BitVector(), UnitRange{Int}[],
+        Float64[], Float64[], UnitRange{Int}[],
+        Int[], Int[],
+        0, 0, 0, 0,
+    )
+end
+
+"""Append an analytical step to the builder."""
+function push_analytical_step!(b::NSSSSolverBuilder;
+                               aux_func!::Union{Nothing,Function} = nothing,
+                               aux_write_indices::Vector{Int} = Int[],
+                               error_func!::Union{Nothing,Function} = nothing,
+                               error_size::Int = 0,
+                               eval_func!::Function,
+                               write_indices::Vector{Int},
+                               lower_bounds::Vector{Float64} = Float64[],
+                               upper_bounds::Vector{Float64} = Float64[],
+                               has_bounds::BitVector = falses(length(write_indices)),
+                               description::String = "")
+    push!(b.step_types, ANALYTICAL_STEP)
+    push!(b.descriptions, description)
+    push!(b.block_indices, 0)
+
+    # Functions
+    push!(b.aux_funcs, aux_func!)
+    push!(b.error_funcs, error_func!)
+    push!(b.eval_funcs, eval_func!)
+    push!(b.solve_blocks, nothing)
+
+    # Write indices
+    off = length(b.write_indices)
+    append!(b.write_indices, write_indices)
+    push!(b.write_ranges, (off+1):(off+length(write_indices)))
+
+    # Aux write indices
+    off = length(b.aux_write_indices)
+    append!(b.aux_write_indices, aux_write_indices)
+    push!(b.aux_write_ranges, (off+1):(off+length(aux_write_indices)))
+
+    # No param/var gather for analytical
+    push!(b.param_gather_ranges, 1:0)
+    push!(b.var_gather_ranges, 1:0)
+
+    # Bounds (analytical)
+    off = length(b.lower_bounds)
+    append!(b.lower_bounds, lower_bounds)
+    append!(b.upper_bounds, upper_bounds)
+    append!(b.has_bounds, has_bounds)
+    push!(b.bounds_ranges, (off+1):(off+length(lower_bounds)))
+
+    # No numerical bounds
+    push!(b.numerical_bounds_ranges, 1:0)
+
+    # Error sizes
+    push!(b.error_sizes, error_size)
+    push!(b.aux_error_sizes, 0)
+
+    # Update workspace max sizes
+    b.max_main_buffer = max(b.max_main_buffer, length(write_indices))
+    b.max_aux_buffer = max(b.max_aux_buffer, length(aux_write_indices))
+    b.max_error_buffer = max(b.max_error_buffer, error_size)
+end
+
+"""Append a numerical step to the builder."""
+function push_numerical_step!(b::NSSSSolverBuilder;
+                              solve_block::ss_solve_block,
+                              block_index::Int,
+                              write_indices::Vector{Int},
+                              param_gather_indices::Vector{Int},
+                              var_gather_indices::Vector{Int},
+                              lbs::Vector{Float64},
+                              ubs::Vector{Float64},
+                              aux_func!::Union{Nothing,Function} = nothing,
+                              aux_write_indices::Vector{Int} = Int[],
+                              aux_error_func!::Union{Nothing,Function} = nothing,
+                              aux_error_size::Int = 0,
+                              description::String = "")
+    push!(b.step_types, NUMERICAL_STEP)
+    push!(b.descriptions, description)
+    push!(b.block_indices, block_index)
+
+    # Functions
+    push!(b.aux_funcs, aux_func!)
+    push!(b.error_funcs, aux_error_func!)   # numerical steps use error_funcs slot for aux_error
+    push!(b.eval_funcs, nothing)
+    push!(b.solve_blocks, solve_block)
+
+    # Write indices
+    off = length(b.write_indices)
+    append!(b.write_indices, write_indices)
+    push!(b.write_ranges, (off+1):(off+length(write_indices)))
+
+    # Aux write indices
+    off = length(b.aux_write_indices)
+    append!(b.aux_write_indices, aux_write_indices)
+    push!(b.aux_write_ranges, (off+1):(off+length(aux_write_indices)))
+
+    # Param/var gather indices
+    off = length(b.param_gather_indices)
+    append!(b.param_gather_indices, param_gather_indices)
+    push!(b.param_gather_ranges, (off+1):(off+length(param_gather_indices)))
+
+    off = length(b.var_gather_indices)
+    append!(b.var_gather_indices, var_gather_indices)
+    push!(b.var_gather_ranges, (off+1):(off+length(var_gather_indices)))
+
+    # No analytical bounds
+    push!(b.bounds_ranges, 1:0)
+
+    # Numerical bounds
+    off = length(b.numerical_lbs)
+    append!(b.numerical_lbs, lbs)
+    append!(b.numerical_ubs, ubs)
+    push!(b.numerical_bounds_ranges, (off+1):(off+length(lbs)))
+
+    # Error sizes
+    push!(b.error_sizes, 0)
+    push!(b.aux_error_sizes, aux_error_size)
+
+    # Update workspace max sizes
+    gather_size = length(param_gather_indices) + length(var_gather_indices)
+    b.max_main_buffer = max(b.max_main_buffer, gather_size)
+    b.max_aux_buffer = max(b.max_aux_buffer, length(aux_write_indices))
+    b.max_error_buffer = max(b.max_error_buffer, aux_error_size)
+    b.max_guess_buffer = max(b.max_guess_buffer, length(write_indices))
+end
+
+"""Assign the solver functions, constants, and workspace from builder data into `𝓂`."""
+function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{Nothing,Function})
+    n = length(b.step_types)
+    𝓂.functions.nsss_solver = NSSSSolverFunctions(
+        b.aux_funcs, b.error_funcs, b.eval_funcs, b.solve_blocks,
+    )
+    𝓂.functions.nsss_param_prep! = param_prep!
+    𝓂.constants.nsss_solver = NSSSSolverConstants(
+        n,
+        b.step_types, b.descriptions, b.block_indices,
+        b.write_indices, b.write_ranges,
+        b.aux_write_indices, b.aux_write_ranges,
+        b.param_gather_indices, b.param_gather_ranges,
+        b.var_gather_indices, b.var_gather_ranges,
+        b.lower_bounds, b.upper_bounds, b.has_bounds, b.bounds_ranges,
+        b.numerical_lbs, b.numerical_ubs, b.numerical_bounds_ranges,
+        b.error_sizes, b.aux_error_sizes,
+    )
+    𝓂.workspaces.nsss_solver = NSSSSolverWorkspace(
+        zeros(Float64, max(b.max_main_buffer, 1)),
+        zeros(Float64, max(b.max_aux_buffer, 1)),
+        zeros(Float64, max(b.max_error_buffer, 1)),
+        zeros(Float64, max(b.max_guess_buffer, 1)),
+        [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
+    )
+    return nothing
+end
 
 @unstable begin
     function replace_symbols(exprs, remap::AbstractDict{Symbol, <:Any})
@@ -761,7 +969,7 @@ function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, 
     return func!
 end
 
-function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
+function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
                                𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
                                global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
     write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
@@ -770,9 +978,8 @@ function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
 
     aux_func! = nothing
     aux_write_indices = Int[]
-    aux_buffer = Float64[]
     aux_error_func! = nothing
-    aux_error_buffer = Float64[]
+    aux_error_size = 0
 
     if !isempty(block_meta.ss_and_aux_equations)
         model_aux_names = Symbol[]
@@ -795,37 +1002,32 @@ function build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
         end
         if !isempty(model_aux_rhs)
             aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
-            aux_buffer = zeros(Float64, length(model_aux_rhs))
             aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
         end
     end
 
     if !isempty(block_meta.ss_and_aux_equations_error)
         inlined_errors = isempty(global_solvetime_aux_sub) ? block_meta.ss_and_aux_equations_error : [replace_symbols(e, global_solvetime_aux_sub) for e in block_meta.ss_and_aux_equations_error]
-        aux_error_buffer = zeros(Float64, length(inlined_errors))
+        aux_error_size = length(inlined_errors)
         aux_error_func! = compile_exprs_to_func(inlined_errors,
                                                  𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
     end
 
     desc = "Numerical block $(block_meta.n_block): $(join(string.(block_meta.sorted_vars), ", "))"
 
-    return NumericalNSSSStep(
-        block_meta.solve_block,
-        block_meta.n_block,
-        write_indices,
-        param_gather_indices,
-        var_gather_indices,
-        Vector{Float64}(undef, length(param_gather_indices) + length(var_gather_indices)),
-        Vector{Float64}(undef, length(write_indices)),
-        [Vector{Float64}(undef, length(write_indices)), Float64[Inf]],
-        block_meta.lbs,
-        block_meta.ubs,
-        aux_func!,
-        aux_write_indices,
-        aux_buffer,
-        aux_error_func!,
-        aux_error_buffer,
-        desc
+    push_numerical_step!(builder;
+        solve_block = block_meta.solve_block,
+        block_index = block_meta.n_block,
+        write_indices = write_indices,
+        param_gather_indices = param_gather_indices,
+        var_gather_indices = var_gather_indices,
+        lbs = block_meta.lbs,
+        ubs = block_meta.ubs,
+        aux_func! = aux_func!,
+        aux_write_indices = aux_write_indices,
+        aux_error_func! = aux_error_func!,
+        aux_error_size = aux_error_size,
+        description = desc,
     )
 end
 
@@ -1031,7 +1233,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     min_max_error_exprs = []
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
     global_solvetime_aux_sub = Dict{Symbol, Union{Symbol, Expr}}()
-    solve_steps = NSSSSolveStep[]
+    builder = NSSSSolverBuilder()
     numerical_block_count = 0
 
     while n > 0
@@ -1096,8 +1298,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                     plus_var_count_at_start = current_plus_count
                 end
 
-                push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
-                                                         𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
+                append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
+                                       𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
 
             elseif soll[1].is_number == true
                 ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
@@ -1118,13 +1320,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                 eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
 
-                push!(solve_steps, AnalyticalNSSSStep(
-                    nothing, Int[], Float64[],
-                    nothing, Float64[],
-                    eval_func!, [widx], zeros(Float64, 1),
-                    Float64[], Float64[], falses(1),
-                    "Constant: $var_name = $val"
-                ))
+                push_analytical_step!(builder;
+                    eval_func! = eval_func!,
+                    write_indices = [widx],
+                    description = "Constant: $var_name = $val",
+                )
 
             else
                 push!(solved_vars, Symbol(var_to_solve_for))
@@ -1143,13 +1343,14 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                     eval_func! = compile_exprs_to_func([val_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
 
-                    push!(solve_steps, AnalyticalNSSSStep(
-                        nothing, Int[], Float64[],
-                        nothing, Float64[],
-                        eval_func!, [widx], zeros(Float64, 1),
-                        [lb], [ub], trues(1),
-                        "Analytical ➕: $var_name"
-                    ))
+                    push_analytical_step!(builder;
+                        eval_func! = eval_func!,
+                        write_indices = [widx],
+                        lower_bounds = [lb],
+                        upper_bounds = [ub],
+                        has_bounds = trues(1),
+                        description = "Analytical ➕: $var_name",
+                    )
 
                     unique_➕_eqs[val_expr] = var_name
                 else
@@ -1178,9 +1379,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                     aux_func! = nothing
                     aux_write_indices = Int[]
-                    aux_buffer = Float64[]
                     error_func! = nothing
-                    error_buffer = Float64[]
+                    error_size = 0
 
                     model_aux_names = Symbol[]
                     model_aux_rhs = Any[]
@@ -1204,7 +1404,6 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                     if !isempty(model_aux_rhs)
                         aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
-                        aux_buffer = zeros(Float64, length(model_aux_rhs))
                         aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
                     end
 
@@ -1213,7 +1412,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                     if !isempty(all_aux_errors)
                         inlined_errors = isempty(global_solvetime_aux_sub) ? all_aux_errors : [replace_symbols(e, global_solvetime_aux_sub) for e in all_aux_errors]
-                        error_buffer = zeros(Float64, length(inlined_errors))
+                        error_size = length(inlined_errors)
                         error_func! = compile_exprs_to_func(inlined_errors, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
                     end
 
@@ -1221,21 +1420,28 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                     if has_user_bounds
                         lb = Float64(𝓂.constants.post_parameters_macro.bounds[var_name][1])
                         ub = Float64(𝓂.constants.post_parameters_macro.bounds[var_name][2])
-                        push!(solve_steps, AnalyticalNSSSStep(
-                            aux_func!, aux_write_indices, aux_buffer,
-                            error_func!, error_buffer,
-                            eval_func!, [widx], zeros(Float64, 1),
-                            [lb], [ub], trues(1),
-                            "Analytical bounded: $var_name"
-                        ))
+                        push_analytical_step!(builder;
+                            aux_func! = aux_func!,
+                            aux_write_indices = aux_write_indices,
+                            error_func! = error_func!,
+                            error_size = error_size,
+                            eval_func! = eval_func!,
+                            write_indices = [widx],
+                            lower_bounds = [lb],
+                            upper_bounds = [ub],
+                            has_bounds = trues(1),
+                            description = "Analytical bounded: $var_name",
+                        )
                     else
-                        push!(solve_steps, AnalyticalNSSSStep(
-                            aux_func!, aux_write_indices, aux_buffer,
-                            error_func!, error_buffer,
-                            eval_func!, [widx], zeros(Float64, 1),
-                            Float64[], Float64[], falses(1),
-                            "Analytical: $var_name"
-                        ))
+                        push_analytical_step!(builder;
+                            aux_func! = aux_func!,
+                            aux_write_indices = aux_write_indices,
+                            error_func! = error_func!,
+                            error_size = error_size,
+                            eval_func! = eval_func!,
+                            write_indices = [widx],
+                            description = "Analytical: $var_name",
+                        )
                     end
                 end
             end
@@ -1274,13 +1480,11 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
 
                     eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
 
-                    push!(solve_steps, AnalyticalNSSSStep(
-                        nothing, Int[], Float64[],
-                        nothing, Float64[],
-                        eval_func!, step_write_indices, zeros(Float64, length(step_exprs)),
-                        Float64[], Float64[], falses(length(step_exprs)),
-                        "Analytical multi: $(join(string.(Symbol.(vars_to_solve)), ", "))"
-                    ))
+                    push_analytical_step!(builder;
+                        eval_func! = eval_func!,
+                        write_indices = step_write_indices,
+                        description = "Analytical multi: $(join(string.(Symbol.(vars_to_solve)), ", "))",
+                    )
                 end
             end
 
@@ -1320,8 +1524,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
                         plus_var_count_at_start = current_plus_count
                     end
 
-                    push!(solve_steps, build_numerical_step(block_meta, sol_name_to_index, ext_param_to_index,
-                                                             𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub))
+                    append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
+                                           𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
                 end
 
                 if !symbolic_SS && verbose
@@ -1351,46 +1555,37 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS::Bool = fals
     if !isempty(min_max_error_exprs)
         minmax_error_func! = compile_exprs_to_func(min_max_error_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
         n_errors = length(min_max_error_exprs)
-        push!(solve_steps, AnalyticalNSSSStep(
-            nothing, Int[], Float64[],
-            minmax_error_func!, zeros(Float64, n_errors),
-            compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array),
-            Int[], Float64[],
-            Float64[], Float64[], falses(0),
-            "Min/Max validation"
-        ))
+        push_analytical_step!(builder;
+            error_func! = minmax_error_func!,
+            error_size = n_errors,
+            eval_func! = compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array),
+            write_indices = Int[],
+            description = "Min/Max validation",
+        )
     end
 
+    # Patch bounds on ➕ steps in the builder's flat arrays
     if !isempty(𝓂.constants.post_parameters_macro.bounds)
-        for i in eachindex(solve_steps)
-            st = solve_steps[i]
-            if st isa AnalyticalNSSSStep && startswith(st.description, "Analytical ➕:")
-                lbs = copy(st.lower_bounds)
-                ubs = copy(st.upper_bounds)
-                hasb = copy(st.has_bounds)
-                @inbounds for j in eachindex(st.write_indices)
-                    name = all_sol_names[st.write_indices[j]]
+        for i in 1:length(builder.step_types)
+            if builder.step_types[i] == ANALYTICAL_STEP && startswith(builder.descriptions[i], "Analytical ➕:")
+                wr = builder.write_ranges[i]
+                br = builder.bounds_ranges[i]
+                for (j_local, j_wr) in enumerate(wr)
+                    widx = builder.write_indices[j_wr]
+                    name = all_sol_names[widx]
                     if haskey(𝓂.constants.post_parameters_macro.bounds, name)
                         bt = 𝓂.constants.post_parameters_macro.bounds[name]
-                        lbs[j] = Float64(bt[1])
-                        ubs[j] = Float64(bt[2])
-                        hasb[j] = true
+                        j_br = br[j_local]
+                        builder.lower_bounds[j_br] = Float64(bt[1])
+                        builder.upper_bounds[j_br] = Float64(bt[2])
+                        builder.has_bounds[j_br] = true
                     end
                 end
-
-                solve_steps[i] = AnalyticalNSSSStep(
-                    st.aux_func!, st.aux_write_indices, st.aux_buffer,
-                    st.error_func!, st.error_buffer,
-                    st.eval_func!, st.write_indices, st.buffer,
-                    lbs, ubs, hasb,
-                    st.description,
-                )
             end
         end
     end
 
-    𝓂.functions.nsss_solve_steps = solve_steps
-    𝓂.functions.nsss_param_prep! = param_prep_func!
+    build_nsss_solver!(𝓂, builder, param_prep_func!)
     n_sol = length(all_sol_names)
     𝓂.constants.post_complete_parameters = update_post_complete_parameters(
         𝓂.constants.post_complete_parameters;
@@ -1437,162 +1632,169 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
 end
 
 """
-    execute_step!(step::AnalyticalNSSSStep, sol_vec, params_vec, args...)
+    execute_step!(step_idx, sol_vec, params_vec, closest_solution, 𝓂, ...)
 
-Execute an analytical NSSS solve step. Evaluates the compiled symbolic function
-to compute one or more unknowns and writes them to the solution vector.
+Execute a single NSSS solve step.
+Dispatches on `𝓂.constants.nsss_solver.step_types[step_idx]` (ANALYTICAL_STEP or NUMERICAL_STEP).
 
-Returns: (error, iterations, cache_entries)
+Uses shared workspace buffers for scratch computations, avoiding per-step allocation.
+
+Returns: (error, iterations, cache_entries::Vector{Vector{Float64}})
 """
-function execute_step!(step::AnalyticalNSSSStep, sol_vec::Vector{Float64}, 
-                       params_vec::Vector{Float64},
+function execute_step!(step_idx::Int,
+                       sol_vec::Vector{Float64}, params_vec::Vector{Float64},
                        closest_solution, 𝓂, tol, fail_fast_solvers_only,
                        cold_start, solver_parameters, verbose)
-    error = 0.0
     
-    # Phase 1: Compute auxiliary variables (domain-safety ➕_vars)
-    if step.aux_func! !== nothing
-        step.aux_func!(step.aux_buffer, sol_vec, params_vec)
-        for (i, idx) in enumerate(step.aux_write_indices)
-            sol_vec[idx] = step.aux_buffer[i]
+    c = 𝓂.constants.nsss_solver
+    f = 𝓂.functions.nsss_solver
+    w = 𝓂.workspaces.nsss_solver
+    step_type = c.step_types[step_idx]
+
+    error = 0.0
+
+    # Phase 1: Compute auxiliary variables (shared across both step types)
+    if f.aux_funcs[step_idx] !== nothing
+        aux_wr = c.aux_write_ranges[step_idx]
+        n_aux = length(aux_wr)
+        aux_buf = @view w.aux_buffer[1:n_aux]
+        f.aux_funcs[step_idx](aux_buf, sol_vec, params_vec)
+        @inbounds for j in 1:n_aux
+            sol_vec[c.aux_write_indices[aux_wr[j]]] = aux_buf[j]
         end
+    end
+
+    if step_type == ANALYTICAL_STEP
+        # Error check (analytical domain-safety)
+        if f.error_funcs[step_idx] !== nothing
+            err_n = c.error_sizes[step_idx]
+            err_buf = @view w.error_buffer[1:err_n]
+            f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
+            error += sum(abs, err_buf)
+        end
+
+        # Main evaluation
+        wr = c.write_ranges[step_idx]
+        n_write = length(wr)
+        if n_write > 0
+            main_buf = @view w.main_buffer[1:n_write]
+            f.eval_funcs[step_idx](main_buf, sol_vec, params_vec)
+            br = c.bounds_ranges[step_idx]
+            @inbounds for j in 1:n_write
+                raw = main_buf[j]
+                widx = c.write_indices[wr[j]]
+                if !isempty(br) && c.has_bounds[br[j]]
+                    clamped = clamp(raw, c.lower_bounds[br[j]], c.upper_bounds[br[j]])
+                    error += abs(clamped - raw)
+                    sol_vec[widx] = clamped
+                else
+                    sol_vec[widx] = raw
+                end
+            end
+        elseif f.eval_funcs[step_idx] !== nothing
+            # Min/Max validation step: no writes but eval_func exists
+            f.eval_funcs[step_idx](@view(w.main_buffer[1:1]), sol_vec, params_vec)
+        end
+
+        return error, 0, EMPTY_NSSS_STEP_CACHE
+
+    else # NUMERICAL_STEP
+        # Gather params_and_solved_vars into shared main_buffer
+        pgr = c.param_gather_ranges[step_idx]
+        vgr = c.var_gather_ranges[step_idx]
+        n_params = length(pgr)
+        n_vars = length(vgr)
+        gather_size = n_params + n_vars
         
-        # Domain safety error check
-        if step.error_func! !== nothing
-            step.error_func!(step.error_buffer, sol_vec, params_vec)
-            error += sum(abs, step.error_buffer)
+        params_and_solved_vars = Vector{Float64}(undef, gather_size)
+        @inbounds for j in 1:n_params
+            params_and_solved_vars[j] = params_vec[c.param_gather_indices[pgr[j]]]
         end
-    end
-    
-    # Phase 2: Compute target variable(s)
-    step.eval_func!(step.buffer, sol_vec, params_vec)
-    
-    # Apply bounds and compute clamping error
-    for (i, idx) in enumerate(step.write_indices)
-        raw = step.buffer[i]
-        if step.has_bounds[i]
-            clamped = clamp(raw, step.lower_bounds[i], step.upper_bounds[i])
-            error += abs(clamped - raw)
-            sol_vec[idx] = clamped
-        else
-            sol_vec[idx] = raw
+        @inbounds for j in 1:n_vars
+            params_and_solved_vars[n_params + j] = sol_vec[c.var_gather_indices[vgr[j]]]
         end
-    end
-    
-    return error, 0, EMPTY_NSSS_STEP_CACHE
-end
 
+        # Build initial guesses
+        block_idx = c.block_indices[step_idx]
+        cache_sol_idx = 2*(block_idx-1)+1
+        cache_par_idx = 2*block_idx
+        cache_sol = cache_sol_idx <= length(closest_solution) ? closest_solution[cache_sol_idx] : Float64[]
+        cache_par = cache_par_idx <= length(closest_solution) ? closest_solution[cache_par_idx] : Float64[Inf]
 
-"""
-    execute_step!(step::NumericalNSSSStep, sol_vec, params_vec, args...)
+        wr = c.write_ranges[step_idx]
+        n_write = length(wr)
+        nbr = c.numerical_bounds_ranges[step_idx]
+        guess_len = min(n_write, length(nbr))
 
-Execute a numerical NSSS solve step. Gathers parameters and solved variables,
-then calls `block_solver` to numerically solve for the unknowns.
-
-Returns: (error, iterations, cache_entries)
-"""
-function execute_step!(step::NumericalNSSSStep, sol_vec::Vector{Float64}, 
-                       params_vec::Vector{Float64},
-                       closest_solution, 𝓂, tol, fail_fast_solvers_only,
-                       cold_start, solver_parameters, verbose)
-    error = 0.0
-    
-    # Phase 1: Compute auxiliary variables (domain-safety, if any)
-    if step.aux_func! !== nothing
-        step.aux_func!(step.aux_buffer, sol_vec, params_vec)
-        for (i, idx) in enumerate(step.aux_write_indices)
-            sol_vec[idx] = step.aux_buffer[i]
+        guess_buf = @view w.guess_buffer[1:guess_len]
+        copy_len = min(length(cache_sol), guess_len)
+        @inbounds for i in 1:copy_len
+            guess_buf[i] = clamp(cache_sol[i], c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
         end
-    end
-    
-    # Gather params_and_solved_vars from the solution and parameter vectors
-    n_params = length(step.param_gather_indices)
-    n_vars = length(step.var_gather_indices)
-    params_and_solved_vars = step.params_and_solved_vars_buffer
-    if length(params_and_solved_vars) != n_params + n_vars
-        resize!(params_and_solved_vars, n_params + n_vars)
-    end
-    for (i, idx) in enumerate(step.param_gather_indices)
-        params_and_solved_vars[i] = params_vec[idx]
-    end
-    for (i, idx) in enumerate(step.var_gather_indices)
-        params_and_solved_vars[n_params + i] = sol_vec[idx]
-    end
-    
-    # Build initial guesses from closest cached solution
-    n = step.block_index
-    cache_sol_idx = 2*(n-1)+1
-    cache_par_idx = 2*n
-    cache_sol = cache_sol_idx <= length(closest_solution) ? closest_solution[cache_sol_idx] : Float64[]
-    cache_par = cache_par_idx <= length(closest_solution) ? closest_solution[cache_par_idx] : Float64[Inf]
-
-    guess_len = min(length(step.write_indices), length(step.lbs), length(step.ubs))
-    clamped_guess = step.initial_guess_buffer
-    if length(clamped_guess) != guess_len
-        resize!(clamped_guess, guess_len)
-    end
-
-    copy_len = min(length(cache_sol), guess_len)
-    @inbounds for i in 1:copy_len
-        clamped_guess[i] = clamp(cache_sol[i], step.lbs[i], step.ubs[i])
-    end
-    @inbounds for i in (copy_len + 1):guess_len
-        clamped_guess[i] = clamp(0.5 * (step.lbs[i] + step.ubs[i]), step.lbs[i], step.ubs[i])
-    end
-
-    inits = step.inits_buffer
-    inits[1] = clamped_guess
-    inits[2] = cache_par
-    
-    # Call block solver
-    solution = block_solver(
-        params_and_solved_vars,
-        n,
-        step.solve_block,
-        inits,
-        step.lbs,
-        step.ubs,
-        solver_parameters,
-        fail_fast_solvers_only,
-        cold_start,
-        verbose
-    )
-    
-    # Accumulate error and iterations
-    error += solution[2][1]
-    iters = solution[2][2]
-    if error > tol.NSSS_acceptance_tol
-        if verbose
-            println("Failed after solving block with error $error")
+        @inbounds for i in (copy_len + 1):guess_len
+            guess_buf[i] = clamp(0.5 * (c.numerical_lbs[nbr[i]] + c.numerical_ubs[nbr[i]]),
+                                 c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
         end
-        return error, iters, Vector{Float64}[]
-    end
 
-    # Domain safety error check after block solve
-    if step.aux_error_func! !== nothing
-        step.aux_error_func!(step.aux_error_buffer, sol_vec, params_vec)
-        error += sum(abs, step.aux_error_buffer)
+        # Use workspace inits container
+        w.inits[1] = Vector{Float64}(guess_buf)
+        w.inits[2] = cache_par
+
+        # Get bounds views for block_solver
+        lbs = @view c.numerical_lbs[nbr]
+        ubs = @view c.numerical_ubs[nbr]
+
+        # Call block solver
+        solution = block_solver(
+            params_and_solved_vars,
+            block_idx,
+            f.solve_blocks[step_idx],
+            w.inits,
+            Vector{Float64}(lbs),
+            Vector{Float64}(ubs),
+            solver_parameters,
+            fail_fast_solvers_only,
+            cold_start,
+            verbose
+        )
+
+        error += solution[2][1]
+        iters = solution[2][2]
         if error > tol.NSSS_acceptance_tol
             if verbose
-                println("Failed for aux variables with error $error")
+                println("Failed after solving block with error $error")
             end
             return error, iters, Vector{Float64}[]
         end
+
+        # Domain safety error check after block solve
+        if f.error_funcs[step_idx] !== nothing
+            err_n = c.aux_error_sizes[step_idx]
+            err_buf = @view w.error_buffer[1:err_n]
+            f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
+            error += sum(abs, err_buf)
+            if error > tol.NSSS_acceptance_tol
+                if verbose
+                    println("Failed for aux variables with error $error")
+                end
+                return error, iters, Vector{Float64}[]
+            end
+        end
+
+        # Write results to solution vector
+        sol = solution[1]
+        @inbounds for j in 1:n_write
+            sol_vec[c.write_indices[wr[j]]] = sol[j]
+        end
+
+        # Build cache entries for this block
+        cache_entries = [
+            typeof(sol) == Vector{Float64} ? copy(sol) : ℱ.value.(sol),
+            typeof(params_and_solved_vars) == Vector{Float64} ? copy(params_and_solved_vars) : ℱ.value.(params_and_solved_vars)
+        ]
+
+        return error, iters, cache_entries
     end
-    
-    # Write results to solution vector
-    sol = solution[1]
-    for (i, idx) in enumerate(step.write_indices)
-        sol_vec[idx] = sol[i]
-    end
-    
-    # Build cache entries for this block
-    cache_entries = [
-        typeof(sol) == Vector{Float64} ? copy(sol) : ℱ.value.(sol),
-        typeof(params_and_solved_vars) == Vector{Float64} ? copy(params_and_solved_vars) : ℱ.value.(params_and_solved_vars)
-    ]
-    
-    return error, iters, cache_entries
 end
 
 
@@ -1604,11 +1806,11 @@ end
     solve_nsss_steps(parameters, 𝓂, tol, verbose, fail_fast_solvers_only,
                      closest_solution, cold_start, solver_params)
 
-Solve the NSSS by executing pre-compiled solve steps in a single pass.
+Solve the NSSS by executing pipeline steps in a single pass.
 
-Each step is either an `AnalyticalNSSSStep` (compiled symbolic evaluation)
-or a `NumericalNSSSStep` (calls block_solver). Steps are executed in order,
-filling the solution vector progressively.
+Steps are dispatched via `execute_step!` which uses the pipeline's shared
+workspace buffers. Steps are executed in order, filling the solution vector
+progressively.
 
 Returns: (SS_and_pars, (solution_error, iters), NSSS_solver_cache_tmp)
 """
@@ -1623,14 +1825,13 @@ function solve_nsss_steps(
     solver_params::Vector{solver_parameters}
 )
     nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
-    nsss_param_prep! = 𝓂.functions.nsss_param_prep!
     nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
-    nsss_solve_steps = 𝓂.functions.nsss_solve_steps
     nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
+    nsss_consts = 𝓂.constants.nsss_solver
     
     # Prepare extended parameter vector (raw params → bounded + calibration_no_var)
     params_vec = Vector{Float64}(undef, nsss_n_ext_params)
-    nsss_param_prep!(params_vec, parameters)
+    𝓂.functions.nsss_param_prep!(params_vec, parameters)
     
     # Initialize solution vector
     sol_vec = zeros(Float64, nsss_n_sol)
@@ -1640,9 +1841,10 @@ function solve_nsss_steps(
     solution_error = 0.0
     iters = 0
     
-    for step in nsss_solve_steps
+    n_steps = nsss_consts.n_steps
+    for step_idx in 1:n_steps
         step_error, step_iters, step_cache = execute_step!(
-            step, sol_vec, params_vec, closest_solution, 𝓂, tol,
+            step_idx, sol_vec, params_vec, closest_solution, 𝓂, tol,
             fail_fast_solvers_only, cold_start, solver_params, verbose
         )
         
@@ -1654,7 +1856,7 @@ function solve_nsss_steps(
         
         if solution_error > tol.NSSS_acceptance_tol
             if verbose
-                println("Step '$(step.description)' failed with accumulated error $solution_error")
+                println("Step '$(nsss_consts.descriptions[step_idx])' failed with accumulated error $solution_error")
             end
             break
         end
@@ -1738,7 +1940,7 @@ function solve_nsss_wrapper(
     scale_failure_weight::Float64 = 0.3,
 )::Tuple{Vector, Tuple{Real, Int}}
 
-    n_numerical_steps = count(step -> step isa NumericalNSSSStep, 𝓂.functions.nsss_solve_steps)
+    n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
     
     # Type conversion for AD compatibility
     initial_parameters = typeof(parameter_values) == Vector{Float64} ? 

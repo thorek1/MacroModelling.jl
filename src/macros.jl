@@ -920,8 +920,8 @@ macro model(𝓂,ex...)
                             $NSSS_custom_function,
                             $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
-                            NSSSSolveStep[],
-                            nothing,
+                            NSSSSolverFunctions(),
+                            nothing, # nsss_param_prep!
                             jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
                             hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
                             third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars

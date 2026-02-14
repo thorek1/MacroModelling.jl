@@ -4977,7 +4977,7 @@ function solve!(𝓂::ℳ;
     
     if 𝓂.functions.functions_written &&
         isnothing(𝓂.functions.NSSS_custom) &&
-        isempty(𝓂.functions.nsss_solve_steps)
+        𝓂.constants.nsss_solver.n_steps == 0
 
         set_up_steady_state_solver!(𝓂,
                                     verbose = opts.verbose,

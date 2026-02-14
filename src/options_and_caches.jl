@@ -627,7 +627,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T))  # Kalman filter - will be resized
+                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -695,7 +696,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Symbol[]),
             Second_order_indices(),
-            Third_order_indices())
+            Third_order_indices(),
+            NSSSSolverConstants())
 end
 
 function _axis_has_string(axis)
