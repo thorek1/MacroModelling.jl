@@ -673,6 +673,9 @@ mutable struct NSSSSolverWorkspace
     error_buffer::Vector{Float64}     # for error_func! / aux_error_func! output
     guess_buffer::Vector{Float64}     # for initial_guess in numerical steps
     inits::Vector{Vector{Float64}}    # 2-element container: [clamped_guess, cached_params]
+    params_and_solved_vars_buffer::Vector{Float64}  # gathered block inputs (params + solved vars)
+    lbs_buffer::Vector{Float64}       # numerical lower bounds for current block
+    ubs_buffer::Vector{Float64}       # numerical upper bounds for current block
 end
 
 
@@ -701,6 +704,7 @@ NSSSSolverConstants() = NSSSSolverConstants(
 NSSSSolverWorkspace() = NSSSSolverWorkspace(
     Float64[], Float64[], Float64[], Float64[],
     [Float64[], Float64[Inf]],
+    Float64[], Float64[], Float64[],
 )
 
 """

@@ -4227,15 +4227,46 @@ function solve_ss(SS_optimizer::Function,
                     solver_params::solver_parameters,
                     extended_problem::Bool,
                     separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
-    xtol = tol.NSSS_xtol
     ftol = tol.NSSS_ftol
-    rel_xtol = tol.NSSS_rel_xtol
-
-    if separate_starting_value isa Float64
-        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
-        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    n_guess = length(guess)
+    init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
+    @inbounds if separate_starting_value isa Float64
+        ssv = T(separate_starting_value)
+        for i in 1:n_guess
+            v = clamp(ssv, lbs[i], ubs[i])
+            init_buf[i] = ubs[i] <= one(T) ? T(0.1) : v
+        end
     else
-        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+        sv = T(solver_params.starting_value)
+        for i in 1:n_guess
+            g = guess[i]
+            v = g < T(1e12) ? g : sv
+            init_buf[i] = clamp(v, lbs[i], ubs[i])
+        end
+    end
+
+    if !extended_problem
+        lb_core = SS_solve_block.ss_problem.workspace.l_bounds
+        ub_core = SS_solve_block.ss_problem.workspace.u_bounds
+        @inbounds for i in 1:n_guess
+            lb_core[i] = lbs[i]
+            ub_core[i] = ubs[i]
+        end
+    end
+
+    optimizer_init = if extended_problem
+        ext_init = SS_solve_block.extended_ss_problem.workspace.best_previous_guess
+        @inbounds begin
+            for i in 1:n_guess
+                ext_init[i] = init_buf[i]
+            end
+            for i in 1:length(closest_parameters_and_solved_vars)
+                ext_init[n_guess + i] = closest_parameters_and_solved_vars[i]
+            end
+        end
+        ext_init
+    else
+        init_buf
     end
 
     sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
@@ -4254,20 +4285,23 @@ function solve_ss(SS_optimizer::Function,
     # end
 
     # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
-                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        optimizer_init,
                                         parameters_and_solved_vars,
-                                        extended_problem ? lbs : lbs[1:length(guess)],
-                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        extended_problem ? lbs : SS_solve_block.ss_problem.workspace.l_bounds,
+                                        extended_problem ? ubs : SS_solve_block.ss_problem.workspace.u_bounds,
                                         solver_params,
                                         tol = tol   )
 
-    sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
+    sol_new = isnothing(sol_new_tmp) ? init_buf : @view(sol_new_tmp[1:n_guess])
 
     sol_minimum = info[4] # isnan(sum(abs, info[4])) ? Inf : ℒ.norm(info[4])
     
     rel_sol_minimum = info[3]
 
-    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+    sol_values = SS_solve_block.ss_problem.workspace.best_current_guess
+    @inbounds for i in 1:n_guess
+        sol_values[i] = clamp(sol_new[i], lbs[i], ubs[i])
+    end
 
     total_iters[1] += info[1]
     total_iters[2] += info[2]
@@ -4280,9 +4314,17 @@ function solve_ss(SS_optimizer::Function,
         starting_value_str = "and starting point: $separate_starting_value"
     end
 
-    if all(guess .< 1e12) && separate_starting_value isa Bool
+    has_small_guess = false
+    all_small_guess = true
+    @inbounds for i in eachindex(guess)
+        is_small = guess[i] < T(1e12)
+        has_small_guess |= is_small
+        all_small_guess &= is_small
+    end
+
+    if all_small_guess && separate_starting_value isa Bool
         any_guess_str = "previous solution, "
-    elseif any(guess .< 1e12) && separate_starting_value isa Bool
+    elseif has_small_guess && separate_starting_value isa Bool
         any_guess_str = "provided guess, "
     else
         any_guess_str = ""
@@ -4382,12 +4424,27 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     SS_optimizer = levenberg_marquardt
 
     if cold_start
-        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = (fail_fast_solvers_only ? [false] : Any[false, 1.206, 1.5, 0.7688, 2.0, 0.897])
+        has_guess = false
+        @inbounds for i in eachindex(guess)
+            if guess[i] < T(1e12)
+                has_guess = true
+                break
+            end
+        end
 
-        for g in guesses
+        fallback_guess = SS_solve_block.ss_problem.workspace.best_current_guess
+        start_vals = fail_fast_solvers_only ? (false,) : (false, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
+        n_guess_trials = has_guess ? 2 : 1
+
+        for guess_trial in 1:n_guess_trials
+            g = if guess_trial == 1
+                guess
+            else
+                fill!(fallback_guess, T(1e12))
+                fallback_guess
+            end
             for p in parameters
-                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+                for ext in (true, false) # try first the system where values and parameters can vary, next try the system where only values can vary
                     for s in start_vals
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
@@ -4412,10 +4469,10 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
         
         for p in pars #[1:3] # take unique because some parameters might appear more than once
-            start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
+            start_vals = fail_fast_solvers_only ? (false,) : (false, p.starting_value, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
             for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                for algo in [newton, levenberg_marquardt]
+                for algo in (newton, levenberg_marquardt)
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")

@@ -215,6 +215,9 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         zeros(Float64, max(b.max_error_buffer, 1)),
         zeros(Float64, max(b.max_guess_buffer, 1)),
         [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
+        zeros(Float64, max(b.max_main_buffer, 1)),
+        zeros(Float64, max(b.max_guess_buffer, 1)),
+        zeros(Float64, max(b.max_guess_buffer, 1)),
     )
     return nothing
 end
@@ -1619,7 +1622,11 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
 
     if !isfinite(current_best)
         if (closest_solution[end] isa Vector{Float64}) && (length(closest_solution[end]) == length(initial_parameters))
-            current_best = sum(abs2, closest_solution[end] - initial_parameters)
+            current_best = 0.0
+            @inbounds for i in eachindex(initial_parameters)
+                d = closest_solution[end][i] - initial_parameters[i]
+                current_best += d * d
+            end
         else
             current_best = Inf
         end
@@ -1702,8 +1709,9 @@ function execute_step!(step_idx::Int,
         n_params = length(pgr)
         n_vars = length(vgr)
         gather_size = n_params + n_vars
-        
-        params_and_solved_vars = Vector{Float64}(undef, gather_size)
+
+        params_and_solved_vars = w.params_and_solved_vars_buffer
+        resize!(params_and_solved_vars, gather_size)
         @inbounds for j in 1:n_params
             params_and_solved_vars[j] = params_vec[c.param_gather_indices[pgr[j]]]
         end
@@ -1734,12 +1742,21 @@ function execute_step!(step_idx::Int,
         end
 
         # Use workspace inits container
-        w.inits[1] = Vector{Float64}(guess_buf)
+        resize!(w.inits[1], guess_len)
+        if guess_len > 0
+            copyto!(w.inits[1], 1, guess_buf, 1, guess_len)
+        end
         w.inits[2] = cache_par
 
-        # Get bounds views for block_solver
-        lbs = @view c.numerical_lbs[nbr]
-        ubs = @view c.numerical_ubs[nbr]
+        lbs = w.lbs_buffer
+        ubs = w.ubs_buffer
+        n_bounds = length(nbr)
+        resize!(lbs, n_bounds)
+        resize!(ubs, n_bounds)
+        @inbounds for i in 1:n_bounds
+            lbs[i] = c.numerical_lbs[nbr[i]]
+            ubs[i] = c.numerical_ubs[nbr[i]]
+        end
 
         # Call block solver
         solution = block_solver(
@@ -1747,8 +1764,8 @@ function execute_step!(step_idx::Int,
             block_idx,
             f.solve_blocks[step_idx],
             w.inits,
-            Vector{Float64}(lbs),
-            Vector{Float64}(ubs),
+            lbs,
+            ubs,
             solver_parameters,
             fail_fast_solvers_only,
             cold_start,
@@ -1761,7 +1778,7 @@ function execute_step!(step_idx::Int,
             if verbose
                 println("Failed after solving block with error $error")
             end
-            return error, iters, Vector{Float64}[]
+            return error, iters, EMPTY_NSSS_STEP_CACHE
         end
 
         # Domain safety error check after block solve
@@ -1774,7 +1791,7 @@ function execute_step!(step_idx::Int,
                 if verbose
                     println("Failed for aux variables with error $error")
                 end
-                return error, iters, Vector{Float64}[]
+                return error, iters, EMPTY_NSSS_STEP_CACHE
             end
         end
 
@@ -1958,6 +1975,7 @@ function solve_nsss_wrapper(
     # Local intermediate cache for warm starts at intermediate scales
     continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
     push!(continuation_cache, closest_solution_init)
+    scaled_parameters = similar(initial_parameters)
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters
@@ -1976,7 +1994,10 @@ function solve_nsss_wrapper(
         
         # Interpolate parameters between target and cached solution
         if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
-            parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+            @inbounds for i in eachindex(initial_parameters)
+                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_solution_init[end][i]
+            end
+            parameters = scaled_parameters
         else
             parameters = initial_parameters
         end
