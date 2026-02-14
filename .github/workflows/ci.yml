@@ -171,8 +171,8 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
-      - name: Remove JET from estimation runs
-        if: contains(matrix.test_set, 'estimat') == true || contains(matrix.test_set, 'pigeons') == true
+      - name: Remove JET from non-jet runs
+        if: matrix.test_set != 'jet'
         shell: bash
         run: |
           sed -i.bak \
