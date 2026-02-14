@@ -1314,11 +1314,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
 
                 if var_name ∈ 𝓂.constants.post_model_macro.➕_vars
                     step_expr = :(max(eps(), $val))
+                    eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
                 else
-                    step_expr = val
+                    constant_value = Float64(soll[1])
+                    eval_func! = let constant_value = constant_value
+                        (out, _sol_vec, _params_vec) -> begin
+                            out[1] = constant_value
+                            return nothing
+                        end
+                    end
                 end
-
-                eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
 
                 push_analytical_step!(builder;
                     eval_func! = eval_func!,
