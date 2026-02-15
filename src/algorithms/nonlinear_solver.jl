@@ -484,36 +484,21 @@ function newton(
 
             new_residuals_norm = ℒ.norm(new_residuals)
             
-            if ∇ isa SparseMatrixCSC
-                sol_cache.A = ∇
-                sol_cache.b = new_residuals
-                sol = 𝒮.solve!(sol_cache)
-                if !𝒮.SciMLBase.successful_retcode(sol.retcode)
-                    rel_xtol_reached = typemax(T)
-                    new_residuals_norm = typemax(T)
-                    break
-                end
-                guess_update .= sol_cache.u
-                if has_nonfinite(guess_update)
-                    rel_xtol_reached = typemax(T)
-                    new_residuals_norm = typemax(T)
-                    break
-                end
-                new_residuals .= guess_update
-            else
-                fact∇ = ℒ.lu!(∇, check = false)
-                if !ℒ.issuccess(fact∇)
-                    rel_xtol_reached = typemax(T)
-                    new_residuals_norm = typemax(T)
-                    break
-                end
-                ℒ.ldiv!(fact∇, new_residuals)
-                if has_nonfinite(new_residuals)
-                    rel_xtol_reached = typemax(T)
-                    new_residuals_norm = typemax(T)
-                    break
-                end
+            sol_cache.A = ∇
+            sol_cache.b = new_residuals
+            sol = 𝒮.solve!(sol_cache)
+            if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
             end
+            guess_update .= sol_cache.u
+            if has_nonfinite(guess_update)
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
+            end
+            new_residuals .= guess_update
 
             guess_update_norm = ℒ.norm(new_residuals)
             ℒ.axpy!(-1, new_residuals, new_guess)
@@ -549,36 +534,21 @@ function newton(
         # 𝒮.solve!(sol_cache)
         # copy!(guess_update, sol_cache.u)
 
-        if ∇ isa SparseMatrixCSC
-            sol_cache.A = ∇
-            sol_cache.b = new_residuals
-            sol = 𝒮.solve!(sol_cache)
-            if !𝒮.SciMLBase.successful_retcode(sol.retcode)
-                rel_xtol_reached = typemax(T)
-                new_residuals_norm = typemax(T)
-                break
-            end
-            guess_update .= sol_cache.u
-            if has_nonfinite(guess_update)
-                rel_xtol_reached = typemax(T)
-                new_residuals_norm = typemax(T)
-                break
-            end
-            new_residuals .= guess_update
-        else
-            fact∇ = ℒ.lu!(∇, check = false)
-            if !ℒ.issuccess(fact∇)
-                rel_xtol_reached = typemax(T)
-                new_residuals_norm = typemax(T)
-                break
-            end
-            ℒ.ldiv!(fact∇, new_residuals)
-            if has_nonfinite(new_residuals)
-                rel_xtol_reached = typemax(T)
-                new_residuals_norm = typemax(T)
-                break
-            end
+        sol_cache.A = ∇
+        sol_cache.b = new_residuals
+        sol = 𝒮.solve!(sol_cache)
+        if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+            rel_xtol_reached = typemax(T)
+            new_residuals_norm = typemax(T)
+            break
         end
+        guess_update .= sol_cache.u
+        if has_nonfinite(guess_update)
+            rel_xtol_reached = typemax(T)
+            new_residuals_norm = typemax(T)
+            break
+        end
+        new_residuals .= guess_update
 
         guess_update_norm = ℒ.norm(new_residuals)
         ℒ.axpy!(-1, new_residuals, new_guess)
