@@ -487,17 +487,28 @@ function newton(
             if ∇ isa SparseMatrixCSC
                 sol_cache.A = ∇
                 sol_cache.b = new_residuals
-                𝒮.solve!(sol_cache)
+                sol = 𝒮.solve!(sol_cache)
+                if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+                    rel_xtol_reached = typemax(T)
+                    new_residuals_norm = typemax(T)
+                    break
+                end
                 guess_update .= sol_cache.u
+                if has_nonfinite(guess_update)
+                    rel_xtol_reached = typemax(T)
+                    new_residuals_norm = typemax(T)
+                    break
+                end
                 new_residuals .= guess_update
             else
                 fact∇ = ℒ.lu!(∇, check = false)
-                try
-                    if !ℒ.issuccess(fact∇)
-                        fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                    end
-                    ℒ.ldiv!(fact∇, new_residuals)
-                catch
+                if !ℒ.issuccess(fact∇)
+                    rel_xtol_reached = typemax(T)
+                    new_residuals_norm = typemax(T)
+                    break
+                end
+                ℒ.ldiv!(fact∇, new_residuals)
+                if has_nonfinite(new_residuals)
                     rel_xtol_reached = typemax(T)
                     new_residuals_norm = typemax(T)
                     break
@@ -541,17 +552,28 @@ function newton(
         if ∇ isa SparseMatrixCSC
             sol_cache.A = ∇
             sol_cache.b = new_residuals
-            𝒮.solve!(sol_cache)
+            sol = 𝒮.solve!(sol_cache)
+            if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
+            end
             guess_update .= sol_cache.u
+            if has_nonfinite(guess_update)
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
+            end
             new_residuals .= guess_update
         else
             fact∇ = ℒ.lu!(∇, check = false)
-            try
-                if !ℒ.issuccess(fact∇)
-                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                end
-                ℒ.ldiv!(fact∇, new_residuals)
-            catch
+            if !ℒ.issuccess(fact∇)
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
+            end
+            ℒ.ldiv!(fact∇, new_residuals)
+            if has_nonfinite(new_residuals)
                 rel_xtol_reached = typemax(T)
                 new_residuals_norm = typemax(T)
                 break
