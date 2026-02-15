@@ -181,10 +181,10 @@ function levenberg_marquardt(
         # sol_cache.A = X
         sol_cache.A = ∇̂
         sol_cache.b = guess_update
-        𝒮.solve!(sol_cache)
+        sol = 𝒮.solve!(sol_cache)
         copy!(guess_update, sol_cache.u)
 
-        if !isfinite(sum(guess_update))
+        if !(𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default || isfinite(sum(guess_update)))
             largest_relative_step = 1.0
             largest_residual = 1.0
             break
@@ -485,11 +485,12 @@ function newton(
             new_residuals_norm = ℒ.norm(new_residuals)
             
             # sol_cache.A = ∇
-            copy!(sol_cache.A, ∇)
+            # copy!(sol_cache.A, ∇)
+            sol_cache.A = ∇
             # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
             sol_cache.b = new_residuals
             sol = 𝒮.solve!(sol_cache)
-            if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+            if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
                 rel_xtol_reached = typemax(T)
                 new_residuals_norm = typemax(T)
                 break
@@ -500,7 +501,8 @@ function newton(
                 new_residuals_norm = typemax(T)
                 break
             end
-            new_residuals .= guess_update
+            # new_residuals .= guess_update
+            copy!(new_residuals, guess_update)
 
             guess_update_norm = ℒ.norm(new_residuals)
             ℒ.axpy!(-1, new_residuals, new_guess)
@@ -537,22 +539,26 @@ function newton(
         # 𝒮.solve!(sol_cache)
         # copy!(guess_update, sol_cache.u)
 
-        copy!(sol_cache.A, ∇)
+        # copy!(sol_cache.A, ∇)
+        sol_cache.A = ∇
         # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
         sol_cache.b = new_residuals
         sol = 𝒮.solve!(sol_cache)
-        if !𝒮.SciMLBase.successful_retcode(sol.retcode)
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             rel_xtol_reached = typemax(T)
             new_residuals_norm = typemax(T)
             break
         end
-        guess_update .= sol_cache.u
+        # guess_update .= sol_cache.u
+        copy!(guess_update, sol_cache.u)
+        
         if has_nonfinite(guess_update)
             rel_xtol_reached = typemax(T)
             new_residuals_norm = typemax(T)
             break
         end
-        new_residuals .= guess_update
+        # new_residuals .= guess_update
+        copy!(new_residuals, guess_update)
 
         guess_update_norm = ℒ.norm(new_residuals)
         ℒ.axpy!(-1, new_residuals, new_guess)

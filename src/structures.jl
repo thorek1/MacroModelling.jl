@@ -1086,6 +1086,7 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nsss_sol_names::Vector{Symbol}
     nsss_exo_zero_indices::Vector{Int}
     nsss_param_names_ext::Vector{Symbol}
+    nsss_fastest_solver_parameter_idx::Int
 end
 
 """

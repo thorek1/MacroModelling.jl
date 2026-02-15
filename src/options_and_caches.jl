@@ -696,7 +696,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 0,
                 Symbol[],
                 Int[],
-                Symbol[]),
+                Symbol[],
+                1),
             Second_order_indices(),
             Third_order_indices(),
             NSSSSolverConstants())
@@ -791,6 +792,7 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nsss_sol_names, p.nsss_sol_names),
         get(kwargs, :nsss_exo_zero_indices, p.nsss_exo_zero_indices),
         get(kwargs, :nsss_param_names_ext, p.nsss_param_names_ext),
+        get(kwargs, :nsss_fastest_solver_parameter_idx, p.nsss_fastest_solver_parameter_idx),
     )
 end
 

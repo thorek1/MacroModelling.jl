@@ -4155,6 +4155,10 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 
     if solution_error < tol.NSSS_acceptance_tol
         push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
+        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            𝓂.constants.post_complete_parameters;
+            nsss_fastest_solver_parameter_idx = length(DEFAULT_SOLVER_PARAMETERS),
+        )
         return true
     else 
         return false
@@ -4162,19 +4166,24 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 end
 
 
-function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Tolerances())
-    best_param = DEFAULT_SOLVER_PARAMETERS[1]
+function select_fastest_SS_solver_parameters!(𝓂::ℳ;
+                                                tol::Tolerances = Tolerances(),
+                                                n_samples::Int = 100)
+    @assert n_samples > 1 "n_samples must be greater than 1."
+    @assert n_samples ÷ 2 >= 1 "n_samples must be at least 2."
 
-    best_time = Inf
+    best_idx = 1
+    best_score = Inf
 
     solved = false
 
     solved_NSSS = 𝓂.caches.solver_cache[end]
 
-    for p in DEFAULT_SOLVER_PARAMETERS
-        total_time = 0.0
+    for (i_param, p) in enumerate(DEFAULT_SOLVER_PARAMETERS)
+        times = Vector{Float64}(undef, n_samples)
+        valid = true
         
-        for _ in 1:100
+        for i in 1:n_samples
             start_time = time()
 
             while length(𝓂.caches.solver_cache) > 1
@@ -4185,20 +4194,25 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
             elapsed_time = time() - start_time
 
-            total_time += elapsed_time
-            
+            times[i] = elapsed_time
+
             if solution_error > tol.NSSS_acceptance_tol
-                total_time = 1e7
+                valid = false
                 break
             end
         end
 
-        if total_time < best_time
-            best_time = total_time
-            best_param = p
-        end
+        if valid
+            sort!(times)
+            score = times[n_samples ÷ 2]
 
-        solved = true
+            if !isfinite(best_score) || score < best_score
+                best_score = score
+                best_idx = i_param
+            end
+
+            solved = true
+        end
     end
 
     while length(𝓂.caches.solver_cache) > 1
@@ -4208,7 +4222,10 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
     push!(𝓂.caches.solver_cache, solved_NSSS)
 
     if solved
-        pushfirst!(DEFAULT_SOLVER_PARAMETERS, best_param)
+        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            𝓂.constants.post_complete_parameters;
+            nsss_fastest_solver_parameter_idx = best_idx,
+        )
     end
 end
 
@@ -4359,6 +4376,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                         lbs::Vector{T}, 
                         ubs::Vector{T},
                         parameters::Vector{solver_parameters},
+                        preferred_solver_parameter_idx::Int,
                         fail_fast_solvers_only::Bool,
                         cold_start::Bool,
                         verbose::Bool ;
@@ -4400,11 +4418,12 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             sol_cache = SS_solve_block.ss_problem.workspace.lu_buffer
             # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
-            copy!(sol_cache.A, ∇)
+            sol_cache.A = ∇
+            # copy!(sol_cache.A, ∇)
             sol_cache.b = res
             sol = 𝒮.solve!(sol_cache)
 
-            if 𝒮.SciMLBase.successful_retcode(sol.retcode)
+            if 𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default
                 guess_update = sol_cache.u
                 if has_nonfinite(guess_update)
                     rel_sol_minimum = 1.0
@@ -4431,6 +4450,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     end
 
     total_iters = [0,0]
+    n_solver_parameters = length(parameters)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
 
     SS_optimizer = levenberg_marquardt
     ext_candidates = (true, false)
@@ -4440,7 +4461,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
         start_vals = fail_fast_solvers_only ? (false,) : (false, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
-            for p in parameters
+            for i in 1:n_solver_parameters
+                p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
                 for ext in ext_candidates # try first the system where values and parameters can vary, next try the system where only values can vary
                     for s in start_vals
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
@@ -4463,7 +4485,6 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         end
     else !cold_start
 
-        pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
         start_vals = Vector{Union{Bool, T}}(undef, 7)
         start_vals[1] = false
         start_vals[3] = T(1.206)
@@ -4471,14 +4492,17 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         start_vals[5] = T(0.7688)
         start_vals[6] = T(2.0)
         start_vals[7] = T(0.897)
-        
-        for p in pars #[1:3] # take unique because some parameters might appear more than once
+
+        s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
+        n_parameter_iters = fail_fast_solvers_only ? 1 : n_solver_parameters
+        fail_fast_parameter_idx = n_solver_parameters == 1 ? 1 : (n_solver_parameters <= preferred_solver_parameter_idx ? n_solver_parameters - 1 : n_solver_parameters)
+
+        for i in 1:n_parameter_iters
+            p = parameters[fail_fast_solvers_only ? fail_fast_parameter_idx : (i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i))]
             start_vals[2] = T(p.starting_value)
-            s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
-            for s in s_candidates #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
-                # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+            for s in s_candidates
                 for algo in algo_candidates
-                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
+                    if sol_minimum > tol.NSSS_acceptance_tol || !isfinite(sol_minimum) # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
@@ -4499,7 +4523,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                 # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
                                 println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
                             end
-                        end                      
+                        end
                     end
                 end
             end
@@ -8058,7 +8082,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
+        preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
+        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
     end
 
     # Update counters

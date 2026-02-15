@@ -236,7 +236,6 @@ end
 end
 
 function write_block_solution!(𝓂,
-                                SS_solve_func,
                                 vars_to_solve,
                                 eqs_to_solve,
                                 relevant_pars_across,
@@ -279,17 +278,12 @@ function write_block_solution!(𝓂,
 
     push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
 
-    result = Expr[]
     calib_pars_input = Symbol[]
 
     relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
     union!(relevant_pars_across, relevant_pars)
 
     sorted_vars = sort(Symbol.(vars_to_solve))
-
-    for (i, parss) in enumerate(sorted_vars)
-        push!(result,:($parss = sol[$i]))
-    end
 
     iii = 1
     for parss in union(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters)
@@ -486,39 +480,7 @@ function write_block_solution!(𝓂,
         end
     end
 
-    push!(SS_solve_func,ss_and_aux_equations...)
-    push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
-    push!(SS_solve_func,:(lbs = [$(lbs...)]))
-    push!(SS_solve_func,:(ubs = [$(ubs...)]))
-
     n_block = block_index
-    push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
-
-    push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
-                                                            $(n_block),
-                                                            nothing,
-                                                            inits,
-                                                            lbs,
-                                                            ubs,
-                                                            solver_parameters,
-                                                            fail_fast_solvers_only,
-                                                            cold_start,
-                                                            verbose)))
-
-    push!(SS_solve_func,:(iters += solution[2][2]))
-    push!(SS_solve_func,:(solution_error += solution[2][1]))
-    push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed after solving block with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-
-    if length(ss_and_aux_equations_error) > 0
-        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
-        push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for aux variables with error $(solution_error)") end; scale = scale * .3 + solved_scale * .7; continue end))
-    end
-
-    push!(SS_solve_func,:(sol = solution[1]))
-    push!(SS_solve_func,:($(result...)))
-
-    push!(SS_solve_func,:(nsss_solver_cache_tmp = [nsss_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
-    push!(SS_solve_func,:(nsss_solver_cache_tmp = [nsss_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
     workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
     ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
@@ -1230,7 +1192,6 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
         expression_module = @__MODULE__,
         expression = Val(false))::Tuple{<:Function, <:Function}
 
-    SS_solve_func = []
     atoms_in_equations = Set{Symbol}()
     atoms_in_equations_list = []
     relevant_pars_across = Symbol[]
@@ -1293,7 +1254,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
                 numerical_block_count += 1
-                block_meta = write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+                block_meta = write_block_solution!(𝓂, [var_to_solve_for], [eq_to_solve], relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
 
                 current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
                 if current_plus_count > plus_var_count_at_start
@@ -1517,7 +1478,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                 eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
 
                 numerical_block_count += 1
-                block_meta = write_block_solution!(𝓂, SS_solve_func, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+                block_meta = write_block_solution!(𝓂, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
 
                 if !isnothing(block_meta)
                     current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
@@ -1660,7 +1621,7 @@ Returns: (error, iterations, cache_entries::Vector{Vector{Float64}})
 function execute_step!(step_idx::Int,
                        sol_vec::Vector{Float64}, params_vec::Vector{Float64},
                        closest_solution, 𝓂, tol, fail_fast_solvers_only,
-                       cold_start, solver_parameters, verbose)
+                       cold_start, solver_parameters, preferred_solver_parameter_idx::Int, verbose)
     
     c = 𝓂.constants.nsss_solver
     f = 𝓂.functions.nsss_solver
@@ -1787,6 +1748,7 @@ function execute_step!(step_idx::Int,
             lbs,
             ubs,
             solver_parameters,
+            preferred_solver_parameter_idx,
             fail_fast_solvers_only,
             cold_start,
             verbose
@@ -1856,7 +1818,8 @@ function solve_nsss_steps(
     fail_fast_solvers_only::Bool,
     closest_solution,
     cold_start::Bool,
-    solver_params::Vector{solver_parameters}
+    solver_params::Vector{solver_parameters},
+    preferred_solver_parameter_idx::Int
 )
     nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
     nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
@@ -1887,7 +1850,7 @@ function solve_nsss_steps(
     for step_idx in 1:n_steps
         step_error, step_iters, step_cache = execute_step!(
             step_idx, sol_vec, params_vec, closest_solution, 𝓂, tol,
-            fail_fast_solvers_only, cold_start, solver_params, verbose
+            fail_fast_solvers_only, cold_start, solver_params, preferred_solver_parameter_idx, verbose
         )
         
         solution_error += step_error
@@ -1980,6 +1943,7 @@ function solve_nsss_wrapper(
     scale_snap_threshold::Float64 = 0.95,
     scale_success_weight::Float64 = 0.4,
     scale_failure_weight::Float64 = 0.3,
+    preferred_solver_parameter_idx::Int = 1,
 )::Tuple{Vector, Tuple{Real, Int}}
 
     n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
@@ -2007,6 +1971,9 @@ function solve_nsss_wrapper(
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters
+    n_solver_parameters = length(solver_params)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
+    preferred_idx = clamp(preferred_solver_parameter_idx, 1, n_solver_parameters)
 
     while range_iters <= max_iters && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
         range_iters += 1
@@ -2039,7 +2006,8 @@ function solve_nsss_wrapper(
             fail_fast_solvers_only,
             closest_solution,
             cold_start,
-            solver_params
+            solver_params,
+            preferred_idx
         )
         
         # Check convergence and update scaling
