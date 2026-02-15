@@ -37,6 +37,7 @@ import NLopt
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
+import FastLapackInterface
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
@@ -4211,6 +4212,25 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
     end
 end
 
+function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}
+    @inbounds for i in 1:n_guess
+        if use_ssv
+            v = clamp(ssv_val, lbs[i], ubs[i])
+            init_buf[i] = ubs[i] <= one(T) ? T(0.1) : v
+        else
+            g = guess[i]
+            v = g < T(1e12) ? g : sv_val
+            init_buf[i] = clamp(v, lbs[i], ubs[i])
+        end
+    end
+end
+
+function update_sol_values!(sol_values::AbstractVector{T}, sol_new::AbstractVector{T}, lbs::AbstractVector{T}, ubs::AbstractVector{T}, n_guess::Int) where {T}
+    @inbounds for i in 1:n_guess
+        sol_values[i] = clamp(sol_new[i], lbs[i], ubs[i])
+    end
+end
+
 
 function solve_ss(SS_optimizer::Function,
                     # ss_solve_blocks::Function,
@@ -4230,28 +4250,16 @@ function solve_ss(SS_optimizer::Function,
     ftol = tol.NSSS_ftol
     n_guess = length(guess)
     init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
-    @inbounds if separate_starting_value isa Float64
-        ssv = T(separate_starting_value)
-        for i in 1:n_guess
-            v = clamp(ssv, lbs[i], ubs[i])
-            init_buf[i] = ubs[i] <= one(T) ? T(0.1) : v
-        end
-    else
-        sv = T(solver_params.starting_value)
-        for i in 1:n_guess
-            g = guess[i]
-            v = g < T(1e12) ? g : sv
-            init_buf[i] = clamp(v, lbs[i], ubs[i])
-        end
-    end
+    use_ssv = separate_starting_value isa Float64
+    ssv_val = use_ssv ? T(separate_starting_value) : zero(T)
+    sv_val = T(solver_params.starting_value)
+    update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
 
     if !extended_problem
         lb_core = SS_solve_block.ss_problem.workspace.l_bounds
         ub_core = SS_solve_block.ss_problem.workspace.u_bounds
-        @inbounds for i in 1:n_guess
-            lb_core[i] = lbs[i]
-            ub_core[i] = ubs[i]
-        end
+        copyto!(lb_core, 1, lbs, 1, n_guess)
+        copyto!(ub_core, 1, ubs, 1, n_guess)
     end
 
     optimizer_init = if extended_problem
@@ -4292,52 +4300,49 @@ function solve_ss(SS_optimizer::Function,
                                         solver_params,
                                         tol = tol   )
 
-    sol_new = isnothing(sol_new_tmp) ? init_buf : @view(sol_new_tmp[1:n_guess])
-
     sol_minimum = info[4] # isnan(sum(abs, info[4])) ? Inf : ℒ.norm(info[4])
     
     rel_sol_minimum = info[3]
-
+    
     sol_values = SS_solve_block.ss_problem.workspace.best_current_guess
-    @inbounds for i in 1:n_guess
-        sol_values[i] = clamp(sol_new[i], lbs[i], ubs[i])
+    if isnothing(sol_new_tmp)
+        update_sol_values!(sol_values, init_buf, lbs, ubs, n_guess)
+    else
+        update_sol_values!(sol_values, sol_new_tmp, lbs, ubs, n_guess)
     end
 
     total_iters[1] += info[1]
     total_iters[2] += info[2]
 
-    extended_problem_str = extended_problem ? "(extended problem) " : ""
-
-    if separate_starting_value isa Bool
-        starting_value_str = ""
-    else
-        starting_value_str = "and starting point: $separate_starting_value"
-    end
-
-    has_small_guess = false
-    all_small_guess = true
-    @inbounds for i in eachindex(guess)
-        is_small = guess[i] < T(1e12)
-        has_small_guess |= is_small
-        all_small_guess &= is_small
-    end
-
-    if all_small_guess && separate_starting_value isa Bool
-        any_guess_str = "previous solution, "
-    elseif has_small_guess && separate_starting_value isa Bool
-        any_guess_str = "provided guess, "
-    else
-        any_guess_str = ""
-    end
-
-    # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
-
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
-    
-    max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
-
     if sol_minimum < ftol && verbose
-            println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+        extended_problem_str = extended_problem ? "(extended problem) " : ""
+
+        if separate_starting_value isa Bool
+            starting_value_str = ""
+        else
+            starting_value_str = "and starting point: $separate_starting_value"
+        end
+
+        has_small_guess = false
+        all_small_guess = true
+        @inbounds for i in eachindex(guess)
+            is_small = guess[i] < T(1e12)
+            has_small_guess |= is_small
+            all_small_guess &= is_small
+        end
+
+        if all_small_guess && separate_starting_value isa Bool
+            any_guess_str = "previous solution, "
+        elseif has_small_guess && separate_starting_value isa Bool
+            any_guess_str = "provided guess, "
+        else
+            any_guess_str = ""
+        end
+
+        SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
+        max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
+
+        println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
     
     return sol_values, total_iters, rel_sol_minimum, sol_minimum
@@ -4393,14 +4398,20 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
 
-            ∇̂ = ℒ.lu(∇, check = false)
-            
-            if ℒ.issuccess(∇̂)
-                guess_update = ∇̂ \ res
+            sol_cache = SS_solve_block.ss_problem.workspace.lu_buffer
+            # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
+            copy!(sol_cache.A, ∇)
+            sol_cache.b = res
+            sol = 𝒮.solve!(sol_cache)
 
-                new_guess = guess - guess_update
-
-                rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+            if 𝒮.SciMLBase.successful_retcode(sol.retcode)
+                guess_update = sol_cache.u
+                if has_nonfinite(guess_update)
+                    rel_sol_minimum = 1.0
+                else
+                    new_guess = guess - guess_update
+                    rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+                end
             else
                 rel_sol_minimum = 1.0
             end
@@ -4422,13 +4433,15 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     total_iters = [0,0]
 
     SS_optimizer = levenberg_marquardt
+    ext_candidates = (true, false)
+    algo_candidates = (newton, levenberg_marquardt)
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = (fail_fast_solvers_only ? [false] : Any[false, 1.206, 1.5, 0.7688, 2.0, 0.897])
+        start_vals = fail_fast_solvers_only ? (false,) : (false, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
             for p in parameters
-                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+                for ext in ext_candidates # try first the system where values and parameters can vary, next try the system where only values can vary
                     for s in start_vals
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
@@ -4451,12 +4464,20 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     else !cold_start
 
         pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
+        start_vals = Vector{Union{Bool, T}}(undef, 7)
+        start_vals[1] = false
+        start_vals[3] = T(1.206)
+        start_vals[4] = T(1.5)
+        start_vals[5] = T(0.7688)
+        start_vals[6] = T(2.0)
+        start_vals[7] = T(0.897)
         
         for p in pars #[1:3] # take unique because some parameters might appear more than once
-            start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
-            for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+            start_vals[2] = T(p.starting_value)
+            s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
+            for s in s_candidates #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                for algo in [newton, levenberg_marquardt]
+                for algo in algo_candidates
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
@@ -6516,8 +6537,9 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     end
 
     bounds_broken = false
+    parameters_dict = Dict(𝓂.constants.post_complete_parameters.parameters .=> parameters)
 
-    for (par,val) in Dict(𝓂.constants.post_complete_parameters.parameters .=> parameters)
+    for (par, val) in parameters_dict
         if haskey(𝓂.constants.post_parameters_macro.bounds,par)
             if val > 𝓂.constants.post_parameters_macro.bounds[par][2]
                 @warn("Calibration is out of bounds for $par < $(𝓂.constants.post_parameters_macro.bounds[par][2])\t parameter value: $val")

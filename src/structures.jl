@@ -630,6 +630,7 @@ and improves cache locality compared to per-step `Vector{Int}` fields.
 struct NSSSSolverConstants
     # Step metadata
     n_steps::Int
+    n_ext_params::Int
     step_types::Vector{UInt8}                    # ANALYTICAL_STEP or NUMERICAL_STEP per step
     descriptions::Vector{String}                 # debug description per step
     block_indices::Vector{Int}                   # numerical block index (0 for analytical)
@@ -671,6 +672,8 @@ mutable struct NSSSSolverWorkspace
     main_buffer::Vector{Float64}      # for eval_func! output or params_and_solved_vars gather
     aux_buffer::Vector{Float64}       # for aux_func! output
     error_buffer::Vector{Float64}     # for error_func! / aux_error_func! output
+    params_vec_buffer::Vector{Float64} # extended parameter vector (bounded + calibration_no_var)
+    sol_vec_buffer::Vector{Float64}   # solution vector across NSSS steps
     guess_buffer::Vector{Float64}     # for initial_guess in numerical steps
     inits::Vector{Vector{Float64}}    # 2-element container: [clamped_guess, cached_params]
     params_and_solved_vars_buffer::Vector{Float64}  # gathered block inputs (params + solved vars)
@@ -690,6 +693,7 @@ NSSSSolverFunctions() = NSSSSolverFunctions(
 """Construct an empty `NSSSSolverConstants` with no steps."""
 NSSSSolverConstants() = NSSSSolverConstants(
     0,
+    0,
     UInt8[], String[], Int[],
     Int[], UnitRange{Int}[],
     Int[], UnitRange{Int}[],
@@ -702,7 +706,7 @@ NSSSSolverConstants() = NSSSSolverConstants(
 
 """Construct an empty `NSSSSolverWorkspace` with no buffers."""
 NSSSSolverWorkspace() = NSSSSolverWorkspace(
-    Float64[], Float64[], Float64[], Float64[],
+    Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
     [Float64[], Float64[Inf]],
     Float64[], Float64[], Float64[],
 )
@@ -1056,6 +1060,8 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
     vars_in_ss_equations::Vector{Symbol}
     vars_in_ss_equations_with_aux::Vector{Symbol}
+    ss_var_idx_in_var_and_calib::Vector{Int}
+    calib_idx_in_var_and_calib::Vector{Int}
     SS_and_pars_names_lead_lag::Vector{Symbol}
     # SS_and_pars_names_no_exo::Vector{Symbol}
     SS_and_pars_no_exo_idx::Vector{Int}

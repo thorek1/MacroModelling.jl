@@ -671,6 +671,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 spzeros(Float64, 0, 0),
                 Symbol[],
                 Symbol[],
+                Int[],
+                Int[],
                 Symbol[],
                 # Symbol[],
                 Int[],
@@ -763,6 +765,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :custom_ss_expand_matrix, p.custom_ss_expand_matrix),
         get(kwargs, :vars_in_ss_equations, p.vars_in_ss_equations),
         get(kwargs, :vars_in_ss_equations_with_aux, p.vars_in_ss_equations_with_aux),
+        get(kwargs, :ss_var_idx_in_var_and_calib, p.ss_var_idx_in_var_and_calib),
+        get(kwargs, :calib_idx_in_var_and_calib, p.calib_idx_in_var_and_calib),
         get(kwargs, :SS_and_pars_names_lead_lag, p.SS_and_pars_names_lead_lag),
         # get(kwargs, :SS_and_pars_names_no_exo, p.SS_and_pars_names_no_exo),
         get(kwargs, :SS_and_pars_no_exo_idx, p.SS_and_pars_no_exo_idx),
@@ -1355,6 +1359,9 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
 
         vars_in_ss_equations = T.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = T.vars_in_ss_equations
+        vars_and_calib = vcat(T.var, calibration_parameters)
+        ss_var_idx_in_var_and_calib = Int.(indexin(vars_in_ss_equations, vars_and_calib))
+        calib_idx_in_var_and_calib = Int.(indexin(calibration_parameters, vars_and_calib))
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))
 
@@ -1378,6 +1385,8 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
             custom_ss_expand_matrix = custom_ss_expand_matrix,
             vars_in_ss_equations = vars_in_ss_equations,
             vars_in_ss_equations_with_aux = vars_in_ss_equations_with_aux,
+            ss_var_idx_in_var_and_calib = ss_var_idx_in_var_and_calib,
+            calib_idx_in_var_and_calib = calib_idx_in_var_and_calib,
             SS_and_pars_names_lead_lag = SS_and_pars_names_lead_lag,
             # SS_and_pars_names_no_exo = SS_and_pars_names_no_exo,
             SS_and_pars_no_exo_idx = SS_and_pars_no_exo_idx,

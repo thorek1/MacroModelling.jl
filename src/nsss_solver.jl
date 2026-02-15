@@ -194,12 +194,14 @@ end
 """Assign the solver functions, constants, and workspace from builder data into `𝓂`."""
 function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{Nothing,Function})
     n = length(b.step_types)
+    n_ext_params = length(𝓂.constants.post_complete_parameters.parameters) + length(𝓂.equations.calibration_no_var)
     𝓂.functions.nsss_solver = NSSSSolverFunctions(
         b.aux_funcs, b.error_funcs, b.eval_funcs, b.solve_blocks,
     )
     𝓂.functions.nsss_param_prep! = param_prep!
     𝓂.constants.nsss_solver = NSSSSolverConstants(
         n,
+        n_ext_params,
         b.step_types, b.descriptions, b.block_indices,
         b.write_indices, b.write_ranges,
         b.aux_write_indices, b.aux_write_ranges,
@@ -213,6 +215,8 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         zeros(Float64, max(b.max_main_buffer, 1)),
         zeros(Float64, max(b.max_aux_buffer, 1)),
         zeros(Float64, max(b.max_error_buffer, 1)),
+        zeros(Float64, max(𝓂.constants.nsss_solver.n_ext_params, 1)),
+        Float64[],
         zeros(Float64, max(b.max_guess_buffer, 1)),
         [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
         zeros(Float64, max(b.max_main_buffer, 1)),
@@ -394,11 +398,12 @@ function write_block_solution!(𝓂,
     chol_buff = buffer * buffer'
     chol_buff += ℒ.I
 
-    prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
+    prob = 𝒮.LinearProblem(chol_buff, ϵ)
     chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
-    prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
-    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    lu_factorization = issparse(buffer) ? 𝒮.LUFactorization() : 𝒮.FastLUFactorization()
+    prob = 𝒮.LinearProblem(buffer, ϵ)
+    lu_buffer = 𝒮.init(prob, lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -444,11 +449,12 @@ function write_block_solution!(𝓂,
     ext_chol_buff = ext_buffer * ext_buffer'
     ext_chol_buff += ℒ.I
 
-    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
+    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ)
     ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
-    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
-    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    ext_lu_factorization = issparse(ext_buffer) ? 𝒮.LUFactorization() : 𝒮.FastLUFactorization()
+    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+    ext_lu_buffer = 𝒮.init(prob, ext_lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -1856,13 +1862,21 @@ function solve_nsss_steps(
     nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
     nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
     nsss_consts = 𝓂.constants.nsss_solver
+    nsss_ws = 𝓂.workspaces.nsss_solver
     
     # Prepare extended parameter vector (raw params → bounded + calibration_no_var)
-    params_vec = Vector{Float64}(undef, nsss_n_ext_params)
+    params_vec = nsss_ws.params_vec_buffer
+    if length(params_vec) != nsss_n_ext_params
+        resize!(params_vec, nsss_n_ext_params)
+    end
     𝓂.functions.nsss_param_prep!(params_vec, parameters)
     
-    # Initialize solution vector
-    sol_vec = zeros(Float64, nsss_n_sol)
+    # Initialize solution vector from workspace buffer
+    sol_vec = nsss_ws.sol_vec_buffer
+    if length(sol_vec) != nsss_n_sol
+        resize!(sol_vec, nsss_n_sol)
+    end
+    fill!(sol_vec, 0.0)
     
     # Single pass through all steps
     nsss_solver_cache_tmp = Vector{Float64}[]
@@ -1895,14 +1909,14 @@ function solve_nsss_steps(
     
     # If failed to converge, return zeros
     if solution_error >= tol.NSSS_acceptance_tol
-        SS_and_pars = zeros(Float64, length(nsss_output_indices))
+        fill!(SS_and_pars, 0.0)
     end
     
     # Append parameters to cache 
     if isempty(nsss_solver_cache_tmp)
-        nsss_solver_cache_tmp = [copy(parameters)]
+        nsss_solver_cache_tmp = [parameters]
     else
-        push!(nsss_solver_cache_tmp, copy(parameters))
+        push!(nsss_solver_cache_tmp, parameters)
     end
     
     return SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp

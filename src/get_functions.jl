@@ -1525,9 +1525,10 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    var_idx = ms.ss_var_idx_in_var_and_calib
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.equations.calibration_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG

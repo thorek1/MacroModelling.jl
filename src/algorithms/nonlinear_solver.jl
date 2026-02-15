@@ -484,7 +484,9 @@ function newton(
 
             new_residuals_norm = ℒ.norm(new_residuals)
             
-            sol_cache.A = ∇
+            # sol_cache.A = ∇
+            copy!(sol_cache.A, ∇)
+            # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
             sol_cache.b = new_residuals
             sol = 𝒮.solve!(sol_cache)
             if !𝒮.SciMLBase.successful_retcode(sol.retcode)
@@ -530,11 +532,13 @@ function newton(
         # end
 
         # sol_cache.A = ∇
+
         # sol_cache.b = new_residuals
         # 𝒮.solve!(sol_cache)
         # copy!(guess_update, sol_cache.u)
 
-        sol_cache.A = ∇
+        copy!(sol_cache.A, ∇)
+        # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
         sol_cache.b = new_residuals
         sol = 𝒮.solve!(sol_cache)
         if !𝒮.SciMLBase.successful_retcode(sol.retcode)
