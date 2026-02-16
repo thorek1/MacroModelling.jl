@@ -37,6 +37,7 @@ import NLopt
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
+import FastLapackInterface
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
