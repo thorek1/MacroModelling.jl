@@ -225,6 +225,11 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp2
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
+                    nothing,         # lu_ws
+                    nothing,         # lu_ws_alt
+                    nothing,         # qr_ws
+                    nothing,         # qr_orm_ws
+                    nothing,         # qz_ws
                     zeros(T, n, n),  # AXX
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
@@ -620,6 +625,10 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
+                nothing,
+                0,
+                0,
+                Float64,
                 Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized

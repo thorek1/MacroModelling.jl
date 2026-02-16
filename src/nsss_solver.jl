@@ -1952,10 +1952,33 @@ function solve_nsss_wrapper(
     initial_parameters = parameter_values isa Vector{Float64} ? 
                         parameter_values : 
                         ℱ.value.(parameter_values)
+
+    n_solver_parameters = length(solver_params)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
+    preferred_idx = clamp(preferred_solver_parameter_idx, 1, n_solver_parameters)
     
     # Find closest cached solution as starting point
     expected_cache_length = 2 * n_numerical_steps + 1
-    _, closest_solution_init = find_closest_solution(𝓂.caches.solver_cache, initial_parameters, expected_cache_length)
+    current_best_init, closest_solution_init = find_closest_solution(𝓂.caches.solver_cache, initial_parameters, expected_cache_length)
+
+    if !cold_start && !isfinite(current_best_init)
+        SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp = solve_nsss_steps(
+            initial_parameters,
+            𝓂,
+            tol,
+            verbose,
+            false,
+            closest_solution_init,
+            true,
+            solver_params,
+            preferred_idx,
+        )
+
+        if solution_error < tol.NSSS_acceptance_tol
+            reverse_diff_friendly_push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
+            return SS_and_pars, (solution_error, iters)
+        end
+    end
     
     # Initialize continuation method variables
     range_iters = 0
@@ -1971,9 +1994,6 @@ function solve_nsss_wrapper(
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters
-    n_solver_parameters = length(solver_params)
-    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
-    preferred_idx = clamp(preferred_solver_parameter_idx, 1, n_solver_parameters)
 
     while range_iters <= max_iters && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
         range_iters += 1
@@ -2034,6 +2054,24 @@ function solve_nsss_wrapper(
             # Failed: pull scale back toward last successful scale
             scale = scale * scale_failure_weight + solved_scale * (1 - scale_failure_weight)
         end
+    end
+
+    # Warm-start continuation failed: retry once with a direct cold-start pass.
+    SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp = solve_nsss_steps(
+        initial_parameters,
+        𝓂,
+        tol,
+        verbose,
+        false,
+        closest_solution_init,
+        true,
+        solver_params,
+        preferred_idx,
+    )
+
+    if solution_error < tol.NSSS_acceptance_tol
+        reverse_diff_friendly_push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
+        return SS_and_pars, (solution_error, iters)
     end
     
     # Failed to converge - return zeros with matching output length

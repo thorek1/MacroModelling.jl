@@ -112,7 +112,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = ℒ.lu(jac, check = false)
+        jacdecomp = fast_lu(jac, 𝓂.workspaces, check = false)
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
@@ -1498,7 +1498,7 @@ function filter_data_with_model(𝓂::ℳ,
     jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = ℒ.lu(jac, check = false)
+        jacdecomp = fast_lu(jac, 𝓂.workspaces, check = false)
 
         if !ℒ.issuccess(jacdecomp)
             @error "Inversion filter failed"

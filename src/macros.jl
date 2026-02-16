@@ -971,7 +971,7 @@ Parameters can be defined in either of the following ways:
 - `ss_symbolic_mode` [Default: `:single_equation`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks.
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
-- `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
+- `ss_solver_parameters_maxtime` [Default: `0.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked. Use `0.0` to disable the global search fallback.
 
 # Delayed parameter definition
 Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
@@ -1056,7 +1056,7 @@ macro parameters(𝓂,ex...)
     guess = Dict{Symbol,Float64}()
     steady_state_function = nothing
     ss_solver_parameters_algorithm = :ESCH
-    ss_solver_parameters_maxtime = 120.0
+    ss_solver_parameters_maxtime = 0.0
 
     for exp in ex[1:end-1]
         postwalk(x -> 

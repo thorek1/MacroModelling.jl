@@ -519,6 +519,13 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     
     # LU factorization buffer
     B̄::Matrix{T}
+
+    # FastLapackInterface workspaces (lazily initialized)
+    lu_ws::Any
+    lu_ws_alt::Any
+    qr_ws::Any
+    qr_orm_ws::Any
+    qz_ws::Any
     
     # Residual computation buffer
     AXX::Matrix{T}
@@ -987,6 +994,7 @@ Purpose: Speed up computation by eliminating allocation overhead in hot loops.
 Fields:
 - `second_order/third_order`: Higher-order perturbation solution workspaces
 - `custom_steady_state_buffer`: Buffer for custom steady state evaluation
+- `fast_lapack_lu_*`: Shared FastLapackInterface LU workspace metadata and cache
 - `qme`: Quadratic matrix equation solver workspace
 - `lyapunov_*`: Lyapunov equation solver workspaces (1st, 2nd, 3rd order)
 - `sylvester_*`: Sylvester equation solver workspace
@@ -1005,6 +1013,11 @@ mutable struct workspaces
     third_order::higher_order_workspace         # Separate workspace for 3rd order
     # Steady state buffer
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
+    # Shared FastLapackInterface LU workspace (for fast_lu/fast_lu!)
+    fast_lapack_lu_ws::Any
+    fast_lapack_lu_rows::Int
+    fast_lapack_lu_cols::Int
+    fast_lapack_lu_eltype::Any
     # Matrix equation solver workspaces
     qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
