@@ -18,7 +18,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         use_fast_lapack_interface::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where {R <: Real, S <: Real}
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: Real, S <: Real}
     T = constants.post_model_macro
     
 
@@ -38,7 +38,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
-            return (initial_guess::Matrix{R}), true
+            return Matrix{R}(initial_guess), true
         end
     end
 
@@ -64,7 +64,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 use_fast_lapack_interface = use_fast_lapack_interface,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_algorithm ≠ :doubling
@@ -76,7 +76,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 use_fast_lapack_interface = use_fast_lapack_interface,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         end
@@ -84,7 +84,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     # if (reached_tol > tol) println("QME failed: $reached_tol") end
 
-    return sol, reached_tol < acceptance_tol
+    converged::Bool = reached_tol < acceptance_tol
+    return sol, converged
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
