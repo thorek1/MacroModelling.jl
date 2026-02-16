@@ -226,6 +226,13 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
+                    zeros(T, 0, 0),  # schur_D
+                    zeros(T, 0, 0),  # schur_E
+                    zeros(T, 0, 0),  # schur_sol
+                    zeros(T, 0, 0),  # schur_Z21
+                    zeros(T, 0, 0),  # schur_Z11
+                    zeros(T, 0, 0),  # schur_S11
+                    zeros(T, 0, 0),  # schur_T11
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃
@@ -684,6 +691,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Int[],
                 Int[],
+                Int[],
+                zeros(Bool, 0, 0),
                 ℒ.I(0),
                 1:0,
                 1:0,
@@ -779,6 +788,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :comb, p.comb),
         get(kwargs, :future_not_past_and_mixed_in_comb, p.future_not_past_and_mixed_in_comb),
         get(kwargs, :past_not_future_and_mixed_in_comb, p.past_not_future_and_mixed_in_comb),
+        get(kwargs, :indices_past_not_future_in_comb, p.indices_past_not_future_in_comb),
+        get(kwargs, :reorder_select, p.reorder_select),
         get(kwargs, :Ir, p.Ir),
         get(kwargs, :nabla_zero_cols, p.nabla_zero_cols),
         get(kwargs, :nabla_minus_cols, p.nabla_minus_cols),
@@ -1124,7 +1135,15 @@ function build_first_order_index_cache(T, I_nVars)
         past_not_future_and_mixed_in_comb = Int.(past_not_future_and_mixed_in_comb_tmp)
     end
 
+    indices_past_not_future_in_comb_tmp = indexin(T.past_not_future_idx, comb)
+    if any(isnothing.(indices_past_not_future_in_comb_tmp))
+        indices_past_not_future_in_comb = Int[]
+    else
+        indices_past_not_future_in_comb = Int.(indices_past_not_future_in_comb_tmp)
+    end
+
     Ir = ℒ.I(length(comb))
+    reorder_select = Ir[past_not_future_and_mixed_in_comb,:]
 
     nabla_zero_cols = (T.nFuture_not_past_and_mixed + 1):(T.nFuture_not_past_and_mixed + T.nVars)
     nabla_minus_cols = (T.nFuture_not_past_and_mixed + T.nVars + 1):(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed)
@@ -1140,6 +1159,8 @@ function build_first_order_index_cache(T, I_nVars)
         comb = comb,
         future_not_past_and_mixed_in_comb = future_not_past_and_mixed_in_comb,
         past_not_future_and_mixed_in_comb = past_not_future_and_mixed_in_comb,
+        indices_past_not_future_in_comb = indices_past_not_future_in_comb,
+        reorder_select = reorder_select,
         Ir = Ir,
         nabla_zero_cols = nabla_zero_cols,
         nabla_minus_cols = nabla_minus_cols,
@@ -1168,6 +1189,8 @@ function ensure_first_order_constants!(𝓂)
             comb = cache.comb,
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            reorder_select = cache.reorder_select,
             Ir = cache.Ir,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
@@ -1197,6 +1220,8 @@ function ensure_first_order_constants!(constants::constants)
             comb = cache.comb,
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            reorder_select = cache.reorder_select,
             Ir = cache.Ir,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
@@ -1221,16 +1246,38 @@ function ensure_qme_workspace!(𝓂)
     T = 𝓂.constants.post_model_macro
     n = T.nVars - T.nPresent_only
     nPast = T.nPast_not_future_and_mixed
-    return ensure_qme_workspace!(𝓂.workspaces, n, nPast)
+    nFuture = T.nFuture_not_past_and_mixed
+    nMixed = T.nMixed
+    return ensure_qme_workspace!(𝓂.workspaces, n, nPast, nFuture, nMixed)
 end
 
-function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
+function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0, nFuture::Int = 0, nMixed::Int = 0)
     ws = workspaces.qme
     # Check if workspace needs to be resized (either n or nPast changed)
     if size(ws.E, 1) != n || size(ws.I_nPast, 1) != nPast
         workspaces.qme = Qme_workspace(n, nPast = nPast)
+        ws = workspaces.qme
     end
+    ensure_qme_schur_buffers!(ws, nPast, nFuture, nMixed)
     return workspaces.qme
+end
+
+function ensure_qme_schur_buffers!(ws::qme_workspace{T}, nPast::Int, nFuture::Int, nMixed::Int) where T
+    nSchur = nPast + nFuture
+    if size(ws.schur_D, 1) != nSchur
+        ws.schur_D = zeros(T, nSchur, nSchur)
+        ws.schur_E = zeros(T, nSchur, nSchur)
+        ws.schur_sol = zeros(T, nSchur, nPast)
+    end
+    if size(ws.schur_Z21, 1) != nFuture || size(ws.schur_Z21, 2) != nPast
+        ws.schur_Z21 = zeros(T, nFuture, nPast)
+    end
+    if size(ws.schur_Z11, 1) != nPast || size(ws.schur_Z11, 2) != nPast
+        ws.schur_Z11 = zeros(T, nPast, nPast)
+        ws.schur_S11 = zeros(T, nPast, nPast)
+        ws.schur_T11 = zeros(T, nPast, nPast)
+    end
+    return ws
 end
 
 """

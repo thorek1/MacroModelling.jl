@@ -522,6 +522,15 @@ mutable struct qme_workspace{T <: Real, R <: Real}
 
     # Residual computation buffer
     AXX::Matrix{T}
+
+    # Schur algorithm working matrices
+    schur_D::Matrix{T}
+    schur_E::Matrix{T}
+    schur_sol::Matrix{T}
+    schur_Z21::Matrix{T}
+    schur_Z11::Matrix{T}
+    schur_S11::Matrix{T}
+    schur_T11::Matrix{T}
     
     # Sylvester workspace for ForwardDiff path
     sylvester_ws::sylvester_workspace{T, R}
@@ -1074,6 +1083,8 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     comb::Vector{Int}
     future_not_past_and_mixed_in_comb::Vector{Int}
     past_not_future_and_mixed_in_comb::Vector{Int}
+    indices_past_not_future_in_comb::Vector{Int}
+    reorder_select::Matrix{Bool}
     Ir::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
