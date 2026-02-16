@@ -19,19 +19,19 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     Ir = idx_constants.Ir
     
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
     qr_input = ∇₀[:,T.present_only_idx]
     if R <: Union{Float32, Float64}
-        A₊ = copy(∇₊)
-        A₀ = copy(∇₀)
-        A₋ = copy(∇₋)
+        A₊ = ∇₊
+        A₀ = ∇₀
+        A₋ = ∇₋
         fast_left_qr_multiply_transpose!(qr_input, qme_ws, A₊, A₀, A₋; use_fast_lapack_interface = opts.use_fast_lapack_interface)
     else
         Q    = ℒ.qr!(qr_input)
@@ -44,9 +44,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
 
-    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
-    Ã₀ = A₀[dynIndex, comb]
-    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    Ã₊ = @views(A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:])
+    Ã₀ = @view A₀[dynIndex, comb]
+    Ã₋ = @views(A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:])
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -75,10 +75,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
