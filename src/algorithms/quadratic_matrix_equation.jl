@@ -138,13 +138,12 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # @timeit_debug timer "Schur decomposition" begin
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    local schur_Z, schur_S, schur_T
-    try
-        schur_S, schur_T, schur_Z = fast_qz_ordschur!(D, E, workspace; criterium = one(R), use_fast_lapack_interface = use_fast_lapack_interface)
+    schur_S, schur_T, schur_Z = (try
+        fast_qz_ordschur!(D, E, workspace; criterium = one(R), use_fast_lapack_interface = use_fast_lapack_interface)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
-    end
+        return Matrix{R}(A), 0, one(R)
+    end)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}}
 
     # end # timeit_debug
     # @timeit_debug timer "Postprocess" begin
@@ -161,14 +160,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     if !ℒ.issuccess(Ẑ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
+        return Matrix{R}(A), 0, one(R)
     end
 
     Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
     
     if !ℒ.issuccess(Ŝ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
+        return Matrix{R}(A), 0, one(R)
     end
 
     # end # timeit_debug
@@ -195,19 +194,19 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     AXX = A * X^2
     
-    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+    AXXnorm = convert(R, max(ℒ.norm(AXX), ℒ.norm(C)))
     
     ℒ.mul!(AXX, B, X, 1, 1)
 
     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    reached_tol = convert(R, ℒ.norm(AXX) / AXXnorm)
     
     # if reached_tol > tol
     #     println("QME: schur $reached_tol")
     # end
 
-    return X, iter, reached_tol # schur can fail
+    return X, iter, reached_tol::R # schur can fail
 end
 
 
