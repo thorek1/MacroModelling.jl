@@ -38,19 +38,19 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
-            return initial_guess, true
+            return (initial_guess::Matrix{R}), true
         end
     end
 
-    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                        Val(quadratic_matrix_equation_algorithm), 
+    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C,
+                                                        Val(quadratic_matrix_equation_algorithm),
                                                         constants,
-                                                        workspace; 
+                                                        workspace;
                                                         initial_guess = initial_guess,
                                                         use_fast_lapack_interface = use_fast_lapack_interface,
                                                         tol = tol,
                                                         # timer = timer,
-                                                        verbose = verbose)
+                                                        verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
 
