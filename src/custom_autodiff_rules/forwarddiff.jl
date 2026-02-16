@@ -318,7 +318,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 
-        ∂SS_equations_∂SS_and_pars_lu = fast_lu(∂SS_equations_∂SS_and_pars, 𝓂.workspaces, check = false)
+        ∂SS_equations_∂SS_and_pars_lu = fast_lu(∂SS_equations_∂SS_and_pars, 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
             if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
@@ -374,7 +374,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     
     AXB = A * X + B
     
-    AXBfact = fast_lu(AXB, qme_ws, check = false)
+    AXBfact = fast_lu(AXB, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !ℒ.issuccess(AXBfact)
         AXBfact = ℒ.svd(AXB)
@@ -462,6 +462,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        use_fast_lapack_interface::Bool = true,
                                         verbose::Bool = false) where {Z,S,N}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
@@ -475,12 +476,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 workspace;
                                                 tol = tol,
                                                 initial_guess = initial_guess,
+                                                use_fast_lapack_interface = use_fast_lapack_interface,
                                                 # timer = timer,
                                                 verbose = verbose)
 
     AXB = Â * X + B̂
     
-    AXBfact = fast_lu(AXB, workspace, check = false)
+    AXBfact = fast_lu(AXB, workspace, check = false, use_fast_lapack_interface = use_fast_lapack_interface)
 
     if !ℒ.issuccess(AXBfact)
         AXBfact = ℒ.svd(AXB)

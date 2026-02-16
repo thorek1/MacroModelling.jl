@@ -65,6 +65,7 @@ const DEFAULT_SILENT_FLAG = false
 # Solver and tolerance defaults
 const DEFAULT_VERBOSE = false
 const DEFAULT_QME_ALGORITHM = :schur
+const DEFAULT_USE_FAST_LAPACK_INTERFACE = true
 const DEFAULT_LYAPUNOV_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_THRESHOLD = 1000
@@ -103,6 +104,7 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :filter => "Filter",
     :warmup_iterations => "Warmup Iterations",
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
+    :use_fast_lapack_interface => "Use FastLapackInterface",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
     :NSSS_acceptance_tol => "NSSS acceptance tol",

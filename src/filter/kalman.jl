@@ -175,7 +175,7 @@ function run_kalman_iterations(A::Matrix{S},
         # F = C * P * C'
 
         # @timeit_debug timer "LU factorisation" begin
-        luF = fast_lu!(F, check = false) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
+        luF = fast_lu!(F, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
         # end # timeit_debug
 
         if !ℒ.issuccess(luF)
@@ -328,7 +328,7 @@ function filter_and_smooth(𝓂::ℳ,
     for t in axes(data_in_deviations,2)
         v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
 
-        F̄ = fast_lu(C * P[:, :, t] * C', 𝓂.workspaces, check = false)
+        F̄ = fast_lu(C * P[:, :, t] * C', 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
         if !ℒ.issuccess(F̄) 
             @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."

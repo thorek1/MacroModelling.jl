@@ -1540,6 +1540,7 @@ end
 
 struct CalculationOptions
     quadratic_matrix_equation_algorithm::Symbol
+    use_fast_lapack_interface::Bool
     
     sylvester_algorithm²::Symbol
     sylvester_algorithm³::Symbol
@@ -1608,6 +1609,7 @@ end
 
 
 function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    use_fast_lapack_interface::Bool = true,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,
@@ -1615,6 +1617,7 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                     verbose::Bool = false)
                                     
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
+                                use_fast_lapack_interface,
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
                                 lyapunov_algorithm, 

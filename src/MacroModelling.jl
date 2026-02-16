@@ -127,8 +127,8 @@ end
     return qr_workspace.qr_orm_ws
 end
 
-@inline function fast_left_qr_multiply_transpose!(qr_input::AbstractMatrix{T}, qr_workspace, targets::Vararg{AbstractMatrix}) where {T <: Number}
-    if qr_input isa StridedMatrix{<:ℒ.BlasFloat} && all(target -> target isa StridedMatrix{<:ℒ.BlasFloat}, targets)
+@inline function fast_left_qr_multiply_transpose!(qr_input::AbstractMatrix{T}, qr_workspace, targets::Vararg{AbstractMatrix}; use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && qr_input isa StridedMatrix{<:ℒ.BlasFloat} && all(target -> target isa StridedMatrix{<:ℒ.BlasFloat}, targets)
         qr_ws = get_fast_qr_ws!(qr_input, qr_workspace)
         ℒ.LAPACK.geqrf!(qr_ws, qr_input)
 
@@ -152,10 +152,10 @@ end
     return qz_workspace.qz_ws
 end
 
-@inline function fast_qz_ordschur!(D::AbstractMatrix{R}, E::AbstractMatrix{R}, qz_workspace; criterium::R = one(R)) where {R <: Real}
+@inline function fast_qz_ordschur!(D::AbstractMatrix{R}, E::AbstractMatrix{R}, qz_workspace; criterium::R = one(R), use_fast_lapack_interface::Bool = true) where {R <: Real}
     local schur_S, schur_T, schur_Z
 
-    if R <: Union{Float32, Float64} && D isa StridedMatrix{R} && E isa StridedMatrix{R}
+    if use_fast_lapack_interface && R <: Union{Float32, Float64} && D isa StridedMatrix{R} && E isa StridedMatrix{R}
         qz_ws = get_fast_qz_ws!(D, qz_workspace)
         schur_S, schur_T, _, _, _, schur_Z = ℒ.LAPACK.gges!(qz_ws, 'N', 'V', D, E; select = FastLapackInterface.id, criterium = criterium)
         return schur_S, schur_T, schur_Z
@@ -172,12 +172,12 @@ end
     return schur_S, schur_T, schur_Z
 end
 
-@inline function fast_lu!(A::AbstractMatrix{T}; check::Bool = false) where {T <: Number}
-    return fast_lu!(A, nothing; check = check)
+@inline function fast_lu!(A::AbstractMatrix{T}; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    return fast_lu!(A, nothing; check = check, use_fast_lapack_interface = use_fast_lapack_interface)
 end
 
-@inline function fast_lu!(A::AbstractMatrix{T}, lu_workspace; check::Bool = false) where {T <: Number}
-    if A isa StridedMatrix{<:ℒ.BlasFloat}
+@inline function fast_lu!(A::AbstractMatrix{T}, lu_workspace; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && A isa StridedMatrix{<:ℒ.BlasFloat}
         lu_ws = get_fast_lu_ws!(A, lu_workspace)
         _, ipiv, info = ℒ.LAPACK.getrf!(lu_ws, A)
         return fast_lu_from_getrf!(A, ipiv, info; check = check)
@@ -185,12 +185,12 @@ end
     return ℒ.lu!(A, check = check)
 end
 
-@inline function fast_lu(A::AbstractMatrix{T}; check::Bool = false) where {T <: Number}
-    return fast_lu(A, nothing; check = check)
+@inline function fast_lu(A::AbstractMatrix{T}; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    return fast_lu(A, nothing; check = check, use_fast_lapack_interface = use_fast_lapack_interface)
 end
 
-@inline function fast_lu(A::AbstractMatrix{T}, lu_workspace; check::Bool = false) where {T <: Number}
-    if A isa StridedMatrix{<:ℒ.BlasFloat}
+@inline function fast_lu(A::AbstractMatrix{T}, lu_workspace; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && A isa StridedMatrix{<:ℒ.BlasFloat}
         A_fac = copy(A)
         lu_ws = get_fast_lu_ws!(A_fac, lu_workspace)
         _, ipiv, info = ℒ.LAPACK.getrf!(lu_ws, A_fac)
