@@ -225,11 +225,6 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp2
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
-                    nothing,         # lu_ws
-                    nothing,         # lu_ws_alt
-                    nothing,         # qr_ws
-                    nothing,         # qr_orm_ws
-                    nothing,         # qz_ws
                     zeros(T, n, n),  # AXX
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
@@ -625,10 +620,6 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
-                nothing,
-                0,
-                0,
-                Float64,
                 Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
@@ -1540,7 +1531,6 @@ end
 
 struct CalculationOptions
     quadratic_matrix_equation_algorithm::Symbol
-    use_fast_lapack_interface::Bool
     
     sylvester_algorithm²::Symbol
     sylvester_algorithm³::Symbol
@@ -1609,7 +1599,6 @@ end
 
 
 function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    use_fast_lapack_interface::Bool = true,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,
@@ -1617,7 +1606,6 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                     verbose::Bool = false)
                                     
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
-                                use_fast_lapack_interface,
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
                                 lyapunov_algorithm, 

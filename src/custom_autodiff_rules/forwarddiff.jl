@@ -66,7 +66,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast)
 
-        ∂x̂ = fast_lu!(∂x, check = false)
+        ∂x̂ = ℒ.lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
             break
@@ -152,7 +152,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast)
 
-        ∂x̂ = fast_lu!(∂x, check = false)
+        ∂x̂ = ℒ.lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
             break
@@ -318,7 +318,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 
-        ∂SS_equations_∂SS_and_pars_lu = fast_lu(∂SS_equations_∂SS_and_pars, 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
             if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
@@ -374,7 +374,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     
     AXB = A * X + B
     
-    AXBfact = fast_lu(AXB, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    AXBfact = RF.lu(AXB, check = false)
 
     if !ℒ.issuccess(AXBfact)
         AXBfact = ℒ.svd(AXB)
@@ -462,7 +462,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        use_fast_lapack_interface::Bool = true,
                                         verbose::Bool = false) where {Z,S,N}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
@@ -476,13 +475,12 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 workspace;
                                                 tol = tol,
                                                 initial_guess = initial_guess,
-                                                use_fast_lapack_interface = use_fast_lapack_interface,
                                                 # timer = timer,
                                                 verbose = verbose)
 
     AXB = Â * X + B̂
     
-    AXBfact = fast_lu(AXB, workspace, check = false, use_fast_lapack_interface = use_fast_lapack_interface)
+    AXBfact = ℒ.lu(AXB, check = false)
 
     if !ℒ.issuccess(AXBfact)
         AXBfact = ℒ.svd(AXB)
@@ -689,7 +687,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         F = C * P * C'
 
-        luF = fast_lu(F, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface) ###
+        luF = ℒ.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end

@@ -27,19 +27,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
-    qr_input = ∇₀[:,T.present_only_idx]
-    if R <: Union{Float32, Float64}
-        A₊ = ∇₊
-        A₀ = ∇₀
-        A₋ = ∇₋
-        fast_left_qr_multiply_transpose!(qr_input, qme_ws, A₊, A₀, A₋; use_fast_lapack_interface = opts.use_fast_lapack_interface)
-    else
-        Q    = ℒ.qr!(qr_input)
+    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-        A₊ = Q.Q' * ∇₊
-        A₀ = Q.Q' * ∇₀
-        A₋ = Q.Q' * ∇₋
-    end
+    A₊ = Q.Q' * ∇₊
+    A₀ = Q.Q' * ∇₀
+    A₋ = Q.Q' * ∇₋
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
@@ -56,8 +48,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose,
-                                                    use_fast_lapack_interface = opts.use_fast_lapack_interface)
+                                                    verbose = opts.verbose)
     sol = sol::Matrix{R}
 
     if !solved
@@ -83,7 +74,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    Ā̂₀ᵤ = fast_lu!(Ā₀ᵤ, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
@@ -109,7 +100,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
 
-    C = fast_lu!(∇₀, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
         if opts.verbose println("Factorisation of ∇₀ failed") end
@@ -178,7 +169,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = fast_lu(∇₁₊𝐒₁➕∇₁₀, workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
@@ -303,7 +294,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = fast_lu(∇₁₊𝐒₁➕∇₁₀, workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
