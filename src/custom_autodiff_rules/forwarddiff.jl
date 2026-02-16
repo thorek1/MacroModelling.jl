@@ -664,6 +664,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                opts::CalculationOptions = merge_calculation_options(),
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
@@ -688,7 +689,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         F = C * P * C'
 
-        luF = fast_lu(F, check = false) ###
+        luF = fast_lu(F, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface) ###
 
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end

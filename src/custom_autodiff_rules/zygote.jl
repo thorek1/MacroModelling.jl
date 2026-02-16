@@ -3858,6 +3858,7 @@ function rrule(::typeof(run_kalman_iterations),
                     ws::kalman_workspace; 
                     presample_periods = 0,
                     on_failure_loglikelihood = -Inf,
+                    opts::CalculationOptions = merge_calculation_options(),
                     # timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
     # @timeit_debug timer "Calculate Kalman filter - forward" begin
@@ -3907,7 +3908,7 @@ function rrule(::typeof(run_kalman_iterations),
         # F[t] .= CP[t] * C'
         ℒ.mul!(F, CP[t], C')
     
-        luF = fast_lu(F, check = false)
+        luF = fast_lu(F, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
     
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
