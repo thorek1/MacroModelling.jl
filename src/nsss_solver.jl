@@ -217,6 +217,7 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         zeros(Float64, max(b.max_error_buffer, 1)),
         zeros(Float64, max(𝓂.constants.nsss_solver.n_ext_params, 1)),
         Float64[],
+        Float64[],
         zeros(Float64, max(b.max_guess_buffer, 1)),
         [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
         zeros(Float64, max(b.max_main_buffer, 1)),
@@ -1785,8 +1786,8 @@ function execute_step!(step_idx::Int,
 
         # Build cache entries for this block
         cache_entries = [
-            typeof(sol) == Vector{Float64} ? copy(sol) : ℱ.value.(sol),
-            typeof(params_and_solved_vars) == Vector{Float64} ? copy(params_and_solved_vars) : ℱ.value.(params_and_solved_vars)
+            typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol),
+            typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)
         ]
 
         return error, iters, cache_entries
@@ -1990,7 +1991,10 @@ function solve_nsss_wrapper(
     # Local intermediate cache for warm starts at intermediate scales
     continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
     push!(continuation_cache, closest_solution_init)
-    scaled_parameters = similar(initial_parameters)
+    scaled_parameters = 𝓂.workspaces.nsss_solver.scaled_parameters_buffer
+    if length(scaled_parameters) != length(initial_parameters)
+        resize!(scaled_parameters, length(initial_parameters))
+    end
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters

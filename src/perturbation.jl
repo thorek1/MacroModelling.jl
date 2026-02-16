@@ -58,6 +58,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
                                                     verbose = opts.verbose,
                                                     use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    sol = sol::Matrix{R}
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
