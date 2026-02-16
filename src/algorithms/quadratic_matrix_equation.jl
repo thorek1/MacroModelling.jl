@@ -115,53 +115,24 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     indices_past_not_future_in_comb = idx_constants.indices_past_not_future_in_comb
     reorder_select = idx_constants.reorder_select
-
-    D = workspace.schur_D
-    E = workspace.schur_E
-    sol = workspace.schur_sol
-
-    fill!(D, zero(R))
-    fill!(E, zero(R))
-
-    nPast = T.nPast_not_future_and_mixed
-    nFuture = T.nFuture_not_past_and_mixed
-    nSchur = nPast + nFuture
-    nTop = size(A, 1)
-    nNotMixedPast = nPast - T.nMixed
-
-    top_rows = 1:nTop
-    bot_rows = nTop+1:nSchur
-    past_cols = 1:nPast
-    future_cols = nPast+1:nSchur
-
-    @views begin
-        top_left = D[top_rows, past_cols]
-        fill!(top_left, zero(R))
-        copyto!(top_left[:, T.not_mixed_in_past_idx], B[:, indices_past_not_future_in_comb])
-        copyto!(D[top_rows, future_cols], A[:, future_not_past_and_mixed_in_comb])
-
-        bot_left = D[bot_rows, past_cols]
-        fill!(bot_left, zero(R))
-        for (row_i, col_i) in enumerate(T.mixed_in_past_idx)
-            bot_left[row_i, col_i] = one(R)
-        end
-
-        top_left_E = E[top_rows, past_cols]
-        copyto!(top_left_E, C[:, past_not_future_and_mixed_in_comb])
-        ℒ.rmul!(top_left_E, -one(R))
-
-        top_right_E = E[top_rows, future_cols]
-        copyto!(top_right_E, B[:, future_not_past_and_mixed_in_comb])
-        ℒ.rmul!(top_right_E, -one(R))
-
-        bot_right = E[bot_rows, future_cols]
-        fill!(bot_right, zero(R))
-        for (row_i, col_i) in enumerate(T.mixed_in_future_idx)
-            bot_right[row_i, col_i] = one(R)
-        end
-    end
-
     I_nPast = workspace.I_nPast
+
+    Ã₊ = A[:,future_not_past_and_mixed_in_comb]
+    Ã₋ = C[:,past_not_future_and_mixed_in_comb]
+    Ã₀₊ = B[:,future_not_past_and_mixed_in_comb]
+    Ã₀₋ = B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
+
+    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
+    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
+
+    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
+    I₋ = I_nPast[T.mixed_in_past_idx,:]
+
+    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+
+    ℒ.rmul!(Ã₋,-1)
+    ℒ.rmul!(Ã₀₊,-1)
+    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
     schur_S, schur_T, schur_Z = (try
@@ -181,15 +152,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Postprocess" begin
 
-    Z₂₁ = workspace.schur_Z21
-    Z₁₁ = workspace.schur_Z11
-    S₁₁ = workspace.schur_S11
-    T₁₁ = workspace.schur_T11
+    Z₂₁ = schur_Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
+    Z₁₁ = schur_Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-    @views copyto!(Z₂₁, schur_Z[nPast+1:end, 1:nPast])
-    @views copyto!(Z₁₁, schur_Z[1:nPast, 1:nPast])
-    @views copyto!(S₁₁, schur_S[1:nPast, 1:nPast])
-    @views copyto!(T₁₁, schur_T[1:nPast, 1:nPast])
+    S₁₁ = schur_S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    T₁₁ = schur_T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
     # @timeit_debug timer "Matrix inversions" begin
 
@@ -218,9 +185,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.mul!(S₁₁, Z₁₁, T₁₁)
     ℒ.rdiv!(S₁₁, Ẑ₁₁)
 
-    fill!(sol, zero(R))
-    @views copyto!(sol[1:nNotMixedPast, :], S₁₁[T.not_mixed_in_past_idx, :])
-    @views copyto!(sol[nNotMixedPast+1:end, :], Z₂₁)
+    sol = vcat(S₁₁[T.not_mixed_in_past_idx,:], Z₂₁)
 
     # end # timeit_debug
     # end # timeit_debug
