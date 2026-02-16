@@ -4304,7 +4304,7 @@ end
 
 function select_fastest_SS_solver_parameters!(𝓂::ℳ;
                                                 tol::Tolerances = Tolerances(),
-                                                n_samples::Int = 100)
+                                                n_samples::Int = 100)::Nothing
     @assert n_samples > 1 "n_samples must be greater than 1."
     @assert n_samples ÷ 2 >= 1 "n_samples must be at least 2."
 
@@ -4363,6 +4363,8 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
             nsss_fastest_solver_parameter_idx = best_idx,
         )
     end
+
+    return nothing
 end
 
 function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}
@@ -4946,6 +4948,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         sylv_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
+
+    solved = solved isa Bool ? solved : (solved isa Real ? (isfinite(solved) && !iszero(solved)) : false)
     
     if solved 𝓂.caches.qme_solution = qme_sol end
 
@@ -4962,6 +4966,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
+
+    solved2 = solved2 isa Bool ? solved2 : (solved2 isa Real ? (isfinite(solved2) && !iszero(solved2)) : false)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
