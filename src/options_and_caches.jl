@@ -225,6 +225,11 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp2
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
+                    nothing,         # lu_ws
+                    nothing,         # lu_ws_alt
+                    nothing,         # qr_ws
+                    nothing,         # qr_orm_ws
+                    nothing,         # qz_ws
                     zeros(T, n, n),  # AXX
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
@@ -620,6 +625,10 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
+                nothing,
+                0,
+                0,
+                Float64,
                 Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
@@ -627,7 +636,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T))  # Kalman filter - will be resized
+                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -670,6 +680,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 spzeros(Float64, 0, 0),
                 Symbol[],
                 Symbol[],
+                Int[],
+                Int[],
                 Symbol[],
                 # Symbol[],
                 Int[],
@@ -686,9 +698,18 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1:0,
                 1,
                 zeros(Bool, 0, 0),
-                zeros(Bool, 0, 0)),
+                zeros(Bool, 0, 0),
+                nothing,
+                0,
+                Int[],
+                0,
+                Symbol[],
+                Int[],
+                Symbol[],
+                1),
             Second_order_indices(),
-            Third_order_indices())
+            Third_order_indices(),
+            NSSSSolverConstants())
 end
 
 function _axis_has_string(axis)
@@ -754,6 +775,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :custom_ss_expand_matrix, p.custom_ss_expand_matrix),
         get(kwargs, :vars_in_ss_equations, p.vars_in_ss_equations),
         get(kwargs, :vars_in_ss_equations_with_aux, p.vars_in_ss_equations_with_aux),
+        get(kwargs, :ss_var_idx_in_var_and_calib, p.ss_var_idx_in_var_and_calib),
+        get(kwargs, :calib_idx_in_var_and_calib, p.calib_idx_in_var_and_calib),
         get(kwargs, :SS_and_pars_names_lead_lag, p.SS_and_pars_names_lead_lag),
         # get(kwargs, :SS_and_pars_names_no_exo, p.SS_and_pars_names_no_exo),
         get(kwargs, :SS_and_pars_no_exo_idx, p.SS_and_pars_no_exo_idx),
@@ -771,6 +794,14 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :nsss_dependencies, p.nsss_dependencies),
+        get(kwargs, :nsss_n_sol, p.nsss_n_sol),
+        get(kwargs, :nsss_output_indices, p.nsss_output_indices),
+        get(kwargs, :nsss_n_ext_params, p.nsss_n_ext_params),
+        get(kwargs, :nsss_sol_names, p.nsss_sol_names),
+        get(kwargs, :nsss_exo_zero_indices, p.nsss_exo_zero_indices),
+        get(kwargs, :nsss_param_names_ext, p.nsss_param_names_ext),
+        get(kwargs, :nsss_fastest_solver_parameter_idx, p.nsss_fastest_solver_parameter_idx),
     )
 end
 
@@ -1339,6 +1370,9 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
 
         vars_in_ss_equations = T.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = T.vars_in_ss_equations
+        vars_and_calib = vcat(T.var, calibration_parameters)
+        ss_var_idx_in_var_and_calib = Int.(indexin(vars_in_ss_equations, vars_and_calib))
+        calib_idx_in_var_and_calib = Int.(indexin(calibration_parameters, vars_and_calib))
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))
 
@@ -1362,6 +1396,8 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
             custom_ss_expand_matrix = custom_ss_expand_matrix,
             vars_in_ss_equations = vars_in_ss_equations,
             vars_in_ss_equations_with_aux = vars_in_ss_equations_with_aux,
+            ss_var_idx_in_var_and_calib = ss_var_idx_in_var_and_calib,
+            calib_idx_in_var_and_calib = calib_idx_in_var_and_calib,
             SS_and_pars_names_lead_lag = SS_and_pars_names_lead_lag,
             # SS_and_pars_names_no_exo = SS_and_pars_names_no_exo,
             SS_and_pars_no_exo_idx = SS_and_pars_no_exo_idx,
@@ -1504,6 +1540,7 @@ end
 
 struct CalculationOptions
     quadratic_matrix_equation_algorithm::Symbol
+    use_fast_lapack_interface::Bool
     
     sylvester_algorithm²::Symbol
     sylvester_algorithm³::Symbol
@@ -1572,6 +1609,7 @@ end
 
 
 function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    use_fast_lapack_interface::Bool = true,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,
@@ -1579,6 +1617,7 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                     verbose::Bool = false)
                                     
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
+                                use_fast_lapack_interface,
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
                                 lyapunov_algorithm, 

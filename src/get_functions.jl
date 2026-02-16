@@ -944,7 +944,7 @@ function get_conditional_forecast(𝓂::ℳ,
         if length(cond_var_idx) == 1
             @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
         elseif length(free_shock_idx) == length(cond_var_idx)
-            CC = RF.lu(CC, check = false)
+            CC = fast_lu(CC, 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
         end
@@ -973,7 +973,7 @@ function get_conditional_forecast(𝓂::ℳ,
                 @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
             elseif length(free_shock_idx) == length(cond_var_idx)
     
-            CC = RF.lu(CC, check = false)
+            CC = fast_lu(CC, 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
             end
@@ -1525,9 +1525,10 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    var_idx = ms.ss_var_idx_in_var_and_calib
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.equations.calibration_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -1600,7 +1601,6 @@ function get_steady_state(𝓂::ℳ;
 
                 end
         else
-            # dSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
             # dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
             dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1621,8 +1621,6 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.caches.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.caches.non_stochastic_steady_state
-    # return 𝓂.functions.NSSS_solve(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
 
@@ -2834,7 +2832,6 @@ function get_moments(𝓂::ℳ;
                 var_idx_ext = var_idx
             end
 
-            # dNSSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         

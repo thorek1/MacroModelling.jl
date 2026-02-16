@@ -89,7 +89,7 @@
 #    - outdated: Flags indicating which caches need recomputation
 #
 # 4. FUNCTIONS (𝓂.functions) - Compiled model functions:
-#    - NSSS_solve/check: Steady state solvers
+#    - NSSS_check + step-based NSSS solver functions
 #    - jacobian/hessian/third_order_derivatives: Derivative functions
 #    - state_update functions: Policy function evaluators
 #
@@ -519,6 +519,13 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     
     # LU factorization buffer
     B̄::Matrix{T}
+
+    # FastLapackInterface workspaces (lazily initialized)
+    lu_ws::Any
+    lu_ws_alt::Any
+    qr_ws::Any
+    qr_orm_ws::Any
+    qz_ws::Any
     
     # Residual computation buffer
     AXX::Matrix{T}
@@ -593,91 +600,123 @@ struct ss_solve_block
 end
 
 
+# ============================================================================
+# NSSS Solver Pipeline — struct-of-arrays design
+#
+# Steps are stored as parallel vectors of per-step data, with shared
+# workspaces for scratch buffers and separated caches for past results.
+#
+# Step types are encoded as UInt8 flags:
+const ANALYTICAL_STEP = 0x01
+const NUMERICAL_STEP  = 0x02
+# ============================================================================
+
 """
-A single analytical solve step in the NSSS solve sequence.
-Uses `Symbolics.build_function` to compile the evaluation function.
+Per-step compiled functions, stored as parallel vectors indexed by step number.
 
-The evaluation function has signature `eval_func!(out, sol_vec, params_vec)`
-where `sol_vec` is the flat solution vector and `params_vec` is the extended
-parameter vector (raw parameters + calibration_no_var results with bounds applied).
-
-Phase 1 (optional): Compute auxiliary variables (domain-safety ➕_vars) and check error.
-Phase 2: Compute target variable(s) and apply bounds.
+Each step has an optional `aux_func!` (pre-step domain-safety computation),
+an optional `error_func!` (domain-safety error check), and a main function
+which is either `eval_func!` (analytical) or dispatched via `solve_block` (numerical).
 """
-struct AnalyticalNSSSStep
-    # Phase 1: Auxiliary computation (optional, for domain-safety ➕_vars)
-    aux_func!::Union{Nothing, Function}       # f!(out, sol_vec, params_vec)
-    aux_write_indices::Vector{Int}            # where in sol_vec to write aux results
-    aux_buffer::Vector{Float64}               # pre-allocated output buffer
-
-    # Phase 1 error: domain safety check (optional)
-    error_func!::Union{Nothing, Function}     # g!(out, sol_vec, params_vec)
-    error_buffer::Vector{Float64}             # pre-allocated error buffer
-
-    # Phase 2: Main computation
-    eval_func!::Function                      # f!(out, sol_vec, params_vec)
-    write_indices::Vector{Int}                # where in sol_vec to write results
-    buffer::Vector{Float64}                   # pre-allocated output buffer
-
-    # Phase 2 bounds clamping
-    lower_bounds::Vector{Float64}             # per-output lower bounds
-    upper_bounds::Vector{Float64}             # per-output upper bounds
-    has_bounds::BitVector                     # which outputs have bounds to check
-
-    # Description for debugging
-    description::String
+struct NSSSSolverFunctions
+    # Per-step compiled functions (indexed by step number)
+    aux_funcs::Vector{Union{Nothing, Function}}       # f!(out, sol_vec, params_vec) — optional pre-step aux
+    error_funcs::Vector{Union{Nothing, Function}}      # g!(out, sol_vec, params_vec) — optional error check
+    eval_funcs::Vector{Union{Nothing, Function}}       # f!(out, sol_vec, params_vec) — main eval (analytical only)
+    solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
 end
 
 
 """
-A numerical block solve step in the NSSS solve sequence.
-Calls `block_solver` to numerically solve for unknowns.
+Per-step immutable configuration: indices, bounds, and metadata.
 
-The block's compiled residual/Jacobian functions are stored in the
-`ss_solve_block` referenced by `block_index` in `𝓂.NSSS.solve_blocks_in_place`.
+Index arrays are stored in flat contiguous vectors, with per-step `UnitRange{Int}`
+providing zero-copy views into the flat storage. This reduces heap allocations
+and improves cache locality compared to per-step `Vector{Int}` fields.
 """
-struct NumericalNSSSStep
-    # Index of the ss_solve_block in 𝓂.NSSS.solve_blocks_in_place
-    block_index::Int
-    # Which indices in sol_vec this step writes to
-    write_indices::Vector{Int}
-    # Indices for gathering params_and_solved_vars:
-    #   params_and_solved_vars = vcat(params_vec[param_gather_indices], sol_vec[var_gather_indices])
-    param_gather_indices::Vector{Int}
-    var_gather_indices::Vector{Int}
-    params_and_solved_vars_buffer::Vector{Float64}
-    initial_guess_buffer::Vector{Float64}
-    inits_buffer::Vector{Vector{Float64}}
-    # Bounds for the block solver
-    lbs::Vector{Float64}
-    ubs::Vector{Float64}
-    # Compiled aux equation function (for domain-safe equations evaluated before block solve)
-    aux_func!::Union{Nothing, Function}       # f!(out, sol_vec, params_vec)
-    aux_write_indices::Vector{Int}            # where in sol_vec to write aux results
-    aux_buffer::Vector{Float64}               # pre-allocated output buffer
-    # Compiled aux error function (domain safety check)
-    aux_error_func!::Union{Nothing, Function} # g!(out, sol_vec, params_vec)
-    aux_error_buffer::Vector{Float64}         # pre-allocated error buffer
-    # Description for debugging
-    description::String
+struct NSSSSolverConstants
+    # Step metadata
+    n_steps::Int
+    n_ext_params::Int
+    step_types::Vector{UInt8}                    # ANALYTICAL_STEP or NUMERICAL_STEP per step
+    descriptions::Vector{String}                 # debug description per step
+    block_indices::Vector{Int}                   # numerical block index (0 for analytical)
+
+    # Flat index arrays + per-step ranges
+    write_indices::Vector{Int}                   # flat: which sol_vec positions to write
+    write_ranges::Vector{UnitRange{Int}}         # per-step range into write_indices
+    aux_write_indices::Vector{Int}               # flat: aux write positions
+    aux_write_ranges::Vector{UnitRange{Int}}     # per-step range into aux_write_indices
+    param_gather_indices::Vector{Int}            # flat: numerical param gather (0-length for analytical)
+    param_gather_ranges::Vector{UnitRange{Int}}  # per-step range
+    var_gather_indices::Vector{Int}              # flat: numerical var gather (0-length for analytical)
+    var_gather_ranges::Vector{UnitRange{Int}}    # per-step range
+
+    # Flat bounds arrays + per-step ranges (analytical bounds for clamping)
+    lower_bounds::Vector{Float64}
+    upper_bounds::Vector{Float64}
+    has_bounds::BitVector
+    bounds_ranges::Vector{UnitRange{Int}}        # per-step range into lower/upper/has_bounds
+
+    # Flat bounds arrays for numerical block solver
+    numerical_lbs::Vector{Float64}
+    numerical_ubs::Vector{Float64}
+    numerical_bounds_ranges::Vector{UnitRange{Int}}  # per-step range into numerical_lbs/ubs
+
+    # Flat error buffer sizing per step
+    error_sizes::Vector{Int}                     # size of error output for each step
+    aux_error_sizes::Vector{Int}                 # size of aux error output (numerical steps)
 end
 
-const NSSSSolveStep = Union{AnalyticalNSSSStep, NumericalNSSSStep}
 
+"""
+Shared scratch buffers reused across all steps during a single solve pass.
 
-mutable struct non_stochastic_steady_state
-    solve_blocks_in_place::Vector{ss_solve_block}
-    dependencies::Any
-    # Step-based solving infrastructure (populated by write_steady_state_solver_function!)
-    solve_steps::Vector{NSSSSolveStep}         # Ordered sequence of solve steps
-    param_prep!::Union{Nothing, Function}      # Compiled parameter preparation: f!(ext_params, raw_params)
-    n_sol::Int                                 # Length of solution vector (includes ➕_vars)
-    output_indices::Vector{Int}                # Indices into sol_vec for output (SS_and_pars), may have repeats
-    n_ext_params::Int                          # Length of extended parameter vector
-    sol_names::Vector{Symbol}                  # Names in solution vector (unique, for indexing)
-    exo_zero_indices::Vector{Int}              # Indices of dynamic exogenous vars (set to 0)
-    param_names_ext::Vector{Symbol}            # Names in extended parameter vector
+All buffers are pre-allocated to the maximum size needed across all steps,
+avoiding per-step allocation. Steps use `@view` slices into these buffers.
+"""
+mutable struct NSSSSolverWorkspace
+    main_buffer::Vector{Float64}      # for eval_func! output or params_and_solved_vars gather
+    aux_buffer::Vector{Float64}       # for aux_func! output
+    error_buffer::Vector{Float64}     # for error_func! / aux_error_func! output
+    params_vec_buffer::Vector{Float64} # extended parameter vector (bounded + calibration_no_var)
+    sol_vec_buffer::Vector{Float64}   # solution vector across NSSS steps
+    guess_buffer::Vector{Float64}     # for initial_guess in numerical steps
+    inits::Vector{Vector{Float64}}    # 2-element container: [clamped_guess, cached_params]
+    params_and_solved_vars_buffer::Vector{Float64}  # gathered block inputs (params + solved vars)
+    lbs_buffer::Vector{Float64}       # numerical lower bounds for current block
+    ubs_buffer::Vector{Float64}       # numerical upper bounds for current block
 end
+
+
+"""Construct an empty `NSSSSolverFunctions` with no steps."""
+NSSSSolverFunctions() = NSSSSolverFunctions(
+    Union{Nothing,Function}[],
+    Union{Nothing,Function}[],
+    Union{Nothing,Function}[],
+    Union{Nothing,ss_solve_block}[],
+)
+
+"""Construct an empty `NSSSSolverConstants` with no steps."""
+NSSSSolverConstants() = NSSSSolverConstants(
+    0,
+    0,
+    UInt8[], String[], Int[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Float64[], Float64[], BitVector(), UnitRange{Int}[],
+    Float64[], Float64[], UnitRange{Int}[],
+    Int[], Int[],
+)
+
+"""Construct an empty `NSSSSolverWorkspace` with no buffers."""
+NSSSSolverWorkspace() = NSSSSolverWorkspace(
+    Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+    [Float64[], Float64[Inf]],
+    Float64[], Float64[], Float64[],
+)
 
 """
 Tracks which cache elements are outdated and need recalculation.
@@ -789,11 +828,12 @@ end
 
 mutable struct model_functions
     # NSSS-related functions
-    NSSS_solve::Function
     NSSS_check::Function
     NSSS_custom::Union{Nothing, Function}
     NSSS_∂equations_∂parameters::Function
     NSSS_∂equations_∂SS_and_pars::Function
+    nsss_solver::NSSSSolverFunctions
+    nsss_param_prep!::Union{Nothing, Function}
     # Perturbation derivative functions
     jacobian::jacobian_functions
     hessian::hessian_functions
@@ -954,6 +994,7 @@ Purpose: Speed up computation by eliminating allocation overhead in hot loops.
 Fields:
 - `second_order/third_order`: Higher-order perturbation solution workspaces
 - `custom_steady_state_buffer`: Buffer for custom steady state evaluation
+- `fast_lapack_lu_*`: Shared FastLapackInterface LU workspace metadata and cache
 - `qme`: Quadratic matrix equation solver workspace
 - `lyapunov_*`: Lyapunov equation solver workspaces (1st, 2nd, 3rd order)
 - `sylvester_*`: Sylvester equation solver workspace
@@ -972,6 +1013,11 @@ mutable struct workspaces
     third_order::higher_order_workspace         # Separate workspace for 3rd order
     # Steady state buffer
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
+    # Shared FastLapackInterface LU workspace (for fast_lu/fast_lu!)
+    fast_lapack_lu_ws::Any
+    fast_lapack_lu_rows::Int
+    fast_lapack_lu_cols::Int
+    fast_lapack_lu_eltype::Any
     # Matrix equation solver workspaces
     qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
@@ -982,6 +1028,8 @@ mutable struct workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter
     kalman::kalman_workspace{Float64}            # Kalman filter
+    # NSSS solver shared scratch buffers
+    nsss_solver::NSSSSolverWorkspace
 end
 
 
@@ -1025,6 +1073,8 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
     vars_in_ss_equations::Vector{Symbol}
     vars_in_ss_equations_with_aux::Vector{Symbol}
+    ss_var_idx_in_var_and_calib::Vector{Int}
+    calib_idx_in_var_and_calib::Vector{Int}
     SS_and_pars_names_lead_lag::Vector{Symbol}
     # SS_and_pars_names_no_exo::Vector{Symbol}
     SS_and_pars_no_exo_idx::Vector{Int}
@@ -1042,6 +1092,14 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    nsss_dependencies::Any
+    nsss_n_sol::Int
+    nsss_output_indices::Vector{Int}
+    nsss_n_ext_params::Int
+    nsss_sol_names::Vector{Symbol}
+    nsss_exo_zero_indices::Vector{Int}
+    nsss_param_names_ext::Vector{Symbol}
+    nsss_fastest_solver_parameter_idx::Int
 end
 
 """
@@ -1074,6 +1132,8 @@ mutable struct constants#{F <: Real, G <: AbstractFloat}
     second_order::second_order_indices
     # Third-order perturbation auxiliary matrices and indices
     third_order::third_order_indices
+    # NSSS solver step constants (indices, bounds, metadata)
+    nsss_solver::NSSSSolverConstants
 end
 
 mutable struct solver_parameters
@@ -1182,11 +1242,6 @@ mutable struct ℳ
     # =========================================================================
     model_name::Any                           # Model identifier
     parameter_values::Vector{Float64}         # Current parameter values (mutable)
-
-    # =========================================================================
-    # STEADY STATE SOLVER INFRASTRUCTURE
-    # =========================================================================
-    NSSS::non_stochastic_steady_state         # Steady state solver blocks
 
     # =========================================================================
     # MODEL EQUATIONS (various representations)

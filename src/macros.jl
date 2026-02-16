@@ -86,16 +86,13 @@ macro model(𝓂,ex...)
     par_calib_list = []
     
     # NSSS struct fields
-    NSSS_solve_blocks_in_place = ss_solve_block[]
-    NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    NSSS_solve_func = x->x
+    nsss_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     NSSS_check_func = x->x
     NSSS_custom_function = nothing
     NSSS_∂equations_∂parameters = zeros(0,0)
     NSSS_∂equations_∂parameters_func = x->x
     NSSS_∂equations_∂SS_and_pars = zeros(0,0)
     NSSS_∂equations_∂SS_and_pars_func = x->x
-    NSSS_dependencies = nothing
 
     original_equations = []
     calibration_equations = []
@@ -866,19 +863,6 @@ macro model(𝓂,ex...)
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
-                        non_stochastic_steady_state(
-                            $NSSS_solve_blocks_in_place,
-                            $NSSS_dependencies,
-                            NSSSSolveStep[],   # solve_steps (populated later by write_steady_state_solver_function!)
-                            nothing,           # param_prep!
-                            0,                 # n_sol
-                            Int[],             # output_indices
-                            0,                 # n_ext_params
-                            Symbol[],          # sol_names
-                            Int[],             # exo_zero_indices
-                            Symbol[],          # param_names_ext
-                        ),
-
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
                         caches(
@@ -911,7 +895,7 @@ macro model(𝓂,ex...)
                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
                             Float64[],  # pruned_third_order_stochastic_steady_state
                             Float64[],  # non_stochastic_steady_state
-                            $NSSS_solver_cache,  # solver_cache
+                            $nsss_solver_cache,  # solver_cache
                             $NSSS_∂equations_∂parameters,  # ∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars,  # ∂equations_∂SS_and_pars
                         ),
@@ -932,11 +916,12 @@ macro model(𝓂,ex...)
                         $𝓦,
 
                         model_functions(
-                            $NSSS_solve_func,
                             $NSSS_check_func,
                             $NSSS_custom_function,
                             $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
+                            NSSSSolverFunctions(),
+                            nothing, # nsss_param_prep!
                             jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
                             hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
                             third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
@@ -979,14 +964,14 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
+- `guess` [Type: `Dict{Symbol, <:Real}` or `Dict{String, <:Real}`]: Guess for the non-stochastic steady state. The keys must be variable (and calibrated parameter) names and the values the guesses. Missing values are filled with standard starting values.
 - $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `ss_symbolic_mode` [Default: `:single_equation`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks.
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
-- `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
+- `ss_solver_parameters_maxtime` [Default: `0.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked. Use `0.0` to disable the global search fallback.
 
 # Delayed parameter definition
 Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
@@ -1071,7 +1056,7 @@ macro parameters(𝓂,ex...)
     guess = Dict{Symbol,Float64}()
     steady_state_function = nothing
     ss_solver_parameters_algorithm = :ESCH
-    ss_solver_parameters_maxtime = 120.0
+    ss_solver_parameters_maxtime = 0.0
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1555,8 +1540,6 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
         # mod.$𝓂.caches.outdated_NSSS = true
         
-        # Store precompile and steady-state mode flag in model container
-        
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
@@ -1585,7 +1568,7 @@ macro parameters(𝓂,ex...)
         end
 
         if has_missing_parameters && $report_missing_parameters
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
         end
 
         if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end

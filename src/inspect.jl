@@ -66,7 +66,7 @@ function replace_curly_braces_in_symbols(expr)
                     result = Expr(:curly, result, content)
                 end
                 
-                remaining = rest
+                remaining = something(rest, "")
             end
             
             return result === nothing ? expr : result

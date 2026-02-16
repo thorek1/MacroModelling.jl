@@ -37,6 +37,7 @@ import NLopt
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
+import FastLapackInterface
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
@@ -61,6 +62,142 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 import RecursiveFactorization as RF
+
+@inline function fast_lu_from_getrf!(A::AbstractMatrix, ipiv::AbstractVector{Int}, info::Integer; check::Bool = false)
+    if check
+        if info < 0
+            throw(ArgumentError("invalid argument to LU factorization, info = $info"))
+        elseif info > 0
+            throw(ℒ.SingularException(info))
+        end
+    end
+    return ℒ.LU(A, ipiv, info)
+end
+
+@inline function get_fast_lu_ws!(A::StridedMatrix{<:ℒ.BlasFloat}, lu_workspace)
+    if lu_workspace === nothing
+        return FastLapackInterface.LUWs(A)
+    end
+
+    if hasproperty(lu_workspace, :fast_lapack_lu_ws) &&
+       hasproperty(lu_workspace, :fast_lapack_lu_rows) &&
+       hasproperty(lu_workspace, :fast_lapack_lu_cols) &&
+       hasproperty(lu_workspace, :fast_lapack_lu_eltype)
+        rows, cols = size(A)
+        if !(lu_workspace.fast_lapack_lu_ws isa FastLapackInterface.LUWs) ||
+           lu_workspace.fast_lapack_lu_rows != rows ||
+           lu_workspace.fast_lapack_lu_cols != cols ||
+           lu_workspace.fast_lapack_lu_eltype !== eltype(A)
+            lu_workspace.fast_lapack_lu_ws = FastLapackInterface.LUWs(A)
+            lu_workspace.fast_lapack_lu_rows = rows
+            lu_workspace.fast_lapack_lu_cols = cols
+            lu_workspace.fast_lapack_lu_eltype = eltype(A)
+        end
+
+        return lu_workspace.fast_lapack_lu_ws
+    end
+
+    if hasproperty(lu_workspace, :lu_ws)
+        if !(lu_workspace.lu_ws isa FastLapackInterface.LUWs)
+            lu_workspace.lu_ws = FastLapackInterface.LUWs(A)
+        end
+        return lu_workspace.lu_ws
+    end
+
+    return FastLapackInterface.LUWs(A)
+end
+
+@inline function get_fast_qr_ws!(A::StridedMatrix{<:ℒ.BlasFloat}, qr_workspace)
+    if qr_workspace === nothing || !hasproperty(qr_workspace, :qr_ws)
+        return FastLapackInterface.QRWs(A)
+    end
+    if !(qr_workspace.qr_ws isa FastLapackInterface.QRWs)
+        qr_workspace.qr_ws = FastLapackInterface.QRWs(A)
+    end
+    return qr_workspace.qr_ws
+end
+
+@inline function get_fast_qr_orm_ws!(qr_ws::FastLapackInterface.QRWs, A::StridedMatrix{<:ℒ.BlasFloat}, C::StridedMatrix{<:ℒ.BlasFloat}, qr_workspace)
+    if qr_workspace === nothing || !hasproperty(qr_workspace, :qr_orm_ws)
+        return FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', A, C)
+    end
+    if !(qr_workspace.qr_orm_ws isa FastLapackInterface.QROrmWs)
+        qr_workspace.qr_orm_ws = FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', A, C)
+    end
+    return qr_workspace.qr_orm_ws
+end
+
+@inline function fast_left_qr_multiply_transpose!(qr_input::AbstractMatrix{T}, qr_workspace, targets::Vararg{AbstractMatrix}; use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && qr_input isa StridedMatrix{<:ℒ.BlasFloat} && all(target -> target isa StridedMatrix{<:ℒ.BlasFloat}, targets)
+        qr_ws = get_fast_qr_ws!(qr_input, qr_workspace)
+        ℒ.LAPACK.geqrf!(qr_ws, qr_input)
+
+        qr_orm_ws = get_fast_qr_orm_ws!(qr_ws, qr_input, targets[1], qr_workspace)
+        for target in targets
+            resize!(qr_orm_ws, 'L', 'T', qr_input, target)
+            ℒ.LAPACK.ormqr!(qr_orm_ws, 'L', 'T', qr_input, target)
+        end
+        return true
+    end
+    return false
+end
+
+@inline function get_fast_qz_ws!(A::StridedMatrix{R}, qz_workspace) where {R <: Union{Float32, Float64}}
+    if qz_workspace === nothing || !hasproperty(qz_workspace, :qz_ws)
+        return FastLapackInterface.GeneralizedSchurWs(A)
+    end
+    if !(qz_workspace.qz_ws isa FastLapackInterface.GeneralizedSchurWs{R})
+        qz_workspace.qz_ws = FastLapackInterface.GeneralizedSchurWs(A)
+    end
+    return qz_workspace.qz_ws
+end
+
+@inline function fast_qz_ordschur!(D::AbstractMatrix{R}, E::AbstractMatrix{R}, qz_workspace; criterium::R = one(R), use_fast_lapack_interface::Bool = true) where {R <: Real}
+    local schur_S, schur_T, schur_Z
+
+    if use_fast_lapack_interface && R <: Union{Float32, Float64} && D isa StridedMatrix{R} && E isa StridedMatrix{R}
+        qz_ws = get_fast_qz_ws!(D, qz_workspace)
+        schur_S, schur_T, _, _, _, schur_Z = ℒ.LAPACK.gges!(qz_ws, 'N', 'V', D, E; select = FastLapackInterface.id, criterium = criterium)
+        return schur_S, schur_T, schur_Z
+    end
+
+    schdcmp = ℒ.schur!(D, E)
+    eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
+    ℒ.ordschur!(schdcmp, eigenselect)
+
+    schur_Z = schdcmp.Z
+    schur_S = schdcmp.S
+    schur_T = schdcmp.T
+
+    return schur_S, schur_T, schur_Z
+end
+
+@inline function fast_lu!(A::AbstractMatrix{T}; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    return fast_lu!(A, nothing; check = check, use_fast_lapack_interface = use_fast_lapack_interface)
+end
+
+@inline function fast_lu!(A::AbstractMatrix{T}, lu_workspace; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && A isa StridedMatrix{<:ℒ.BlasFloat}
+        lu_ws = get_fast_lu_ws!(A, lu_workspace)
+        _, ipiv, info = ℒ.LAPACK.getrf!(lu_ws, A)
+        return fast_lu_from_getrf!(A, ipiv, info; check = check)
+    end
+    return ℒ.lu!(A, check = check)
+end
+
+@inline function fast_lu(A::AbstractMatrix{T}; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    return fast_lu(A, nothing; check = check, use_fast_lapack_interface = use_fast_lapack_interface)
+end
+
+@inline function fast_lu(A::AbstractMatrix{T}, lu_workspace; check::Bool = false, use_fast_lapack_interface::Bool = true) where {T <: Number}
+    if use_fast_lapack_interface && A isa StridedMatrix{<:ℒ.BlasFloat}
+        A_fac = copy(A)
+        lu_ws = get_fast_lu_ws!(A_fac, lu_workspace)
+        _, ipiv, info = ℒ.LAPACK.getrf!(lu_ws, A_fac)
+        return fast_lu_from_getrf!(A_fac, ipiv, info; check = check)
+    end
+    return ℒ.lu(A, check = check)
+end
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -4018,7 +4155,7 @@ function solve_steady_state!(𝓂::ℳ,
     if !(𝓂.functions.NSSS_custom isa Function)
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
-        if solution_error > opts.tol.NSSS_acceptance_tol
+        if solution_error > opts.tol.NSSS_acceptance_tol && ss_solver_parameters_maxtime > 0
             found_solution = find_SS_solver_parameters!(Val(ss_solver_parameters_algorithm), 𝓂, tol = opts.tol, verbosity = 0, maxtime = ss_solver_parameters_maxtime, maxiter = 1000000000)
             
             if found_solution
@@ -4154,6 +4291,10 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 
     if solution_error < tol.NSSS_acceptance_tol
         push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
+        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            𝓂.constants.post_complete_parameters;
+            nsss_fastest_solver_parameter_idx = length(DEFAULT_SOLVER_PARAMETERS),
+        )
         return true
     else 
         return false
@@ -4161,19 +4302,24 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 end
 
 
-function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Tolerances())
-    best_param = DEFAULT_SOLVER_PARAMETERS[1]
+function select_fastest_SS_solver_parameters!(𝓂::ℳ;
+                                                tol::Tolerances = Tolerances(),
+                                                n_samples::Int = 100)
+    @assert n_samples > 1 "n_samples must be greater than 1."
+    @assert n_samples ÷ 2 >= 1 "n_samples must be at least 2."
 
-    best_time = Inf
+    best_idx = 1
+    best_score = Inf
 
     solved = false
 
     solved_NSSS = 𝓂.caches.solver_cache[end]
 
-    for p in DEFAULT_SOLVER_PARAMETERS
-        total_time = 0.0
+    for (i_param, p) in enumerate(DEFAULT_SOLVER_PARAMETERS)
+        times = Vector{Float64}(undef, n_samples)
+        valid = true
         
-        for _ in 1:100
+        for i in 1:n_samples
             start_time = time()
 
             while length(𝓂.caches.solver_cache) > 1
@@ -4184,20 +4330,25 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
             elapsed_time = time() - start_time
 
-            total_time += elapsed_time
-            
+            times[i] = elapsed_time
+
             if solution_error > tol.NSSS_acceptance_tol
-                total_time = 1e7
+                valid = false
                 break
             end
         end
 
-        if total_time < best_time
-            best_time = total_time
-            best_param = p
-        end
+        if valid
+            sort!(times)
+            score = times[n_samples ÷ 2]
 
-        solved = true
+            if !isfinite(best_score) || score < best_score
+                best_score = score
+                best_idx = i_param
+            end
+
+            solved = true
+        end
     end
 
     while length(𝓂.caches.solver_cache) > 1
@@ -4207,7 +4358,29 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
     push!(𝓂.caches.solver_cache, solved_NSSS)
 
     if solved
-        pushfirst!(DEFAULT_SOLVER_PARAMETERS, best_param)
+        𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+            𝓂.constants.post_complete_parameters;
+            nsss_fastest_solver_parameter_idx = best_idx,
+        )
+    end
+end
+
+function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}
+    @inbounds for i in 1:n_guess
+        if use_ssv
+            v = clamp(ssv_val, lbs[i], ubs[i])
+            init_buf[i] = ubs[i] <= one(T) ? T(0.1) : v
+        else
+            g = guess[i]
+            v = g < T(1e12) ? g : sv_val
+            init_buf[i] = clamp(v, lbs[i], ubs[i])
+        end
+    end
+end
+
+function update_sol_values!(sol_values::AbstractVector{T}, sol_new::AbstractVector{T}, lbs::AbstractVector{T}, ubs::AbstractVector{T}, n_guess::Int) where {T}
+    @inbounds for i in 1:n_guess
+        sol_values[i] = clamp(sol_new[i], lbs[i], ubs[i])
     end
 end
 
@@ -4227,15 +4400,34 @@ function solve_ss(SS_optimizer::Function,
                     solver_params::solver_parameters,
                     extended_problem::Bool,
                     separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
-    xtol = tol.NSSS_xtol
     ftol = tol.NSSS_ftol
-    rel_xtol = tol.NSSS_rel_xtol
+    n_guess = length(guess)
+    init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
+    use_ssv = separate_starting_value isa Float64
+    ssv_val = use_ssv ? T(separate_starting_value) : zero(T)
+    sv_val = T(solver_params.starting_value)
+    update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
 
-    if separate_starting_value isa Float64
-        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
-        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    if !extended_problem
+        lb_core = SS_solve_block.ss_problem.workspace.l_bounds
+        ub_core = SS_solve_block.ss_problem.workspace.u_bounds
+        copyto!(lb_core, 1, lbs, 1, n_guess)
+        copyto!(ub_core, 1, ubs, 1, n_guess)
+    end
+
+    optimizer_init = if extended_problem
+        ext_init = SS_solve_block.extended_ss_problem.workspace.best_previous_guess
+        @inbounds begin
+            for i in 1:n_guess
+                ext_init[i] = init_buf[i]
+            end
+            for i in 1:length(closest_parameters_and_solved_vars)
+                ext_init[n_guess + i] = closest_parameters_and_solved_vars[i]
+            end
+        end
+        ext_init
     else
-        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+        init_buf
     end
 
     sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
@@ -4254,48 +4446,56 @@ function solve_ss(SS_optimizer::Function,
     # end
 
     # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
-                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        optimizer_init,
                                         parameters_and_solved_vars,
-                                        extended_problem ? lbs : lbs[1:length(guess)],
-                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        extended_problem ? lbs : SS_solve_block.ss_problem.workspace.l_bounds,
+                                        extended_problem ? ubs : SS_solve_block.ss_problem.workspace.u_bounds,
                                         solver_params,
                                         tol = tol   )
-
-    sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
     sol_minimum = info[4] # isnan(sum(abs, info[4])) ? Inf : ℒ.norm(info[4])
     
     rel_sol_minimum = info[3]
-
-    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+    
+    sol_values = SS_solve_block.ss_problem.workspace.best_current_guess
+    if isnothing(sol_new_tmp)
+        update_sol_values!(sol_values, init_buf, lbs, ubs, n_guess)
+    else
+        update_sol_values!(sol_values, sol_new_tmp, lbs, ubs, n_guess)
+    end
 
     total_iters[1] += info[1]
     total_iters[2] += info[2]
 
-    extended_problem_str = extended_problem ? "(extended problem) " : ""
-
-    if separate_starting_value isa Bool
-        starting_value_str = ""
-    else
-        starting_value_str = "and starting point: $separate_starting_value"
-    end
-
-    if all(guess .< 1e12) && separate_starting_value isa Bool
-        any_guess_str = "previous solution, "
-    elseif any(guess .< 1e12) && separate_starting_value isa Bool
-        any_guess_str = "provided guess, "
-    else
-        any_guess_str = ""
-    end
-
-    # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
-
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
-    
-    max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
-
     if sol_minimum < ftol && verbose
-            println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+        extended_problem_str = extended_problem ? "(extended problem) " : ""
+
+        if separate_starting_value isa Bool
+            starting_value_str = ""
+        else
+            starting_value_str = "and starting point: $separate_starting_value"
+        end
+
+        has_small_guess = false
+        all_small_guess = true
+        @inbounds for i in eachindex(guess)
+            is_small = guess[i] < T(1e12)
+            has_small_guess |= is_small
+            all_small_guess &= is_small
+        end
+
+        if all_small_guess && separate_starting_value isa Bool
+            any_guess_str = "previous solution, "
+        elseif has_small_guess && separate_starting_value isa Bool
+            any_guess_str = "provided guess, "
+        else
+            any_guess_str = ""
+        end
+
+        SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
+        max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
+
+        println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
     
     return sol_values, total_iters, rel_sol_minimum, sol_minimum
@@ -4312,6 +4512,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                         lbs::Vector{T}, 
                         ubs::Vector{T},
                         parameters::Vector{solver_parameters},
+                        preferred_solver_parameter_idx::Int,
                         fail_fast_solvers_only::Bool,
                         cold_start::Bool,
                         verbose::Bool ;
@@ -4351,14 +4552,21 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
 
-            ∇̂ = ℒ.lu(∇, check = false)
-            
-            if ℒ.issuccess(∇̂)
-                guess_update = ∇̂ \ res
+            sol_cache = SS_solve_block.ss_problem.workspace.lu_buffer
+            # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
+            sol_cache.A = ∇
+            # copy!(sol_cache.A, ∇)
+            sol_cache.b = res
+            sol = 𝒮.solve!(sol_cache)
 
-                new_guess = guess - guess_update
-
-                rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+            if 𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default
+                guess_update = sol_cache.u
+                if has_nonfinite(guess_update)
+                    rel_sol_minimum = 1.0
+                else
+                    new_guess = guess - guess_update
+                    rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+                end
             else
                 rel_sol_minimum = 1.0
             end
@@ -4378,16 +4586,20 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     end
 
     total_iters = [0,0]
+    n_solver_parameters = length(parameters)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
 
     SS_optimizer = levenberg_marquardt
+    ext_candidates = (true, false)
+    algo_candidates = (newton, levenberg_marquardt)
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = (fail_fast_solvers_only ? [false] : Any[false, 1.206, 1.5, 0.7688, 2.0, 0.897])
-
+        start_vals = fail_fast_solvers_only ? (false,) : (false, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
-            for p in parameters
-                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+            for i in 1:n_solver_parameters
+                p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
+                for ext in ext_candidates # try first the system where values and parameters can vary, next try the system where only values can vary
                     for s in start_vals
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
@@ -4409,14 +4621,24 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         end
     else !cold_start
 
-        pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
-        
-        for p in pars #[1:3] # take unique because some parameters might appear more than once
-            start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
-            for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
-                # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                for algo in [newton, levenberg_marquardt]
-                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
+        start_vals = Vector{Union{Bool, T}}(undef, 7)
+        start_vals[1] = false
+        start_vals[3] = T(1.206)
+        start_vals[4] = T(1.5)
+        start_vals[5] = T(0.7688)
+        start_vals[6] = T(2.0)
+        start_vals[7] = T(0.897)
+
+        s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
+        n_parameter_iters = fail_fast_solvers_only ? 1 : n_solver_parameters
+        fail_fast_parameter_idx = n_solver_parameters == 1 ? 1 : (n_solver_parameters <= preferred_solver_parameter_idx ? n_solver_parameters - 1 : n_solver_parameters)
+
+        for i in 1:n_parameter_iters
+            p = parameters[fail_fast_solvers_only ? fail_fast_parameter_idx : (i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i))]
+            start_vals[2] = T(p.starting_value)
+            for s in s_candidates
+                for algo in algo_candidates
+                    if sol_minimum > tol.NSSS_acceptance_tol || !isfinite(sol_minimum) # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
@@ -4437,7 +4659,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                 # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
                                 println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
                             end
-                        end                      
+                        end
                     end
                 end
             end
@@ -4909,7 +5131,7 @@ function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::
 end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
-    avoid_solve, symbolic = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
+    avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
 
     if !𝓂.constants.post_parameters_macro.precompile
         start_time = time()
@@ -4928,7 +5150,7 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
 
         write_ss_check_function!(𝓂)
 
-        write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+        write_steady_state_solver_function!(𝓂, symbolic_enabled, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
         𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
         
@@ -4977,7 +5199,7 @@ function solve!(𝓂::ℳ;
     
     if 𝓂.functions.functions_written &&
         isnothing(𝓂.functions.NSSS_custom) &&
-        isempty(𝓂.NSSS.solve_steps)
+        𝓂.constants.nsss_solver.n_steps == 0
 
         set_up_steady_state_solver!(𝓂,
                                     verbose = opts.verbose,
@@ -6386,8 +6608,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         )
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
         
-        # Clear the NSSS_solver_cache since parameter order/count has changed
-        # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
+        # Clear NSSS solver cache because parameter order/count changed.
+        # It will be rebuilt during the next NSSS setup.
         while length(𝓂.caches.solver_cache) > 0
             pop!(𝓂.caches.solver_cache)
         end
@@ -6439,8 +6661,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if isnothing(𝓂.NSSS.dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
-                # if !isnothing(𝓂.NSSS.dependencies) && collect(keys(parameters))[i] ∈ 𝓂.NSSS.dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false
+                if isnothing(𝓂.constants.post_complete_parameters.nsss_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.constants.post_complete_parameters.nsss_dependencies[end][2] && 𝓂.caches.outdated.non_stochastic_steady_state == false)
                     𝓂.caches.outdated.non_stochastic_steady_state = true
                 end
                 
@@ -6476,8 +6697,9 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     end
 
     bounds_broken = false
+    parameters_dict = Dict(𝓂.constants.post_complete_parameters.parameters .=> parameters)
 
-    for (par,val) in Dict(𝓂.constants.post_complete_parameters.parameters .=> parameters)
+    for (par, val) in parameters_dict
         if haskey(𝓂.constants.post_parameters_macro.bounds,par)
             if val > 𝓂.constants.post_parameters_macro.bounds[par][2]
                 @warn("Calibration is out of bounds for $par < $(𝓂.constants.post_parameters_macro.bounds[par][2])\t parameter value: $val")
@@ -7996,7 +8218,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
+        preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
+        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
     end
 
     # Update counters

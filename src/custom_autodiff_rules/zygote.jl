@@ -167,7 +167,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
+        ∂x̂ = fast_lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
             return x, false
@@ -245,7 +245,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
         
-        ∂x̂ = ℒ.lu!(∂x, check = false)
+        ∂x̂ = fast_lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
             return x, false
@@ -380,7 +380,9 @@ function rrule(::typeof(get_NSSS_and_parameters),
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
+        preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
+        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
     end
 
     # end # timeit_debug
@@ -436,7 +438,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
 
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
+    ∂SS_equations_∂SS_and_pars_lu = fast_lu(∂SS_equations_∂SS_and_pars, 𝓂.workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -495,11 +497,19 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
-    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
+    qr_input = ∇₀[:,T.present_only_idx]
+    if R <: Union{Float32, Float64}
+        A₊ = copy(∇₊)
+        A₀ = copy(∇₀)
+        A₋ = copy(∇₋)
+        fast_left_qr_multiply_transpose!(qr_input, qme_ws, A₊, A₀, A₋; use_fast_lapack_interface = opts.use_fast_lapack_interface)
+    else
+        Q    = ℒ.qr!(qr_input)
 
-    A₊ = Q.Q' * ∇₊
-    A₀ = Q.Q' * ∇₀
-    A₋ = Q.Q' * ∇₋
+        A₊ = Q.Q' * ∇₊
+        A₀ = Q.Q' * ∇₀
+        A₋ = Q.Q' * ∇₋
+    end
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
@@ -516,7 +526,8 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -540,7 +551,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
+    Ā̂₀ᵤ = fast_lu!(Ā₀ᵤ, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -568,7 +579,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
     ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future, 𝐒̂ᵗ, 1, 1)
 
-    C = ℒ.lu!(∇₀, check = false)
+    C = fast_lu!(∇₀, qme_ws, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
     
     if !ℒ.issuccess(C)
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -671,7 +682,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    ∇₁₊𝐒₁➕∇₁₀lu = fast_lu(∇₁₊𝐒₁➕∇₁₀, workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
@@ -967,7 +978,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    ∇₁₊𝐒₁➕∇₁₀lu = fast_lu(∇₁₊𝐒₁➕∇₁₀, workspaces, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
@@ -1736,7 +1747,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     if T.nExo == length(observables)
         logabsdets = ℒ.logabsdet(jac)[1] #  ./ precision_factor
 
-        jacdecomp = ℒ.lu(jac, check = false)
+        jacdecomp = fast_lu(jac, check = false, use_fast_lapack_interface = opts.use_fast_lapack_interface)
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
@@ -3896,7 +3907,7 @@ function rrule(::typeof(run_kalman_iterations),
         # F[t] .= CP[t] * C'
         ℒ.mul!(F, CP[t], C')
     
-        luF = RF.lu(F, check = false)
+        luF = fast_lu(F, check = false)
     
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end

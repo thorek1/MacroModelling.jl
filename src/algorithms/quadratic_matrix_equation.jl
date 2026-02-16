@@ -15,6 +15,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         workspace::qme_workspace{R,S};
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        use_fast_lapack_interface::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where {R <: Real, S <: Real}
@@ -46,6 +47,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         constants,
                                                         workspace; 
                                                         initial_guess = initial_guess,
+                                                        use_fast_lapack_interface = use_fast_lapack_interface,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
@@ -59,6 +61,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
+                                                                use_fast_lapack_interface = use_fast_lapack_interface,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -70,6 +73,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
+                                                                use_fast_lapack_interface = use_fast_lapack_interface,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -90,6 +94,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fast_lapack_interface::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
@@ -132,20 +137,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # @timeit_debug timer "Schur decomposition" begin
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    schdcmp = try
-        ℒ.schur!(D, E)
-    catch
-        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
-    end
-
-    eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
-
-    # end # timeit_debug
-    # @timeit_debug timer "Reorder Schur decomposition" begin
-
+    local schur_Z, schur_S, schur_T
     try
-        ℒ.ordschur!(schdcmp, eigenselect)
+        schur_S, schur_T, schur_Z = fast_qz_ordschur!(D, E, workspace; criterium = one(R), use_fast_lapack_interface = use_fast_lapack_interface)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
@@ -154,11 +148,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Postprocess" begin
 
-    Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-    Z₁₁ = schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    Z₂₁ = schur_Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
+    Z₁₁ = schur_Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-    S₁₁    = schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-    T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    S₁₁    = schur_S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    T₁₁    = schur_T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
     # @timeit_debug timer "Matrix inversions" begin
 
@@ -223,6 +217,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace{R,S}; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fast_lapack_interface::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
@@ -263,15 +258,29 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
-    B̂ = ℒ.lu!(B̄, check = false)
+    if use_fast_lapack_interface && R <: Union{Float32, Float64}
+        lu_ws = workspace.lu_ws isa FastLapackInterface.LUWs ? workspace.lu_ws : (workspace.lu_ws = FastLapackInterface.LUWs(B̄))
+        _, _, info = ℒ.LAPACK.getrf!(lu_ws, B̄)
+        if info != 0
+            return A, 0, 1.0
+        end
 
-    if !ℒ.issuccess(B̂)
-        return A, 0, 1.0
+        # Compute initial values X, Y, E, F
+        copy!(E, C)
+        ℒ.LAPACK.getrs!(lu_ws, 'N', B̄, E)
+        copy!(F, A)
+        ℒ.LAPACK.getrs!(lu_ws, 'N', B̄, F)
+    else
+        B̂ = ℒ.lu!(B̄, check = false)
+
+        if !ℒ.issuccess(B̂)
+            return A, 0, 1.0
+        end
+
+        # Compute initial values X, Y, E, F
+        ℒ.ldiv!(E, B̂, C)
+        ℒ.ldiv!(F, B̂, A)
     end
-
-    # Compute initial values X, Y, E, F
-    ℒ.ldiv!(E, B̂, C)
-    ℒ.ldiv!(F, B̂, A)
 
     # X = -E - initial_guess (in-place)
     copy!(X, E)
@@ -305,18 +314,34 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert EI" begin
 
-        fEI = ℒ.lu!(temp1, check = false)
+        if R <: Union{Float32, Float64}
+            lu_ws_ei = workspace.lu_ws isa FastLapackInterface.LUWs ? workspace.lu_ws : (workspace.lu_ws = FastLapackInterface.LUWs(temp1))
+            _, _, info = ℒ.LAPACK.getrf!(lu_ws_ei, temp1)
+            if info != 0
+                return A, iter, 1.0
+            end
 
-        if !ℒ.issuccess(fEI)
-            return A, iter, 1.0
+            # end # timeit_debug
+            # @timeit_debug timer "Compute E" begin
+
+            # Compute E = E * EI * E
+            copy!(temp3, E)
+            ℒ.LAPACK.getrs!(lu_ws_ei, 'N', temp1, temp3)
+            ℒ.mul!(E_new, E, temp3)
+        else
+            fEI = ℒ.lu!(temp1, check = false)
+
+            if !ℒ.issuccess(fEI)
+                return A, iter, 1.0
+            end
+
+            # end # timeit_debug
+            # @timeit_debug timer "Compute E" begin
+
+            # Compute E = E * EI * E
+            ℒ.ldiv!(temp3, fEI, E)
+            ℒ.mul!(E_new, E, temp3)
         end
-
-        # end # timeit_debug
-        # @timeit_debug timer "Compute E" begin
-
-        # Compute E = E * EI * E
-        ℒ.ldiv!(temp3, fEI, E)
-        ℒ.mul!(E_new, E, temp3)
         # E_new = E / fEI * E
 
         # end # timeit_debug
@@ -332,18 +357,34 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert FI" begin
 
-        fFI = ℒ.lu!(temp2, check = false)
-        
-        if !ℒ.issuccess(fFI)
-            return A, iter, 1.0
-        end
+        if R <: Union{Float32, Float64}
+            lu_ws_fi = workspace.lu_ws_alt isa FastLapackInterface.LUWs ? workspace.lu_ws_alt : (workspace.lu_ws_alt = FastLapackInterface.LUWs(temp2))
+            _, _, info = ℒ.LAPACK.getrf!(lu_ws_fi, temp2)
+            if info != 0
+                return A, iter, 1.0
+            end
 
-        # end # timeit_debug
-        # @timeit_debug timer "Compute F" begin
-        
-        # Compute F = F * FI * F
-        ℒ.ldiv!(temp3, fFI, F)
-        ℒ.mul!(F_new, F, temp3)
+            # end # timeit_debug
+            # @timeit_debug timer "Compute F" begin
+            
+            # Compute F = F * FI * F
+            copy!(temp3, F)
+            ℒ.LAPACK.getrs!(lu_ws_fi, 'N', temp2, temp3)
+            ℒ.mul!(F_new, F, temp3)
+        else
+            fFI = ℒ.lu!(temp2, check = false)
+            
+            if !ℒ.issuccess(fFI)
+                return A, iter, 1.0
+            end
+
+            # end # timeit_debug
+            # @timeit_debug timer "Compute F" begin
+            
+            # Compute F = F * FI * F
+            ℒ.ldiv!(temp3, fFI, F)
+            ℒ.mul!(F_new, F, temp3)
+        end
         # F_new = F / fFI * F
 
         # end # timeit_debug
@@ -351,7 +392,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
         # Compute X_new = X + F * FI * X * E
         ℒ.mul!(temp3, X, E)
-        ℒ.ldiv!(fFI, temp3)
+        if R <: Union{Float32, Float64}
+            ℒ.LAPACK.getrs!(lu_ws_fi, 'N', temp2, temp3)
+        else
+            ℒ.ldiv!(fFI, temp3)
+        end
         ℒ.mul!(X_new, F, temp3)
         # X_new = F / fFI * X * E
         if i > 5 || guess_provided 
@@ -366,7 +411,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         # Compute Y_new = Y + E * EI * Y * F
         ℒ.mul!(X, Y, F) # use X as temporary storage
-        ℒ.ldiv!(fEI, X)
+        if R <: Union{Float32, Float64}
+            ℒ.LAPACK.getrs!(lu_ws_ei, 'N', temp1, X)
+        else
+            ℒ.ldiv!(fEI, X)
+        end
         ℒ.mul!(Y_new, E, X)
         # Y_new = E / fEI * Y * F
         if i > 5 || guess_provided 

@@ -1005,17 +1005,17 @@ if test_set == "basic"
         end
 
         @test RBC_macro_switch.functions.NSSS_custom isa Function
-        @test isempty(RBC_macro_switch.NSSS.solve_steps)
+        @test RBC_macro_switch.constants.nsss_solver.n_steps == 0
 
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] > 0
         @test RBC_macro_switch.functions.NSSS_custom isa Function
-        @test isempty(RBC_macro_switch.NSSS.solve_steps)
+        @test RBC_macro_switch.constants.nsss_solver.n_steps == 0
 
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.functions.NSSS_custom)
-        @test !isempty(RBC_macro_switch.NSSS.solve_steps)
+        @test RBC_macro_switch.constants.nsss_solver.n_steps != 0
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
