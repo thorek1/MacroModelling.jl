@@ -260,7 +260,7 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = F
         zeros(T, nPfm, nPfm),                      # S₁₁
         zeros(T, nPfm, nPfm),                      # T₁₁
         zeros(T, companion_size, nPfm),            # sol
-        zeros(T, n, nComb),                        # X (n × length(comb))
+        zeros(T, n, n),                            # X (n × n)
         zeros(T, n, n),                            # temp_X2
         zeros(T, n, n),                            # AXX
         Vector{Bool}(undef, companion_size))       # eigenselect
