@@ -539,6 +539,47 @@ end
 
 
 """
+Pre-allocated workspace matrices for the schur-based quadratic matrix equation solver.
+
+The schur method solves A*X² + B*X + C = 0 by forming a companion linearization
+and computing its generalized Schur decomposition. All temporary matrices are
+pre-allocated here to avoid per-call allocations.
+
+Fields:
+- `D`, `E`: Companion form matrices (n+nMixed) × (nPfm+nFnpm), overwritten by schur!
+- `Ã₋`, `Ã₀₊`: Negated slices from C and B (need owned copies for rmul!)
+- `Ã₀₋`: Product B[:,indices_past_not_future_in_comb] * I_nPast[not_mixed_in_past_idx,:]
+- `Z₂₁`, `S₁₁`, `T₁₁`: Schur decomposition result blocks (need owned copies for lu!)
+- `sol`: Assembled solution before reordering (nPfm+nFnpm) × nPfm
+- `X`: Final QME solution n × nPfm
+- `temp_X2`: Buffer for X² in residual check
+- `AXX`: Buffer for A*X² + B*X + C residual
+- `eigenselect`: Boolean vector for eigenvalue selection
+"""
+mutable struct schur_workspace{T <: Real}
+    # Companion form matrices (overwritten by schur!)
+    D::Matrix{T}
+    E::Matrix{T}
+    # Slices that need negation (owned copies)
+    Ã₋::Matrix{T}
+    Ã₀₊::Matrix{T}
+    Ã₀₋::Matrix{T}
+    # Schur decomposition result blocks (owned copies for lu!)
+    Z₂₁::Matrix{T}
+    S₁₁::Matrix{T}
+    T₁₁::Matrix{T}
+    # Solution assembly buffers
+    sol::Matrix{T}
+    X::Matrix{T}
+    # Residual check buffers
+    temp_X2::Matrix{T}
+    AXX::Matrix{T}
+    # Eigenvalue selection
+    eigenselect::Vector{Bool}
+end
+
+
+"""
 Pre-allocated workspace matrices for the Lyapunov equation solver.
 Solves: A * X * A' + C = X using the doubling algorithm or Krylov methods.
 
@@ -1007,6 +1048,7 @@ mutable struct workspaces
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
     qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
+    schur::schur_workspace{Float64}                      # Schur-based QME solver
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
     lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
     lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
@@ -1079,6 +1121,14 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    # Schur QME cached indices and constant matrices
+    indices_past_not_future_in_comb::Vector{Int}
+    I_nPast_not_mixed::Matrix{Bool}      # I_nPast[not_mixed_in_past_idx,:]
+    Ir_past_selector::Matrix{Bool}       # Ir[past_not_future_and_mixed_in_comb,:]
+    schur_Z₊::Matrix{Bool}               # zeros(nMixed, nFuture_not_past_and_mixed)
+    schur_I₊::Matrix{Bool}               # I(nFuture_not_past_and_mixed)[mixed_in_future_idx,:]
+    schur_Z₋::Matrix{Bool}               # zeros(nMixed, nPast_not_future_and_mixed)
+    schur_I₋::Matrix{Bool}               # I_nPast[mixed_in_past_idx,:]
     nsss_dependencies::Any
     nsss_n_sol::Int
     nsss_output_indices::Vector{Int}

@@ -238,6 +238,34 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
 end
 
 """
+    Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+
+Create a pre-allocated workspace for the schur-based quadratic matrix equation solver.
+Dimensions:
+- `n` = nVars - nPresent_only (dynamic variables)
+- `nMixed` = number of mixed timing variables
+- `nPfm` = nPast_not_future_and_mixed
+- `nFnpm` = nFuture_not_past_and_mixed
+"""
+function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+    companion_size = n + nMixed
+    schur_workspace(
+        zeros(T, companion_size, companion_size),  # D
+        zeros(T, companion_size, companion_size),  # E
+        zeros(T, n, nPfm),                         # Ã₋
+        zeros(T, n, nFnpm),                        # Ã₀₊
+        zeros(T, n, nPfm),                         # Ã₀₋
+        zeros(T, nFnpm, nPfm),                     # Z₂₁
+        zeros(T, nPfm, nPfm),                      # S₁₁
+        zeros(T, nPfm, nPfm),                      # T₁₁
+        zeros(T, companion_size, nPfm),            # sol
+        zeros(T, n, nPfm),                         # X
+        zeros(T, n, n),                            # temp_X2
+        zeros(T, n, n),                            # AXX
+        Vector{Bool}(undef, companion_size))       # eigenselect
+end
+
+"""
     Lyapunov_workspace(n::Int; T::Type = Float64)
 
 Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
@@ -621,6 +649,7 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
                 Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
+                Schur_workspace(0, 0, 0, 0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
@@ -690,6 +719,13 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1,
                 zeros(Bool, 0, 0),
                 zeros(Bool, 0, 0),
+                Int[],                      # indices_past_not_future_in_comb
+                zeros(Bool, 0, 0),          # I_nPast_not_mixed
+                zeros(Bool, 0, 0),          # Ir_past_selector
+                zeros(Bool, 0, 0),          # schur_Z₊
+                zeros(Bool, 0, 0),          # schur_I₊
+                zeros(Bool, 0, 0),          # schur_Z₋
+                zeros(Bool, 0, 0),          # schur_I₋
                 nothing,
                 0,
                 Int[],
@@ -785,6 +821,13 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :indices_past_not_future_in_comb, get(p, :indices_past_not_future_in_comb, Int[])),
+        get(kwargs, :I_nPast_not_mixed, get(p, :I_nPast_not_mixed, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :Ir_past_selector, get(p, :Ir_past_selector, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :schur_Z₊, get(p, :schur_Z₊, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :schur_I₊, get(p, :schur_I₊, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :schur_Z₋, get(p, :schur_Z₋, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :schur_I₋, get(p, :schur_I₋, Matrix{Bool}(undef, 0, 0))),
         get(kwargs, :nsss_dependencies, p.nsss_dependencies),
         get(kwargs, :nsss_n_sol, p.nsss_n_sol),
         get(kwargs, :nsss_output_indices, p.nsss_output_indices),
@@ -1133,6 +1176,25 @@ function build_first_order_index_cache(T, I_nVars)
     expand_future = I_nVars[T.future_not_past_and_mixed_idx,:]
     expand_past = I_nVars[T.past_not_future_and_mixed_idx,:]
 
+    # Schur QME cached indices and constant matrices
+    indices_past_not_future_in_comb_tmp = indexin(T.past_not_future_idx, comb)
+    if any(isnothing.(indices_past_not_future_in_comb_tmp))
+        indices_past_not_future_in_comb = Int[]
+    else
+        indices_past_not_future_in_comb = Int.(indices_past_not_future_in_comb_tmp)
+    end
+
+    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast_not_mixed = Matrix{Bool}(I_nPast[T.not_mixed_in_past_idx, :])
+    Ir_past_selector = Matrix{Bool}(Ir[past_not_future_and_mixed_in_comb, :])
+    
+    schur_Z₊ = zeros(Bool, T.nMixed, T.nFuture_not_past_and_mixed)
+    I_nFuture = ℒ.I(T.nFuture_not_past_and_mixed)
+    schur_I₊ = Matrix{Bool}(I_nFuture[T.mixed_in_future_idx, :])
+    
+    schur_Z₋ = zeros(Bool, T.nMixed, T.nPast_not_future_and_mixed)
+    schur_I₋ = Matrix{Bool}(I_nPast[T.mixed_in_past_idx, :])
+
     return (
         initialized = true,
         dyn_index = dyn_index,
@@ -1146,6 +1208,13 @@ function build_first_order_index_cache(T, I_nVars)
         nabla_e_start = nabla_e_start,
         expand_future = expand_future,
         expand_past = expand_past,
+        indices_past_not_future_in_comb = indices_past_not_future_in_comb,
+        I_nPast_not_mixed = I_nPast_not_mixed,
+        Ir_past_selector = Ir_past_selector,
+        schur_Z₊ = schur_Z₊,
+        schur_I₊ = schur_I₊,
+        schur_Z₋ = schur_Z₋,
+        schur_I₋ = schur_I₋,
     )
 end
 
@@ -1174,6 +1243,13 @@ function ensure_first_order_constants!(𝓂)
             nabla_e_start = cache.nabla_e_start,
             expand_future = cache.expand_future,
             expand_past = cache.expand_past,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            I_nPast_not_mixed = cache.I_nPast_not_mixed,
+            Ir_past_selector = cache.Ir_past_selector,
+            schur_Z₊ = cache.schur_Z₊,
+            schur_I₊ = cache.schur_I₊,
+            schur_Z₋ = cache.schur_Z₋,
+            schur_I₋ = cache.schur_I₋,
         )
     end
     return constants.post_complete_parameters
@@ -1203,6 +1279,13 @@ function ensure_first_order_constants!(constants::constants)
             nabla_e_start = cache.nabla_e_start,
             expand_future = cache.expand_future,
             expand_past = cache.expand_past,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            I_nPast_not_mixed = cache.I_nPast_not_mixed,
+            Ir_past_selector = cache.Ir_past_selector,
+            schur_Z₊ = cache.schur_Z₊,
+            schur_I₊ = cache.schur_I₊,
+            schur_Z₋ = cache.schur_Z₋,
+            schur_I₋ = cache.schur_I₋,
         )
     end
     return constants.post_complete_parameters
@@ -1231,6 +1314,38 @@ function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
         workspaces.qme = Qme_workspace(n, nPast = nPast)
     end
     return workspaces.qme
+end
+
+"""
+    ensure_schur_workspace!(𝓂)
+    ensure_schur_workspace!(workspaces, n, nMixed, nPfm, nFnpm)
+
+Ensure the schur workspace is properly sized for the model.
+Dimensions are:
+- `n = nVars - nPresent_only` (dynamic variables)
+- `nMixed` (mixed timing variables)
+- `nPfm = nPast_not_future_and_mixed`
+- `nFnpm = nFuture_not_past_and_mixed`
+
+If the workspace is the wrong size, it will be reallocated.
+"""
+function ensure_schur_workspace!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    n = T.nVars - T.nPresent_only
+    nMixed = T.nMixed
+    nPfm = T.nPast_not_future_and_mixed
+    nFnpm = T.nFuture_not_past_and_mixed
+    return ensure_schur_workspace!(𝓂.workspaces, n, nMixed, nPfm, nFnpm)
+end
+
+function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
+    ws = workspaces.schur
+    companion_size = n + nMixed
+    # Check if workspace needs to be resized
+    if size(ws.D, 1) != companion_size || size(ws.X, 1) != n
+        workspaces.schur = Schur_workspace(n, nMixed, nPfm, nFnpm)
+    end
+    return workspaces.schur
 end
 
 """

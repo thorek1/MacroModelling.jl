@@ -93,45 +93,69 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    # Use cached identity matrix from workspace (Diagonal{Bool} supports indexing)
+    
     T = constants.post_model_macro
-    # @timeit_debug timer "Prepare indice" begin
-    I_nPast = workspace.I_nPast
-
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-    indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
-
-    # end # timeit_debug
-    # @timeit_debug timer "Assemble matrices" begin
-
-    Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
+    idx_constants = constants.post_complete_parameters
     
-    Ã₋ =  C[:,past_not_future_and_mixed_in_comb]
+    # Ensure schur workspace is properly sized
+    n = T.nVars - T.nPresent_only
+    nMixed = T.nMixed
+    nPfm = T.nPast_not_future_and_mixed
+    nFnpm = T.nFuture_not_past_and_mixed
     
-    Ã₀₊ =  B[:,future_not_past_and_mixed_in_comb]
-
-    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
-
-    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
-    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
+    # Get schur workspace from constants.workspaces (need to pass through from caller)
+    # For now, create locally but in future this should come from workspaces
+    schur_ws = Schur_workspace(n, nMixed, nPfm, nFnpm, T = R)
     
-    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = I_nPast[T.mixed_in_past_idx,:]
+    # Use cached indices from constants instead of recomputing
+    future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    indices_past_not_future_in_comb = idx_constants.indices_past_not_future_in_comb
     
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    # Use views for read-only slices
+    Ã₊_view = @view A[:, future_not_past_and_mixed_in_comb]
     
-    ℒ.rmul!(Ã₋,-1)
-    ℒ.rmul!(Ã₀₊,-1)
-    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
+    # Copy C and B slices that need negation into workspace buffers
+    copyto!(schur_ws.Ã₋, @view C[:, past_not_future_and_mixed_in_comb])
+    copyto!(schur_ws.Ã₀₊, @view B[:, future_not_past_and_mixed_in_comb])
     
-    # end # timeit_debug
-    # @timeit_debug timer "Schur decomposition" begin
-
-    # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
+    # Compute Ã₀₋ = B[:,indices_past_not_future_in_comb] * I_nPast[not_mixed_in_past_idx,:]
+    # Use cached constant matrix for I_nPast_not_mixed
+    ℒ.mul!(schur_ws.Ã₀₋, @view(B[:, indices_past_not_future_in_comb]), idx_constants.I_nPast_not_mixed)
+    
+    # Use cached constant matrices for zeros and identity blocks
+    Z₊ = idx_constants.schur_Z₊
+    I₊ = idx_constants.schur_I₊
+    Z₋ = idx_constants.schur_Z₋
+    I₋ = idx_constants.schur_I₋
+    
+    # Assemble D matrix in-place: D = [[Ã₀₋ Ã₊], [I₋ Z₊]]
+    D = schur_ws.D
+    # Top-left block: Ã₀₋
+    copyto!(view(D, 1:n, 1:nPfm), schur_ws.Ã₀₋)
+    # Top-right block: Ã₊
+    copyto!(view(D, 1:n, nPfm+1:nPfm+nFnpm), Ã₊_view)
+    # Bottom-left block: I₋
+    copyto!(view(D, n+1:n+nMixed, 1:nPfm), I₋)
+    # Bottom-right block: Z₊
+    copyto!(view(D, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), Z₊)
+    
+    # Negate Ã₋ and Ã₀₊ for E matrix
+    ℒ.rmul!(schur_ws.Ã₋, -1)
+    ℒ.rmul!(schur_ws.Ã₀₊, -1)
+    
+    # Assemble E matrix in-place: E = [[Ã₋ Ã₀₊], [Z₋ I₊]]
+    E = schur_ws.E
+    # Top-left block: Ã₋ (already negated)
+    copyto!(view(E, 1:n, 1:nPfm), schur_ws.Ã₋)
+    # Top-right block: Ã₀₊ (already negated)
+    copyto!(view(E, 1:n, nPfm+1:nPfm+nFnpm), schur_ws.Ã₀₊)
+    # Bottom-left block: Z₋
+    copyto!(view(E, n+1:n+nMixed, 1:nPfm), Z₋)
+    # Bottom-right block: I₊
+    copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
+    
+    # Compute generalized Schur decomposition (D and E are overwritten in-place)
     schdcmp = try
         ℒ.schur!(D, E)
     catch
@@ -139,11 +163,12 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         return A, 0, 1.0
     end
 
-    eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
+    # Eigenvalue selection: |β/α| < 1 (stable eigenvalues)
+    # Use workspace buffer and compute in-place
+    eigenselect = schur_ws.eigenselect
+    @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
 
-    # end # timeit_debug
-    # @timeit_debug timer "Reorder Schur decomposition" begin
-
+    # Reorder Schur decomposition to move stable eigenvalues first
     try
         ℒ.ordschur!(schdcmp, eigenselect)
     catch
@@ -151,68 +176,71 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         return A, 0, 1.0
     end
 
-    # end # timeit_debug
-    # @timeit_debug timer "Postprocess" begin
-
-    Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-    Z₁₁ = schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-    S₁₁    = schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-    T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-    # @timeit_debug timer "Matrix inversions" begin
-
-    Ẑ₁₁ = ℒ.lu(Z₁₁, check = false)
+    # Extract blocks from reordered Schur form (need owned copies for lu!)
+    copyto!(schur_ws.Z₂₁, @view schdcmp.Z[nPfm+1:end, 1:nPfm])
+    # Z₁₁ can be a view since it's only used as RHS in mul!
+    Z₁₁ = @view schdcmp.Z[1:nPfm, 1:nPfm]
     
-    if !ℒ.issuccess(Ẑ₁₁)
+    copyto!(schur_ws.S₁₁, @view schdcmp.S[1:nPfm, 1:nPfm])
+    copyto!(schur_ws.T₁₁, @view schdcmp.T[1:nPfm, 1:nPfm])
+
+    # LU factorization of Z₁₁ (non-mutating since Z₁₁ is a view)
+    Ẑ₁₁ = ℒ.lu(Z₁₁, check = false)
+    
+    if !ℒ.issuccess(Ẑ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
 
-    Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
+    # LU factorization of S₁₁ (mutating - overwrites workspace buffer)
+    Ŝ₁₁ = ℒ.lu!(schur_ws.S₁₁, check = false)
     
-    if !ℒ.issuccess(Ŝ₁₁)
+    if !ℒ.issuccess(Ŝ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
 
-    # end # timeit_debug
-    # @timeit_debug timer "Matrix divisions" begin
-
-    # D      = Z₂₁ / Ẑ₁₁
-    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-    D = Z₂₁
+    # Compute D = Z₂₁ / Ẑ₁₁ (overwrites Z₂₁ buffer)
+    ℒ.rdiv!(schur_ws.Z₂₁, Ẑ₁₁)
     
-    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-    ℒ.ldiv!(Ŝ₁₁, T₁₁)
-    ℒ.mul!(S₁₁, Z₁₁, T₁₁)
-    ℒ.rdiv!(S₁₁, Ẑ₁₁)
-    L = S₁₁
-
-    sol = vcat(L[T.not_mixed_in_past_idx,:], D)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    X = sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
-
-    iter = 0
-
-    AXX = A * X^2
+    # Compute L = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    # First: T₁₁ ← Ŝ₁₁ \ T₁₁ (overwrites T₁₁ buffer)
+    ℒ.ldiv!(Ŝ₁₁, schur_ws.T₁₁)
+    # Then: S₁₁ ← Z₁₁ * T₁₁ (reuse S₁₁ buffer)
+    ℒ.mul!(schur_ws.S₁₁, Z₁₁, schur_ws.T₁₁)
+    # Finally: S₁₁ ← S₁₁ / Ẑ₁₁ (overwrites S₁₁ buffer)
+    ℒ.rdiv!(schur_ws.S₁₁, Ẑ₁₁)
     
-    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+    # Assemble sol = vcat(L[not_mixed_in_past_idx,:], D) in-place
+    sol = schur_ws.sol
+    copyto!(view(sol, 1:length(T.not_mixed_in_past_idx), :), 
+            @view schur_ws.S₁₁[T.not_mixed_in_past_idx, :])
+    copyto!(view(sol, length(T.not_mixed_in_past_idx)+1:size(sol,1), :), 
+            schur_ws.Z₂₁)
     
-    ℒ.mul!(AXX, B, X, 1, 1)
-
-    ℒ.axpy!(1, C, AXX)
+    # Final reordering: X = sol[dynamic_order,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    # Use cached Ir_past_selector and mul! into workspace X buffer
+    X = schur_ws.X
+    ℒ.mul!(X, @view(sol[T.dynamic_order, :]), idx_constants.Ir_past_selector)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    # Compute residual: A*X² + B*X + C
+    # X² into temp_X2 buffer
+    ℒ.mul!(schur_ws.temp_X2, X, X)
+    # A*X² into AXX buffer
+    ℒ.mul!(schur_ws.AXX, A, schur_ws.temp_X2)
     
-    # if reached_tol > tol
-    #     println("QME: schur $reached_tol")
-    # end
-
-    return X, iter, reached_tol # schur can fail
+    AXXnorm = max(ℒ.norm(schur_ws.AXX), ℒ.norm(C))
+    
+    # AXX += B*X
+    ℒ.mul!(schur_ws.AXX, B, X, 1, 1)
+    # AXX += C
+    ℒ.axpy!(1, C, schur_ws.AXX)
+    
+    reached_tol = ℒ.norm(schur_ws.AXX) / AXXnorm
+    
+    # Return a copy of X (to avoid returning a reference to mutable workspace)
+    return copy(X), 0, reached_tol
+end
 end
 
 
