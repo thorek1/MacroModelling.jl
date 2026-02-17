@@ -1,11 +1,47 @@
 @stable default_mode = "disable" begin
 
+function factorize_qr!(qr_mat::AbstractMatrix{R},
+                       qme_ws::qme_workspace{R};
+                       use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_qr && R <: Union{Float32, Float64}
+        qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, qr_mat)
+        ℒ.LAPACK.geqrf!(qr_ws, qr_factors; resize = true)
+        return qr_factors
+    else
+        return ℒ.qr!(qr_mat)
+    end
+end
+
+function apply_qr_transpose_left!(dest::AbstractMatrix{R},
+                                  src::AbstractMatrix{R},
+                                  Q,
+                                  qme_ws::qme_workspace{R};
+                                  use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_qr && R <: Union{Float32, Float64}
+        qr_orm_ws = qme_ws.fast_qr_orm_ws
+        orm_dims = (size(Q, 1), size(Q, 2), size(src, 2))
+        if qr_orm_ws === nothing || qme_ws.fast_qr_orm_dims != orm_dims
+            qme_ws.fast_qr_orm_ws = FastLapackInterface.QROrmWs(qme_ws.fast_qr_ws, 'L', 'T', Q, src)
+            qme_ws.fast_qr_orm_dims = orm_dims
+            qr_orm_ws = qme_ws.fast_qr_orm_ws
+        end
+
+        copyto!(dest, src)
+        ℒ.LAPACK.ormqr!(qr_orm_ws, 'L', 'T', Q, dest)
+    else
+        ℒ.mul!(dest, Q.Q', src)
+    end
+
+    return nothing
+end
+
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
                                         qme_ws::qme_workspace{R,S},
                                         sylv_ws::sylvester_workspace{R,S},
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
+                                        use_fastlapack_qr::Bool = true,
                                         initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -33,16 +69,16 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
-    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
-
     A₊ = qme_ws.𝐀₊
-    ℒ.mul!(A₊, Q.Q', ∇₊)
-
     A₀ = qme_ws.𝐀₀
-    ℒ.mul!(A₀, Q.Q', ∇₀)
-
     A₋ = qme_ws.𝐀₋
-    ℒ.mul!(A₋, Q.Q', ∇₋)
+    ∇₀_present = @view ∇₀[:, T.present_only_idx]
+    Q = factorize_qr!(∇₀_present, qme_ws;
+                        use_fastlapack_qr = use_fastlapack_qr)
+
+    apply_qr_transpose_left!(A₊, ∇₊, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    apply_qr_transpose_left!(A₀, ∇₀, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    apply_qr_transpose_left!(A₋, ∇₋, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin

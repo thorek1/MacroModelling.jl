@@ -552,6 +552,12 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
     I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
     I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}   # Identity for schur & stochastic steady state (dimension nPast_not_future_and_mixed)
+
+    # FastLapackInterface QR workspaces for first-order solution
+    fast_qr_factors::Matrix{T}
+    fast_qr_ws::Union{Nothing, FastLapackInterface.QRWs{T}}
+    fast_qr_orm_ws::Union{Nothing, FastLapackInterface.QROrmWs{T}}
+    fast_qr_orm_dims::NTuple{3, Int}
 end
 
 

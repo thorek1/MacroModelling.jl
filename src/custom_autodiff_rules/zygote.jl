@@ -475,6 +475,7 @@ function rrule(::typeof(calculate_first_order_solution),
                 sylv_ws::sylvester_workspace{R,S},
                 cache::caches;
                 opts::CalculationOptions = merge_calculation_options(),
+                use_fastlapack_qr::Bool = true,
                 initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
@@ -503,16 +504,16 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
-    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
-
     A₊ = qme_ws.𝐀₊
-    ℒ.mul!(A₊, Q.Q', ∇₊)
-
     A₀ = qme_ws.𝐀₀
-    ℒ.mul!(A₀, Q.Q', ∇₀)
-
     A₋ = qme_ws.𝐀₋
-    ℒ.mul!(A₋, Q.Q', ∇₋)
+    ∇₀_present = @view ∇₀[:, T.present_only_idx]
+    Q = factorize_qr!(∇₀_present, qme_ws;
+                        use_fastlapack_qr = use_fastlapack_qr)
+
+    apply_qr_transpose_left!(A₊, ∇₊, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    apply_qr_transpose_left!(A₀, ∇₀, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    apply_qr_transpose_left!(A₋, ∇₋, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin

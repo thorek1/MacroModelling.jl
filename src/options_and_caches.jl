@@ -250,7 +250,25 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, 0, 0),  # ∇ₑ
                     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
                     ℒ.I(n),             # I_n
-                    ℒ.I(nPast))         # I_nPast
+                    ℒ.I(nPast),         # I_nPast
+                    # FastLapackInterface QR workspaces
+                    zeros(T, 0, 0),
+                    nothing,
+                    nothing,
+                    (0, 0, 0))
+end
+
+function ensure_first_order_fast_qr_workspace!(ws::qme_workspace{T}, qr_mat::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
+    if size(ws.fast_qr_factors) != size(qr_mat)
+        ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
+    end
+    copyto!(ws.fast_qr_factors, qr_mat)
+
+    if ws.fast_qr_ws === nothing
+        ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
+    end
+
+    return ws.fast_qr_factors, ws.fast_qr_ws
 end
 
 """
