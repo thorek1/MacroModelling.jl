@@ -1,10 +1,11 @@
 @stable default_mode = "disable" begin
 
 function factorize_qr!(qr_mat::AbstractMatrix{R},
-                       qme_ws::qme_workspace{R};
+                       qr_factors,
+                       qr_ws;
                        use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
     if use_fastlapack_qr && R <: Union{Float32, Float64}
-        qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, qr_mat)
+        copyto!(qr_factors, qr_mat)
         ℒ.LAPACK.geqrf!(qr_ws, qr_factors; resize = true)
         return qr_factors
     else
@@ -15,24 +16,24 @@ end
 function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   src::AbstractMatrix{R},
                                   Q,
-                                  qme_ws::qme_workspace{R};
+                                  qr_orm_ws,
+                                  qr_orm_dims::NTuple{3, Int},
+                                  qr_ws;
                                   use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
     if use_fastlapack_qr && R <: Union{Float32, Float64}
-        qr_orm_ws = qme_ws.fast_qr_orm_ws
         orm_dims = (size(Q, 1), size(Q, 2), size(src, 2))
-        if qr_orm_ws === nothing || qme_ws.fast_qr_orm_dims != orm_dims
-            qme_ws.fast_qr_orm_ws = FastLapackInterface.QROrmWs(qme_ws.fast_qr_ws, 'L', 'T', Q, src)
-            qme_ws.fast_qr_orm_dims = orm_dims
-            qr_orm_ws = qme_ws.fast_qr_orm_ws
+        if qr_orm_ws === nothing || qr_orm_dims != orm_dims
+            qr_orm_ws = FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', Q, src)
+            qr_orm_dims = orm_dims
         end
 
         copyto!(dest, src)
         ℒ.LAPACK.ormqr!(qr_orm_ws, 'L', 'T', Q, dest)
+        return qr_orm_ws, qr_orm_dims
     else
         ℒ.mul!(dest, Q.Q', src)
+        return qr_orm_ws, qr_orm_dims
     end
-
-    return nothing
 end
 
 function calculate_first_order_solution(∇₁::Matrix{R},
@@ -73,12 +74,25 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
-    Q = factorize_qr!(∇₀_present, qme_ws;
+    qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
+    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
                         use_fastlapack_qr = use_fastlapack_qr)
 
-    apply_qr_transpose_left!(A₊, ∇₊, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
-    apply_qr_transpose_left!(A₀, ∇₀, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
-    apply_qr_transpose_left!(A₋, ∇₋, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,
+                                                                                        qme_ws.fast_qr_orm_ws_plus,
+                                                                                        qme_ws.fast_qr_orm_dims_plus,
+                                                                                        qr_ws;
+                                                                                        use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,
+                                                                                        qme_ws.fast_qr_orm_ws_zero,
+                                                                                        qme_ws.fast_qr_orm_dims_zero,
+                                                                                        qr_ws;
+                                                                                        use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,
+                                                                                           qme_ws.fast_qr_orm_ws_minus,
+                                                                                           qme_ws.fast_qr_orm_dims_minus,
+                                                                                           qr_ws;
+                                                                                           use_fastlapack_qr = use_fastlapack_qr)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
@@ -90,7 +104,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     copyto!(Ã₀, @view(A₀[dynIndex, comb]))
 
     Ã₋ = qme_ws.𝐀̃₋
-    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), Ir[past_not_future_and_mixed_in_comb,:])
+    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), @view(Ir[past_not_future_and_mixed_in_comb,:]))
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin

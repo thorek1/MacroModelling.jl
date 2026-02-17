@@ -255,6 +255,10 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, 0, 0),
                     nothing,
                     nothing,
+                    (0, 0, 0),
+                    nothing,
+                    (0, 0, 0),
+                    nothing,
                     (0, 0, 0))
 end
 

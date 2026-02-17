@@ -508,12 +508,25 @@ function rrule(::typeof(calculate_first_order_solution),
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
-    Q = factorize_qr!(∇₀_present, qme_ws;
+    qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
+    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
                         use_fastlapack_qr = use_fastlapack_qr)
 
-    apply_qr_transpose_left!(A₊, ∇₊, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
-    apply_qr_transpose_left!(A₀, ∇₀, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
-    apply_qr_transpose_left!(A₋, ∇₋, Q, qme_ws; use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,
+                                                                                        qme_ws.fast_qr_orm_ws_plus,
+                                                                                        qme_ws.fast_qr_orm_dims_plus,
+                                                                                        qr_ws;
+                                                                                        use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,
+                                                                                        qme_ws.fast_qr_orm_ws_zero,
+                                                                                        qme_ws.fast_qr_orm_dims_zero,
+                                                                                        qr_ws;
+                                                                                        use_fastlapack_qr = use_fastlapack_qr)
+    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,
+                                                                                           qme_ws.fast_qr_orm_ws_minus,
+                                                                                           qme_ws.fast_qr_orm_dims_minus,
+                                                                                           qr_ws;
+                                                                                           use_fastlapack_qr = use_fastlapack_qr)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin

@@ -556,8 +556,12 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     # FastLapackInterface QR workspaces for first-order solution
     fast_qr_factors::Matrix{T}
     fast_qr_ws::Union{Nothing, FastLapackInterface.QRWs{T}}
-    fast_qr_orm_ws::Union{Nothing, FastLapackInterface.QROrmWs{T}}
-    fast_qr_orm_dims::NTuple{3, Int}
+    fast_qr_orm_ws_plus::Union{Nothing, FastLapackInterface.QROrmWs{T}}
+    fast_qr_orm_dims_plus::NTuple{3, Int}
+    fast_qr_orm_ws_zero::Union{Nothing, FastLapackInterface.QROrmWs{T}}
+    fast_qr_orm_dims_zero::NTuple{3, Int}
+    fast_qr_orm_ws_minus::Union{Nothing, FastLapackInterface.QROrmWs{T}}
+    fast_qr_orm_dims_minus::NTuple{3, Int}
 end
 
 
