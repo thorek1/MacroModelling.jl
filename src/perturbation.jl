@@ -24,9 +24,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
 
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₀ = qme_ws.∇₀
+    copyto!(∇₀, @view(∇₁[:,idx_constants.nabla_zero_cols]))
     ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇ₑ = qme_ws.∇ₑ
+    copyto!(∇ₑ, @view(∇₁[:,idx_constants.nabla_e_start:end]))
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin

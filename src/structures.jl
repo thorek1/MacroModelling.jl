@@ -546,6 +546,8 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     𝐀̃₀ᵤ::Matrix{T}                   # Ã₀ᵤ
     𝐀₋ᵤ::Matrix{T}                    # A₋ᵤ
     𝐀::Matrix{T}                      # A
+    ∇₀::Matrix{T}                      # copy of ∇₀ block (mutable workspace buffer)
+    ∇ₑ::Matrix{T}                      # copy of ∇ₑ block (mutable workspace buffer)
     
     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
     I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)

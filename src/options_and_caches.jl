@@ -246,6 +246,8 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, 0, 0),  # 𝐀̃₀ᵤ
                     zeros(T, 0, 0),  # 𝐀₋ᵤ
                     zeros(T, 0, 0),  # 𝐀
+                    zeros(T, 0, 0),  # ∇₀
+                    zeros(T, 0, 0),  # ∇ₑ
                     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
                     ℒ.I(n),             # I_n
                     ℒ.I(nPast))         # I_nPast
@@ -1354,6 +1356,7 @@ function ensure_first_order_qme_buffers!(ws::qme_workspace{R,S}, T, n_dyn::Int, 
     n = T.nVars
     n₊ = T.nFuture_not_past_and_mixed
     n₋ = T.nPast_not_future_and_mixed
+    nₑ = T.nExo
     nᵤ = T.nPresent_only
     n₀ᵤ = length(T.present_but_not_only_idx)
 
@@ -1373,6 +1376,8 @@ function ensure_first_order_qme_buffers!(ws::qme_workspace{R,S}, T, n_dyn::Int, 
     size(ws.𝐧ₚ₋) == (nᵤ, n₋) || (ws.𝐧ₚ₋ = zeros(R, nᵤ, n₋))
     size(ws.𝐌) == (n₊, n) || (ws.𝐌 = zeros(R, n₊, n))
     size(ws.𝐀) == (n, n₋) || (ws.𝐀 = zeros(R, n, n₋))
+    size(ws.∇₀) == (n, n) || (ws.∇₀ = zeros(R, n, n))
+    size(ws.∇ₑ) == (n, nₑ) || (ws.∇ₑ = zeros(R, n, nₑ))
 
     return ws
 end
