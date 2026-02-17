@@ -160,7 +160,6 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if cache.qme_solution isa Matrix{R} && size(cache.qme_solution) == size(sol)
         copyto!(cache.qme_solution, sol)
-        sol = cache.qme_solution
     else
         cache.qme_solution = sol
     end
@@ -295,13 +294,11 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     if solved
         if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
             copyto!(cache.second_order_solution, 𝐒₂)
-            𝐒₂ = cache.second_order_solution
         elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
                size(cache.second_order_solution) == size(𝐒₂) &&
                cache.second_order_solution.colptr == 𝐒₂.colptr &&
                cache.second_order_solution.rowval == 𝐒₂.rowval
             copyto!(cache.second_order_solution.nzval, 𝐒₂.nzval)
-            𝐒₂ = cache.second_order_solution
         else
             cache.second_order_solution = 𝐒₂
         end
@@ -555,13 +552,11 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     if solved
         if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
             copyto!(cache.third_order_solution, 𝐒₃)
-            𝐒₃ = cache.third_order_solution
         elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
                size(cache.third_order_solution) == size(𝐒₃) &&
                cache.third_order_solution.colptr == 𝐒₃.colptr &&
                cache.third_order_solution.rowval == 𝐒₃.rowval
             copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
-            𝐒₃ = cache.third_order_solution
         else
             cache.third_order_solution = 𝐒₃
         end
