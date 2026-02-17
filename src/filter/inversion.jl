@@ -1442,10 +1442,10 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts,
-                                                        cache = 𝓂.caches)
+                                                        opts = opts)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 

@@ -1100,10 +1100,10 @@ function get_irf(𝓂::ℳ,
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws;
+                                                            sylv_ws,
+                                                            𝓂.caches;
                                                             opts = opts,
-                                                            initial_guess = 𝓂.caches.qme_solution,
-                                                            cache = 𝓂.caches)
+                                                            initial_guess = 𝓂.caches.qme_solution)
     
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1966,10 +1966,10 @@ function get_solution(𝓂::ℳ,
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        cache = 𝓂.caches)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1986,10 +1986,9 @@ function get_solution(𝓂::ℳ,
     if algorithm in [:second_order, :pruned_second_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts,
-                                                    cache = 𝓂.caches)
+                                opts = opts)
 
         @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -2003,10 +2002,9 @@ function get_solution(𝓂::ℳ,
     elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts,
-                                                    cache = 𝓂.caches)
+                                opts = opts)
     
         @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -2021,10 +2019,10 @@ function get_solution(𝓂::ℳ,
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
                             𝐒₁, 𝐒₂,
                             𝓂.constants,
-                            𝓂.workspaces;
+                            𝓂.workspaces,
+                            𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts,
-                            cache = 𝓂.caches)
+                            opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -2161,10 +2159,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        cache = 𝓂.caches)
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -2329,10 +2327,10 @@ function get_variance_decomposition(𝓂::ℳ;
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        cache = 𝓂.caches)
+                                                        initial_guess = 𝓂.caches.qme_solution)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
     

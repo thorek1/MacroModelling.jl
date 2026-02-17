@@ -4616,10 +4616,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        cache = 𝓂.caches)
+                                                        initial_guess = 𝓂.caches.qme_solution)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -4638,11 +4638,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
-                                                    opts = opts,
-                                                    cache = 𝓂.caches)
+                                                    opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -4807,10 +4806,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        cache = 𝓂.caches)
+                                                        initial_guess = 𝓂.caches.qme_solution)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -4821,11 +4820,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                                     # timer = timer,
-                                                    opts = opts,
-                                                    cache = 𝓂.caches)
+                                                    opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -4840,11 +4838,11 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
-                                                𝓂.workspaces;
+                                                𝓂.workspaces,
+                                                𝓂.caches;
                                                 initial_guess = 𝓂.caches.third_order_solution,
                                                 # timer = timer, 
-                                                opts = opts,
-                                                cache = 𝓂.caches)
+                                                opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -5139,10 +5137,10 @@ function solve!(𝓂::ℳ;
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 qme_ws,
-                                                                sylv_ws;
+                                                                sylv_ws,
+                                                                𝓂.caches;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.caches.qme_solution,
-                                                                cache = 𝓂.caches)
+                                                                initial_guess = 𝓂.caches.qme_solution)
             
             update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -5164,10 +5162,10 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
                                                                     qme_ws,
-                                                                    sylv_ws;
+                                                                    sylv_ws,
+                                                                    𝓂.caches;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.caches.qme_solution,
-                                                                    cache = 𝓂.caches)
+                                                                    initial_guess = 𝓂.caches.qme_solution)
                 
                 update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -8233,11 +8231,11 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        𝓂.caches;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts,
-                                                        cache = 𝓂.caches)
+                                                        opts = opts)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 

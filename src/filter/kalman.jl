@@ -294,9 +294,10 @@ function filter_and_smooth(𝓂::ℳ,
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws; 
+                                                            sylv_ws,
+                                                            𝓂.caches; 
                                                             opts = opts,
-                                                            cache = 𝓂.caches)
+                                                            )
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 

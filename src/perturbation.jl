@@ -3,10 +3,10 @@
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
                                         qme_ws::qme_workspace{R,S},
-                                        sylv_ws::sylvester_workspace{R,S};
+                                        sylv_ws::sylvester_workspace{R,S},
+                                        cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        cache::caches)::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -172,10 +172,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             constants::constants,
-                                            workspaces::workspaces;
+                                            workspaces::workspaces,
+                                            cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options(),
-                                            cache::caches)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -314,10 +314,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             constants::constants,
-                                            workspaces::workspaces;
+                                            workspaces::workspaces,
+                                            cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options(),
-                                            cache::caches)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
     if !(eltype(workspaces.third_order.Ŝ) == S)
         workspaces.third_order = Higher_order_workspace(T = S)
     end

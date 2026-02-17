@@ -351,10 +351,10 @@ end
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
                                         qme_ws::qme_workspace,
-                                        sylv_ws::sylvester_workspace;
+                                        sylv_ws::sylvester_workspace,
+                                        cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                        cache::caches)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
@@ -365,7 +365,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_constants.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws; opts = opts, initial_guess = initial_guess, cache = cache)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, cache; opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false
