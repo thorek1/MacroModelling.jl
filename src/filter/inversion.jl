@@ -1444,11 +1444,10 @@ function filter_data_with_model(𝓂::ℳ,
                                                         qme_ws,
                                                         sylv_ws;
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        cache = 𝓂.caches)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved 
         @error "No solution for these parameters."

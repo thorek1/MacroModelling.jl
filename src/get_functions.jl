@@ -1102,13 +1102,12 @@ function get_irf(𝓂::ℳ,
                                                             qme_ws,
                                                             sylv_ws;
                                                             opts = opts,
-                                                            initial_guess = 𝓂.caches.qme_solution)
+                                                            initial_guess = 𝓂.caches.qme_solution,
+                                                            cache = 𝓂.caches)
     
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
-    if solved 
-        𝓂.caches.qme_solution = qme_sol
-    else
+    if !solved
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
@@ -1969,11 +1968,10 @@ function get_solution(𝓂::ℳ,
                                                         qme_ws,
                                                         sylv_ws;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        cache = 𝓂.caches)
     
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved
         if algorithm in [:second_order, :pruned_second_order]
@@ -1990,11 +1988,10 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts)
+                                                    opts = opts,
+                                                    cache = 𝓂.caches)
 
         @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
-
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -2008,11 +2005,10 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts)
+                                                    opts = opts,
+                                                    cache = 𝓂.caches)
     
         @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
-
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -2027,12 +2023,11 @@ function get_solution(𝓂::ℳ,
                             𝓂.constants,
                             𝓂.workspaces;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+                            opts = opts,
+                            cache = 𝓂.caches)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
-        if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
-        
         𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
         if !(typeof(𝐒₃) <: AbstractSparseMatrix)
@@ -2168,11 +2163,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                         qme_ws,
                                                         sylv_ws;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        cache = 𝓂.caches)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     A = @views 𝑺₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[indexin(𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nVars),:]
     
@@ -2337,12 +2331,11 @@ function get_variance_decomposition(𝓂::ℳ;
                                                         qme_ws,
                                                         sylv_ws;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        cache = 𝓂.caches)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
     
-    if solved 𝓂.caches.qme_solution = qme_sol end
-
     variances_by_shock = zeros(𝓂.constants.post_model_macro.nVars, 𝓂.constants.post_model_macro.nExo)
 
     A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]

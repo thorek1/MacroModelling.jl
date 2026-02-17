@@ -25,11 +25,10 @@ function calculate_covariance(parameters::Vector{R},
                                                             qme_ws,
                                                             sylv_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            cache = 𝓂.caches)
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     # Direct constants access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_constants.diag_nVars[T.past_not_future_and_mixed_idx,:]
@@ -88,27 +87,25 @@ function calculate_mean(parameters::Vector{R},
                                                             qme_ws,
                                                             sylv_ws;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            cache = 𝓂.caches)
         
         update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
         if !solved 
             mean_of_variables = SS_and_pars[1:T.nVars]
         else
-            𝓂.caches.qme_solution = qme_sol
-
             ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        cache = 𝓂.caches)
 
             update_perturbation_counter!(𝓂.counters, solved, order = 2)
 
             if !solved 
                 mean_of_variables = SS_and_pars[1:T.nVars]
             else
-                if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
-
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
                 if !(typeof(𝐒₂) <: AbstractSparseMatrix)
@@ -199,13 +196,12 @@ function calculate_second_order_moments(parameters::Vector{R},
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    opts = opts)
+                                                    opts = opts,
+                                                    cache = 𝓂.caches)
         
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
         if solved2
-            if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
-
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
@@ -323,13 +319,12 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
-                                                    opts = opts)
+                                                    opts = opts,
+                                                    cache = 𝓂.caches)
 
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
         if solved2
-            if eltype(𝐒₂) == Float64 𝓂.caches.second_order_solution = 𝐒₂ end
-
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
@@ -480,15 +475,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 	                                                𝓂.constants,
                                                     𝓂.workspaces;
 	                                                initial_guess = 𝓂.caches.third_order_solution,
-	                                                opts = opts)
+                                                    opts = opts,
+                                                    cache = 𝓂.caches)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
-
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
@@ -736,15 +730,14 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 𝓂.constants,
                                                 𝓂.workspaces;
                                                 initial_guess = 𝓂.caches.third_order_solution,
-                                                opts = opts)
+                                                opts = opts,
+                                                cache = 𝓂.caches)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
     
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
-
-    if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 

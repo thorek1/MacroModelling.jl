@@ -474,7 +474,8 @@ function rrule(::typeof(calculate_first_order_solution),
                 qme_ws::qme_workspace{R,S},
                 sylv_ws::sylvester_workspace{R,S};
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                cache::caches) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -628,7 +629,11 @@ function rrule(::typeof(calculate_first_order_solution),
         return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent()
     end
 
-    return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
+    𝐒₁ = hcat(𝐒ᵗ, ∇̂ₑ)
+    cache.first_order_solution_matrix = 𝐒₁
+    cache.qme_solution = sol
+
+    return (𝐒₁, sol, solved), first_order_solution_pullback
 end
 
 function rrule(::typeof(calculate_second_order_solution), 
@@ -638,7 +643,8 @@ function rrule(::typeof(calculate_second_order_solution),
                     constants::constants,
                     workspaces::workspaces;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+                    opts::CalculationOptions = merge_calculation_options(),
+                    cache::caches) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -918,6 +924,8 @@ function rrule(::typeof(calculate_second_order_solution),
     end
     
 
+    cache.second_order_solution = 𝐒₂
+
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂, solved), second_order_solution_pullback
 end
@@ -931,7 +939,8 @@ function rrule(::typeof(calculate_third_order_solution),
                 constants::constants,
                 workspaces::workspaces;
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
+                opts::CalculationOptions = merge_calculation_options(),
+                cache::caches) where S <: AbstractFloat 
     if !(eltype(workspaces.third_order.Ŝ) == S)
         workspaces.third_order = Higher_order_workspace(T = S)
     end
@@ -1499,6 +1508,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
         return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
+
+    cache.third_order_solution = 𝐒₃
 
     return (𝐒₃, solved), third_order_solution_pullback
 end

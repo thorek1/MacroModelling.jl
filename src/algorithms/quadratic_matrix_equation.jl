@@ -24,15 +24,20 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     if length(initial_guess) > 0
         X = initial_guess
 
-        AXX = A * X^2
-
-        AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+        # Compute residual: A*X² + B*X + C
+        # X² into temp_X2 buffer
+        ℒ.mul!(workspace.temp_X2, X, X)
+        # A*X² into AXX buffer
+        ℒ.mul!(workspace.AXX, A, workspace.temp_X2)
         
-        ℒ.mul!(AXX, B, X, 1, 1)
-
-        ℒ.axpy!(1, C, AXX)
+        AXXnorm = max(ℒ.norm(workspace.AXX), ℒ.norm(C))
         
-        reached_tol = ℒ.norm(AXX) / AXXnorm
+        # AXX += B*X
+        ℒ.mul!(workspace.AXX, B, X, 1, 1)
+        # AXX += C
+        ℒ.axpy!(1, C, workspace.AXX)
+    
+        reached_tol = ℒ.norm(workspace.AXX) / AXXnorm
 
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end

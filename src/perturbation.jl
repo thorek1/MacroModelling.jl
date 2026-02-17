@@ -5,7 +5,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         qme_ws::qme_workspace{R,S},
                                         sylv_ws::sylvester_workspace{R,S};
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        cache::caches)::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -142,7 +143,29 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # end # timeit_debug
 
-    return hcat(A, ∇ₑ), sol, true
+    n_rows = size(A, 1)
+    n_cols_A = size(A, 2)
+    n_cols_ϵ = size(∇ₑ, 2)
+    total_cols = n_cols_A + n_cols_ϵ
+
+    S₁_existing = cache.first_order_solution_matrix
+    if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
+        copyto!(@view(S₁_existing[:, 1:n_cols_A]), A)
+        copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇ₑ)
+        S₁ = S₁_existing
+    else
+        S₁ = hcat(A, ∇ₑ)
+        cache.first_order_solution_matrix = S₁
+    end
+
+    if cache.qme_solution isa Matrix{R} && size(cache.qme_solution) == size(sol)
+        copyto!(cache.qme_solution, sol)
+        sol = cache.qme_solution
+    else
+        cache.qme_solution = sol
+    end
+
+    return S₁, sol, true
 end
 
 
@@ -152,7 +175,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             constants::constants,
                                             workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            cache::caches)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -268,6 +292,21 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # end # timeit_debug
 
+    if solved
+        if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
+            copyto!(cache.second_order_solution, 𝐒₂)
+            𝐒₂ = cache.second_order_solution
+        elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
+               size(cache.second_order_solution) == size(𝐒₂) &&
+               cache.second_order_solution.colptr == 𝐒₂.colptr &&
+               cache.second_order_solution.rowval == 𝐒₂.rowval
+            copyto!(cache.second_order_solution.nzval, 𝐒₂.nzval)
+            𝐒₂ = cache.second_order_solution
+        else
+            cache.second_order_solution = 𝐒₂
+        end
+    end
+
     return 𝐒₂, solved
 end
 
@@ -280,7 +319,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             constants::constants,
                                             workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            cache::caches)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
     if !(eltype(workspaces.third_order.Ŝ) == S)
         workspaces.third_order = Higher_order_workspace(T = S)
     end
@@ -511,6 +551,21 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # end # timeit_debug
     # end # timeit_debug
+
+    if solved
+        if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
+            copyto!(cache.third_order_solution, 𝐒₃)
+            𝐒₃ = cache.third_order_solution
+        elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
+               size(cache.third_order_solution) == size(𝐒₃) &&
+               cache.third_order_solution.colptr == 𝐒₃.colptr &&
+               cache.third_order_solution.rowval == 𝐒₃.rowval
+            copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
+            𝐒₃ = cache.third_order_solution
+        else
+            cache.third_order_solution = 𝐒₃
+        end
+    end
 
     return 𝐒₃, solved
 end
