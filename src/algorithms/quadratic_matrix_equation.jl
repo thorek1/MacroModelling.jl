@@ -23,12 +23,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     if length(initial_guess) > 0
         X = initial_guess
+        X² = workspace.temp3
 
         # Compute residual: A*X² + B*X + C
-        # X² into temp_X2 buffer
-        ℒ.mul!(workspace.temp_X2, X, X)
+        # X² into temporary buffer
+        ℒ.mul!(X², X, X)
         # A*X² into AXX buffer
-        ℒ.mul!(workspace.AXX, A, workspace.temp_X2)
+        ℒ.mul!(workspace.AXX, A, X²)
         
         AXXnorm = max(ℒ.norm(workspace.AXX), ℒ.norm(C))
         
