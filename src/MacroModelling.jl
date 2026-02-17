@@ -4168,7 +4168,7 @@ end
 
 function select_fastest_SS_solver_parameters!(𝓂::ℳ;
                                                 tol::Tolerances = Tolerances(),
-                                                n_samples::Int = 100)
+                                                n_samples::Int = 100)::Nothing
     @assert n_samples > 1 "n_samples must be greater than 1."
     @assert n_samples ÷ 2 >= 1 "n_samples must be at least 2."
 
@@ -4227,6 +4227,8 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
             nsss_fastest_solver_parameter_idx = best_idx,
         )
     end
+
+    return nothing
 end
 
 function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}
