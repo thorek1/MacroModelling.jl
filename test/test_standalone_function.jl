@@ -75,9 +75,9 @@ T = RBC_CME.constants.post_model_macro
 
 qme_ws = ensure_qme_workspace!(RBC_CME)
 sylv_ws = ensure_sylvester_1st_order_workspace!(RBC_CME)
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants, qme_ws, sylv_ws)# |> Matrix{Float32}
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants, qme_ws, sylv_ws, RBC_CME.caches)# |> Matrix{Float32}
 
-second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces)
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces, RBC_CME.caches)
 
 
 # second_order_solution *= RBC_CME.constants.second_order_auxiliary_matrices.𝐔₂
@@ -90,7 +90,8 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             first_order_solution, 
                                                             second_order_solution, 
                                                             RBC_CME.constants, 
-                                                            RBC_CME.workspaces)
+                                                            RBC_CME.workspaces,
+                                                            RBC_CME.caches)
 
 # third_order_solution *= RBC_CME.constants.third_order_auxiliary_matrices.𝐔₃
 
