@@ -114,12 +114,19 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     end
 
     A = qme_ws.𝐀
+    n_cols = size(A, 2)
+    
     for i in 1:T.nVars
         src = T.reorder[i]
         if src <= T.nPresent_only
-            copyto!(@view(A[i,:]), @view(A₋ᵤ[src,:]))
+            for j in 1:n_cols
+                @inbounds A[i, j] = A₋ᵤ[src, j]
+            end
         else
-            copyto!(@view(A[i,:]), @view(sol_compact[src - T.nPresent_only,:]))
+            src_idx = src - T.nPresent_only
+            for j in 1:n_cols
+                @inbounds A[i, j] = sol_compact[src_idx, j]
+            end
         end
     end
 
