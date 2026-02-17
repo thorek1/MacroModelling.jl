@@ -22,7 +22,7 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
     if use_fastlapack_qr && R <: Union{Float32, Float64}
         orm_dims = (size(Q, 1), size(Q, 2), size(src, 2))
-        if qr_orm_ws === nothing || qr_orm_dims != orm_dims
+        if qr_orm_dims != orm_dims
             qr_orm_ws = FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', Q, src)
             qr_orm_dims = orm_dims
         end
@@ -36,6 +36,37 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
     end
 end
 
+function factorize_lu!(A::AbstractMatrix{R},
+                       lu_ws,
+                       lu_dims::NTuple{2, Int};
+                       use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_lu && R <: Union{Float32, Float64}
+        dims = (size(A, 1), size(A, 2))
+        if lu_dims != dims
+            lu_ws = FastLapackInterface.LUWs(A)
+            lu_dims = dims
+        end
+        _, _, info = ℒ.LAPACK.getrf!(lu_ws, A; resize = true)
+        return lu_ws, lu_dims, info == 0, nothing
+    else
+        lu = ℒ.lu!(A, check = false)
+        return lu_ws, lu_dims, ℒ.issuccess(lu), lu
+    end
+end
+
+function solve_lu_left!(A::AbstractMatrix{R},
+                        B::AbstractVecOrMat{R},
+                        lu_ws,
+                        lu;
+                        use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_lu && R <: Union{Float32, Float64}
+        ℒ.LAPACK.getrs!(lu_ws, 'N', A, B)
+    else
+        ℒ.ldiv!(lu, B)
+    end
+    return B
+end
+
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
                                         qme_ws::qme_workspace{R,S},
@@ -43,6 +74,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_qr::Bool = true,
+                                        use_fastlapack_lu::Bool = true,
                                         initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -146,9 +178,12 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+                                                                                       qme_ws.fast_lu_ws_a0u,
+                                                                                       qme_ws.fast_lu_dims_a0u;
+                                                                                       use_fastlapack_lu = use_fastlapack_lu)
 
-    if !ℒ.issuccess(Ā̂₀ᵤ)
+    if !solved_Ā₀ᵤ
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
         return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
@@ -159,7 +194,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
         nₚ₋ = qme_ws.𝐧ₚ₋
         ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+        solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;
+                       use_fastlapack_lu = use_fastlapack_lu)
         ℒ.rmul!(A₋ᵤ, -1)
     end
 
@@ -189,14 +225,18 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
 
-    C = ℒ.lu!(∇₀, check = false)
-    
-    if !ℒ.issuccess(C)
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+                                                                                         qme_ws.fast_lu_ws_nabla0,
+                                                                                         qme_ws.fast_lu_dims_nabla0;
+                                                                                         use_fastlapack_lu = use_fastlapack_lu)
+
+    if !solved_∇₀
         if opts.verbose println("Factorisation of ∇₀ failed") end
         return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
-    
-    ℒ.ldiv!(C, ∇ₑ)
+
+    solve_lu_left!(∇₀, ∇ₑ, qme_ws.fast_lu_ws_nabla0, C;
+                   use_fastlapack_lu = use_fastlapack_lu)
     ℒ.rmul!(∇ₑ, -1)
 
     # end # timeit_debug

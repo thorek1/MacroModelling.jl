@@ -476,6 +476,7 @@ function rrule(::typeof(calculate_first_order_solution),
                 cache::caches;
                 opts::CalculationOptions = merge_calculation_options(),
                 use_fastlapack_qr::Bool = true,
+                use_fastlapack_lu::Bool = true,
                 initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat, S <: Real}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
@@ -579,9 +580,12 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+                                                                                       qme_ws.fast_lu_ws_a0u,
+                                                                                       qme_ws.fast_lu_dims_a0u;
+                                                                                       use_fastlapack_lu = use_fastlapack_lu)
 
-    if !ℒ.issuccess(Ā̂₀ᵤ)
+    if !solved_Ā₀ᵤ
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
@@ -591,7 +595,8 @@ function rrule(::typeof(calculate_first_order_solution),
         nₚ₋ = qme_ws.𝐧ₚ₋
         ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+        solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;
+                       use_fastlapack_lu = use_fastlapack_lu)
         ℒ.rmul!(A₋ᵤ, -1)
     end
 
@@ -623,19 +628,28 @@ function rrule(::typeof(calculate_first_order_solution),
 
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * expand_future, 𝐒̂ᵗ, 1, 1)
 
-    C = ℒ.lu!(∇₀, check = false)
-    
-    if !ℒ.issuccess(C)
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+                                                                                         qme_ws.fast_lu_ws_nabla0,
+                                                                                         qme_ws.fast_lu_dims_nabla0;
+                                                                                         use_fastlapack_lu = use_fastlapack_lu)
+
+    if !solved_∇₀
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
-    
-    ℒ.ldiv!(C, ∇̂ₑ)
+
+    solve_lu_left!(∇₀, ∇̂ₑ, qme_ws.fast_lu_ws_nabla0, C;
+                   use_fastlapack_lu = use_fastlapack_lu)
     ℒ.rmul!(∇̂ₑ, -1)
 
     # end # timeit_debug
     # end # timeit_debug
     
-    M = inv(C)
+    if use_fastlapack_lu && R <: Union{Float32, Float64}
+        M = Matrix{R}(ℒ.I, size(∇₀, 1), size(∇₀, 2))
+        ℒ.LAPACK.getrs!(qme_ws.fast_lu_ws_nabla0, 'N', ∇₀, M)
+    else
+        M = inv(C)
+    end
 
     tmp2 = -M' * (∇₊ * expand_future)'
     

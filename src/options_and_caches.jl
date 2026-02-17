@@ -213,6 +213,13 @@ Create a pre-allocated workspace for the quadratic matrix equation doubling algo
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
 function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
+    empty_qr_factors = zeros(T, 0, 0)
+    empty_qr_ws = FastLapackInterface.QRWs(empty_qr_factors)
+    empty_qr_rhs = zeros(T, 0, 0)
+    empty_qr_orm_ws = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
+    empty_lu_factors = zeros(T, 0, 0)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+
     qme_workspace(  zeros(T, n, n),  # E
                     zeros(T, n, n),  # F
                     zeros(T, n, n),  # X
@@ -252,25 +259,27 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     ℒ.I(n),             # I_n
                     ℒ.I(nPast),         # I_nPast
                     # FastLapackInterface QR workspaces
-                    zeros(T, 0, 0),
-                    nothing,
-                    nothing,
+                    empty_qr_factors,
+                    empty_qr_ws,
+                    empty_qr_orm_ws,
                     (0, 0, 0),
-                    nothing,
+                    empty_qr_orm_ws,
                     (0, 0, 0),
-                    nothing,
-                    (0, 0, 0))
+                    empty_qr_orm_ws,
+                    (0, 0, 0),
+                    # FastLapackInterface LU workspaces
+                    empty_lu_ws,
+                    (0, 0),
+                    empty_lu_ws,
+                    (0, 0))
 end
 
 function ensure_first_order_fast_qr_workspace!(ws::qme_workspace{T}, qr_mat::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
     if size(ws.fast_qr_factors) != size(qr_mat)
         ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
-    end
-    copyto!(ws.fast_qr_factors, qr_mat)
-
-    if ws.fast_qr_ws === nothing
         ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
     end
+    copyto!(ws.fast_qr_factors, qr_mat)
 
     return ws.fast_qr_factors, ws.fast_qr_ws
 end
