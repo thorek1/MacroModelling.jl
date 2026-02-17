@@ -19,11 +19,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
-    
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -60,14 +60,14 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Postprocessing" begin
     # @timeit_debug timer "Setup matrices" begin
 
-    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+    sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
-    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+    D = @view sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
+    L = @view sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
     Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
     Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = A₋[1:T.nPresent_only,:]
 
@@ -83,7 +83,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
         nₚ₋ = qme_ws.p_tmp
         if size(nₚ₋, 1) != T.nPresent_only || size(nₚ₋, 2) != T.nPast_not_future_and_mixed
             qme_ws.p_tmp = zeros(eltype(nₚ₋), T.nPresent_only, T.nPast_not_future_and_mixed)
@@ -101,9 +101,14 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    M = A[T.future_not_past_and_mixed_idx,:] * idx_constants.expand_past
+    M = qme_ws.p_tmp
+    if size(M, 1) != T.nFuture_not_past_and_mixed || size(M, 2) != T.nVars
+        qme_ws.p_tmp = zeros(eltype(M), T.nFuture_not_past_and_mixed, T.nVars)
+        M = qme_ws.p_tmp
+    end
+    ℒ.mul!(M, @view(A[T.future_not_past_and_mixed_idx,:]), idx_constants.expand_past)
 
-    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
 
     C = ℒ.lu!(∇₀, check = false)
     

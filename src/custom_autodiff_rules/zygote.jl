@@ -529,11 +529,11 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Postprocessing" begin
     # @timeit_debug timer "Setup matrices" begin
 
-    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+    sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
-    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+    D = @view sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
+    L = @view sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
     Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = A₊[1:T.nPresent_only,:]
@@ -574,7 +574,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
     𝐒̂ᵗ = 𝐒ᵗ * expand_past
 
-    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future, 𝐒̂ᵗ, 1, 1)
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * expand_future, 𝐒̂ᵗ, 1, 1)
 
     C = ℒ.lu!(∇₀, check = false)
     
