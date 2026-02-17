@@ -354,7 +354,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         sylv_ws::sylvester_workspace,
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
@@ -366,7 +366,15 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_constants.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, cache; opts = opts, initial_guess = initial_guess)
+    initial_guess_value = if length(initial_guess) == 0
+        zeros(eltype(∇̂₁), 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{eltype(∇̂₁)} ? initial_guess : Matrix{eltype(∇̂₁)}(initial_guess)
+    else
+        ℱ.value.(initial_guess)
+    end
+
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, cache; opts = opts, initial_guess = initial_guess_value)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -492,12 +500,20 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
+    initial_guess_value = if length(initial_guess) == 0
+        zeros(eltype(Â), 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{eltype(Â)} ? initial_guess : Matrix{eltype(Â)}(initial_guess)
+    else
+        ℱ.value.(initial_guess)
+    end
+
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_algorithm), 
                                                 constants,
                                                 workspace;
                                                 tol = tol,
-                                                initial_guess = initial_guess,
+                                                initial_guess = initial_guess_value,
                                                 # timer = timer,
                                                 verbose = verbose)
 
@@ -549,7 +565,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     𝕊ℂ::sylvester_workspace;
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
@@ -559,11 +575,19 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
+    initial_guess_value = if length(initial_guess) == 0
+        zeros(eltype(Â), 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{eltype(Â)} ? initial_guess : Matrix{eltype(Â)}(initial_guess)
+    else
+        ℱ.value.(initial_guess)
+    end
+
     P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
                                         tol = tol, 
                                         verbose = verbose, 
-                                        initial_guess = initial_guess)
+                                        initial_guess = initial_guess_value)
 
     # Allocate or reuse workspaces for temporary copies
     if size(𝕊ℂ.Ã_fd) != size(Â)

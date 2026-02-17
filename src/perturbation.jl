@@ -295,6 +295,14 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    initial_guess_sylv = if length(initial_guess) == 0
+        zeros(S, 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{S} ? initial_guess : Matrix{S}(initial_guess)
+    else
+        zeros(S, 0, 0)
+    end
+
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
@@ -360,7 +368,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess,
+                                            initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
@@ -436,6 +444,14 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     nₑ = T.nExo;
     n = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
+
+    initial_guess_sylv = if length(initial_guess) == 0
+        zeros(S, 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{S} ? initial_guess : Matrix{S}(initial_guess)
+    else
+        zeros(S, 0, 0)
+    end
 
     # @timeit_debug timer "Setup matrices" begin
 
@@ -616,7 +632,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess,
+                                            initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
