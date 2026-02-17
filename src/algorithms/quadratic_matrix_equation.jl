@@ -104,6 +104,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     I_past_mixed = idx_constants.I_past_mixed
 
     I_nPast = workspace.I_nPast
+    nPast = T.nPast_not_future_and_mixed
+    nFuture = T.nFuture_not_past_and_mixed
+    nSchur = nPast + nFuture
+
+    if size(workspace.schur_D, 1) != nSchur
+        workspace.schur_D = zeros(R, nSchur, nSchur)
+        workspace.schur_E = zeros(R, nSchur, nSchur)
+    end
+    D = workspace.schur_D
+    E = workspace.schur_E
+    fill!(D, zero(R))
+    fill!(E, zero(R))
 
     Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
     
@@ -113,17 +125,28 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
 
-    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
     I₊ = I_plus_mixed
-    
-    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
     I₋ = I_past_mixed
-    
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+
+    top_rows = 1:size(Ã₀₋, 1)
+    bottom_rows = (size(Ã₀₋, 1) + 1):nSchur
+    past_cols = 1:nPast
+    future_cols = (nPast + 1):nSchur
+
+    @views copyto!(D[top_rows, past_cols], Ã₀₋)
+    @views copyto!(D[top_rows, future_cols], Ã₊)
+    if T.nMixed > 0
+        @views copyto!(D[bottom_rows, past_cols], I₋)
+    end
     
     ℒ.rmul!(Ã₋,-1)
     ℒ.rmul!(Ã₀₊,-1)
-    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
+
+    @views copyto!(E[top_rows, past_cols], Ã₋)
+    @views copyto!(E[top_rows, future_cols], Ã₀₊)
+    if T.nMixed > 0
+        @views copyto!(E[bottom_rows, future_cols], I₊)
+    end
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
     schur_S, schur_T, schur_Z = (try

@@ -4589,6 +4589,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
+    n_aug = T.nPast_not_future_and_mixed + 1 + T.nExo
+    zero_S1 = zeros(M, T.nVars, n_aug)
+    zero_S2 = spzeros(M, T.nVars, n_aug^2)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation) # , timer = timer)
 
@@ -4596,7 +4599,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # if verbose println("NSSS not found") end # handled within solve function
-        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zero_S1, zero_S2
     end
 
     ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
@@ -4628,7 +4631,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zero_S1, zero_S2
     end
 
     # @timeit_debug timer "Calculate Hessian" begin
@@ -4654,7 +4657,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, ∇₁, ∇₂, zero_S1, zero_S2
     end
 
     # @timeit_debug timer "Calculate SSS" begin
@@ -4671,7 +4674,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, ∇₁, ∇₂, zero_S1, zero_S2
     end
 
     SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx])
@@ -4692,7 +4695,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         
         if !converged
             if opts.verbose println("SSS not found") end
-            return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+            return all_SS, false, SS_and_pars, solution_error, ∇₁, ∇₂, zero_S1, zero_S2
         end
 
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
