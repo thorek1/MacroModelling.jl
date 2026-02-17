@@ -241,7 +241,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Return a copy of X (to avoid returning a reference to mutable workspace)
     return copy(X), 0, reached_tol
 end
-end
 
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 

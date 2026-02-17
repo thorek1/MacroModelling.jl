@@ -249,6 +249,7 @@ Dimensions:
 """
 function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
     companion_size = n + nMixed
+    nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
     schur_workspace(
         zeros(T, companion_size, companion_size),  # D
         zeros(T, companion_size, companion_size),  # E
@@ -259,7 +260,7 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = F
         zeros(T, nPfm, nPfm),                      # S₁₁
         zeros(T, nPfm, nPfm),                      # T₁₁
         zeros(T, companion_size, nPfm),            # sol
-        zeros(T, n, nPfm),                         # X
+        zeros(T, n, nComb),                        # X (n × length(comb))
         zeros(T, n, n),                            # temp_X2
         zeros(T, n, n),                            # AXX
         Vector{Bool}(undef, companion_size))       # eigenselect
@@ -821,13 +822,13 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
-        get(kwargs, :indices_past_not_future_in_comb, get(p, :indices_past_not_future_in_comb, Int[])),
-        get(kwargs, :I_nPast_not_mixed, get(p, :I_nPast_not_mixed, Matrix{Bool}(undef, 0, 0))),
-        get(kwargs, :Ir_past_selector, get(p, :Ir_past_selector, Matrix{Bool}(undef, 0, 0))),
-        get(kwargs, :schur_Z₊, get(p, :schur_Z₊, Matrix{Bool}(undef, 0, 0))),
-        get(kwargs, :schur_I₊, get(p, :schur_I₊, Matrix{Bool}(undef, 0, 0))),
-        get(kwargs, :schur_Z₋, get(p, :schur_Z₋, Matrix{Bool}(undef, 0, 0))),
-        get(kwargs, :schur_I₋, get(p, :schur_I₋, Matrix{Bool}(undef, 0, 0))),
+        get(kwargs, :indices_past_not_future_in_comb, hasfield(typeof(p), :indices_past_not_future_in_comb) ? p.indices_past_not_future_in_comb : Int[]),
+        get(kwargs, :I_nPast_not_mixed, hasfield(typeof(p), :I_nPast_not_mixed) ? p.I_nPast_not_mixed : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :Ir_past_selector, hasfield(typeof(p), :Ir_past_selector) ? p.Ir_past_selector : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_Z₊, hasfield(typeof(p), :schur_Z₊) ? p.schur_Z₊ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_I₊, hasfield(typeof(p), :schur_I₊) ? p.schur_I₊ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_Z₋, hasfield(typeof(p), :schur_Z₋) ? p.schur_Z₋ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_I₋, hasfield(typeof(p), :schur_I₋) ? p.schur_I₋ : Matrix{Bool}(undef, 0, 0)),
         get(kwargs, :nsss_dependencies, p.nsss_dependencies),
         get(kwargs, :nsss_n_sol, p.nsss_n_sol),
         get(kwargs, :nsss_output_indices, p.nsss_output_indices),
