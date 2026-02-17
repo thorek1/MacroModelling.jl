@@ -487,6 +487,7 @@ function rrule(::typeof(calculate_first_order_solution),
     comb = idx_constants.comb
     future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
@@ -532,7 +533,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
     D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+    L = sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
     Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = A₊[1:T.nPresent_only,:]
@@ -551,7 +552,12 @@ function rrule(::typeof(calculate_first_order_solution),
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
         ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
-        nₚ₋ =  A₊ᵤ * D
+        nₚ₋ = qme_ws.p_tmp
+        if size(nₚ₋, 1) != T.nPresent_only || size(nₚ₋, 2) != T.nPast_not_future_and_mixed
+            qme_ws.p_tmp = zeros(eltype(nₚ₋), T.nPresent_only, T.nPast_not_future_and_mixed)
+            nₚ₋ = qme_ws.p_tmp
+        end
+        ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
         ℒ.rmul!(A₋ᵤ, -1)

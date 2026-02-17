@@ -1121,6 +1121,7 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    past_not_future_and_mixed_in_present_but_not_only::Vector{Int}
     # Schur QME cached indices and constant matrices
     indices_past_not_future_in_comb::Vector{Int}
     I_nPast_not_mixed::Matrix{Bool}      # I_nPast[not_mixed_in_past_idx,:]

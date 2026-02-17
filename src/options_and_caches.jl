@@ -720,6 +720,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 1,
                 zeros(Bool, 0, 0),
                 zeros(Bool, 0, 0),
+                Int[],
                 Int[],                      # indices_past_not_future_in_comb
                 zeros(Bool, 0, 0),          # I_nPast_not_mixed
                 zeros(Bool, 0, 0),          # Ir_past_selector
@@ -822,6 +823,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :past_not_future_and_mixed_in_present_but_not_only,
+            hasfield(typeof(p), :past_not_future_and_mixed_in_present_but_not_only) ? p.past_not_future_and_mixed_in_present_but_not_only : Int[]),
         get(kwargs, :indices_past_not_future_in_comb, hasfield(typeof(p), :indices_past_not_future_in_comb) ? p.indices_past_not_future_in_comb : Int[]),
         get(kwargs, :I_nPast_not_mixed, hasfield(typeof(p), :I_nPast_not_mixed) ? p.I_nPast_not_mixed : Matrix{Bool}(undef, 0, 0)),
         get(kwargs, :Ir_past_selector, hasfield(typeof(p), :Ir_past_selector) ? p.Ir_past_selector : Matrix{Bool}(undef, 0, 0)),
@@ -1177,6 +1180,13 @@ function build_first_order_index_cache(T, I_nVars)
     expand_future = I_nVars[T.future_not_past_and_mixed_idx,:]
     expand_past = I_nVars[T.past_not_future_and_mixed_idx,:]
 
+    past_not_future_and_mixed_in_present_but_not_only_tmp = indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx)
+    if any(isnothing.(past_not_future_and_mixed_in_present_but_not_only_tmp))
+        past_not_future_and_mixed_in_present_but_not_only = Int[]
+    else
+        past_not_future_and_mixed_in_present_but_not_only = Int.(past_not_future_and_mixed_in_present_but_not_only_tmp)
+    end
+
     # Schur QME cached indices and constant matrices
     indices_past_not_future_in_comb_tmp = indexin(T.past_not_future_idx, comb)
     if any(isnothing.(indices_past_not_future_in_comb_tmp))
@@ -1209,6 +1219,7 @@ function build_first_order_index_cache(T, I_nVars)
         nabla_e_start = nabla_e_start,
         expand_future = expand_future,
         expand_past = expand_past,
+        past_not_future_and_mixed_in_present_but_not_only = past_not_future_and_mixed_in_present_but_not_only,
         indices_past_not_future_in_comb = indices_past_not_future_in_comb,
         I_nPast_not_mixed = I_nPast_not_mixed,
         Ir_past_selector = Ir_past_selector,
@@ -1244,6 +1255,7 @@ function ensure_first_order_constants!(𝓂)
             nabla_e_start = cache.nabla_e_start,
             expand_future = cache.expand_future,
             expand_past = cache.expand_past,
+            past_not_future_and_mixed_in_present_but_not_only = cache.past_not_future_and_mixed_in_present_but_not_only,
             indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
             I_nPast_not_mixed = cache.I_nPast_not_mixed,
             Ir_past_selector = cache.Ir_past_selector,
@@ -1280,6 +1292,7 @@ function ensure_first_order_constants!(constants::constants)
             nabla_e_start = cache.nabla_e_start,
             expand_future = cache.expand_future,
             expand_past = cache.expand_past,
+            past_not_future_and_mixed_in_present_but_not_only = cache.past_not_future_and_mixed_in_present_but_not_only,
             indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
             I_nPast_not_mixed = cache.I_nPast_not_mixed,
             Ir_past_selector = cache.Ir_past_selector,
