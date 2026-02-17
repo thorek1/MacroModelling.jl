@@ -45,7 +45,6 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws;
                                                     initial_guess = initial_guess,
-                                                    result_buffer = (initial_guess isa Matrix{R} ? initial_guess : zeros(R, 0, 0)),
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,

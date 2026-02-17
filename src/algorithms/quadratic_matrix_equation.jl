@@ -14,7 +14,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace{R,S};
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        result_buffer::Matrix{R} = zeros(R, 0, 0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
@@ -37,13 +36,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
-
-            if size(result_buffer) == size(initial_guess)
-                if result_buffer !== initial_guess
-                    copyto!(result_buffer, initial_guess)
-                end
-                return result_buffer, true
-            end
             return Matrix{R}(initial_guess), true
         end
     end
@@ -53,7 +45,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         constants,
                                                         workspace;
                                                         initial_guess = initial_guess,
-                                                        result_buffer = result_buffer,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)::Tuple{Matrix{R}, Int64, R}
@@ -67,7 +58,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
-                                                                result_buffer = result_buffer,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)::Tuple{Matrix{R}, Int64, R}
@@ -79,7 +69,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
-                                                                result_buffer = result_buffer,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)::Tuple{Matrix{R}, Int64, R}
@@ -101,35 +90,37 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        result_buffer::Matrix{R} = zeros(R, 0, 0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
     idx_constants = ensure_first_order_constants!(constants)
     T = constants.post_model_macro
 
-    ensure_qme_schur_buffers!(workspace, T.nPast_not_future_and_mixed, T.nFuture_not_past_and_mixed, T.nMixed)
-
-    comb = idx_constants.comb
     future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     indices_past_not_future_in_comb = idx_constants.indices_past_not_future_in_comb
     reorder_select = idx_constants.reorder_select
+    I_plus_mixed = idx_constants.I_plus_mixed
+    I_past_mixed = idx_constants.I_past_mixed
+
     I_nPast = workspace.I_nPast
 
-    Ã₊ = A[:,future_not_past_and_mixed_in_comb]
-    Ã₋ = C[:,past_not_future_and_mixed_in_comb]
-    Ã₀₊ = B[:,future_not_past_and_mixed_in_comb]
-    Ã₀₋ = B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
+    Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
+    
+    Ã₋ =  C[:,past_not_future_and_mixed_in_comb]
+    
+    Ã₀₊ =  B[:,future_not_past_and_mixed_in_comb]
+
+    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
 
     Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
-    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
-
+    I₊ = I_plus_mixed
+    
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = I_nPast[T.mixed_in_past_idx,:]
-
+    I₋ = I_past_mixed
+    
     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-
+    
     ℒ.rmul!(Ã₋,-1)
     ℒ.rmul!(Ã₀₊,-1)
     E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
@@ -155,8 +146,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     Z₂₁ = schur_Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
     Z₁₁ = schur_Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-    S₁₁ = schur_S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-    T₁₁ = schur_T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    S₁₁    = schur_S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    T₁₁    = schur_T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
     # @timeit_debug timer "Matrix inversions" begin
 
@@ -185,27 +176,27 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.mul!(S₁₁, Z₁₁, T₁₁)
     ℒ.rdiv!(S₁₁, Ẑ₁₁)
 
-    sol = vcat(S₁₁[T.not_mixed_in_past_idx,:], Z₂₁)
+    D = Z₂₁
+
+    L = S₁₁
+
+    sol = vcat(L[T.not_mixed_in_past_idx,:], D)
 
     # end # timeit_debug
     # end # timeit_debug
 
-    if size(result_buffer, 1) != size(A, 1) || size(result_buffer, 2) != size(A, 2)
-        result_buffer = zeros(R, size(A, 1), size(A, 2))
-    end
-
-    ℒ.mul!(result_buffer, view(sol, T.dynamic_order, :), reorder_select)
+    X = sol[T.dynamic_order,:] * reorder_select
 
     iter = 0
 
     AXX = workspace.AXX
     tmp = workspace.temp1
-    ℒ.mul!(tmp, result_buffer, result_buffer)
+    ℒ.mul!(tmp, X, X)
     ℒ.mul!(AXX, A, tmp)
     
     AXXnorm = convert(R, max(ℒ.norm(AXX), ℒ.norm(C)))
     
-    ℒ.mul!(AXX, B, result_buffer, 1, 1)
+    ℒ.mul!(AXX, B, X, 1, 1)
 
     ℒ.axpy!(1, C, AXX)
     
@@ -215,7 +206,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: schur $reached_tol")
     # end
 
-    return result_buffer, iter, reached_tol::R # schur can fail
+    return X, iter, reached_tol::R # schur can fail
 end
 
 
@@ -226,7 +217,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace{R,S}; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        result_buffer::Matrix{R} = zeros(R, 0, 0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
@@ -420,11 +410,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: doubling $reached_tol")
     # end
 
-    if size(result_buffer, 1) != n || size(result_buffer, 2) != n
-        result_buffer = zeros(R, n, n)
-    end
-    copyto!(result_buffer, X_new)
-    return result_buffer, iter, reached_tol
+    return copy(X_new), iter, reached_tol
 end
 
 

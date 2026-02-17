@@ -1085,6 +1085,8 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     past_not_future_and_mixed_in_comb::Vector{Int}
     indices_past_not_future_in_comb::Vector{Int}
     reorder_select::Matrix{Bool}
+    I_plus_mixed::Matrix{Bool}
+    I_past_mixed::Matrix{Bool}
     Ir::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
