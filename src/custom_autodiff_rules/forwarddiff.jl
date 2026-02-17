@@ -358,6 +358,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_qme_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
 
     expand_future = idx_constants.expand_future
     expand_past = idx_constants.expand_past
@@ -452,7 +453,28 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 
-    return hcat(x, B), qme_sol, solved
+    n_rows = size(x, 1)
+    n_cols_x = size(x, 2)
+    n_cols_B = size(B, 2)
+    total_cols = n_cols_x + n_cols_B
+
+    S₁_existing = cache.first_order_solution_matrix
+    if S₁_existing isa Matrix{ℱ.Dual{Z,S,N}} && size(S₁_existing) == (n_rows, total_cols)
+        copyto!(@view(S₁_existing[:, 1:n_cols_x]), x)
+        copyto!(@view(S₁_existing[:, n_cols_x+1:total_cols]), B)
+        S₁ = S₁_existing
+    else
+        S₁ = hcat(x, B)
+        cache.first_order_solution_matrix = S₁
+    end
+
+    if cache.qme_solution isa Matrix{Float64} && size(cache.qme_solution) == size(qme_sol)
+        copyto!(cache.qme_solution, qme_sol)
+    else
+        cache.qme_solution = qme_sol
+    end
+
+    return S₁, qme_sol, solved
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
