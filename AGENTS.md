@@ -52,6 +52,7 @@ MacroModelling.jl/
 
 - **Julia version:** 1.10 or higher (tested on 1.10+, lts, and pre-release versions)
 - **Running Julia:** Always use `julia -t auto` to enable multi-threading
+- **Finding Julia on Linux:** If `julia` is not in your PATH, check `~/.juliaup/bin/julia` (juliaup installation)
 
 ### Package Setup
 
