@@ -490,27 +490,41 @@ function rrule(::typeof(calculate_first_order_solution),
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
+
+    ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
     
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇̂ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = qme_ws.∇₀
+    copyto!(∇₀, @view(∇₁[:,idx_constants.nabla_zero_cols]))
+    ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇̂ₑ = qme_ws.∇ₑ
+    copyto!(∇̂ₑ, @view(∇₁[:,idx_constants.nabla_e_start:end]))
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
     Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-    A₊ = Q.Q' * ∇₊
-    A₀ = Q.Q' * ∇₀
-    A₋ = Q.Q' * ∇₋
+    A₊ = qme_ws.𝐀₊
+    ℒ.mul!(A₊, Q.Q', ∇₊)
+
+    A₀ = qme_ws.𝐀₀
+    ℒ.mul!(A₀, Q.Q', ∇₀)
+
+    A₋ = qme_ws.𝐀₋
+    ℒ.mul!(A₋, Q.Q', ∇₋)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
 
-    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
-    Ã₀ = A₀[dynIndex, comb]
-    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    Ã₊ = qme_ws.𝐀̃₊
+    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), Ir[future_not_past_and_mixed_in_comb,:])
+
+    Ã₀ = qme_ws.𝐀̃₀
+    copyto!(Ã₀, @view(A₀[dynIndex, comb]))
+
+    Ã₋ = qme_ws.𝐀̃₋
+    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), Ir[past_not_future_and_mixed_in_comb,:])
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -536,10 +550,17 @@ function rrule(::typeof(calculate_first_order_solution),
 
     L = @view sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ = qme_ws.𝐀̄₀ᵤ
+    copyto!(Ā₀ᵤ, @view(A₀[1:T.nPresent_only, T.present_only_idx]))
+
+    A₊ᵤ = qme_ws.𝐀₊ᵤ
+    copyto!(A₊ᵤ, @view(A₊[1:T.nPresent_only,:]))
+
+    Ã₀ᵤ = qme_ws.𝐀̃₀ᵤ
+    copyto!(Ã₀ᵤ, @view(A₀[1:T.nPresent_only, T.present_but_not_only_idx]))
+
+    A₋ᵤ = qme_ws.𝐀₋ᵤ
+    copyto!(A₋ᵤ, @view(A₋[1:T.nPresent_only,:]))
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
@@ -552,12 +573,8 @@ function rrule(::typeof(calculate_first_order_solution),
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
-        nₚ₋ = qme_ws.p_tmp
-        if size(nₚ₋, 1) != T.nPresent_only || size(nₚ₋, 2) != T.nPast_not_future_and_mixed
-            qme_ws.p_tmp = zeros(eltype(nₚ₋), T.nPresent_only, T.nPast_not_future_and_mixed)
-            nₚ₋ = qme_ws.p_tmp
-        end
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
+        nₚ₋ = qme_ws.𝐧ₚ₋
         ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
@@ -571,8 +588,23 @@ function rrule(::typeof(calculate_first_order_solution),
     expand_future = idx_constants.expand_future
     expand_past = idx_constants.expand_past
 
-    𝐒ᵗ = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
-
+    𝐒ᵗ = qme_ws.𝐀
+    n_cols = size(𝐒ᵗ, 2)
+    
+    for i in 1:T.nVars
+        src = T.reorder[i]
+        if src <= T.nPresent_only
+            for j in 1:n_cols
+                @inbounds 𝐒ᵗ[i, j] = A₋ᵤ[src, j]
+            end
+        else
+            src_idx = src - T.nPresent_only
+            for j in 1:n_cols
+                @inbounds 𝐒ᵗ[i, j] = sol_compact[src_idx, j]
+            end
+        end
+    end
+    
     𝐒̂ᵗ = 𝐒ᵗ * expand_past
 
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * expand_future, 𝐒̂ᵗ, 1, 1)
@@ -629,9 +661,26 @@ function rrule(::typeof(calculate_first_order_solution),
         return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
-    𝐒₁ = hcat(𝐒ᵗ, ∇̂ₑ)
-    cache.first_order_solution_matrix = 𝐒₁
-    cache.qme_solution = sol
+    n_rows = size(𝐒ᵗ, 1)
+    n_cols_A = size(𝐒ᵗ, 2)
+    n_cols_ϵ = size(∇̂ₑ, 2)
+    total_cols = n_cols_A + n_cols_ϵ
+
+    S₁_existing = cache.first_order_solution_matrix
+    if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
+        copyto!(@view(S₁_existing[:, 1:n_cols_A]), 𝐒ᵗ)
+        copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇̂ₑ)
+        𝐒₁ = S₁_existing
+    else
+        𝐒₁ = hcat(𝐒ᵗ, ∇̂ₑ)
+        cache.first_order_solution_matrix = 𝐒₁
+    end
+
+    if cache.qme_solution isa Matrix{R} && size(cache.qme_solution) == size(sol)
+        copyto!(cache.qme_solution, sol)
+    else
+        cache.qme_solution = sol
+    end
 
     return (𝐒₁, sol, solved), first_order_solution_pullback
 end
@@ -924,7 +973,18 @@ function rrule(::typeof(calculate_second_order_solution),
     end
     
 
-    cache.second_order_solution = 𝐒₂
+    if solved
+        if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
+            copyto!(cache.second_order_solution, 𝐒₂)
+        elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
+               size(cache.second_order_solution) == size(𝐒₂) &&
+               cache.second_order_solution.colptr == 𝐒₂.colptr &&
+               cache.second_order_solution.rowval == 𝐒₂.rowval
+            copyto!(cache.second_order_solution.nzval, 𝐒₂.nzval)
+        else
+            cache.second_order_solution = 𝐒₂
+        end
+    end
 
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂, solved), second_order_solution_pullback
@@ -1509,7 +1569,18 @@ function rrule(::typeof(calculate_third_order_solution),
         return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
-    cache.third_order_solution = 𝐒₃
+    if solved
+        if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
+            copyto!(cache.third_order_solution, 𝐒₃)
+        elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
+               size(cache.third_order_solution) == size(𝐒₃) &&
+               cache.third_order_solution.colptr == 𝐒₃.colptr &&
+               cache.third_order_solution.rowval == 𝐒₃.rowval
+            copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
+        else
+            cache.third_order_solution = 𝐒₃
+        end
+    end
 
     return (𝐒₃, solved), third_order_solution_pullback
 end
