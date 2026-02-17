@@ -232,6 +232,20 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
                     zeros(S, 0, 0),  # ∂SS_and_pars
+                    # First-order perturbation workspaces (primal)
+                    zeros(T, 0, 0),  # 𝐧ₚ₋
+                    zeros(T, 0, 0),  # 𝐌
+                    zeros(T, 0, 0),  # 𝐀₊
+                    zeros(T, 0, 0),  # 𝐀₀
+                    zeros(T, 0, 0),  # 𝐀₋
+                    zeros(T, 0, 0),  # 𝐀̃₊
+                    zeros(T, 0, 0),  # 𝐀̃₀
+                    zeros(T, 0, 0),  # 𝐀̃₋
+                    zeros(T, 0, 0),  # 𝐀̄₀ᵤ
+                    zeros(T, 0, 0),  # 𝐀₊ᵤ
+                    zeros(T, 0, 0),  # 𝐀̃₀ᵤ
+                    zeros(T, 0, 0),  # 𝐀₋ᵤ
+                    zeros(T, 0, 0),  # 𝐀
                     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
                     ℒ.I(n),             # I_n
                     ℒ.I(nPast))         # I_nPast
@@ -1328,6 +1342,39 @@ function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
         workspaces.qme = Qme_workspace(n, nPast = nPast)
     end
     return workspaces.qme
+end
+
+"""
+    ensure_first_order_qme_buffers!(ws, T, n_dyn, n_comb)
+
+Ensure all first-order perturbation buffers in `qme_workspace` are allocated with
+the correct dimensions.
+"""
+function ensure_first_order_qme_buffers!(ws::qme_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
+    n = T.nVars
+    n₊ = T.nFuture_not_past_and_mixed
+    n₋ = T.nPast_not_future_and_mixed
+    nᵤ = T.nPresent_only
+    n₀ᵤ = length(T.present_but_not_only_idx)
+
+    size(ws.𝐀₊) == (n, n₊) || (ws.𝐀₊ = zeros(R, n, n₊))
+    size(ws.𝐀₀) == (n, n) || (ws.𝐀₀ = zeros(R, n, n))
+    size(ws.𝐀₋) == (n, n₋) || (ws.𝐀₋ = zeros(R, n, n₋))
+
+    size(ws.𝐀̃₊) == (n_dyn, n_comb) || (ws.𝐀̃₊ = zeros(R, n_dyn, n_comb))
+    size(ws.𝐀̃₀) == (n_dyn, n_comb) || (ws.𝐀̃₀ = zeros(R, n_dyn, n_comb))
+    size(ws.𝐀̃₋) == (n_dyn, n_comb) || (ws.𝐀̃₋ = zeros(R, n_dyn, n_comb))
+
+    size(ws.𝐀̄₀ᵤ) == (nᵤ, nᵤ) || (ws.𝐀̄₀ᵤ = zeros(R, nᵤ, nᵤ))
+    size(ws.𝐀₊ᵤ) == (nᵤ, n₊) || (ws.𝐀₊ᵤ = zeros(R, nᵤ, n₊))
+    size(ws.𝐀̃₀ᵤ) == (nᵤ, n₀ᵤ) || (ws.𝐀̃₀ᵤ = zeros(R, nᵤ, n₀ᵤ))
+    size(ws.𝐀₋ᵤ) == (nᵤ, n₋) || (ws.𝐀₋ᵤ = zeros(R, nᵤ, n₋))
+
+    size(ws.𝐧ₚ₋) == (nᵤ, n₋) || (ws.𝐧ₚ₋ = zeros(R, nᵤ, n₋))
+    size(ws.𝐌) == (n₊, n) || (ws.𝐌 = zeros(R, n₊, n))
+    size(ws.𝐀) == (n, n₋) || (ws.𝐀 = zeros(R, n, n₋))
+
+    return ws
 end
 
 """

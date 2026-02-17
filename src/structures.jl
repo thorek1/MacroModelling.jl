@@ -531,6 +531,21 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     X̃_first_order::Matrix{R}   # For first order solution partials
     p_tmp::Matrix{R}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
+
+    # First-order perturbation workspaces (primal)
+    𝐧ₚ₋::Matrix{T}                    # nₚ₋ = A₊ᵤ * D
+    𝐌::Matrix{T}                      # M = A_future * expand_past
+    𝐀₊::Matrix{T}                     # A₊
+    𝐀₀::Matrix{T}                     # A₀
+    𝐀₋::Matrix{T}                     # A₋
+    𝐀̃₊::Matrix{T}                    # Ã₊
+    𝐀̃₀::Matrix{T}                    # Ã₀
+    𝐀̃₋::Matrix{T}                    # Ã₋
+    𝐀̄₀ᵤ::Matrix{T}                   # Ā₀ᵤ
+    𝐀₊ᵤ::Matrix{T}                    # A₊ᵤ
+    𝐀̃₀ᵤ::Matrix{T}                   # Ã₀ᵤ
+    𝐀₋ᵤ::Matrix{T}                    # A₋ᵤ
+    𝐀::Matrix{T}                      # A
     
     # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
     I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)

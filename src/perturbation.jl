@@ -20,26 +20,38 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
 
+    ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
+
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = @view ∇₁[:,idx_constants.nabla_zero_cols]
+    ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
     ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
-    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
+    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
 
     Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-    A₊ = Q.Q' * ∇₊
-    A₀ = Q.Q' * ∇₀
-    A₋ = Q.Q' * ∇₋
+    A₊ = qme_ws.𝐀₊
+    ℒ.mul!(A₊, Q.Q', ∇₊)
+
+    A₀ = qme_ws.𝐀₀
+    ℒ.mul!(A₀, Q.Q', ∇₀)
+
+    A₋ = qme_ws.𝐀₋
+    ℒ.mul!(A₋, Q.Q', ∇₋)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
 
-    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
-    Ã₀ = A₀[dynIndex, comb]
-    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    Ã₊ = qme_ws.𝐀̃₊
+    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), Ir[future_not_past_and_mixed_in_comb,:])
+
+    Ã₀ = qme_ws.𝐀̃₀
+    copyto!(Ã₀, @view(A₀[dynIndex, comb]))
+
+    Ã₋ = qme_ws.𝐀̃₋
+    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), Ir[past_not_future_and_mixed_in_comb,:])
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -53,7 +65,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
-        return zeros(R, T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # end # timeit_debug
@@ -66,10 +78,17 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     L = @view sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ = qme_ws.𝐀̄₀ᵤ
+    copyto!(Ā₀ᵤ, @view(A₀[1:T.nPresent_only, T.present_only_idx]))
+
+    A₊ᵤ = qme_ws.𝐀₊ᵤ
+    copyto!(A₊ᵤ, @view(A₊[1:T.nPresent_only,:]))
+
+    Ã₀ᵤ = qme_ws.𝐀̃₀ᵤ
+    copyto!(Ã₀ᵤ, @view(A₀[1:T.nPresent_only, T.present_but_not_only_idx]))
+
+    A₋ᵤ = qme_ws.𝐀₋ᵤ
+    copyto!(A₋ᵤ, @view(A₋[1:T.nPresent_only,:]))
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
@@ -78,34 +97,34 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
-        return zeros(R, T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
         ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
-        nₚ₋ = qme_ws.p_tmp
-        if size(nₚ₋, 1) != T.nPresent_only || size(nₚ₋, 2) != T.nPast_not_future_and_mixed
-            qme_ws.p_tmp = zeros(eltype(nₚ₋), T.nPresent_only, T.nPast_not_future_and_mixed)
-            nₚ₋ = qme_ws.p_tmp
-        end
+        nₚ₋ = qme_ws.𝐧ₚ₋
         ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
         ℒ.rmul!(A₋ᵤ, -1)
     end
-    
-    A    = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
+
+    A = qme_ws.𝐀
+    for i in 1:T.nVars
+        src = T.reorder[i]
+        if src <= T.nPresent_only
+            copyto!(@view(A[i,:]), @view(A₋ᵤ[src,:]))
+        else
+            copyto!(@view(A[i,:]), @view(sol_compact[src - T.nPresent_only,:]))
+        end
+    end
 
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    M = qme_ws.p_tmp
-    if size(M, 1) != T.nFuture_not_past_and_mixed || size(M, 2) != T.nVars
-        qme_ws.p_tmp = zeros(eltype(M), T.nFuture_not_past_and_mixed, T.nVars)
-        M = qme_ws.p_tmp
-    end
+    M = qme_ws.𝐌
     ℒ.mul!(M, @view(A[T.future_not_past_and_mixed_idx,:]), idx_constants.expand_past)
 
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
@@ -114,7 +133,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     
     if !ℒ.issuccess(C)
         if opts.verbose println("Factorisation of ∇₀ failed") end
-        return zeros(R, T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
     
     ℒ.ldiv!(C, ∇ₑ)
