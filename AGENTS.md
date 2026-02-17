@@ -62,27 +62,40 @@ Pkg.activate(".")
 Pkg.instantiate()
 ```
 
+If required Julia packages are not available, install them first (for example with `Pkg.add(...)`), then run the code again.
+
 ## Revise-Based Development Workflow (REQUIRED)
 
 **ALWAYS use Revise.jl for interactive development.** This enables hot-reloading of code changes without restarting Julia, which is essential for efficient iteration.
 
 ### Setup Steps
 
-1. **Start Julia REPL** with multi-threading enabled:
+1. **Start one Julia REPL** with multi-threading enabled:
 
    ```bash
    cd /path/to/MacroModelling.jl
    julia -t auto --project=.
    ```
 
-2. **Load Revise FIRST**, then MacroModelling:
+   Do not repeatedly call `julia` from the shell during development, because each call starts a new Julia session.
+
+2. **Activate the package environment and load Revise FIRST**, then MacroModelling:
 
    ```julia
    using Revise
+   using Pkg
+   Pkg.activate(".")
    using MacroModelling
    ```
 
-3. **Define a test model** for quick testing:
+3. **Edit source files, then run code in the active REPL**:
+
+   - Paste code directly into the active REPL, or
+   - Call `include("path/to/script.jl")` for an edited script.
+
+4. **Keep using the same REPL session** while iterating. Unless struct fields/type layout are modified, continue working in the open REPL with Revise updates.
+
+5. **Define a test model** for quick testing:
 
    ```julia
    @model RBC begin
