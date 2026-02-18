@@ -497,6 +497,7 @@ function rrule(::typeof(calculate_first_order_solution),
     qme_ws = ensure_qme_workspace!(workspaces,
                                    T.nVars - T.nPresent_only,
                                    T.nPast_not_future_and_mixed)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
 
     ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
     
