@@ -2,14 +2,12 @@
 
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
-                                        qme_ws::qme_workspace{R,S},
-                                        sylv_ws::sylvester_workspace{R,S},
-                                        schur_ws::schur_workspace{R},
+                                        workspaces::workspaces,
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_qr::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -23,6 +21,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
+
+    qme_ws = ensure_qme_workspace!(workspaces,
+                                   T.nVars - T.nPresent_only,
+                                   T.nPast_not_future_and_mixed)
 
     ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
 
@@ -75,11 +77,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws, cache;
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, workspaces, cache;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     use_fastlapack_lu = use_fastlapack_lu,
-                                                    schur_ws = schur_ws,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
                                                     verbose = opts.verbose)

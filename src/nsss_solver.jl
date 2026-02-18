@@ -11,6 +11,8 @@
 # ============================================================================
 
 const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
+const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
+const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
 """
 Mutable accumulator used during `write_steady_state_solver_function!` to collect step data.
@@ -19,9 +21,9 @@ data into the model's functions, constants, and workspaces sub-structs.
 """
 mutable struct NSSSSolverBuilder
     # Per-step parallel vectors (functions)
-    aux_funcs::Vector{Union{Nothing, Function}}
-    error_funcs::Vector{Union{Nothing, Function}}
-    eval_funcs::Vector{Union{Nothing, Function}}
+    aux_funcs::Vector{Function}
+    error_funcs::Vector{Function}
+    eval_funcs::Vector{Function}
     solve_blocks::Vector{Union{Nothing, ss_solve_block}}
     # Per-step metadata
     step_types::Vector{UInt8}
@@ -57,8 +59,8 @@ end
 
 function NSSSSolverBuilder()
     NSSSSolverBuilder(
-        Union{Nothing,Function}[], Union{Nothing,Function}[],
-        Union{Nothing,Function}[], Union{Nothing,ss_solve_block}[],
+        Function[], Function[],
+        Function[], Union{Nothing,ss_solve_block}[],
         UInt8[], String[], Int[],
         Int[], UnitRange{Int}[],
         Int[], UnitRange{Int}[],
@@ -73,9 +75,9 @@ end
 
 """Append an analytical step to the builder."""
 function push_analytical_step!(b::NSSSSolverBuilder;
-                               aux_func!::Union{Nothing,Function} = nothing,
+                               aux_func!::Function = NOOP_NSSS_FUNC!,
                                aux_write_indices::Vector{Int} = Int[],
-                               error_func!::Union{Nothing,Function} = nothing,
+                               error_func!::Function = NOOP_NSSS_FUNC!,
                                error_size::Int = 0,
                                eval_func!::Function,
                                write_indices::Vector{Int},
@@ -136,9 +138,9 @@ function push_numerical_step!(b::NSSSSolverBuilder;
                               var_gather_indices::Vector{Int},
                               lbs::Vector{Float64},
                               ubs::Vector{Float64},
-                              aux_func!::Union{Nothing,Function} = nothing,
+                              aux_func!::Function = NOOP_NSSS_FUNC!,
                               aux_write_indices::Vector{Int} = Int[],
-                              aux_error_func!::Union{Nothing,Function} = nothing,
+                              aux_error_func!::Function = NOOP_NSSS_FUNC!,
                               aux_error_size::Int = 0,
                               description::String = "")
     push!(b.step_types, NUMERICAL_STEP)
@@ -148,7 +150,7 @@ function push_numerical_step!(b::NSSSSolverBuilder;
     # Functions
     push!(b.aux_funcs, aux_func!)
     push!(b.error_funcs, aux_error_func!)   # numerical steps use error_funcs slot for aux_error
-    push!(b.eval_funcs, nothing)
+    push!(b.eval_funcs, NOOP_NSSS_EVAL!)
     push!(b.solve_blocks, solve_block)
 
     # Write indices
@@ -947,9 +949,9 @@ function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name
     param_gather_indices = [ext_param_to_index[p] for p in block_meta.calib_pars_input]
     var_gather_indices = [sol_name_to_index[v] for v in block_meta.other_vars_input]
 
-    aux_func! = nothing
+    aux_func! = NOOP_NSSS_FUNC!
     aux_write_indices = Int[]
-    aux_error_func! = nothing
+    aux_error_func! = NOOP_NSSS_FUNC!
     aux_error_size = 0
 
     if !isempty(block_meta.ss_and_aux_equations)
@@ -1358,9 +1360,9 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                     all_aux_eqs = vcat(ss_and_aux_equations, ss_and_aux_equations_dep)
                     all_aux_errors = vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)
 
-                    aux_func! = nothing
+                    aux_func! = NOOP_NSSS_FUNC!
                     aux_write_indices = Int[]
-                    error_func! = nothing
+                    error_func! = NOOP_NSSS_FUNC!
                     error_size = 0
 
                     model_aux_names = Symbol[]
@@ -1631,9 +1633,9 @@ function execute_step!(step_idx::Int,
     error = 0.0
 
     # Phase 1: Compute auxiliary variables (shared across both step types)
-    if f.aux_funcs[step_idx] !== nothing
-        aux_wr = c.aux_write_ranges[step_idx]
-        n_aux = length(aux_wr)
+    aux_wr = c.aux_write_ranges[step_idx]
+    n_aux = length(aux_wr)
+    if n_aux > 0
         aux_buf = @view w.aux_buffer[1:n_aux]
         f.aux_funcs[step_idx](aux_buf, sol_vec, params_vec)
         @inbounds for j in 1:n_aux
@@ -1643,8 +1645,8 @@ function execute_step!(step_idx::Int,
 
     if step_type == ANALYTICAL_STEP
         # Error check (analytical domain-safety)
-        if f.error_funcs[step_idx] !== nothing
-            err_n = c.error_sizes[step_idx]
+        err_n = c.error_sizes[step_idx]
+        if err_n > 0
             err_buf = @view w.error_buffer[1:err_n]
             f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
             error += sum(abs, err_buf)
@@ -1668,7 +1670,7 @@ function execute_step!(step_idx::Int,
                     sol_vec[widx] = raw
                 end
             end
-        elseif f.eval_funcs[step_idx] !== nothing
+        else
             # Min/Max validation step: no writes but eval_func exists
             f.eval_funcs[step_idx](@view(w.main_buffer[1:1]), sol_vec, params_vec)
         end
@@ -1764,8 +1766,8 @@ function execute_step!(step_idx::Int,
         end
 
         # Domain safety error check after block solve
-        if f.error_funcs[step_idx] !== nothing
-            err_n = c.aux_error_sizes[step_idx]
+        err_n = c.aux_error_sizes[step_idx]
+        if err_n > 0
             err_buf = @view w.error_buffer[1:err_n]
             f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
             error += sum(abs, err_buf)

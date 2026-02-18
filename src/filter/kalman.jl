@@ -288,15 +288,9 @@ function filter_and_smooth(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-    schur_ws = ensure_schur_workspace!(𝓂)
-    
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
-                                                            qme_ws,
-                                                            sylv_ws,
-                                                            schur_ws,
+                                                            𝓂.workspaces,
                                                             𝓂.caches;
                                                             opts = opts)
     

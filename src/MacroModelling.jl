@@ -4612,14 +4612,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # @timeit_debug timer "Calculate first order solution" begin
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
-    schur_ws = @ignore_derivatives ensure_schur_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws,
-                                                        schur_ws,
+                                                        𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
@@ -4733,7 +4729,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = 𝓂.workspaces.qme.I_nPast
+    qme_ws = ensure_qme_workspace!(𝓂)
+    I_nPast = qme_ws.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -4804,14 +4801,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
-    schur_ws = @ignore_derivatives ensure_schur_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws,
-                                                        schur_ws,
+                                                        𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
@@ -4944,7 +4937,8 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = 𝓂.workspaces.qme.I_nPast
+    qme_ws = ensure_qme_workspace!(𝓂)
+    I_nPast = qme_ws.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -5137,14 +5131,10 @@ function solve!(𝓂::ℳ;
             # @timeit_debug timer "Calculate first order solution" begin
 
             qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-            sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
-            schur_ws = @ignore_derivatives ensure_schur_workspace!(𝓂)
             
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
-                                                                qme_ws,
-                                                                sylv_ws,
-                                                                schur_ws,
+                                                                𝓂.workspaces,
                                                                 𝓂.caches;
                                                                 opts = opts,
                                                                 initial_guess = 𝓂.caches.qme_solution)
@@ -5168,9 +5158,7 @@ function solve!(𝓂::ℳ;
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
-                                                                    qme_ws,
-                                                                    sylv_ws,
-                                                                    schur_ws,
+                                                                    𝓂.workspaces,
                                                                     𝓂.caches;
                                                                     opts = opts,
                                                                     initial_guess = 𝓂.caches.qme_solution)
@@ -8239,14 +8227,10 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
     qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    sylv_ws = @ignore_derivatives ensure_sylvester_1st_order_workspace!(𝓂)
-    schur_ws = @ignore_derivatives ensure_schur_workspace!(𝓂)
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
-                                                        qme_ws,
-                                                        sylv_ws,
-                                                        schur_ws,
+                                                        𝓂.workspaces,
                                                         𝓂.caches;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.caches.qme_solution,

@@ -43,7 +43,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = 𝓂.workspaces.qme.I_nPast
+    qme_ws = ensure_qme_workspace!(𝓂)
+    I_nPast = qme_ws.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -123,7 +124,8 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     ℂ = 𝓂.workspaces.third_order
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = 𝓂.workspaces.qme.I_nPast
+    qme_ws = ensure_qme_workspace!(𝓂)
+    I_nPast = qme_ws.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -226,7 +228,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-    qme_ws = 𝓂.workspaces.qme
+    qme_ws = ensure_qme_workspace!(𝓂)
 
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
@@ -350,15 +352,17 @@ end
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
-                                        qme_ws::qme_workspace,
-                                        sylv_ws::sylvester_workspace,
-                                        schur_ws::schur_workspace,
+                                        workspaces::workspaces,
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
+    qme_ws = ensure_qme_workspace!(workspaces,
+                                   T.nVars - T.nPresent_only,
+                                   T.nPast_not_future_and_mixed)
+    sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
     ensure_first_order_qme_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
 
     expand_future = idx_constants.expand_future
@@ -375,7 +379,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, schur_ws, cache; opts = opts, initial_guess = initial_guess_value)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, workspaces, cache; opts = opts, initial_guess = initial_guess_value)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -484,7 +488,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         constants::constants,
-                                        workspace::qme_workspace,
+                                        workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
@@ -504,14 +508,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
-                                                Val(quadratic_matrix_equation_algorithm), 
+    qme_ws = ensure_qme_workspace!(workspaces,
+                                   T.nVars - T.nPresent_only,
+                                   T.nPast_not_future_and_mixed)
+
+    X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ,
                                                 constants,
-                                                workspace,
+                                                workspaces,
                                                 cache;
                                                 tol = tol,
                                                 initial_guess = initial_guess_value,
-                                                # timer = timer,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 verbose = verbose)
 
     AXB = Â * X + B̂
@@ -529,12 +536,12 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     X² = X * X
 
     # Allocate or reuse workspace for partials (from qme_workspace)
-    if size(workspace.X̃) != (length(X), N)
-        workspace.X̃ = zeros(length(X), N)
+    if size(qme_ws.X̃) != (length(X), N)
+        qme_ws.X̃ = zeros(length(X), N)
     else
-        fill!(workspace.X̃, zero(eltype(workspace.X̃)))
+        fill!(qme_ws.X̃, zero(eltype(qme_ws.X̃)))
     end
-    X̃ = workspace.X̃
+    X̃ = qme_ws.X̃
 
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
@@ -546,7 +553,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, workspace.sylvester_ws, sylvester_algorithm = :doubling)
+        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester_ws, sylvester_algorithm = :doubling)
 
         solved = Bool(solved) && Bool(slvd)
 

@@ -12,37 +12,45 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R},
                                         C::AbstractMatrix{R},
                                         constants::constants,
-                                        workspace::qme_workspace{R,S},
+                                        workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        schur_ws::Union{Nothing, schur_workspace{R}} = nothing,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
     T = constants.post_model_macro
+    n = T.nVars - T.nPresent_only
+    nPfm = T.nPast_not_future_and_mixed
+
+    qme_ws = ensure_qme_workspace!(workspaces, n, nPfm)
+    ensure_schur_workspace!(workspaces,
+                            n,
+                            T.nMixed,
+                            nPfm,
+                            T.nFuture_not_past_and_mixed)
     
 
     if length(initial_guess) > 0
         X = initial_guess
-        X² = workspace.temp3
+        X² = qme_ws.temp3
 
         # Compute residual: A*X² + B*X + C
         # X² into temporary buffer
         ℒ.mul!(X², X, X)
         # A*X² into AXX buffer
-        ℒ.mul!(workspace.AXX, A, X²)
+        ℒ.mul!(qme_ws.AXX, A, X²)
         
-        AXXnorm = max(ℒ.norm(workspace.AXX), ℒ.norm(C))
+        AXXnorm = max(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
         
         # AXX += B*X
-        ℒ.mul!(workspace.AXX, B, X, 1, 1)
+        ℒ.mul!(qme_ws.AXX, B, X, 1, 1)
         # AXX += C
-        ℒ.axpy!(1, C, workspace.AXX)
+        ℒ.axpy!(1, C, qme_ws.AXX)
     
-        reached_tol = ℒ.norm(workspace.AXX) / AXXnorm
+        reached_tol = ℒ.norm(qme_ws.AXX) / AXXnorm
 
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
@@ -62,12 +70,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_algorithm), 
                                                         constants,
-                                                        workspace,
+                                                        workspaces,
                                                         cache;
                                                         initial_guess = initial_guess,
                                                         use_fastlapack_schur = use_fastlapack_schur,
                                                         use_fastlapack_lu = use_fastlapack_lu,
-                                                        schur_ws = schur_ws,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
@@ -79,12 +86,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
                                                                 constants,
-                                                                workspace,
+                                                                workspaces,
                                                                 cache;
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                schur_ws = schur_ws,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -94,12 +100,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
                                                                 constants,
-                                                                workspace,
+                                                                workspaces,
                                                                 cache;
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                schur_ws = schur_ws,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -118,12 +123,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:schur}, 
                                         constants::constants,
-                                        workspace::qme_workspace,
+                                        workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        schur_ws::Union{Nothing, schur_workspace{R}} = nothing,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
@@ -137,16 +141,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     nPfm = T.nPast_not_future_and_mixed
     nFnpm = T.nFuture_not_past_and_mixed
     
-    # Reuse schur workspace when dimensions match; otherwise fall back to a local one.
-    schur_ws_local = if schur_ws === nothing ||
-                        size(schur_ws.D, 1) != (n + nMixed) ||
-                        size(schur_ws.sol) != (n, nPfm) ||
-                        size(schur_ws.Z₁₁) != (nPfm, nPfm) ||
-                        size(schur_ws.Z₂₁) != (nFnpm, nPfm)
-        Schur_workspace(n, nMixed, nPfm, nFnpm, T = R)
-    else
-        schur_ws
-    end
+    schur_ws_local = ensure_schur_workspace!(workspaces, n, nMixed, nPfm, nFnpm)
     
     # Use cached indices from constants instead of recomputing
     future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
@@ -315,7 +310,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:doubling}, 
                                         constants::constants,
-                                        workspace::qme_workspace{R,S},
+                                        workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         use_fastlapack_schur::Bool = true,
@@ -323,8 +318,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat, S <: Real}
+                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
+    workspace = ensure_qme_workspace!(workspaces, size(A, 1), T.nPast_not_future_and_mixed)
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491

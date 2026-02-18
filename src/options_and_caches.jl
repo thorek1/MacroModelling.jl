@@ -1454,16 +1454,19 @@ function ensure_schur_workspace!(𝓂)
 end
 
 function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
-    ws = workspaces.schur
+    workspaces.schur = ensure_schur_workspace!(workspaces.schur, n, nMixed, nPfm, nFnpm)
+    return workspaces.schur
+end
+
+function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int) where T
     companion_size = n + nMixed
-    # Check if workspace needs to be resized
     if size(ws.D, 1) != companion_size ||
        size(ws.sol) != (n, nPfm) ||
        size(ws.Z₁₁) != (nPfm, nPfm) ||
        size(ws.Z₂₁) != (nFnpm, nPfm)
-        workspaces.schur = Schur_workspace(n, nMixed, nPfm, nFnpm)
+        return Schur_workspace(n, nMixed, nPfm, nFnpm, T = T)
     end
-    return workspaces.schur
+    return ws
 end
 
 """

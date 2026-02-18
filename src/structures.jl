@@ -701,9 +701,9 @@ which is either `eval_func!` (analytical) or dispatched via `solve_block` (numer
 """
 struct NSSSSolverFunctions
     # Per-step compiled functions (indexed by step number)
-    aux_funcs::Vector{Union{Nothing, Function}}       # f!(out, sol_vec, params_vec) — optional pre-step aux
-    error_funcs::Vector{Union{Nothing, Function}}      # g!(out, sol_vec, params_vec) — optional error check
-    eval_funcs::Vector{Union{Nothing, Function}}       # f!(out, sol_vec, params_vec) — main eval (analytical only)
+    aux_funcs::Vector{Function}                        # f!(out, sol_vec, params_vec) — optional pre-step aux
+    error_funcs::Vector{Function}                      # g!(out, sol_vec, params_vec) — optional error check
+    eval_funcs::Vector{Function}                       # f!(out, sol_vec, params_vec) — main eval (analytical only)
     solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
 end
 
@@ -772,9 +772,9 @@ end
 
 """Construct an empty `NSSSSolverFunctions` with no steps."""
 NSSSSolverFunctions() = NSSSSolverFunctions(
-    Union{Nothing,Function}[],
-    Union{Nothing,Function}[],
-    Union{Nothing,Function}[],
+    Function[],
+    Function[],
+    Function[],
     Union{Nothing,ss_solve_block}[],
 )
 
