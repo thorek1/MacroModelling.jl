@@ -352,6 +352,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
                                         qme_ws::qme_workspace,
                                         sylv_ws::sylvester_workspace,
+                                        schur_ws::schur_workspace,
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
@@ -374,7 +375,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, cache; opts = opts, initial_guess = initial_guess_value)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, schur_ws, cache; opts = opts, initial_guess = initial_guess_value)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -476,12 +477,6 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         cache.first_order_solution_matrix = S₁
     end
 
-    if cache.qme_solution isa Matrix{Float64} && size(cache.qme_solution) == size(qme_sol)
-        copyto!(cache.qme_solution, qme_sol)
-    else
-        cache.qme_solution = qme_sol
-    end
-
     return S₁, qme_sol, solved
 end
 
@@ -489,7 +484,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         constants::constants,
-                                        workspace::qme_workspace;
+                                        workspace::qme_workspace,
+                                        cache::caches;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -511,7 +507,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_algorithm), 
                                                 constants,
-                                                workspace;
+                                                workspace,
+                                                cache;
                                                 tol = tol,
                                                 initial_guess = initial_guess_value,
                                                 # timer = timer,

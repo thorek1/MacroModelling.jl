@@ -4,6 +4,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
                                         qme_ws::qme_workspace{R,S},
                                         sylv_ws::sylvester_workspace{R,S},
+                                        schur_ws::schur_workspace{R},
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_qr::Bool = true,
@@ -63,7 +64,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Sort matrices" begin
 
     Ã₊ = qme_ws.𝐀̃₊
-    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), Ir[future_not_past_and_mixed_in_comb,:])
+    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), @view(Ir[future_not_past_and_mixed_in_comb,:]))
 
     Ã₀ = qme_ws.𝐀̃₀
     copyto!(Ã₀, @view(A₀[dynIndex, comb]))
@@ -74,9 +75,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws;
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws, cache;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                                    use_fastlapack_lu = use_fastlapack_lu,
+                                                    schur_ws = schur_ws,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
                                                     verbose = opts.verbose)
@@ -92,7 +95,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
-    D = @view sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+    n_dyn = length(reverse_dynamic_order)
+    𝐃 = @view sol[@view(reverse_dynamic_order[n_dyn - T.nFuture_not_past_and_mixed + 1:n_dyn]), past_not_future_and_mixed_in_comb]
 
     L = @view sol[past_not_future_and_mixed_in_present_but_not_only, past_not_future_and_mixed_in_comb]
 
@@ -125,7 +129,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     if T.nPresent_only > 0
         ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
         nₚ₋ = qme_ws.𝐧ₚ₋
-        ℒ.mul!(nₚ₋, A₊ᵤ, D)
+        ℒ.mul!(nₚ₋, A₊ᵤ, 𝐃)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;
                        use_fastlapack_lu = use_fastlapack_lu)
@@ -188,12 +192,6 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     else
         S₁ = hcat(A, ∇ₑ)
         cache.first_order_solution_matrix = S₁
-    end
-
-    if cache.qme_solution isa Matrix{R} && size(cache.qme_solution) == size(sol)
-        copyto!(cache.qme_solution, sol)
-    else
-        cache.qme_solution = sol
     end
 
     return S₁, sol, true

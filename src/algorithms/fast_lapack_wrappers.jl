@@ -68,6 +68,25 @@ function solve_lu_left!(A::AbstractMatrix{R},
     return B
 end
 
+function solve_lu_right!(A::AbstractMatrix{R},
+                         B::AbstractMatrix{R},
+                         lu_ws,
+                         lu,
+                         rhs_t::AbstractMatrix{R};
+                         use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_lu && R <: Union{Float32, Float64}
+        rhs_t_dims = (size(B, 2), size(B, 1))
+        @assert size(rhs_t) == rhs_t_dims
+
+        copyto!(rhs_t, transpose(B))
+        ℒ.LAPACK.getrs!(lu_ws, 'T', A, rhs_t)
+        copyto!(B, transpose(rhs_t))
+    else
+        ℒ.rdiv!(B, lu)
+    end
+    return B
+end
+
 function factorize_generalized_schur!(D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
                                       qz_ws,

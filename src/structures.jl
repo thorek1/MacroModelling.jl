@@ -568,6 +568,10 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     fast_lu_dims_a0u::NTuple{2, Int}
     fast_lu_ws_nabla0::FastLapackInterface.LUWs
     fast_lu_dims_nabla0::NTuple{2, Int}
+    fast_lu_ws_qme_a::FastLapackInterface.LUWs
+    fast_lu_dims_qme_a::NTuple{2, Int}
+    fast_lu_ws_qme_b::FastLapackInterface.LUWs
+    fast_lu_dims_qme_b::NTuple{2, Int}
 end
 
 
@@ -584,7 +588,6 @@ Fields:
 - `Ã₀₋`: Product B[:,indices_past_not_future_in_comb] * I_nPast[not_mixed_in_past_idx,:]
 - `Z₂₁`, `S₁₁`, `T₁₁`: Schur decomposition result blocks (need owned copies for lu!)
 - `sol`: Assembled solution before reordering (nPfm+nFnpm) × nPfm
-- `X`: Final QME solution n × nPfm
 - `temp_X2`: Buffer for X² in residual check
 - `AXX`: Buffer for A*X² + B*X + C residual
 - `eigenselect`: Boolean vector for eigenvalue selection
@@ -598,12 +601,12 @@ mutable struct schur_workspace{T <: Real}
     Ã₀₊::Matrix{T}
     Ã₀₋::Matrix{T}
     # Schur decomposition result blocks (owned copies for lu!)
+    Z₁₁::Matrix{T}
     Z₂₁::Matrix{T}
     S₁₁::Matrix{T}
     T₁₁::Matrix{T}
     # Solution assembly buffers
     sol::Matrix{T}
-    X::Matrix{T}
     # Residual check buffers
     temp_X2::Matrix{T}
     AXX::Matrix{T}
@@ -612,6 +615,14 @@ mutable struct schur_workspace{T <: Real}
     # FastLapack generalized Schur workspace
     fast_qz_ws::FastLapackInterface.GeneralizedSchurWs{T}
     fast_qz_dims::NTuple{2, Int}
+    # FastLapack LU workspaces for schur post-processing
+    fast_lu_ws_z11::FastLapackInterface.LUWs
+    fast_lu_dims_z11::NTuple{2, Int}
+    fast_lu_ws_s11::FastLapackInterface.LUWs
+    fast_lu_dims_s11::NTuple{2, Int}
+    # Scratch buffers for right-side solves (store transposed RHS)
+    fast_lu_rhs_t_z21::Matrix{T}
+    fast_lu_rhs_t_s11::Matrix{T}
 end
 
 

@@ -271,6 +271,10 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     empty_lu_ws,
                     (0, 0),
                     empty_lu_ws,
+                    (0, 0),
+                    empty_lu_ws,
+                    (0, 0),
+                    empty_lu_ws,
                     (0, 0))
 end
 
@@ -300,22 +304,31 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = F
     qz_seed_size = max(companion_size, 1)
     qz_seed = zeros(T, qz_seed_size, qz_seed_size)
     qz_ws = FastLapackInterface.GeneralizedSchurWs(qz_seed)
+    lu_seed_size = max(nPfm, 1)
+    lu_seed = zeros(T, lu_seed_size, lu_seed_size)
+    empty_lu_ws = FastLapackInterface.LUWs(lu_seed)
     schur_workspace(
         zeros(T, companion_size, companion_size),  # D
         zeros(T, companion_size, companion_size),  # E
         zeros(T, n, nPfm),                         # Ã₋
         zeros(T, n, nFnpm),                        # Ã₀₊
         zeros(T, n, nPfm),                         # Ã₀₋
+        zeros(T, nPfm, nPfm),                      # Z₁₁
         zeros(T, nFnpm, nPfm),                     # Z₂₁
         zeros(T, nPfm, nPfm),                      # S₁₁
         zeros(T, nPfm, nPfm),                      # T₁₁
         zeros(T, n, nPfm),                         # sol
-        zeros(T, n, n),                            # X (n × n)
         zeros(T, n, n),                            # temp_X2
         zeros(T, n, n),                            # AXX
         Vector{Bool}(undef, companion_size),       # eigenselect
         qz_ws,
-        (0, 0))
+        (0, 0),
+        empty_lu_ws,
+        (0, 0),
+        empty_lu_ws,
+        (0, 0),
+        zeros(T, nPfm, nFnpm),                     # fast_lu_rhs_t_z21
+        zeros(T, nPfm, nPfm))                      # fast_lu_rhs_t_s11
 end
 
 """
@@ -1444,7 +1457,10 @@ function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nP
     ws = workspaces.schur
     companion_size = n + nMixed
     # Check if workspace needs to be resized
-    if size(ws.D, 1) != companion_size || size(ws.X, 1) != n
+    if size(ws.D, 1) != companion_size ||
+       size(ws.sol) != (n, nPfm) ||
+       size(ws.Z₁₁) != (nPfm, nPfm) ||
+       size(ws.Z₂₁) != (nFnpm, nPfm)
         workspaces.schur = Schur_workspace(n, nMixed, nPfm, nFnpm)
     end
     return workspaces.schur

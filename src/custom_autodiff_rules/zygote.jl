@@ -544,7 +544,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws;
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, qme_ws, cache;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -644,12 +644,9 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     
-    if use_fastlapack_lu && R <: Union{Float32, Float64}
-        M = Matrix{R}(ℒ.I, size(∇₀, 1), size(∇₀, 2))
-        ℒ.LAPACK.getrs!(qme_ws.fast_lu_ws_nabla0, 'N', ∇₀, M)
-    else
-        M = inv(C)
-    end
+    M = Matrix{R}(ℒ.I, size(∇₀, 1), size(∇₀, 2))
+    solve_lu_left!(∇₀, M, qme_ws.fast_lu_ws_nabla0, C;
+                   use_fastlapack_lu = use_fastlapack_lu)
 
     tmp2 = -M' * (∇₊ * expand_future)'
     
@@ -702,12 +699,6 @@ function rrule(::typeof(calculate_first_order_solution),
     else
         𝐒₁ = hcat(𝐒ᵗ, ∇̂ₑ)
         cache.first_order_solution_matrix = 𝐒₁
-    end
-
-    if cache.qme_solution isa Matrix{R} && size(cache.qme_solution) == size(sol)
-        copyto!(cache.qme_solution, sol)
-    else
-        cache.qme_solution = sol
     end
 
     return (𝐒₁, sol, solved), first_order_solution_pullback
