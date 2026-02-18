@@ -25,7 +25,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     n = T.nVars - T.nPresent_only
     nPfm = T.nPast_not_future_and_mixed
 
-    qme_ws = ensure_qme_workspace!(workspaces, n, nPfm)
+    qme_ws = ensure_qme_doubling_workspace!(workspaces, n)
     ensure_schur_workspace!(workspaces,
                             n,
                             T.nMixed,
@@ -320,7 +320,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         verbose::Bool = false,
                                         max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
-    workspace = ensure_qme_workspace!(workspaces, size(A, 1), T.nPast_not_future_and_mixed)
+    workspace = ensure_qme_doubling_workspace!(workspaces, size(A, 1))
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491

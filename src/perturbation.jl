@@ -22,11 +22,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
 
-    qme_ws = ensure_qme_workspace!(workspaces,
-                                   T.nVars - T.nPresent_only,
-                                   T.nPast_not_future_and_mixed)
+    qme_ws = ensure_first_order_workspace!(workspaces)
 
-    ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
+    ensure_first_order_workspace_buffers!(qme_ws, T, length(dynIndex), length(comb))
 
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = qme_ws.∇₀

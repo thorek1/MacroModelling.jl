@@ -492,12 +492,10 @@ function rrule(::typeof(calculate_first_order_solution),
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
 
-    qme_ws = ensure_qme_workspace!(workspaces,
-                                   T.nVars - T.nPresent_only,
-                                   T.nPast_not_future_and_mixed)
+    qme_ws = ensure_first_order_workspace!(workspaces)
     sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
 
-    ensure_first_order_qme_buffers!(qme_ws, T, length(dynIndex), length(comb))
+    ensure_first_order_workspace_buffers!(qme_ws, T, length(dynIndex), length(comb))
     
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = qme_ws.∇₀
@@ -612,19 +610,14 @@ function rrule(::typeof(calculate_first_order_solution),
     expand_past = idx_constants.expand_past
 
     𝐒ᵗ = qme_ws.𝐀
-    n_cols = size(𝐒ᵗ, 2)
-    
+
     for i in 1:T.nVars
         src = T.reorder[i]
         if src <= T.nPresent_only
-            for j in 1:n_cols
-                @inbounds 𝐒ᵗ[i, j] = A₋ᵤ[src, j]
-            end
+            @views copyto!(𝐒ᵗ[i, :], A₋ᵤ[src, :])
         else
             src_idx = src - T.nPresent_only
-            for j in 1:n_cols
-                @inbounds 𝐒ᵗ[i, j] = sol_compact[src_idx, j]
-            end
+            @views copyto!(𝐒ᵗ[i, :], sol_compact[src_idx, :])
         end
     end
     

@@ -207,12 +207,11 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
 end
 
 """
-    Qme_workspace(n::Int; T::Type = Float64)
+    First_order_workspace(; T::Type = Float64, S::Type = Float64)
 
-Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
-`n` is the dimension of the square matrices (nVars - nPresent_only).
+Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
+function First_order_workspace(; T::Type = Float64, S::Type = Float64)
     empty_qr_factors = zeros(T, 0, 0)
     empty_qr_ws = FastLapackInterface.QRWs(empty_qr_factors)
     empty_qr_rhs = zeros(T, 0, 0)
@@ -220,22 +219,9 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
     empty_lu_factors = zeros(T, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
-    qme_workspace(  zeros(T, n, n),  # E
-                    zeros(T, n, n),  # F
-                    zeros(T, n, n),  # X
-                    zeros(T, n, n),  # Y
-                    zeros(T, n, n),  # X_new
-                    zeros(T, n, n),  # Y_new
-                    zeros(T, n, n),  # E_new
-                    zeros(T, n, n),  # F_new
-                    zeros(T, n, n),  # temp1
-                    zeros(T, n, n),  # temp2
-                    zeros(T, n, n),  # temp3
-                    zeros(T, n, n),  # B̄
-                    zeros(T, n, n),  # AXX
-                    Sylvester_workspace(S = T),  # sylvester_ws
+    first_order_workspace(
+                    Sylvester_workspace(S = T, T = S),  # sylvester_ws
                     # ForwardDiff partials buffers
-                    zeros(S, 0, 0),  # X̃
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
                     zeros(S, 0, 0),  # ∂SS_and_pars
@@ -255,9 +241,6 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, 0, 0),  # 𝐀
                     zeros(T, 0, 0),  # ∇₀
                     zeros(T, 0, 0),  # ∇ₑ
-                    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
-                    ℒ.I(n),             # I_n
-                    ℒ.I(nPast),         # I_nPast
                     # FastLapackInterface QR workspaces
                     empty_qr_factors,
                     empty_qr_ws,
@@ -271,14 +254,46 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     empty_lu_ws,
                     (0, 0),
                     empty_lu_ws,
-                    (0, 0),
+                    (0, 0))
+end
+
+"""
+    Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
+
+Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
+`n` is the dimension of the square matrices (nVars - nPresent_only).
+"""
+function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
+    empty_lu_factors = zeros(T, 0, 0)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+
+    qme_doubling_workspace(
+                    zeros(T, n, n),  # E
+                    zeros(T, n, n),  # F
+                    zeros(T, n, n),  # X
+                    zeros(T, n, n),  # Y
+                    zeros(T, n, n),  # X_new
+                    zeros(T, n, n),  # Y_new
+                    zeros(T, n, n),  # E_new
+                    zeros(T, n, n),  # F_new
+                    zeros(T, n, n),  # temp1
+                    zeros(T, n, n),  # temp2
+                    zeros(T, n, n),  # temp3
+                    zeros(T, n, n),  # B̄
+                    zeros(T, n, n),  # AXX
+                    Sylvester_workspace(S = T, T = S),  # sylvester_ws
+                    # ForwardDiff partials buffers
+                    zeros(S, 0, 0),  # X̃
+                    # Pre-computed identity matrix (Diagonal{Bool} - supports indexing)
+                    ℒ.I(n),          # I_n
+                    # FastLapackInterface LU workspaces
                     empty_lu_ws,
                     (0, 0),
                     empty_lu_ws,
                     (0, 0))
 end
 
-function ensure_first_order_fast_qr_workspace!(ws::qme_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
+function ensure_first_order_fast_qr_workspace!(ws::first_order_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
     if size(ws.fast_qr_factors) != size(qr_mat)
         ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
         ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
@@ -714,7 +729,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
-                Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
+                First_order_workspace(T = T, S = S),  # Initialize with size 0, will be resized when needed
+                Qme_doubling_workspace(0, T = T, S = S),  # Initialize with size 0, will be resized when needed
                 Schur_workspace(0, 0, 0, 0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
@@ -1229,27 +1245,35 @@ end
 
 
 """
-    ensure_qme_workspace!(workspaces, n, nPast = 0)
+    ensure_qme_doubling_workspace!(workspaces, n)
 
-Ensure the QME (quadratic matrix equation) workspace has dimensions `(n, nPast)`.
+Ensure the QME doubling workspace has dimension `n`.
 If the workspace is the wrong size, it is reallocated.
 """
-function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
-    ws = workspaces.qme
-    # Check if workspace needs to be resized (either n or nPast changed)
-    if size(ws.E, 1) != n || size(ws.I_nPast, 1) != nPast
-        workspaces.qme = Qme_workspace(n, nPast = nPast)
+function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
+    ws = workspaces.qme_doubling
+    if size(ws.E, 1) != n
+        workspaces.qme_doubling = Qme_doubling_workspace(n)
     end
-    return workspaces.qme
+    return workspaces.qme_doubling
 end
 
 """
-    ensure_first_order_qme_buffers!(ws, T, n_dyn, n_comb)
+    ensure_first_order_workspace!(workspaces)
 
-Ensure all first-order perturbation buffers in `qme_workspace` are allocated with
+Return the first-order perturbation workspace from `workspaces`.
+"""
+function ensure_first_order_workspace!(workspaces::workspaces)
+    return workspaces.first_order
+end
+
+"""
+    ensure_first_order_workspace_buffers!(ws, T, n_dyn, n_comb)
+
+Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
 the correct dimensions.
 """
-function ensure_first_order_qme_buffers!(ws::qme_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
+function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
     n = T.nVars
     n₊ = T.nFuture_not_past_and_mixed
     n₋ = T.nPast_not_future_and_mixed

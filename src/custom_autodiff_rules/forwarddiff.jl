@@ -227,7 +227,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     T = 𝓂.constants.post_model_macro
-    qme_ws = ensure_qme_workspace!(𝓂.workspaces, T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
+    qme_ws = ensure_first_order_workspace!(𝓂.workspaces)
 
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
@@ -358,11 +358,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
-    qme_ws = ensure_qme_workspace!(workspaces,
-                                   T.nVars - T.nPresent_only,
-                                   T.nPast_not_future_and_mixed)
+    qme_ws = ensure_first_order_workspace!(workspaces)
     sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
-    ensure_first_order_qme_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
+    ensure_first_order_workspace_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
 
     expand_future = idx_constants.expand_future
     expand_past = idx_constants.expand_past
@@ -400,7 +398,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
     X² = X * X
 
-    # Allocate or reuse workspace for partials (from qme_workspace)
+    # Allocate or reuse workspace for partials (from first_order_workspace)
     if size(qme_ws.X̃_first_order) != (length(𝐒₁[:,1:end-T.nExo]), N)
         qme_ws.X̃_first_order = zeros(length(𝐒₁[:,1:end-T.nExo]), N)
     else
@@ -408,7 +406,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     end
     X̃ = qme_ws.X̃_first_order
 
-    # Allocate or reuse workspace for temporary p matrix (from qme_workspace)
+    # Allocate or reuse workspace for temporary p matrix (from first_order_workspace)
     if size(qme_ws.p_tmp) != size(∇̂₁)
         qme_ws.p_tmp = zero(∇̂₁)
     else
@@ -507,9 +505,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    qme_ws = ensure_qme_workspace!(workspaces,
-                                   T.nVars - T.nPresent_only,
-                                   T.nPast_not_future_and_mixed)
+    qme_ws = ensure_qme_doubling_workspace!(workspaces,
+                                            T.nVars - T.nPresent_only)
 
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ,
                                                 constants,
@@ -534,7 +531,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
     X² = X * X
 
-    # Allocate or reuse workspace for partials (from qme_workspace)
+    # Allocate or reuse workspace for partials (from qme_doubling_workspace)
     if size(qme_ws.X̃) != (length(X), N)
         qme_ws.X̃ = zeros(length(X), N)
     else

@@ -74,7 +74,8 @@
 #
 # 2. WORKSPACES (𝓂.workspaces) - Pre-allocated temporary buffers that are 
 #    reused across function calls to avoid repeated allocations:
-#    - qme: Quadratic matrix equation solver workspace
+#    - first_order: First-order perturbation solver workspace
+#    - qme_doubling: Quadratic matrix equation doubling solver workspace
 #    - sylvester_*: Sylvester equation solver workspaces  
 #    - lyapunov_*: Lyapunov equation solver workspaces
 #    - second_order/third_order: Higher order perturbation workspaces
@@ -483,75 +484,36 @@ end
 
 
 """
-Pre-allocated workspace matrices for the quadratic matrix equation doubling algorithm.
-All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
+Pre-allocated workspace matrices for first-order perturbation and related AD paths.
 
-Used by `solve_quadratic_matrix_equation` with `Val{:doubling}` in quadratic_matrix_equation.jl.
-Also used by stochastic steady state calculations in `calculate_second_order_stochastic_steady_state`
-and `calculate_third_order_stochastic_steady_state`.
-Avoids per-call allocations for temporary matrices in the iterative doubling algorithm.
-
-Fields:
-- `E`, `F`: Working matrices for the doubling recurrence
-- `X`, `Y`: Current iteration solution matrices
-- `X_new`, `Y_new`, `E_new`, `F_new`: Next iteration matrices  
-- `temp1`, `temp2`, `temp3`: Temporary matrices for intermediate computations
-- `B̄`: Copy of B for LU factorization (modified in-place)
-- `AXX`: Temporary for residual computation (A * X² + B * X + C)
-- `I_n`: Pre-computed identity matrix for QME doubling (UniformScaling)
-- `I_nPast`: Pre-computed identity matrix for stochastic steady state (UniformScaling)
+Contains temporary matrices and factorization workspaces reused by
+`calculate_first_order_solution` and first-order derivative routines.
 """
-mutable struct qme_workspace{T <: Real, R <: Real}
-    # Doubling algorithm working matrices
-    E::Matrix{T}
-    F::Matrix{T}
-    X::Matrix{T}
-    Y::Matrix{T}
-    X_new::Matrix{T}
-    Y_new::Matrix{T}
-    E_new::Matrix{T}
-    F_new::Matrix{T}
-    
-    # Temporary matrices for intermediate operations
-    temp1::Matrix{T}
-    temp2::Matrix{T}
-    temp3::Matrix{T}
-    
-    # LU factorization buffer
-    B̄::Matrix{T}
-    
-    # Residual computation buffer
-    AXX::Matrix{T}
-    
+mutable struct first_order_workspace{T <: Real, R <: Real}
     # Sylvester workspace for ForwardDiff path
     sylvester_ws::sylvester_workspace{T, R}
-    
+
     # ForwardDiff partials buffers (for forward-mode AD)
-    X̃::Matrix{R}               # For QME solution partials
     X̃_first_order::Matrix{R}   # For first order solution partials
     p_tmp::Matrix{R}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
 
     # First-order perturbation workspaces (primal)
-    𝐧ₚ₋::Matrix{T}                    # nₚ₋ = A₊ᵤ * D
-    𝐌::Matrix{T}                      # M = A_future * expand_past
-    𝐀₊::Matrix{T}                     # A₊
-    𝐀₀::Matrix{T}                     # A₀
-    𝐀₋::Matrix{T}                     # A₋
-    𝐀̃₊::Matrix{T}                    # Ã₊
-    𝐀̃₀::Matrix{T}                    # Ã₀
-    𝐀̃₋::Matrix{T}                    # Ã₋
-    𝐀̄₀ᵤ::Matrix{T}                   # Ā₀ᵤ
-    𝐀₊ᵤ::Matrix{T}                    # A₊ᵤ
-    𝐀̃₀ᵤ::Matrix{T}                   # Ã₀ᵤ
-    𝐀₋ᵤ::Matrix{T}                    # A₋ᵤ
-    𝐀::Matrix{T}                      # A
+    𝐧ₚ₋::Matrix{T}                     # nₚ₋ = A₊ᵤ * D
+    𝐌::Matrix{T}                       # M = A_future * expand_past
+    𝐀₊::Matrix{T}                      # A₊
+    𝐀₀::Matrix{T}                      # A₀
+    𝐀₋::Matrix{T}                      # A₋
+    𝐀̃₊::Matrix{T}                     # Ã₊
+    𝐀̃₀::Matrix{T}                     # Ã₀
+    𝐀̃₋::Matrix{T}                     # Ã₋
+    𝐀̄₀ᵤ::Matrix{T}                    # Ā₀ᵤ
+    𝐀₊ᵤ::Matrix{T}                     # A₊ᵤ
+    𝐀̃₀ᵤ::Matrix{T}                    # Ã₀ᵤ
+    𝐀₋ᵤ::Matrix{T}                     # A₋ᵤ
+    𝐀::Matrix{T}                       # A
     ∇₀::Matrix{T}                      # copy of ∇₀ block (mutable workspace buffer)
     ∇ₑ::Matrix{T}                      # copy of ∇ₑ block (mutable workspace buffer)
-    
-    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
-    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
-    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}   # Identity for schur & stochastic steady state (dimension nPast_not_future_and_mixed)
 
     # FastLapackInterface QR workspaces for first-order solution
     fast_qr_factors::Matrix{T}
@@ -568,6 +530,45 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     fast_lu_dims_a0u::NTuple{2, Int}
     fast_lu_ws_nabla0::FastLapackInterface.LUWs
     fast_lu_dims_nabla0::NTuple{2, Int}
+end
+
+
+"""
+Pre-allocated workspace matrices for quadratic matrix equation doubling and dual QME differentiation.
+
+All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
+Used by `solve_quadratic_matrix_equation` with `Val{:doubling}`.
+"""
+mutable struct qme_doubling_workspace{T <: Real, R <: Real}
+    # Doubling algorithm working matrices
+    E::Matrix{T}
+    F::Matrix{T}
+    X::Matrix{T}
+    Y::Matrix{T}
+    X_new::Matrix{T}
+    Y_new::Matrix{T}
+    E_new::Matrix{T}
+    F_new::Matrix{T}
+
+    # Temporary matrices for intermediate operations
+    temp1::Matrix{T}
+    temp2::Matrix{T}
+    temp3::Matrix{T}
+
+    # LU factorization and residual buffers
+    B̄::Matrix{T}
+    AXX::Matrix{T}
+
+    # Sylvester workspace for ForwardDiff path
+    sylvester_ws::sylvester_workspace{T, R}
+
+    # ForwardDiff partials buffers (for forward-mode AD)
+    X̃::Matrix{R}               # For QME solution partials
+
+    # Pre-computed identity matrix (Diagonal{Bool} - supports indexing for schur algorithm)
+    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
+
+    # FastLapackInterface LU workspaces for QME doubling solve
     fast_lu_ws_qme_a::FastLapackInterface.LUWs
     fast_lu_dims_qme_a::NTuple{2, Int}
     fast_lu_ws_qme_b::FastLapackInterface.LUWs
@@ -1075,7 +1076,8 @@ Purpose: Speed up computation by eliminating allocation overhead in hot loops.
 Fields:
 - `second_order/third_order`: Higher-order perturbation solution workspaces
 - `custom_steady_state_buffer`: Buffer for custom steady state evaluation
-- `qme`: Quadratic matrix equation solver workspace
+- `first_order`: First-order perturbation solver workspace
+- `qme_doubling`: Quadratic matrix equation doubling solver workspace
 - `lyapunov_*`: Lyapunov equation solver workspaces (1st, 2nd, 3rd order)
 - `sylvester_*`: Sylvester equation solver workspace
 - `find_shocks`: Conditional forecast shock finding workspace
@@ -1094,7 +1096,8 @@ mutable struct workspaces
     # Steady state buffer
     custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
-    qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
+    first_order::first_order_workspace{Float64, Float64} # First-order perturbation solver
+    qme_doubling::qme_doubling_workspace{Float64, Float64} # QME doubling solver
     schur::schur_workspace{Float64}                      # Schur-based QME solver
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
     lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
