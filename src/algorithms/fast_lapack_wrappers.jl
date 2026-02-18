@@ -1,20 +1,21 @@
 @stable default_mode = "disable" begin
 
-function factorize_qr!(qr_mat::AbstractMatrix{R},
-                       qr_factors,
-                       qr_ws;
+function factorize_qr!(qr_mat::AbstractMatrix,
+                       qr_factors::AbstractMatrix{R},
+                       qr_ws::FastLapackInterface.QRWs{R};
                        use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
     if use_fastlapack_qr && R <: Union{Float32, Float64}
         copyto!(qr_factors, qr_mat)
         ℒ.LAPACK.geqrf!(qr_ws, qr_factors; resize = true)
         return qr_factors
     else
-        return ℒ.qr!(qr_mat)
+        copyto!(qr_factors, qr_mat)
+        return ℒ.qr!(qr_factors)
     end
 end
 
 function apply_qr_transpose_left!(dest::AbstractMatrix{R},
-                                  src::AbstractMatrix{R},
+                                  src::AbstractMatrix,
                                   Q,
                                   qr_orm_ws,
                                   qr_orm_dims::NTuple{3, Int},

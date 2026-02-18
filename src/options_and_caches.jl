@@ -274,7 +274,7 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     (0, 0))
 end
 
-function ensure_first_order_fast_qr_workspace!(ws::qme_workspace{T}, qr_mat::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
+function ensure_first_order_fast_qr_workspace!(ws::qme_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
     if size(ws.fast_qr_factors) != size(qr_mat)
         ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
         ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
