@@ -297,6 +297,9 @@ Dimensions:
 function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
     companion_size = n + nMixed
     nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
+    qz_seed_size = max(companion_size, 1)
+    qz_seed = zeros(T, qz_seed_size, qz_seed_size)
+    qz_ws = FastLapackInterface.GeneralizedSchurWs(qz_seed)
     schur_workspace(
         zeros(T, companion_size, companion_size),  # D
         zeros(T, companion_size, companion_size),  # E
@@ -310,7 +313,9 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = F
         zeros(T, n, n),                            # X (n × n)
         zeros(T, n, n),                            # temp_X2
         zeros(T, n, n),                            # AXX
-        Vector{Bool}(undef, companion_size))       # eigenselect
+        Vector{Bool}(undef, companion_size),       # eigenselect
+        qz_ws,
+        (0, 0))
 end
 
 """

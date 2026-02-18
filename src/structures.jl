@@ -609,6 +609,9 @@ mutable struct schur_workspace{T <: Real}
     AXX::Matrix{T}
     # Eigenvalue selection
     eigenselect::Vector{Bool}
+    # FastLapack generalized Schur workspace
+    fast_qz_ws::FastLapackInterface.GeneralizedSchurWs{T}
+    fast_qz_dims::NTuple{2, Int}
 end
 
 

@@ -170,6 +170,7 @@ include("get_functions.jl")
 include("dynare.jl")
 include("inspect.jl")
 include("moments.jl")
+include("./algorithms/fast_lapack_wrappers.jl")
 include("perturbation.jl")
 
 include("./algorithms/sylvester.jl")

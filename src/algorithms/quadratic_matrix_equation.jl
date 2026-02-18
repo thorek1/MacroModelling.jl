@@ -8,6 +8,46 @@
 
 @stable default_mode = "disable" begin
 
+function factorize_generalized_schur!(D::AbstractMatrix{R},
+                                      E::AbstractMatrix{R},
+                                      schur_ws::schur_workspace{R},
+                                      eigenselect::AbstractVector{Bool};
+                                      use_fastlapack_schur::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_schur && R <: Union{Float32, Float64}
+        qz_dims = (size(D, 1), size(D, 2))
+        if schur_ws.fast_qz_dims != qz_dims
+            schur_ws.fast_qz_ws = FastLapackInterface.GeneralizedSchurWs(D)
+            schur_ws.fast_qz_dims = qz_dims
+        end
+
+        try
+            S, T, _, _, _, Z = ℒ.LAPACK.gges!(schur_ws.fast_qz_ws, 'V', 'V', D, E;
+                                              select = FastLapackInterface.id,
+                                              criterium = 1.0,
+                                              resize = true)
+            return (S = S, T = T, Z = Z), true
+        catch
+            return nothing, false
+        end
+    else
+        schdcmp = try
+            ℒ.schur!(D, E)
+        catch
+            return nothing, false
+        end
+
+        @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
+
+        try
+            ℒ.ordschur!(schdcmp, eigenselect)
+        catch
+            return nothing, false
+        end
+
+        return schdcmp, true
+    end
+end
+
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R},
                                         C::AbstractMatrix{R},
@@ -15,6 +55,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         workspace::qme_workspace{R,S};
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        use_fastlapack_schur::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where {R <: Real, S <: Real}
@@ -52,6 +93,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         constants,
                                                         workspace; 
                                                         initial_guess = initial_guess,
+                                                        use_fastlapack_schur = use_fastlapack_schur,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
@@ -65,6 +107,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
+                                                                use_fastlapack_schur = use_fastlapack_schur,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -76,6 +119,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 constants,
                                                                 workspace; 
                                                                 initial_guess = initial_guess,
+                                                                use_fastlapack_schur = use_fastlapack_schur,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -96,6 +140,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fastlapack_schur::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
@@ -161,23 +206,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Bottom-right block: I₊
     copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
     
-    # Compute generalized Schur decomposition (D and E are overwritten in-place)
-    schdcmp = try
-        ℒ.schur!(D, E)
-    catch
-        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
-    end
+    schdcmp, schur_ok = factorize_generalized_schur!(D,
+                                                     E,
+                                                     schur_ws,
+                                                     schur_ws.eigenselect;
+                                                     use_fastlapack_schur = use_fastlapack_schur)
 
-    # Eigenvalue selection: |β/α| < 1 (stable eigenvalues)
-    # Use workspace buffer and compute in-place
-    eigenselect = schur_ws.eigenselect
-    @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
-
-    # Reorder Schur decomposition to move stable eigenvalues first
-    try
-        ℒ.ordschur!(schdcmp, eigenselect)
-    catch
+    if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
@@ -256,6 +291,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         constants::constants,
                                         workspace::qme_workspace{R,S}; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fastlapack_schur::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
