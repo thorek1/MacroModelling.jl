@@ -354,7 +354,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ensure Krylov buffers and bicgstab solver are allocated
-    ensure_lyapunov_bicgstab_solver!(workspace)
+    ensure_lyapunov_krylov_solver!(workspace, :bicgstab)
     
     # Use workspaces
     tmp̄ = workspace.tmp̄
@@ -404,7 +404,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ensure Krylov buffers and gmres solver are allocated
-    ensure_lyapunov_gmres_solver!(workspace)
+    ensure_lyapunov_krylov_solver!(workspace, :gmres)
     
     # Use workspaces
     tmp̄ = workspace.tmp̄

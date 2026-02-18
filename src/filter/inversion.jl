@@ -21,17 +21,19 @@ function calculate_loglikelihood(::Val{:inversion},
                                 filter_algorithm, 
                                 opts,
                                 on_failure_loglikelihood,
-                                lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace,
-                                kalman_ws::kalman_workspace) #; 
+                                workspaces::workspaces) #; 
                                 # timer::TimerOutput = TimerOutput())
+    T = constants_obj.post_model_macro
+    third_order = algorithm in (:pruned_third_order, :third_order)
+    ensure_inversion_buffers!(workspaces.inversion, T.nExo, T.nPast_not_future_and_mixed; third_order = third_order)
+
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
                                                     𝐒, 
                                                     data_in_deviations, 
                                                     observables, 
                                                     constants_obj, 
-                                                    inv_ws,
+                                                    workspaces.inversion,
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
@@ -444,7 +446,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    # s_in_s⁺ = computational_constants.s_in_s
     cc = ensure_computational_constants!(constants)
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1580,9 +1582,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    # s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1800,8 +1803,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
+    computational_constants = ensure_computational_constants!(𝓂.constants)
     s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    sv_in_s⁺ = computational_constants.s_in_s⁺
     e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
@@ -2071,9 +2075,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -2384,9 +2389,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind

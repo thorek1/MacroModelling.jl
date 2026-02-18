@@ -148,8 +148,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -221,12 +220,11 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-    so = ensure_computational_constants!(𝓂)
+    so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     

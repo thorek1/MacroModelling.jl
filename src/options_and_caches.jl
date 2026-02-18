@@ -403,30 +403,30 @@ function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
 end
 
 """
-    ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
 
-Ensure the bicgstab solver workspace is allocated.
+Ensure Krylov method buffers and the requested solver workspace are allocated.
+Supported algorithms are `:bicgstab` and `:gmres`.
 """
-function ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
     ensure_lyapunov_krylov_buffers!(ws)
     n = ws.n
-    if length(ws.bicgstab_workspace.x) != n * n && n > 0
-        ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+    if n == 0
+        return ws
     end
-    return ws
-end
 
-"""
-    ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
-
-Ensure the gmres solver workspace is allocated.
-"""
-function ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
-    ensure_lyapunov_krylov_buffers!(ws)
-    n = ws.n
-    if length(ws.gmres_workspace.x) != n * n && n > 0
-        ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+    if algorithm == :bicgstab
+        if length(ws.bicgstab_workspace.x) != n * n
+            ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+        end
+    elseif algorithm == :gmres
+        if length(ws.gmres_workspace.x) != n * n
+            ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+        end
+    else
+        error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")
     end
+
     return ws
 end
 
@@ -911,9 +911,9 @@ end
 # Initialize all commonly used constants at once (call at entry points)
 # This reduces repeated ensure_*! calls throughout the codebase
 function initialise_constants!(𝓂)
-    ensure_computational_constants!(𝓂)
+    ensure_computational_constants!(𝓂.constants)
     ensure_name_display_constants!(𝓂)
-    ensure_first_order_constants!(𝓂)
+    ensure_first_order_constants!(𝓂.constants)
     return 𝓂.constants
 end
 
@@ -998,61 +998,6 @@ function set_up_name_display_cache(T::post_model_macro, calibration_equations_pa
 end
 
 
-function ensure_computational_constants!(𝓂)
-    constants = 𝓂.constants
-    so = constants.second_order
-    if isempty(so.s_in_s⁺)
-        # Use timings from constants if available, otherwise from model
-        T = constants.post_model_macro
-        nᵉ = T.nExo
-        nˢ = T.nPast_not_future_and_mixed
-
-        s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
-        s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-        kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-
-        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-        kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-
-        e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-        v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-        kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
-
-        # Compute sparse index patterns for filter operations
-        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
-        shock_idxs = sparse(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)).nzind
-        shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
-        shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
-        var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-
-        so.s_in_s⁺ = s_in_s⁺
-        so.s_in_s = s_in_s
-        so.kron_s⁺_s⁺ = kron_s⁺_s⁺
-        so.kron_s⁺_s = kron_s⁺_s
-        so.kron_s⁺_s⁺_s⁺ = kron_s⁺_s⁺_s⁺
-        so.kron_s_s⁺_s⁺ = kron_s_s⁺_s⁺
-        so.e_in_s⁺ = e_in_s⁺
-        so.v_in_s⁺ = v_in_s⁺
-        so.kron_s_s = kron_s_s
-        so.kron_e_e = kron_e_e
-        so.kron_v_v = kron_v_v
-        so.kron_e_s = kron_e_s
-        so.shockvar_idxs = shockvar_idxs
-        so.shock_idxs = shock_idxs
-        so.shock_idxs2 = shock_idxs2
-        so.shock²_idxs = shock²_idxs
-        so.var_vol²_idxs = var_vol²_idxs
-    end
-
-    return constants.second_order
-end
-
 function ensure_computational_constants!(constants::constants)
     so = constants.second_order
     if isempty(so.s_in_s⁺)
@@ -1105,56 +1050,6 @@ function ensure_computational_constants!(constants::constants)
     end
 
     return constants.second_order
-end
-
-function ensure_conditional_forecast_constants!(𝓂; third_order::Bool = false)
-    constants = 𝓂.constants
-    so = ensure_computational_constants!(𝓂)
-
-    if isempty(so.var²_idxs)
-        s_in_s⁺ = so.s_in_s
-        e_in_s⁺ = so.e_in_s⁺
-
-        shock_idxs = so.shock_idxs
-        shock²_idxs = so.shock²_idxs
-        shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-        var_vol²_idxs = so.var_vol²_idxs
-        var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-        so.var²_idxs = var²_idxs
-        so.shockvar²_idxs = shockvar²_idxs
-        so.var_vol²_idxs = var_vol²_idxs
-    end
-
-    if third_order
-        to = constants.third_order
-        if isempty(to.var_vol³_idxs)
-            sv_in_s⁺ = so.s_in_s⁺
-            e_in_s⁺ = so.e_in_s⁺
-            ones_e = zero(e_in_s⁺) .+ 1
-
-            var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
-            shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
-            shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
-            shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-            shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-            shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
-            shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
-            shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-            shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
-
-            to.var_vol³_idxs = var_vol³_idxs
-            to.shock_idxs2 = shock_idxs2
-            to.shock_idxs3 = shock_idxs3
-            to.shock³_idxs = shock³_idxs
-            to.shockvar1_idxs = shockvar1_idxs
-            to.shockvar2_idxs = shockvar2_idxs
-            to.shockvar3_idxs = shockvar3_idxs
-            to.shockvar³2_idxs = shockvar³2_idxs
-            to.shockvar³_idxs = shockvar³_idxs
-        end
-    end
-
-    return so
 end
 
 function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
@@ -1295,44 +1190,6 @@ function build_first_order_index_cache(T, I_nVars)
     )
 end
 
-function ensure_first_order_constants!(𝓂)
-    constants = 𝓂.constants
-    if !constants.post_complete_parameters.initialized
-        # Use timings from constants if available, otherwise from model
-        T = constants.post_model_macro
-        diag_nVars = constants.post_complete_parameters.diag_nVars
-        if size(diag_nVars, 1) == 0
-            diag_nVars = ℒ.I(T.nVars)
-        end
-        cache = build_first_order_index_cache(T, diag_nVars)
-        constants.post_complete_parameters = update_post_complete_parameters(
-            constants.post_complete_parameters;
-            diag_nVars = diag_nVars,
-            initialized = cache.initialized,
-            dyn_index = cache.dyn_index,
-            reverse_dynamic_order = cache.reverse_dynamic_order,
-            comb = cache.comb,
-            future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
-            past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
-            Ir = cache.Ir,
-            nabla_zero_cols = cache.nabla_zero_cols,
-            nabla_minus_cols = cache.nabla_minus_cols,
-            nabla_e_start = cache.nabla_e_start,
-            expand_future = cache.expand_future,
-            expand_past = cache.expand_past,
-            past_not_future_and_mixed_in_present_but_not_only = cache.past_not_future_and_mixed_in_present_but_not_only,
-            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
-            I_nPast_not_mixed = cache.I_nPast_not_mixed,
-            Ir_past_selector = cache.Ir_past_selector,
-            schur_Z₊ = cache.schur_Z₊,
-            schur_I₊ = cache.schur_I₊,
-            schur_Z₋ = cache.schur_Z₋,
-            schur_I₋ = cache.schur_I₋,
-        )
-    end
-    return constants.post_complete_parameters
-end
-
 function ensure_first_order_constants!(constants::constants)
     if !constants.post_complete_parameters.initialized
         # Use timings from constants if available
@@ -1372,20 +1229,11 @@ end
 
 
 """
-    ensure_qme_workspace!(𝓂)
-    ensure_qme_workspace!(workspaces, n)
+    ensure_qme_workspace!(workspaces, n, nPast = 0)
 
-Ensure the QME (quadratic matrix equation) workspace is properly sized for the model.
-The workspace dimension is `n = nVars - nPresent_only` (the size of the QME matrices).
-If the workspace is the wrong size, it will be reallocated.
+Ensure the QME (quadratic matrix equation) workspace has dimensions `(n, nPast)`.
+If the workspace is the wrong size, it is reallocated.
 """
-function ensure_qme_workspace!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    n = T.nVars - T.nPresent_only
-    nPast = T.nPast_not_future_and_mixed
-    return ensure_qme_workspace!(𝓂.workspaces, n, nPast)
-end
-
 function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
     ws = workspaces.qme
     # Check if workspace needs to be resized (either n or nPast changed)
@@ -1432,7 +1280,6 @@ function ensure_first_order_qme_buffers!(ws::qme_workspace{R,S}, T, n_dyn::Int, 
 end
 
 """
-    ensure_schur_workspace!(𝓂)
     ensure_schur_workspace!(workspaces, n, nMixed, nPfm, nFnpm)
 
 Ensure the schur workspace is properly sized for the model.
@@ -1444,15 +1291,6 @@ Dimensions are:
 
 If the workspace is the wrong size, it will be reallocated.
 """
-function ensure_schur_workspace!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    n = T.nVars - T.nPresent_only
-    nMixed = T.nMixed
-    nPfm = T.nPast_not_future_and_mixed
-    nFnpm = T.nFuture_not_past_and_mixed
-    return ensure_schur_workspace!(𝓂.workspaces, n, nMixed, nPfm, nFnpm)
-end
-
 function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
     workspaces.schur = ensure_schur_workspace!(workspaces.schur, n, nMixed, nPfm, nFnpm)
     return workspaces.schur
@@ -1470,16 +1308,11 @@ function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nP
 end
 
 """
-    ensure_sylvester_1st_order_workspace!(𝓂)
     ensure_sylvester_1st_order_workspace!(workspaces)
 
-Return the first-order sylvester workspace from the model or workspaces.
+Return the first-order Sylvester workspace from `workspaces`.
 The workspace is lazily sized by the sylvester solver when needed.
 """
-function ensure_sylvester_1st_order_workspace!(𝓂)
-    return 𝓂.workspaces.sylvester_1st_order
-end
-
 function ensure_sylvester_1st_order_workspace!(workspaces::workspaces)
     return workspaces.sylvester_1st_order
 end
@@ -1517,45 +1350,6 @@ function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbo
         error("Invalid order: $order. Must be :first_order, :second_order, or :third_order")
     end
 end
-
-"""
-    ensure_lyapunov_workspace_1st_order!(𝓂)
-
-Ensure the first-order Lyapunov workspace is properly sized for the model.
-The dimension is `nVars` (size of the covariance matrix).
-"""
-function ensure_lyapunov_workspace_1st_order!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    n = T.nVars
-    return ensure_lyapunov_workspace!(𝓂.workspaces, n, :first_order)
-end
-
-
-"""
-    ensure_inversion_workspace!(𝓂; third_order::Bool = false)
-
-Ensure the inversion filter workspace is properly sized for the model.
-Dimensions are based on nExo (number of shocks) and nPast_not_future_and_mixed.
-"""
-function ensure_inversion_workspace!(𝓂; third_order::Bool = false)
-    T = 𝓂.constants.post_model_macro
-    n_exo = T.nExo
-    n_past = T.nPast_not_future_and_mixed
-    ensure_inversion_buffers!(𝓂.workspaces.inversion, n_exo, n_past; third_order = third_order)
-    return 𝓂.workspaces.inversion
-end
-
-
-"""
-    ensure_kalman_workspace!(𝓂)
-
-Ensure the Kalman filter workspace is available. Returns the workspace for use.
-Actual buffer resizing happens lazily in ensure_kalman_buffers! when dimensions are known.
-"""
-function ensure_kalman_workspace!(𝓂)
-    return 𝓂.workspaces.kalman
-end
-
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     selector = spzeros(Float64, length(target), length(source))
@@ -1734,7 +1528,7 @@ function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symb
     to = constants.third_order
     key = Tuple(dependencies)
     if !haskey(to.dependency_kron_indices, key)
-        so = ensure_computational_constants!(𝓂)
+        so = ensure_computational_constants!(constants)
         to.dependency_kron_indices[key] = moments_dependency_kron_indices(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, so.e_in_s⁺),

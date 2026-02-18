@@ -43,8 +43,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{S}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -119,13 +118,12 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-    so = ensure_computational_constants!(𝓂)
+    so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
     ℂ = 𝓂.workspaces.third_order
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{S}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -228,7 +226,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-    qme_ws = ensure_qme_workspace!(𝓂)
+    T = 𝓂.constants.post_model_macro
+    qme_ws = ensure_qme_workspace!(𝓂.workspaces, T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
 
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations

@@ -3546,31 +3546,6 @@ function decompose_name(name::Symbol)
     return result
 end
 
-"""
-    get_computational_constants(𝓂::ℳ)
-
-Return cached second-order computational constants (BitVectors and index patterns).
-"""
-function get_computational_constants(𝓂::ℳ)
-    ensure_computational_constants!(𝓂)
-    return 𝓂.constants.second_order
-end
-
-function get_computational_constants(constants::constants)
-    ensure_computational_constants!(constants)
-    return constants.second_order
-end
-
-"""
-    get_model_structure(𝓂::ℳ)
-
-Return cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
-"""
-function get_model_structure(𝓂::ℳ)
-    return 𝓂.constants.post_complete_parameters
-end
-
-
 function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
     indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
 
@@ -4611,8 +4586,6 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
@@ -4659,7 +4632,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
 
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{M}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
 
     tmp = (I_nPast - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
@@ -4729,8 +4702,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{R}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -4800,8 +4772,6 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
-    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
@@ -4868,7 +4838,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
     
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{M}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
 
     tmp = (I_nPast - 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed])
 
@@ -4933,12 +4903,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-    so = ensure_computational_constants!(𝓂)
+    so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    qme_ws = ensure_qme_workspace!(𝓂)
-    I_nPast = qme_ws.I_nPast
+    I_nPast = Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -5130,8 +5099,6 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-            
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 𝓂.workspaces,
@@ -8226,8 +8193,6 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
-    qme_ws = @ignore_derivatives ensure_qme_workspace!(𝓂)
-    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
                                                         𝓂.workspaces,

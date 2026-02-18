@@ -868,7 +868,7 @@ function get_conditional_forecast(𝓂::ℳ,
             S₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
         end
 
-        ensure_conditional_forecast_constants!(𝓂; third_order = !isnothing(S₃))
+        ensure_conditional_forecast_constants!(𝓂.constants; third_order = !isnothing(S₃))
 
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
@@ -2171,7 +2171,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         end
         if Inf in periods
             # Ensure lyapunov workspace is properly sized and get it
-            lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+            lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
             covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
@@ -2324,7 +2324,7 @@ function get_variance_decomposition(𝓂::ℳ;
         CC = C * C'
 
         # Ensure lyapunov workspace is properly sized and get it
-        lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
         covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
@@ -3624,17 +3624,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    # Ensure lyapunov workspace for Kalman filter initial covariance
-    lyap_ws = @ignore_derivatives ensure_lyapunov_workspace_1st_order!(𝓂)
-    
-    # Ensure inversion workspace if using inversion filter
-    third_order = algorithm in (:pruned_third_order, :third_order)
-    inv_ws = @ignore_derivatives ensure_inversion_workspace!(𝓂; third_order = third_order)
-    
-    # Ensure kalman workspace for Kalman filter iterations
-    kalman_ws = @ignore_derivatives ensure_kalman_workspace!(𝓂)
-
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, lyap_ws, inv_ws, kalman_ws) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, 𝓂.workspaces) # timer = timer
 
     # end # timeit_debug
 

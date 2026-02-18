@@ -37,7 +37,7 @@ function calculate_covariance(parameters::Vector{R},
     end
 
     # Ensure lyapunov workspace is properly sized and get it
-    lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
 
     covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
                             lyapunov_algorithm = opts.lyapunov_algorithm, 

@@ -14,10 +14,11 @@ function calculate_loglikelihood(::Val{:kalman},
                                 filter_algorithm, 
                                 opts,
                                 on_failure_loglikelihood,
-                                lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace,
-                                kalman_ws::kalman_workspace) #; 
+                                workspaces::workspaces) #; 
                                 # timer::TimerOutput = TimerOutput())
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, constants_obj.post_model_macro.nVars, :first_order)
+    kalman_ws = workspaces.kalman
+
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
