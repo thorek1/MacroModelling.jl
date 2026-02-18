@@ -147,6 +147,7 @@ struct post_model_macro
     nMixed::Int
     nFuture_not_past_and_mixed::Int
     nPast_not_future_and_mixed::Int
+    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}
     # nPresent_but_not_only::Int
     nVars::Int
     nExo::Int

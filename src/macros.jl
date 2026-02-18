@@ -701,6 +701,7 @@ macro model(𝓂,ex...)
     nPresent_but_not_only      = length(present_but_not_only)
     nVars                      = length(all_vars)
     nExo                       = length(collect(exo))
+    I_nPast                    = ℒ.I(nPast_not_future_and_mixed)
 
     present_only_idx              = indexin(present_only,var)
     present_but_not_only_idx      = indexin(present_but_not_only,var)
@@ -779,6 +780,7 @@ macro model(𝓂,ex...)
                 nMixed,
                 nFuture_not_past_and_mixed,
                 nPast_not_future_and_mixed,
+                I_nPast,
                 # nPresent_but_not_only,
                 nVars,
                 nExo,
