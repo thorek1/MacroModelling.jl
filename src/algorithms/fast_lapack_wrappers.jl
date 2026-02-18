@@ -68,4 +68,45 @@ function solve_lu_left!(A::AbstractMatrix{R},
     return B
 end
 
+function factorize_generalized_schur!(D::AbstractMatrix{R},
+                                      E::AbstractMatrix{R},
+                                      qz_ws,
+                                      qz_dims::NTuple{2, Int},
+                                      eigenselect::AbstractVector{Bool};
+                                      use_fastlapack_schur::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_schur && R <: Union{Float32, Float64}
+        dims = (size(D, 1), size(D, 2))
+        if qz_dims != dims
+            qz_ws = FastLapackInterface.GeneralizedSchurWs(D)
+            qz_dims = dims
+        end
+
+        try
+            S, T, _, _, _, Z = ℒ.LAPACK.gges!(qz_ws, 'V', 'V', D, E;
+                                              select = FastLapackInterface.ed,
+                                              criterium = 1.0,
+                                              resize = true)
+            return qz_ws, qz_dims, (S = S, T = T, Z = Z), true
+        catch
+            return qz_ws, qz_dims, nothing, false
+        end
+    else
+        schdcmp = try
+            ℒ.schur!(D, E)
+        catch
+            return qz_ws, qz_dims, nothing, false
+        end
+
+        @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
+
+        try
+            ℒ.ordschur!(schdcmp, eigenselect)
+        catch
+            return qz_ws, qz_dims, nothing, false
+        end
+
+        return qz_ws, qz_dims, schdcmp, true
+    end
+end
+
 end # dispatch_doctor

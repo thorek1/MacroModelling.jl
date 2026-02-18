@@ -309,7 +309,7 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = F
         zeros(T, nFnpm, nPfm),                     # Z₂₁
         zeros(T, nPfm, nPfm),                      # S₁₁
         zeros(T, nPfm, nPfm),                      # T₁₁
-        zeros(T, companion_size, nPfm),            # sol
+        zeros(T, n, nPfm),                         # sol
         zeros(T, n, n),                            # X (n × n)
         zeros(T, n, n),                            # temp_X2
         zeros(T, n, n),                            # AXX

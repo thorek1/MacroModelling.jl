@@ -8,46 +8,6 @@
 
 @stable default_mode = "disable" begin
 
-function factorize_generalized_schur!(D::AbstractMatrix{R},
-                                      E::AbstractMatrix{R},
-                                      schur_ws::schur_workspace{R},
-                                      eigenselect::AbstractVector{Bool};
-                                      use_fastlapack_schur::Bool = true) where {R <: AbstractFloat}
-    if use_fastlapack_schur && R <: Union{Float32, Float64}
-        qz_dims = (size(D, 1), size(D, 2))
-        if schur_ws.fast_qz_dims != qz_dims
-            schur_ws.fast_qz_ws = FastLapackInterface.GeneralizedSchurWs(D)
-            schur_ws.fast_qz_dims = qz_dims
-        end
-
-        try
-            S, T, _, _, _, Z = ℒ.LAPACK.gges!(schur_ws.fast_qz_ws, 'V', 'V', D, E;
-                                              select = FastLapackInterface.id,
-                                              criterium = 1.0,
-                                              resize = true)
-            return (S = S, T = T, Z = Z), true
-        catch
-            return nothing, false
-        end
-    else
-        schdcmp = try
-            ℒ.schur!(D, E)
-        catch
-            return nothing, false
-        end
-
-        @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
-
-        try
-            ℒ.ordschur!(schdcmp, eigenselect)
-        catch
-            return nothing, false
-        end
-
-        return schdcmp, true
-    end
-end
-
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R},
                                         C::AbstractMatrix{R},
@@ -206,11 +166,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Bottom-right block: I₊
     copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
     
-    schdcmp, schur_ok = factorize_generalized_schur!(D,
-                                                     E,
-                                                     schur_ws,
-                                                     schur_ws.eigenselect;
-                                                     use_fastlapack_schur = use_fastlapack_schur)
+    schur_ws.fast_qz_ws,
+    schur_ws.fast_qz_dims,
+    schdcmp,
+    schur_ok = factorize_generalized_schur!(D,
+                                            E,
+                                            schur_ws.fast_qz_ws,
+                                            schur_ws.fast_qz_dims,
+                                            schur_ws.eigenselect;
+                                            use_fastlapack_schur = use_fastlapack_schur)
 
     if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
