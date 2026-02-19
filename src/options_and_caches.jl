@@ -284,8 +284,6 @@ function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
                     Sylvester_workspace(S = T, T = S),  # sylvester_ws
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃
-                    # Pre-computed identity matrix (Diagonal{Bool} - supports indexing)
-                    ℒ.I(n),          # I_n
                     # FastLapackInterface LU workspaces
                     empty_lu_ws,
                     (0, 0),
@@ -796,6 +794,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Int[],
                 ℒ.I(0),
+                ℒ.I(0),
                 1:0,
                 1:0,
                 1,
@@ -899,6 +898,7 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :future_not_past_and_mixed_in_comb, p.future_not_past_and_mixed_in_comb),
         get(kwargs, :past_not_future_and_mixed_in_comb, p.past_not_future_and_mixed_in_comb),
         get(kwargs, :Ir, p.Ir),
+        get(kwargs, :I_n, hasfield(typeof(p), :I_n) ? p.I_n : ℒ.I(0)),
         get(kwargs, :nabla_zero_cols, p.nabla_zero_cols),
         get(kwargs, :nabla_minus_cols, p.nabla_minus_cols),
         get(kwargs, :nabla_e_start, p.nabla_e_start),
@@ -1174,6 +1174,7 @@ function build_first_order_index_cache(T, I_nVars)
     I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
     I_nPast_not_mixed = Matrix{Bool}(I_nPast[T.not_mixed_in_past_idx, :])
     Ir_past_selector = Matrix{Bool}(Ir[past_not_future_and_mixed_in_comb, :])
+    I_n = ℒ.I(T.nVars - T.nPresent_only)
     
     schur_Z₊ = zeros(Bool, T.nMixed, T.nFuture_not_past_and_mixed)
     I_nFuture = ℒ.I(T.nFuture_not_past_and_mixed)
@@ -1190,6 +1191,7 @@ function build_first_order_index_cache(T, I_nVars)
         future_not_past_and_mixed_in_comb = future_not_past_and_mixed_in_comb,
         past_not_future_and_mixed_in_comb = past_not_future_and_mixed_in_comb,
         Ir = Ir,
+        I_n = I_n,
         nabla_zero_cols = nabla_zero_cols,
         nabla_minus_cols = nabla_minus_cols,
         nabla_e_start = nabla_e_start,
@@ -1225,6 +1227,7 @@ function ensure_first_order_constants!(constants::constants)
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
             Ir = cache.Ir,
+            I_n = cache.I_n,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
             nabla_e_start = cache.nabla_e_start,

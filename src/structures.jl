@@ -566,9 +566,6 @@ mutable struct qme_doubling_workspace{T <: Real, R <: Real}
     # ForwardDiff partials buffers (for forward-mode AD)
     X̃::Matrix{R}               # For QME solution partials
 
-    # Pre-computed identity matrix (Diagonal{Bool} - supports indexing for schur algorithm)
-    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
-
     # FastLapackInterface LU workspaces for QME doubling solve
     fast_lu_ws_qme_a::FastLapackInterface.LUWs
     fast_lu_dims_qme_a::NTuple{2, Int}
@@ -1167,6 +1164,7 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     future_not_past_and_mixed_in_comb::Vector{Int}
     past_not_future_and_mixed_in_comb::Vector{Int}
     Ir::ℒ.Diagonal{Bool, Vector{Bool}}
+    I_n::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
     nabla_e_start::Int
