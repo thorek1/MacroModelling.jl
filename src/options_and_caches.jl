@@ -1635,7 +1635,7 @@ function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
 end
 
 
-function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
+function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,

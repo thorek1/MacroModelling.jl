@@ -15,7 +15,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
                                         tol::AbstractFloat = 1e-14,

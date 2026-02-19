@@ -514,7 +514,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         cache::caches;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                         verbose::Bool = false) where {Z,S,N}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
