@@ -501,15 +501,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     n_cols_B = size(B, 2)
     total_cols = n_cols_x + n_cols_B
 
-    S₁_existing = cache.first_order_solution_matrix
-    if S₁_existing isa Matrix{ℱ.Dual{Z,S,N}} && size(S₁_existing) == (n_rows, total_cols)
-        copyto!(@view(S₁_existing[:, 1:n_cols_x]), x)
-        copyto!(@view(S₁_existing[:, n_cols_x+1:total_cols]), B)
-        S₁ = S₁_existing
-    else
-        S₁ = hcat(x, B)
-        cache.first_order_solution_matrix = S₁
-    end
+    S₁ = hcat(x, B)
 
     return S₁, qme_sol, solved
 end
