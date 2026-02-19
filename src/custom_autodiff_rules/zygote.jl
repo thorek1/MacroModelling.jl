@@ -675,7 +675,10 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past'
 
-        tmp1 = M' * ∂𝐒ᵗ * expand_past
+        tmp_small = qme_ws.𝐀
+        tmp1 = qme_ws.sylvester_ws.𝐂
+        ℒ.mul!(tmp_small, M', ∂𝐒ᵗ)
+        ℒ.mul!(tmp1, tmp_small, expand_past)
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
@@ -1630,7 +1633,8 @@ function rrule(::typeof(solve_sylvester_equation),
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
-                                        println("C norm: $(ℒ.norm(C))")
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, size(A, 1), size(B, 1))
+
     # pullback
     function solve_sylvester_equation_pullback(∂P)
         if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
@@ -1642,9 +1646,14 @@ function rrule(::typeof(solve_sylvester_equation),
 
         solved = solved && slvd
 
-        ∂A = ∂C * B' * P'
+        tmp_n = 𝕊ℂ.𝐀
+        tmp_m = 𝕊ℂ.𝐁
 
-        ∂B = P' * A' * ∂C
+        ℒ.mul!(tmp_n, ∂C, B')
+        ∂A = tmp_n * P'
+
+        ℒ.mul!(tmp_m, P', A')
+        ∂B = tmp_m * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
@@ -1663,6 +1672,7 @@ function rrule(::typeof(solve_lyapunov_equation),
                 verbose::Bool = false)
 
     P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    ensure_lyapunov_doubling_buffers!(workspace)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
@@ -1673,7 +1683,15 @@ function rrule(::typeof(solve_lyapunov_equation),
     
         solved = solved && slvd
 
-        ∂A = ∂C * A * P' + ∂C' * A * P
+        tmp_n1 = workspace.𝐂A
+        tmp_n2 = workspace.𝐀²
+        ∂A = zero(A)
+
+        ℒ.mul!(tmp_n1, ∂C, A)
+        ℒ.mul!(∂A, tmp_n1, P')
+
+        ℒ.mul!(tmp_n2, ∂C', A)
+        ℒ.mul!(∂A, tmp_n2, P, 1, 1)
 
         return NoTangent(), ∂A, ∂C, NoTangent()
     end
