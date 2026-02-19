@@ -22,7 +22,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
 
-    qme_ws = ensure_first_order_workspace!(workspaces)
+    qme_ws = workspaces.first_order
 
     ensure_first_order_workspace_buffers!(qme_ws, T, length(dynIndex), length(comb))
 

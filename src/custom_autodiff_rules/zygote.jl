@@ -492,8 +492,10 @@ function rrule(::typeof(calculate_first_order_solution),
     past_not_future_and_mixed_in_present_but_not_only = idx_constants.past_not_future_and_mixed_in_present_but_not_only
     Ir = idx_constants.Ir
 
-    qme_ws = ensure_first_order_workspace!(workspaces)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
+    qme_ws = workspaces.first_order
+    sylv_ws = workspaces.sylvester_1st_order
+    ensure_sylvester_krylov_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
+    ensure_sylvester_doubling_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
 
     ensure_first_order_workspace_buffers!(qme_ws, T, length(dynIndex), length(comb))
     
@@ -621,9 +623,13 @@ function rrule(::typeof(calculate_first_order_solution),
         end
     end
     
-    𝐒̂ᵗ = 𝐒ᵗ * expand_past
+    𝐒̂ᵗ = qme_ws.sylvester_ws.tmp
+    ℒ.mul!(𝐒̂ᵗ, 𝐒ᵗ, expand_past)
 
-    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * expand_future, 𝐒̂ᵗ, 1, 1)
+    ∇₊ = qme_ws.sylvester_ws.𝐀
+    ℒ.mul!(∇₊, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
+
+    ℒ.mul!(∇₀, ∇₊, 𝐒̂ᵗ, 1, 1)
 
     qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
@@ -641,14 +647,19 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     
-    M = Matrix{R}(ℒ.I, size(∇₀, 1), size(∇₀, 2))
+    M = qme_ws.sylvester_ws.𝐀¹
+    fill!(M, zero(R))
+    @inbounds for i in axes(M, 1)
+        M[i, i] = one(R)
+    end
     solve_lu_left!(∇₀, M, qme_ws.fast_lu_ws_nabla0, C;
                    use_fastlapack_lu = use_fastlapack_lu)
 
-    tmp2 = -M' * (∇₊ * expand_future)'
-    
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
+    tmp2 = qme_ws.sylvester_ws.𝐁
+    ℒ.mul!(tmp2, M', ∇₊')
+    ℒ.rmul!(tmp2, -1)
+
+    ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
         ∂∇₁ = zero(∇₁)

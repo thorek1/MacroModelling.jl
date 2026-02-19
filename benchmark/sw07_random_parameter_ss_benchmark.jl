@@ -12,6 +12,9 @@ init_pars = deepcopy(model.parameter_values)
 # Warm-up to ensure NSSS solver infrastructure and initial cache are available.
 get_steady_state(model, derivatives = false)
 
+get_solution(model,  init_pars .+ .001)
+
+
 while length(model.caches.solver_cache) > 1
     pop!(model.caches.solver_cache)
 end
@@ -24,6 +27,7 @@ while length(model.caches.solver_cache) > 2
 end
 
 get_steady_state(model, parameters = init_pars .+ .001, derivatives = false, verbose = true)
+
 
 trial = @benchmark begin
     # get_steady_state($model, parameters = $init_pars .+ .001, derivatives = false)

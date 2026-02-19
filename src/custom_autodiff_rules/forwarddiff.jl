@@ -227,7 +227,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     T = 𝓂.constants.post_model_macro
-    qme_ws = ensure_first_order_workspace!(𝓂.workspaces)
+    qme_ws = 𝓂.workspaces.first_order
 
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
@@ -354,19 +354,42 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         workspaces::workspaces,
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
+                                        use_fastlapack_lu::Bool = true,
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
-    ∇̂₁ = ℱ.value.(∇₁)
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
-    qme_ws = ensure_first_order_workspace!(workspaces)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(workspaces)
+    qme_ws = workspaces.first_order
+    sylv_ws = workspaces.sylvester_1st_order
     ensure_first_order_workspace_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
+    ensure_sylvester_krylov_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
+    ensure_sylvester_doubling_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
+
+    if size(qme_ws.p_tmp) != size(∇₁)
+        qme_ws.p_tmp = zeros(S, size(∇₁, 1), size(∇₁, 2))
+    end
+    ∇̂₁ = qme_ws.p_tmp
+    @inbounds for j in axes(∇₁, 2), i in axes(∇₁, 1)
+        ∇̂₁[i, j] = ℱ.value(∇₁[i, j])
+    end
 
     expand_future = idx_constants.expand_future
     expand_past = idx_constants.expand_past
 
-    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    B = ∇̂₁[:,idx_constants.nabla_zero_cols]
+    A = qme_ws.𝐀₀
+    B = qme_ws.∇₀
+    X = qme_ws.sylvester_ws.tmp
+    AXB = qme_ws.sylvester_ws.𝐗
+    AA = qme_ws.sylvester_ws.𝐂
+    X² = qme_ws.sylvester_ws.𝐀
+    dA = qme_ws.sylvester_ws.𝐀¹
+    dB = qme_ws.sylvester_ws.𝐁
+    dC = qme_ws.sylvester_ws.𝐁¹
+    CC = qme_ws.sylvester_ws.𝐂_dbl
+    tmp = qme_ws.sylvester_ws.𝐂¹
+    B_sylv = qme_ws.sylvester_ws.𝐂B
+
+    ℒ.mul!(A, @view(∇̂₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
+    copyto!(B, @view(∇̂₁[:,idx_constants.nabla_zero_cols]))
 
     initial_guess_value = if length(initial_guess) == 0
         zeros(eltype(∇̂₁), 0, 0)
@@ -382,21 +405,25 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         return ∇₁, qme_sol, false
     end
 
-    X = 𝐒₁[:,1:end-T.nExo] * expand_past
-    
-    AXB = A * X + B
-    
-    AXBfact = RF.lu(AXB, check = false)
+    ℒ.mul!(X, @view(𝐒₁[:,1:end-T.nExo]), expand_past)
 
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
+    copyto!(AXB, B)
+    ℒ.mul!(AXB, A, X, 1, 1)
+
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_AXB, AXBfact = factorize_lu!(AXB,
+                                                                                                 qme_ws.fast_lu_ws_nabla0,
+                                                                                                 qme_ws.fast_lu_dims_nabla0;
+                                                                                                 use_fastlapack_lu = use_fastlapack_lu)
+
+    if !solved_AXB
+        return ∇₁, qme_sol, false
     end
 
-    invAXB = inv(AXBfact)
+    copyto!(AA, A)
+    solve_lu_left!(AXB, AA, qme_ws.fast_lu_ws_nabla0, AXBfact;
+                   use_fastlapack_lu = use_fastlapack_lu)
 
-    AA = invAXB * A
-
-    X² = X * X
+    ℒ.mul!(X², X, X)
 
     # Allocate or reuse workspace for partials (from first_order_workspace)
     if size(qme_ws.X̃_first_order) != (length(𝐒₁[:,1:end-T.nExo]), N)
@@ -406,29 +433,35 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     end
     X̃ = qme_ws.X̃_first_order
 
-    # Allocate or reuse workspace for temporary p matrix (from first_order_workspace)
-    if size(qme_ws.p_tmp) != size(∇̂₁)
-        qme_ws.p_tmp = zero(∇̂₁)
-    else
-        fill!(qme_ws.p_tmp, zero(eltype(qme_ws.p_tmp)))
-    end
-    p = qme_ws.p_tmp
+    p = ∇̂₁
 
-    initial_guess = zero(invAXB)
+    copyto!(B_sylv, X)
+    ℒ.rmul!(B_sylv, -1)
+
+    initial_guess = zeros(eltype(X), size(X, 1), size(X, 2))
 
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
         p .= ℱ.partials.(∇₁, i)
 
-        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand_future
-        dB = p[:,idx_constants.nabla_zero_cols]
-        dC = p[:,idx_constants.nabla_minus_cols] * expand_past
-        
-        CC = invAXB * (dA * X² + dC + dB * X)
+        ℒ.mul!(dA, @view(p[:,1:T.nFuture_not_past_and_mixed]), expand_future)
+        copyto!(dB, @view(p[:,idx_constants.nabla_zero_cols]))
+        ℒ.mul!(dC, @view(p[:,idx_constants.nabla_minus_cols]), expand_past)
+
+        copyto!(CC, dC)
+        ℒ.mul!(tmp, dA, X²)
+        CC .+= tmp
+        ℒ.mul!(tmp, dB, X)
+        CC .+= tmp
+
+        solve_lu_left!(AXB, CC, qme_ws.fast_lu_ws_nabla0, AXBfact;
+                       use_fastlapack_lu = use_fastlapack_lu)
 
         if ℒ.norm(CC) < eps() continue end
 
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylv_ws,
+        ℒ.rmul!(CC, -1)
+
+        dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,

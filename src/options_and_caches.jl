@@ -1259,15 +1259,6 @@ function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
 end
 
 """
-    ensure_first_order_workspace!(workspaces)
-
-Return the first-order perturbation workspace from `workspaces`.
-"""
-function ensure_first_order_workspace!(workspaces::workspaces)
-    return workspaces.first_order
-end
-
-"""
     ensure_first_order_workspace_buffers!(ws, T, n_dyn, n_comb)
 
 Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
@@ -1330,17 +1321,6 @@ function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nP
     end
     return ws
 end
-
-"""
-    ensure_sylvester_1st_order_workspace!(workspaces)
-
-Return the first-order Sylvester workspace from `workspaces`.
-The workspace is lazily sized by the sylvester solver when needed.
-"""
-function ensure_sylvester_1st_order_workspace!(workspaces::workspaces)
-    return workspaces.sylvester_1st_order
-end
-
 
 """
     ensure_lyapunov_workspace!(workspaces, n, order::Symbol)
