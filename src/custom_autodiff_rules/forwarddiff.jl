@@ -388,9 +388,6 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     tmp = qme_ws.sylvester_ws.𝐂¹
     B_sylv = qme_ws.sylvester_ws.𝐂B
 
-    ℒ.mul!(A, @view(∇̂₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
-    copyto!(B, @view(∇̂₁[:,idx_constants.nabla_zero_cols]))
-
     initial_guess_value = if length(initial_guess) == 0
         zeros(eltype(∇̂₁), 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -404,6 +401,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     if !solved 
         return ∇₁, qme_sol, false
     end
+
+    ℒ.mul!(A, @view(∇̂₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
+    copyto!(B, @view(∇̂₁[:,idx_constants.nabla_zero_cols]))
 
     ℒ.mul!(X, @view(𝐒₁[:,1:end-T.nExo]), expand_past)
 
