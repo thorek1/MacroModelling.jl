@@ -388,6 +388,15 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     tmp = qme_ws.sylvester_ws.𝐂¹
     B_sylv = qme_ws.sylvester_ws.𝐂B
 
+    # Legacy readable path (before workspace reuse):
+    #   ∇̂₁ = value.(∇₁)
+    #   A = ∇̂₁[:, 1:T.nFuture_not_past_and_mixed] * expand_future
+    #   B = ∇̂₁[:, idx_constants.nabla_zero_cols]
+    #   X = 𝐒₁[:, 1:end-T.nExo] * expand_past
+    #   AXB = A * X + B
+    #   AA = inv(AXB) * A
+    # Current code computes the same objects via `mul!`/`copyto!`/LU solves in reusable buffers.
+
     initial_guess_value = if length(initial_guess) == 0
         zeros(eltype(∇̂₁), 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -453,6 +462,12 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         CC .+= tmp
         ℒ.mul!(tmp, dB, X)
         CC .+= tmp
+
+        # Legacy readable equivalent:
+        #   CC = inv(AXB) * (dA * X² + dC + dB * X)
+        # followed by Sylvester solve with (-X, -CC).
+        # Here, `solve_lu_left!` replaces explicit inverse multiplication,
+        # and `B_sylv`/sign flip encode the same Sylvester system.
 
         solve_lu_left!(AXB, CC, qme_ws.fast_lu_ws_nabla0, AXBfact;
                        use_fastlapack_lu = use_fastlapack_lu)

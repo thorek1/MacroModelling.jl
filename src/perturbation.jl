@@ -40,6 +40,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
+    # Legacy readable flow (before allocation-focused refactor):
+    #   Q = qr!(∇₀[:, T.present_only_idx])
+    #   A₊ = Q.Q' * ∇₊;  A₀ = Q.Q' * ∇₀;  A₋ = Q.Q' * ∇₋
+    # Current code performs the same transforms using reusable QR/ORM workspaces.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
     Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
                         use_fastlapack_qr = use_fastlapack_qr)
@@ -136,6 +140,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     end
 
     A = qme_ws.𝐀
+    # Legacy readable flow:
+    #   A = vcat(A₋ᵤ, sol_compact)[T.reorder, :]
+    # Expanded loop below writes into preallocated `A` without temporary concatenation.
     n_cols = size(A, 2)
     
     for i in 1:T.nVars
@@ -157,6 +164,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Exogenous part solution" begin
 
     M = qme_ws.𝐌
+    # Legacy readable flow:
+    #   M = A[T.future_not_past_and_mixed_idx, :] * expand_past
+    #   ∇₀ = ∇₁[:, 1:T.nFuture_not_past_and_mixed] * M + ∇₀
     ℒ.mul!(M, @view(A[T.future_not_past_and_mixed_idx,:]), idx_constants.expand_past)
 
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)

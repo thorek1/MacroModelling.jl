@@ -513,6 +513,10 @@ function rrule(::typeof(calculate_first_order_solution),
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
+    # Legacy readable flow mirrored from primal first-order solver:
+    #   Q = qr!(∇₀[:, T.present_only_idx])
+    #   A₊ = Q.Q' * ∇₊;  A₀ = Q.Q' * ∇₀;  A₋ = Q.Q' * ∇₋
+    # The current implementation keeps the same algebra while reusing QR workspaces.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
     Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
                         use_fastlapack_qr = use_fastlapack_qr)
@@ -677,6 +681,8 @@ function rrule(::typeof(calculate_first_order_solution),
 
         tmp_small = qme_ws.𝐀
         tmp1 = qme_ws.sylvester_ws.𝐂
+        # Legacy readable expression replaced by workspace chain:
+        #   tmp1 = M' * ∂𝐒ᵗ * expand_past
         ℒ.mul!(tmp_small, M', ∂𝐒ᵗ)
         ℒ.mul!(tmp1, tmp_small, expand_past)
 
