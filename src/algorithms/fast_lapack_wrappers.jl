@@ -16,25 +16,31 @@ end
 
 function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   src::AbstractMatrix,
-                                  Q,
+                                  Q::AbstractMatrix{R},
                                   qr_orm_ws,
                                   qr_orm_dims::NTuple{3, Int},
                                   qr_ws;
                                   use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
-    if use_fastlapack_qr && R <: Union{Float32, Float64}
-        orm_dims = (size(Q, 1), size(Q, 2), size(src, 2))
-        if qr_orm_dims != orm_dims
-            qr_orm_ws = FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', Q, src)
-            qr_orm_dims = orm_dims
-        end
-
-        copyto!(dest, src)
-        ℒ.LAPACK.ormqr!(qr_orm_ws, 'L', 'T', Q, dest)
-        return qr_orm_ws, qr_orm_dims
-    else
-        ℒ.mul!(dest, Q.Q', src)
-        return qr_orm_ws, qr_orm_dims
+    orm_dims = (size(Q, 1), size(Q, 2), size(src, 2))
+    if qr_orm_dims != orm_dims
+        qr_orm_ws = FastLapackInterface.QROrmWs(qr_ws, 'L', 'T', Q, src)
+        qr_orm_dims = orm_dims
     end
+
+    copyto!(dest, src)
+    ℒ.LAPACK.ormqr!(qr_orm_ws, 'L', 'T', Q, dest)
+    return qr_orm_ws, qr_orm_dims
+end
+
+function apply_qr_transpose_left!(dest::AbstractMatrix{R},
+                                  src::AbstractMatrix,
+                                  Q::ℒ.QRCompactWY,
+                                  qr_orm_ws,
+                                  qr_orm_dims::NTuple{3, Int},
+                                  qr_ws;
+                                  use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
+    ℒ.mul!(dest, Q.Q', src)
+    return qr_orm_ws, qr_orm_dims
 end
 
 function factorize_lu!(A::AbstractMatrix{R},
@@ -68,6 +74,15 @@ function solve_lu_left!(A::AbstractMatrix{R},
     return B
 end
 
+function solve_lu_left!(A::AbstractMatrix{R},
+                        B::AbstractVecOrMat{R},
+                        lu_ws,
+                        lu::Nothing;
+                        use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    ℒ.LAPACK.getrs!(lu_ws, 'N', A, B)
+    return B
+end
+
 function solve_lu_right!(A::AbstractMatrix{R},
                          B::AbstractMatrix{R},
                          lu_ws,
@@ -84,6 +99,21 @@ function solve_lu_right!(A::AbstractMatrix{R},
     else
         ℒ.rdiv!(B, lu)
     end
+    return B
+end
+
+function solve_lu_right!(A::AbstractMatrix{R},
+                         B::AbstractMatrix{R},
+                         lu_ws,
+                         lu::Nothing,
+                         rhs_t::AbstractMatrix{R};
+                         use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    rhs_t_dims = (size(B, 2), size(B, 1))
+    @assert size(rhs_t) == rhs_t_dims
+
+    copyto!(rhs_t, transpose(B))
+    ℒ.LAPACK.getrs!(lu_ws, 'T', A, rhs_t)
+    copyto!(B, transpose(rhs_t))
     return B
 end
 
