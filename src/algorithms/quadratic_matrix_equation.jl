@@ -215,8 +215,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     copyto!(schur_ws_local.S₁₁, @view schdcmp.S[1:nPfm, 1:nPfm])
     copyto!(schur_ws_local.T₁₁, @view schdcmp.T[1:nPfm, 1:nPfm])
 
-    schur_ws_local.fast_lu_ws_z11,
-    schur_ws_local.fast_lu_dims_z11,
     solved_Z₁₁,
     Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
                         schur_ws_local.fast_lu_ws_z11,
@@ -229,8 +227,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
 
     # LU factorization of S₁₁ (mutating - overwrites workspace buffer)
-    schur_ws_local.fast_lu_ws_s11,
-    schur_ws_local.fast_lu_dims_s11,
     solved_S₁₁,
     Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
                         schur_ws_local.fast_lu_ws_s11,
@@ -356,8 +352,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
-    workspace.fast_lu_ws_qme_a,
-    workspace.fast_lu_dims_qme_a,
     solved_B,
     B̂ = factorize_lu!(B̄,
                        workspace.fast_lu_ws_qme_a,
@@ -406,8 +400,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert EI" begin
 
-        workspace.fast_lu_ws_qme_a,
-        workspace.fast_lu_dims_qme_a,
         solved_EI,
         fEI = factorize_lu!(temp1,
                             workspace.fast_lu_ws_qme_a,
@@ -441,8 +433,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert FI" begin
 
-        workspace.fast_lu_ws_qme_b,
-        workspace.fast_lu_dims_qme_b,
         solved_FI,
         fFI = factorize_lu!(temp2,
                             workspace.fast_lu_ws_qme_b,
