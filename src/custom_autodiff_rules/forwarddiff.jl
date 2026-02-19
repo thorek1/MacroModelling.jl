@@ -410,10 +410,10 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     copyto!(AXB, B)
     ℒ.mul!(AXB, A, X, 1, 1)
 
-    solved_AXB, AXBfact = factorize_lu!(AXB,
-                                        qme_ws.fast_lu_ws_nabla0,
-                                        qme_ws.fast_lu_dims_nabla0;
-                                        use_fastlapack_lu = use_fastlapack_lu)
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_AXB, AXBfact = factorize_lu!(AXB,
+                                                                                                 qme_ws.fast_lu_ws_nabla0,
+                                                                                                 qme_ws.fast_lu_dims_nabla0;
+                                                                                                 use_fastlapack_lu = use_fastlapack_lu)
 
     if !solved_AXB
         return ∇₁, qme_sol, false
