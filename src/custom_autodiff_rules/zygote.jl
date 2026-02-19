@@ -148,7 +148,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    I_nPast = T.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -224,7 +224,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     T = 𝓂.constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    I_nPast = T.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     

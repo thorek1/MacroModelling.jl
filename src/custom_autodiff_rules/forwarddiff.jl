@@ -43,7 +43,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     T = constants.post_model_macro
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = Matrix{S}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    I_nPast = T.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
@@ -123,7 +123,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     ℂ = 𝓂.workspaces.third_order
     s_in_s⁺ = so.s_in_s⁺
     s_in_s = so.s_in_s
-    I_nPast = Matrix{S}(ℒ.I, T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    I_nPast = T.I_nPast
     
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     
