@@ -8054,12 +8054,12 @@ function get_cached_first_order_solution(∇₁::AbstractMatrix{S},
                                          constants_obj::constants,
                                          𝓂::ℳ;
                                          opts::CalculationOptions = merge_calculation_options(),
-                                         allow_cache_hit::Bool = true)::Tuple{Matrix{S}, Any, Bool} where S <: Real
+                                         allow_cache_hit::Bool = true)::Tuple{Matrix{S}, Matrix{S}, Bool} where S <: Real
     first_order_valid = allow_cache_hit && S === Float64 &&
                         cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, parameter_values) &&
                         size(𝓂.caches.first_order_solution_matrix, 1) > 0 && size(𝓂.caches.first_order_solution_matrix, 2) > 0
     if first_order_valid
-        return convert(Matrix{S}, 𝓂.caches.first_order_solution_matrix), 𝓂.caches.qme_solution, true
+        return convert(Matrix{S}, 𝓂.caches.first_order_solution_matrix), convert(Matrix{S}, 𝓂.caches.qme_solution), true
     end
 
     S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
