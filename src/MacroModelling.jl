@@ -4562,7 +4562,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, false)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     # end # timeit_debug
 
@@ -4586,7 +4586,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, false)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
     
     # end # timeit_debug
 
@@ -4750,7 +4750,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, false)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
@@ -4766,7 +4766,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, false)# * 𝓂.constants.second_order.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -4782,7 +4782,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, false) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives) #, timer = timer)# * 𝓂.constants.third_order.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.constants,
@@ -6679,21 +6679,6 @@ function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
                             jacobian_funcs::jacobian_functions)::Matrix{M} where {M,N}
-    return calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs, false)
-end
-
-function calculate_jacobian(parameters::Vector{M},
-                            SS_and_pars::Vector{N},
-                            caches_obj::caches,
-                            jacobian_funcs::jacobian_functions,
-                            allow_cache_hit::Bool)::Matrix{M} where {M,N}
-    jacobian_valid = allow_cache_hit && M === Float64 &&
-                     cache_valid_for_parameters(caches_obj.valid_for.jacobian, parameters) &&
-                     size(caches_obj.jacobian, 1) > 0 && size(caches_obj.jacobian, 2) > 0
-    if jacobian_valid
-        return convert(Matrix{M}, caches_obj.jacobian)
-    end
-
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -6719,21 +6704,6 @@ function calculate_hessian(parameters::Vector{M},
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
                             hessian_funcs::hessian_functions)::SparseMatrixCSC{M, Int} where {M,N}
-    return calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs, false)
-end
-
-function calculate_hessian(parameters::Vector{M}, 
-                            SS_and_pars::Vector{N}, 
-                            caches_obj::caches,
-                            hessian_funcs::hessian_functions,
-                            allow_cache_hit::Bool)::SparseMatrixCSC{M, Int} where {M,N}
-    hessian_valid = allow_cache_hit && M === Float64 &&
-                    cache_valid_for_parameters(caches_obj.valid_for.hessian, parameters) &&
-                    size(caches_obj.hessian, 1) > 0 && size(caches_obj.hessian, 2) > 0
-    if hessian_valid
-        return convert(SparseMatrixCSC{M, Int}, caches_obj.hessian)
-    end
-
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -6760,21 +6730,6 @@ function calculate_third_order_derivatives(parameters::Vector{M},
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
                                             third_order_derivatives_funcs::third_order_derivatives_functions)::SparseMatrixCSC{M, Int} where {M,N}
-    return calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs, false)
-end
-
-function calculate_third_order_derivatives(parameters::Vector{M}, 
-                                            SS_and_pars::Vector{N}, 
-                                            caches_obj::caches,
-                                            third_order_derivatives_funcs::third_order_derivatives_functions,
-                                            allow_cache_hit::Bool)::SparseMatrixCSC{M, Int} where {M,N}
-    third_valid = allow_cache_hit && M === Float64 &&
-                  cache_valid_for_parameters(caches_obj.valid_for.third_order_derivatives, parameters) &&
-                  size(caches_obj.third_order_derivatives, 1) > 0 && size(caches_obj.third_order_derivatives, 2) > 0
-    if third_valid
-        return convert(SparseMatrixCSC{M, Int}, caches_obj.third_order_derivatives)
-    end
-
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
@@ -8249,7 +8204,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, false) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = get_cached_first_order_solution(∇₁,
                                                          parameter_values,
