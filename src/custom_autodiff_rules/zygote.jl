@@ -288,7 +288,7 @@ function rrule(::typeof(calculate_jacobian),
                 SS_and_pars, 
                 caches_obj::caches,
                 jacobian_funcs::jacobian_functions)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs, false)
 
     function calculate_jacobian_pullback(∂∇₁)
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
@@ -302,13 +302,33 @@ function rrule(::typeof(calculate_jacobian),
     return jacobian, calculate_jacobian_pullback
 end
 
+function rrule(::typeof(calculate_jacobian), 
+                parameters, 
+                SS_and_pars, 
+                caches_obj::caches,
+                jacobian_funcs::jacobian_functions,
+                allow_cache_hit::Bool)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs, allow_cache_hit)
+
+    function calculate_jacobian_pullback(∂∇₁)
+        jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
+        jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
+
+        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return jacobian, calculate_jacobian_pullback
+end
+
 
 function rrule(::typeof(calculate_hessian), 
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
                 hessian_funcs::hessian_functions)
-    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs, false)
 
     function calculate_hessian_pullback(∂∇₂)
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
@@ -323,13 +343,34 @@ function rrule(::typeof(calculate_hessian),
     return hessian, calculate_hessian_pullback
 end
 
+function rrule(::typeof(calculate_hessian), 
+                parameters, 
+                SS_and_pars, 
+                caches_obj::caches,
+                hessian_funcs::hessian_functions,
+                allow_cache_hit::Bool)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs, allow_cache_hit)
+
+    function calculate_hessian_pullback(∂∇₂)
+        hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
+        hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
+
+        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
+
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return hessian, calculate_hessian_pullback
+end
+
 
 function rrule(::typeof(calculate_third_order_derivatives), 
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
                 third_order_derivatives_funcs::third_order_derivatives_functions)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs, false)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
@@ -339,6 +380,27 @@ function rrule(::typeof(calculate_third_order_derivatives),
         ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+    end
+
+    return third_order_derivatives, calculate_third_order_derivatives_pullback
+end
+
+function rrule(::typeof(calculate_third_order_derivatives), 
+                parameters, 
+                SS_and_pars, 
+                caches_obj::caches,
+                third_order_derivatives_funcs::third_order_derivatives_functions,
+                allow_cache_hit::Bool)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs, allow_cache_hit)
+
+    function calculate_third_order_derivatives_pullback(∂∇₃)
+        third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
+        third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+
+        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
+
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback

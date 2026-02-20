@@ -511,12 +511,15 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 
-    n_rows = size(x, 1)
-    n_cols_x = size(x, 2)
-    n_cols_B = size(B, 2)
-    total_cols = n_cols_x + n_cols_B
-
     S₁ = hcat(x, B)
+
+    S₁_value = ℱ.value.(S₁)
+    S₁_existing = cache.first_order_solution_matrix
+    if S₁_existing isa Matrix{S} && size(S₁_existing) == size(S₁_value)
+        copyto!(S₁_existing, S₁_value)
+    else
+        cache.first_order_solution_matrix = S₁_value
+    end
 
     return S₁, qme_sol, solved
 end

@@ -87,7 +87,7 @@
 #    - non_stochastic_steady_state: NSSS solution values
 #    - jacobian/hessian/third_order_derivatives: Perturbation derivatives
 #    - first_order_solution_matrix/second_order_solution/etc.: Solved policy matrices
-#    - outdated: Flags indicating which caches need recomputation
+#    - valid_for: Parameter vectors for which each cache entry is valid
 #
 # 4. FUNCTIONS (𝓂.functions) - Compiled model functions:
 #    - NSSS_check + step-based NSSS solver functions
@@ -98,7 +98,7 @@
 #   @model macro → post_model_macro (constants)
 #   @parameters macro → post_parameters_macro, post_complete_parameters (constants)
 #   solve!() → populates caches using workspaces, guided by constants
-#   get_irf/simulate/etc → reads from caches, may trigger solve!() if outdated
+#   get_irf/simulate/etc → reads from caches, may trigger solve!() if not valid_for current parameters
 #
 # =============================================================================
 
@@ -798,41 +798,42 @@ NSSSSolverWorkspace() = NSSSSolverWorkspace(
     Float64[], Float64[], Float64[],
 )
 
-"""
-Tracks which cache elements are outdated and need recalculation.
-
-When parameters change (via `𝓂.parameter_values = ...`), all fields are set to `true` (outdated).
-When a cache is computed (e.g., by `solve!()`), its corresponding field is set to `false` (up to date).
-
-This enables lazy evaluation: caches are only recomputed when actually needed AND outdated.
-"""
-mutable struct outdated_caches
-    # Non-stochastic steady state
-    non_stochastic_steady_state::Bool
-    # Perturbation derivative buffers
-    jacobian::Bool
-    hessian::Bool
-    third_order_derivatives::Bool
-    # Perturbation solution buffers
-    first_order_solution::Bool
-    second_order_solution::Bool
-    pruned_second_order_solution::Bool
-    third_order_solution::Bool
-    pruned_third_order_solution::Bool
+mutable struct valid_for_caches
+    non_stochastic_steady_state::Vector{Float64}
+    jacobian::Vector{Float64}
+    hessian::Vector{Float64}
+    third_order_derivatives::Vector{Float64}
+    first_order_solution::Vector{Float64}
+    second_order_solution::Vector{Float64}
+    pruned_second_order_solution::Vector{Float64}
+    third_order_solution::Vector{Float64}
+    pruned_third_order_solution::Vector{Float64}
 end
+
+
+valid_for_caches() = valid_for_caches(
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+)
 
 
 """
 Stored computation results that can be reused across function calls.
 
 Caches store the final outputs of expensive computations (steady state, perturbation solutions).
-They are invalidated when parameters change (tracked by `outdated` flags) and recomputed
-lazily when needed by get_* functions.
+Each cache is reused only when marked valid for the active parameter vector in `valid_for`.
 
 Purpose: Avoid recomputation when the same result is needed multiple times.
 
 Fields:
-- `outdated`: Flags indicating which caches need recomputation (see [`outdated_caches`](@ref))
+- `valid_for`: Parameter vectors for which each cache entry is valid
 - Perturbation derivatives (`jacobian`, `hessian`, `third_order_derivatives`): 
   Model derivative matrices evaluated at steady state
 - Perturbation solutions (`first_order_solution_matrix`, `second_order_solution`, etc.):
@@ -843,13 +844,10 @@ Fields:
 Relationship to other structs:
 - Caches are computed using `constants` (for dimensions/structure) and `workspaces` (for temporary buffers)
 - Caches are read by get_* functions (get_irf, simulate, etc.)
-- Caches are invalidated when `parameter_values` changes
+- Caches are reused only when `valid_for` matches current `parameter_values`
 """
 mutable struct caches
-    # =========================================================================
-    # CACHE INVALIDATION FLAGS
-    # =========================================================================
-    outdated::outdated_caches
+    valid_for::valid_for_caches
     
     # =========================================================================
     # PERTURBATION DERIVATIVE CACHES

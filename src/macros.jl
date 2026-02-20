@@ -868,17 +868,7 @@ macro model(𝓂,ex...)
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
 
                         caches(
-                            outdated_caches(
-                                true, # non_stochastic_steady_state
-                                true, # jacobian
-                                true, # hessian
-                                true, # third_order_derivatives
-                                true, # first_order_solution
-                                true, # second_order_solution
-                                true, # pruned_second_order_solution
-                                true, # third_order_solution
-                                true, # pruned_third_order_solution
-                            ),
+                            valid_for_caches(),
                             zeros(0,0), # jacobian
                             zeros(0,0), # jacobian_parameters
                             zeros(0,0), # jacobian_SS_and_pars
@@ -1540,7 +1530,6 @@ macro parameters(𝓂,ex...)
             missing_parameters = missing_params,
         )
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        # mod.$𝓂.caches.outdated_NSSS = true
         
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
