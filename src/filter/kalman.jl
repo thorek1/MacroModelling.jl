@@ -163,7 +163,7 @@ function run_kalman_iterations(A::Matrix{S},
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
-        if !all(isfinite.(z)) 
+        if any(!isfinite, z)
             if verbose println("KF not finite at step $t") end
             return on_failure_loglikelihood 
         end
