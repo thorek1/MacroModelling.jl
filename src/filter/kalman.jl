@@ -168,7 +168,7 @@ function run_kalman_iterations(A::Matrix{S},
             return on_failure_loglikelihood 
         end
 
-        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)
         # v = data_in_deviations[:, t] - z
 
         ℒ.mul!(Ctmp, C, P) # use Octavian.jl
