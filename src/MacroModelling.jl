@@ -1010,9 +1010,21 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
         pop!(𝓂.caches.solver_cache)
     end
 
+    𝓂.caches.first_order_solution_matrix = zeros(0,0)
     𝓂.caches.qme_solution = zeros(0,0)
     𝓂.caches.second_order_solution = spzeros(0,0)
     𝓂.caches.third_order_solution = spzeros(0,0)
+
+    𝓂.caches.second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
+
+    𝓂.caches.valid_for.first_order_solution = Float64[]
+    𝓂.caches.valid_for.second_order_solution = Float64[]
+    𝓂.caches.valid_for.pruned_second_order_solution = Float64[]
+    𝓂.caches.valid_for.third_order_solution = Float64[]
+    𝓂.caches.valid_for.pruned_third_order_solution = Float64[]
 
     return nothing
 end

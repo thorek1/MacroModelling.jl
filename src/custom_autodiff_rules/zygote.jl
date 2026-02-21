@@ -679,11 +679,10 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past'
 
-        tmp_small = qme_ws.𝐀
         tmp1 = qme_ws.sylvester_ws.𝐂
         # Legacy readable expression replaced by workspace chain:
         #   tmp1 = M' * ∂𝐒ᵗ * expand_past
-        ℒ.mul!(tmp_small, M', ∂𝐒ᵗ)
+        tmp_small = M' * ∂𝐒ᵗ
         ℒ.mul!(tmp1, tmp_small, expand_past)
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylv_ws,
