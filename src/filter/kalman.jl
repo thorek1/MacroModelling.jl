@@ -90,7 +90,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
     # C = @views I_nVars[observables_sorted, observables_and_states]
-    C = @view ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
 
     𝐁 = B * B'
 
