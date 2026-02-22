@@ -1032,9 +1032,6 @@ end
 
 const CACHE_VALIDITY_FIELDS = (
     :non_stochastic_steady_state,
-    :jacobian,
-    :hessian,
-    :third_order_derivatives,
     :first_order_solution,
     :second_order_solution,
     :pruned_second_order_solution,
@@ -6706,7 +6703,6 @@ function calculate_jacobian(parameters::Vector{M},
 
     if M === Float64
         caches_obj.jacobian = jac_buffer
-        caches_obj.valid_for.jacobian = Float64.(parameters)
     end
     
     return jac_buffer
@@ -6731,7 +6727,6 @@ function calculate_hessian(parameters::Vector{M},
 
     if M === Float64
         caches_obj.hessian = hes_buffer
-        caches_obj.valid_for.hessian = Float64.(parameters)
     end
     
     return hes_buffer
@@ -6757,7 +6752,6 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     if M === Float64
         caches_obj.third_order_derivatives = third_buffer
-        caches_obj.valid_for.third_order_derivatives = Float64.(parameters)
     end
     
     return third_buffer

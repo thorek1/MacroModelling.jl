@@ -81,12 +81,15 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
+    observables_sorted = @ignore_derivatives sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
 
-    A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+    A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
+    C = @views I_nVars[observables_sorted, observables_and_states]
 
     𝐁 = B * B'
 
@@ -129,7 +132,7 @@ end
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
-                                C::Matrix{Float64}, 
+                                C::AbstractMatrix{Bool}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 

@@ -800,9 +800,6 @@ NSSSSolverWorkspace() = NSSSSolverWorkspace(
 
 mutable struct valid_for_caches
     non_stochastic_steady_state::Vector{Float64}
-    jacobian::Vector{Float64}
-    hessian::Vector{Float64}
-    third_order_derivatives::Vector{Float64}
     first_order_solution::Vector{Float64}
     second_order_solution::Vector{Float64}
     pruned_second_order_solution::Vector{Float64}
@@ -812,9 +809,6 @@ end
 
 
 valid_for_caches() = valid_for_caches(
-    Float64[],
-    Float64[],
-    Float64[],
     Float64[],
     Float64[],
     Float64[],
