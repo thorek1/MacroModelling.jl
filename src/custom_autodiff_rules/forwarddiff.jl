@@ -810,3 +810,78 @@ function run_kalman_iterations(A::Matrix{S},
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
+
+function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
+                                                𝐒::Union{Matrix{ℱ.Dual{Z,S,N}},Vector{AbstractMatrix{ℱ.Dual{Z,S,N}}}},
+                                                data_in_deviations::Matrix{R},
+                                                constants::constants,
+                                                lyap_ws::lyapunov_workspace,
+                                                kalman_ws::kalman_workspace;
+                                                presample_periods::Int = 0,
+                                                initial_covariance::Symbol = :theoretical,
+                                                lyapunov_algorithm::Symbol = :doubling,
+                                                on_failure_loglikelihood::U = -Inf,
+                                                opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
+                                                
+    T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
+
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
+
+    A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+
+    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+    𝐁 = B * B'
+
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+
+    if !(eltype(P) <: ℱ.Dual)
+        dual_zero = zero(A[1])
+        P = similar(A, size(P, 1), size(P, 2))
+        @inbounds for i in eachindex(P)
+            P[i] = dual_zero + S(P[i])
+        end
+    end
+
+    u = zeros(eltype(A), size(C, 2))
+    z = C * u
+    loglik = zero(eltype(A))
+
+    for t in 1:size(data_in_deviations, 2)
+        if !all(isfinite.(z))
+            if opts.verbose println("KF not finite at step $t") end
+            return on_failure_loglikelihood
+        end
+
+        v = data_in_deviations[:, t] - z
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false)
+        if !ℒ.issuccess(luF)
+            if opts.verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        Fdet = ℒ.det(luF)
+        if Fdet < eps(Float64)
+            if opts.verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        invF = inv(luF)
+
+        if t > presample_periods
+            loglik += log(Fdet) + ℒ.dot(v, invF, v)
+        end
+
+        K = P * C' * invF
+        P = A * (P - K * C * P) * A' + 𝐁
+        u = A * (u + K * v)
+        z = C * u
+    end
+
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+end

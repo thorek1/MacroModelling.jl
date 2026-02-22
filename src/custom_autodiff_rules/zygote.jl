@@ -3978,278 +3978,232 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule(::typeof(run_kalman_iterations), 
-                    A, 
-                    𝐁, 
-                    C, 
-                    P, 
-                    data_in_deviations,
-                    ws::kalman_workspace; 
-                    presample_periods = 0,
-                    on_failure_loglikelihood = -Inf,
-                    # timer::TimerOutput = TimerOutput(),
-                    verbose::Bool = false)
-    # @timeit_debug timer "Calculate Kalman filter - forward" begin
-    # Note: The rrule requires time-indexed arrays for the backward pass that depend on data length,
-    # so we cannot cache them in the workspace. Only small fixed-size buffers could potentially be cached.
-    T = size(data_in_deviations, 2) + 1
+function rrule(::typeof(calculate_kalman_filter_loglikelihood),
+                observables_index::Vector{Int},
+                𝐒::AbstractMatrix{Float64},
+                data_in_deviations::Matrix{Float64},
+                constants::constants,
+                lyap_ws::lyapunov_workspace,
+                kalman_ws::kalman_workspace;
+                presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
+                lyapunov_algorithm::Symbol = :doubling,
+                on_failure_loglikelihood::U = -Inf,
+                opts::CalculationOptions = merge_calculation_options()) where U <: AbstractFloat
+                
+    T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
+
+    A_map = @views I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+
+    A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * A_map
+    B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+
+    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+
+    𝐁 = B * B'
+
+    lyap_pullback = nothing
+    P = if initial_covariance == :theoretical
+        lyap_rrule_result, lyap_pullback_local = rrule(solve_lyapunov_equation,
+                                                        A,
+                                                        𝐁,
+                                                        lyap_ws,
+                                                        lyapunov_algorithm = opts.lyapunov_algorithm,
+                                                        tol = opts.tol.lyapunov_tol,
+                                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                        verbose = opts.verbose)
+        lyap_pullback = lyap_pullback_local
+        lyap_rrule_result[1]
+    else
+        get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    end
+
+    Tt = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
-
     ū = zeros(size(C,2))
-
-    P̄ = deepcopy(P) 
+    P̄ = deepcopy(P)
 
     temp_N_N = similar(P)
-
     PCtmp = similar(C')
-
     F = similar(C * C')
 
-    u = [similar(ū) for _ in 1:T] # used in backward pass
-
-    P = [copy(P̄) for _ in 1:T] # used in backward pass
-
-    CP = [zero(C) for _ in 1:T] # used in backward pass
-
-    K = [similar(C') for _ in 1:T] # used in backward pass
-
-    invF = [similar(F) for _ in 1:T] # used in backward pass
-
-    v = [zeros(size(data_in_deviations, 1)) for _ in 1:T] # used in backward pass
+    u = [similar(ū) for _ in 1:Tt]
+    P_seq = [copy(P̄) for _ in 1:Tt]
+    CP = [zero(C) for _ in 1:Tt]
+    K = [similar(C') for _ in 1:Tt]
+    invF = [similar(F) for _ in 1:Tt]
+    v = [zeros(size(data_in_deviations, 1)) for _ in 1:Tt]
 
     loglik = 0.0
 
-    # @timeit_debug timer "Loop" begin
-        
-    for t in 2:T
-        if !all(isfinite.(z)) 
-            if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()) 
+    for t in 2:Tt
+        if !all(isfinite.(z))
+            if opts.verbose println("KF not finite at step $t") end
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
+        v[t] .= data_in_deviations[:, t-1] .- z
 
-        # CP[t] .= C * P̄[t-1]
-        ℒ.mul!(CP[t], C, P̄)#[t-1])
-    
-        # F[t] .= CP[t] * C'
+        ℒ.mul!(CP[t], C, P̄)
         ℒ.mul!(F, CP[t], C')
-    
+
         luF = RF.lu(F, check = false)
-    
+
         if !ℒ.issuccess(luF)
-            if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            if opts.verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         Fdet = ℒ.det(luF)
 
-        # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
-            if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            if opts.verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
-        
-        # invF[t] .= inv(luF)
+
         copy!(invF[t], inv(luF))
-        
+
         if t - 1 > presample_periods
             loglik += log(Fdet) + ℒ.dot(v[t], invF[t], v[t])
         end
 
-        # K[t] .= P̄[t-1] * C' * invF[t]
         ℒ.mul!(PCtmp, P̄, C')
         ℒ.mul!(K[t], PCtmp, invF[t])
 
-        # P[t] .= P̄[t-1] - K[t] * CP[t]
-        ℒ.mul!(P[t], K[t], CP[t], -1, 0)
-        P[t] .+= P̄
-    
-        # P̄[t] .= A * P[t] * A' + 𝐁
-        ℒ.mul!(temp_N_N, P[t], A')
+        ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)
+        P_seq[t] .+= P̄
+
+        ℒ.mul!(temp_N_N, P_seq[t], A')
         ℒ.mul!(P̄, A, temp_N_N)
         P̄ .+= 𝐁
 
-        # u[t] .= K[t] * v[t] + ū[t-1]
         ℒ.mul!(u[t], K[t], v[t])
         u[t] .+= ū
-        
-        # ū[t] .= A * u[t]
-        ℒ.mul!(ū, A, u[t])
 
-        # z[t] .= C * ū[t]
+        ℒ.mul!(ū, A, u[t])
         ℒ.mul!(z, C, ū)
     end
 
-    llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
 
-    # initialise derivative variables
-    ∂A = zero(A)
     ∂F = zero(F)
     ∂Faccum = zero(F)
     ∂P = zero(P̄)
     ∂ū = zero(ū)
     ∂v = zero(v[1])
-    ∂𝐁 = zero(𝐁)
     ∂data_in_deviations = zero(data_in_deviations)
     vtmp = zero(v[1])
-    Ptmp = zero(P[1])
+    Ptmp = zero(P_seq[1])
+    ∂A_kf = zero(A)
+    ∂𝐁_kf = zero(𝐁)
 
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # pullback
-    function kalman_pullback(∂llh)
-        # @timeit_debug timer "Calculate Kalman filter - reverse" begin
-        ℒ.rmul!(∂A, 0)
+    function calculate_kalman_filter_loglikelihood_pullback(∂llh)
+        ℒ.rmul!(∂A_kf, 0)
         ℒ.rmul!(∂Faccum, 0)
         ℒ.rmul!(∂P, 0)
         ℒ.rmul!(∂ū, 0)
-        ℒ.rmul!(∂𝐁, 0)
+        ℒ.rmul!(∂𝐁_kf, 0)
 
-        # @timeit_debug timer "Loop" begin
-        for t in T:-1:2
+        for t in Tt:-1:2
             if t > presample_periods + 1
-                # ∂llh∂F
-                # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
-                # ∂F = invF[t]' - invF[t]' * v[t] * v[t]' * invF[t]'
                 ℒ.mul!(∂F, v[t], v[t]')
-                ℒ.mul!(invF[1], invF[t]', ∂F) # using invF[1] as temporary storage
+                ℒ.mul!(invF[1], invF[t]', ∂F)
                 ℒ.mul!(∂F, invF[1], invF[t]')
                 ℒ.axpby!(1, invF[t]', -1, ∂F)
-        
-                # ∂llh∂ū
-                # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
-                # z[t] .= C * ū[t]
-                # ∂v = (invF[t]' + invF[t]) * v[t]
+
                 copy!(invF[1], invF[t]' .+ invF[t])
-                # copy!(invF[1], invF[t]) # using invF[1] as temporary storage
-                # ℒ.axpy!(1, invF[t]', invF[1]) # using invF[1] as temporary storage
                 ℒ.mul!(∂v, invF[1], v[t])
-                # ℒ.mul!(∂ū∂v, C', v[1])
             else
                 ℒ.rmul!(∂F, 0)
                 ℒ.rmul!(∂v, 0)
             end
-        
-            # ∂F∂P
-            # F[t] .= C * P̄[t-1] * C'
-            # ∂P += C' * (∂F + ∂Faccum) * C
+
             ℒ.axpy!(1, ∂Faccum, ∂F)
-            ℒ.mul!(PCtmp, C', ∂F) 
-            ℒ.mul!(∂P, PCtmp, C, 1, 1) 
-        
-            # ∂ū∂P
-            # K[t] .= P̄[t-1] * C' * invF[t]
-            # u[t] .= K[t] * v[t] + ū[t-1]
-            # ū[t] .= A * u[t]
-            # ∂P += A' * ∂ū * v[t]' * invF[t]' * C
-            ℒ.mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
-            ℒ.mul!(PCtmp, ∂ū , v[t]')
-            ℒ.mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
-            ℒ.mul!(∂P, A', P[1], 1, 1) 
-        
-            # ∂ū∂data
-            # v[t] .= data_in_deviations[:, t-1] .- z
-            # z[t] .= C * ū[t]
-            # ∂data_in_deviations[:,t-1] = -C * ∂ū
+            ℒ.mul!(PCtmp, C', ∂F)
+            ℒ.mul!(∂P, PCtmp, C, 1, 1)
+
+            ℒ.mul!(CP[1], invF[t]', C)
+            ℒ.mul!(PCtmp, ∂ū, v[t]')
+            ℒ.mul!(P_seq[1], PCtmp, CP[1])
+            ℒ.mul!(∂P, A', P_seq[1], 1, 1)
+
             ℒ.mul!(u[1], A', ∂ū)
-            ℒ.mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
+            ℒ.mul!(v[1], K[t]', u[1])
             ℒ.axpy!(1, ∂v, v[1])
             ∂data_in_deviations[:,t-1] .= v[1]
-            # ℒ.mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0) # cannot assign to columns in matrix, must be whole matrix 
 
-            # ∂ū∂ū
-            # z[t] .= C * ū[t]
-            # v[t] .= data_in_deviations[:, t-1] .- z
-            # K[t] .= P̄[t-1] * C' * invF[t]
-            # u[t] .= K[t] * v[t] + ū[t-1]
-            # ū[t] .= A * u[t]
-            # step to next iteration
-            # ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
-            ℒ.mul!(u[1], A', ∂ū) # using u[1] as temporary storage
-            ℒ.mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
+            ℒ.mul!(u[1], A', ∂ū)
+            ℒ.mul!(v[1], K[t]', u[1])
             ℒ.mul!(∂ū, C', v[1])
             ℒ.mul!(u[1], C', v[1], -1, 1)
             copy!(∂ū, u[1])
-        
-            # ∂llh∂ū
-            # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
-            # v[t] .= data_in_deviations[:, t-1] .- z
-            # z[t] .= C * ū[t]
-            # ∂ū -= ∂ū∂v
-            ℒ.mul!(u[1], C', ∂v) # using u[1] as temporary storage
+
+            ℒ.mul!(u[1], C', ∂v)
             ℒ.axpy!(-1, u[1], ∂ū)
-        
+
             if t > 2
-                # ∂ū∂A
-                # ū[t] .= A * u[t]
-                # ∂A += ∂ū * u[t-1]'
-                ℒ.mul!(∂A, ∂ū, u[t-1]', 1, 1)
-        
-                # ∂P̄∂A and ∂P̄∂𝐁
-                # P̄[t] .= A * P[t] * A' + 𝐁
-                # ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
-                ℒ.mul!(P[1], A, P[t-1]')
-                ℒ.mul!(Ptmp ,∂P, P[1])
-                ℒ.mul!(P[1], A, P[t-1])
-                ℒ.mul!(Ptmp ,∂P', P[1], 1, 1)
-                ℒ.axpy!(1, Ptmp, ∂A)
-        
-                # ∂𝐁 += ∂P
-                ℒ.axpy!(1, ∂P, ∂𝐁)
-        
-                # ∂P∂P
-                # P[t] .= P̄[t-1] - K[t] * C * P̄[t-1]
-                # P̄[t] .= A * P[t] * A' + 𝐁
-                # step to next iteration
-                # ∂P = A' * ∂P * A
-                ℒ.mul!(P[1], ∂P, A) # using P[1] as temporary storage
-                ℒ.mul!(∂P, A', P[1])
-        
-                # ∂P̄∂P
-                # K[t] .= P̄[t-1] * C' * invF[t]
-                # P[t] .= P̄[t-1] - K[t] * CP[t]
-                # ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
+                ℒ.mul!(∂A_kf, ∂ū, u[t-1]', 1, 1)
+
+                ℒ.mul!(P_seq[1], A, P_seq[t-1]')
+                ℒ.mul!(Ptmp, ∂P, P_seq[1])
+                ℒ.mul!(P_seq[1], A, P_seq[t-1])
+                ℒ.mul!(Ptmp, ∂P', P_seq[1], 1, 1)
+                ℒ.axpy!(1, Ptmp, ∂A_kf)
+
+                ℒ.axpy!(1, ∂P, ∂𝐁_kf)
+
+                ℒ.mul!(P_seq[1], ∂P, A)
+                ℒ.mul!(∂P, A', P_seq[1])
+
                 ℒ.mul!(PCtmp, ∂P, K[t-1])
-                ℒ.mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
+                ℒ.mul!(CP[1], K[t-1]', ∂P)
                 ℒ.mul!(∂P, PCtmp, C, -1, 1)
                 ℒ.mul!(∂P, C', CP[1], -1, 1)
-        
-                # ∂ū∂F
-                # K[t] .= P̄[t-1] * C' * invF[t]
-                # u[t] .= K[t] * v[t] + ū[t-1]
-                # ū[t] .= A * u[t]
-                # ∂Faccum = -invF[t-1]' * CP[t-1] * A' * ∂ū * v[t-1]' * invF[t-1]'
-                ℒ.mul!(u[1], A', ∂ū) # using u[1] as temporary storage
-                ℒ.mul!(v[1], CP[t-1], u[1]) # using v[1] as temporary storage
+
+                ℒ.mul!(u[1], A', ∂ū)
+                ℒ.mul!(v[1], CP[t-1], u[1])
                 ℒ.mul!(vtmp, invF[t-1]', v[1], -1, 0)
-                ℒ.mul!(invF[1], vtmp, v[t-1]') # using invF[1] as temporary storage
+                ℒ.mul!(invF[1], vtmp, v[t-1]')
                 ℒ.mul!(∂Faccum, invF[1], invF[t-1]')
-        
-                # ∂P∂F
-                # K[t] .= P̄[t-1] * C' * invF[t]
-                # P[t] .= P̄[t-1] - K[t] * CP[t]
-                # ∂Faccum -= invF[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invF[t-1]'
-                ℒ.mul!(CP[1], invF[t-1]', CP[t-1]) # using CP[1] as temporary storage
+
+                ℒ.mul!(CP[1], invF[t-1]', CP[t-1])
                 ℒ.mul!(PCtmp, CP[t-1]', invF[t-1]')
-                ℒ.mul!(K[1], ∂P, PCtmp) # using K[1] as temporary storage
+                ℒ.mul!(K[1], ∂P, PCtmp)
                 ℒ.mul!(∂Faccum, CP[1], K[1], -1, 1)
-        
             end
         end
-        
+
         ℒ.rmul!(∂P, -∂llh/2)
-        ℒ.rmul!(∂A, -∂llh/2)
-        ℒ.rmul!(∂𝐁, -∂llh/2)
+        ℒ.rmul!(∂A_kf, -∂llh/2)
+        ℒ.rmul!(∂𝐁_kf, -∂llh/2)
         ℒ.rmul!(∂data_in_deviations, -∂llh/2)
 
-        # end # timeit_debug
-        # end # timeit_debug
+        ∂A = copy(∂A_kf)
+        ∂𝐁 = copy(∂𝐁_kf)
 
-        return NoTangent(), ∂A, ∂𝐁, NoTangent(), ∂P, ∂data_in_deviations, NoTangent(), NoTangent()
+        if !isnothing(lyap_pullback)
+            lyap_grads = lyap_pullback((∂P, NoTangent()))
+            if !(lyap_grads[2] isa AbstractZero)
+                ℒ.axpy!(1, lyap_grads[2], ∂A)
+            end
+            if !(lyap_grads[3] isa AbstractZero)
+                ℒ.axpy!(1, lyap_grads[3], ∂𝐁)
+            end
+        end
+
+        ∂B = (∂𝐁 + ∂𝐁') * B
+
+        ∂𝐒 = zero(𝐒)
+        @views ∂𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] .+= ∂A * A_map'
+        @views ∂𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end] .+= ∂B
+
+        return NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent(), NoTangent()
     end
-    
-    return llh, kalman_pullback
+
+    return llh, calculate_kalman_filter_loglikelihood_pullback
 end
