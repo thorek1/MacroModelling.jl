@@ -133,7 +133,7 @@ end
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
-                                C::AbstractMatrix{Bool}, 
+                                C::Matrix{S}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 
