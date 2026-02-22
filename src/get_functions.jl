@@ -3631,7 +3631,20 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, obs_indices, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, 𝓂.workspaces) # timer = timer
+    llh = calculate_loglikelihood(Val(filter),
+                                Val(algorithm),
+                                obs_indices,
+                                𝐒,
+                                data_in_deviations,
+                                constants_obj,
+                                state,
+                                𝓂.workspaces,
+                                warmup_iterations = warmup_iterations,
+                                presample_periods = presample_periods,
+                                initial_covariance = initial_covariance,
+                                filter_algorithm = filter_algorithm,
+                                opts = opts,
+                                on_failure_loglikelihood = on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
 

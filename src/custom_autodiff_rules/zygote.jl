@@ -15,7 +15,7 @@
 #   - Derivatives: calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 #   - Solutions: calculate_first/second/third_order_solution
 #   - Matrix equations: solve_sylvester_equation, solve_lyapunov_equation
-#   - Filters: calculate_inversion_filter_loglikelihood, run_kalman_iterations, find_shocks
+#   - Filters: calculate_loglikelihood, run_kalman_iterations, find_shocks
 
 function rrule(::typeof(mul_reverse_AD!),
                 C::Matrix{S},
@@ -1830,21 +1830,24 @@ function rrule(::typeof(find_shocks),
 end
 
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
+function rrule(::typeof(calculate_loglikelihood), 
+                ::Val{:inversion},
                 ::Val{:first_order}, 
-                state::Vector{Vector{Float64}}, 
+                observables_index::Vector{Int},
                 𝐒::Matrix{Float64}, 
                 data_in_deviations::Matrix{Float64}, 
-                observables::Union{Vector{String}, Vector{Symbol}}, 
                 constants::constants,
-                ws::inversion_workspace{Float64}; 
+                state::Vector{Vector{Float64}}, 
+                workspaces::workspaces; 
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 on_failure_loglikelihood = -Inf,
                 presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter - forward" begin    
             
     # first order
@@ -1854,7 +1857,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    obs_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    obs_idx = observables_index
 
     t⁻ = T.past_not_future_and_mixed_idx
 
@@ -1873,7 +1876,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     jac = 𝐒[obs_idx,end-T.nExo+1:end]
 
-    if T.nExo == length(observables)
+    if T.nExo == length(observables_index)
         logabsdets = ℒ.logabsdet(jac)[1] #  ./ precision_factor
 
         jacdecomp = ℒ.lu(jac, check = false)
@@ -1915,7 +1918,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])
     end
 
-    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
     if llh < -1e12
         return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -2033,21 +2036,24 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 end
 
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood),
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:inversion},
                 ::Val{:pruned_second_order},
-                state::Vector{Vector{Float64}}, 
+                observables_index::Vector{Int},
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
-                observables::Union{Vector{String}, Vector{Symbol}},
                 constants::constants,
-                ws::inversion_workspace{Float64}; 
+                state::Vector{Vector{Float64}}, 
+                workspaces::workspaces; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
                     
@@ -2055,7 +2061,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -2243,7 +2249,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc_fact)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
@@ -2499,26 +2505,29 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood),
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:inversion},
                 ::Val{:second_order},
-                state::Vector{Float64}, 
+                observables_index::Vector{Int},
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
-                observables::Union{Vector{String}, Vector{Symbol}},
                 constants::constants,
-                ws::inversion_workspace{Float64}; 
+                state::Vector{Float64}, 
+                workspaces::workspaces; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
     # @timeit_debug timer "Preallocation" begin
@@ -2527,7 +2536,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -2711,7 +2720,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc_fact)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
@@ -2965,32 +2974,35 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood),
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:inversion},
                 ::Val{:pruned_third_order},
-                state::Vector{Vector{Float64}}, 
+                observables_index::Vector{Int},
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
-                observables::Union{Vector{String}, Vector{Symbol}},
                 constants::constants,
-                ws::inversion_workspace{Float64}; 
+                state::Vector{Vector{Float64}}, 
+                workspaces::workspaces; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -3213,7 +3225,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc[i])[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
@@ -3238,7 +3250,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
     ∂state = similar(state)
 
@@ -3521,21 +3533,24 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood),
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:inversion},
                 ::Val{:third_order},
-                state::Vector{Float64}, 
+                observables_index::Vector{Int},
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
-                observables::Union{Vector{String}, Vector{Symbol}},
                 constants::constants,
-                ws::inversion_workspace{Float64}; 
+                state::Vector{Float64}, 
+                workspaces::workspaces; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                initial_covariance::Symbol = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -3543,7 +3558,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -3736,7 +3751,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc[i])[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
@@ -3755,7 +3770,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     end
     
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
     # end # timeit_debug
     # end # timeit_debug
@@ -3978,14 +3993,19 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule(::typeof(calculate_kalman_filter_loglikelihood),
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:kalman},
+                ::Val,
                 observables_index::Vector{Int},
                 𝐒::AbstractMatrix{Float64},
                 data_in_deviations::Matrix{Float64},
                 constants::constants,
+                state,
                 workspaces::workspaces;
+                warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 initial_covariance::Symbol = :theoretical,
+                filter_algorithm::Symbol = :LagrangeNewton,
                 lyapunov_algorithm::Symbol = :doubling,
                 on_failure_loglikelihood::U = -Inf,
                 opts::CalculationOptions = merge_calculation_options()) where {U <: AbstractFloat}
@@ -4046,7 +4066,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
     for t in 2:Tt
         if !all(isfinite.(z))
             if opts.verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         v[t] .= data_in_deviations[:, t-1] .- z
@@ -4060,7 +4080,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
 
         if !solved_F
             if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         logabsdetF = 0.0
@@ -4069,7 +4089,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
             di = F[i, i]
             if di == 0
                 if opts.verbose println("KF factorisation failed step $t") end
-                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             logabsdetF += log(abs(di))
             signF *= sign(di)
@@ -4077,7 +4097,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
 
         if signF <= 0 || logabsdetF < log(eps(Float64))
             if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         fill!(invF[t], 0.0)
@@ -4121,7 +4141,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
     ∂A_kf = zero(A)
     ∂𝐁_kf = zero(𝐁)
 
-    function calculate_kalman_filter_loglikelihood_pullback(∂llh)
+    function calculate_loglikelihood_pullback(∂llh)
         ℒ.rmul!(∂A_kf, 0)
         ℒ.rmul!(∂Faccum, 0)
         ℒ.rmul!(∂P, 0)
@@ -4221,8 +4241,8 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
         @views ∂𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] .+= ∂A * A_map'
         @views ∂𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end] .+= ∂B
 
-        return NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent(), NoTangent()
     end
 
-    return llh, calculate_kalman_filter_loglikelihood_pullback
+    return llh, calculate_loglikelihood_pullback
 end

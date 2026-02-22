@@ -1,41 +1,18 @@
 @stable default_mode = "disable" begin
 
-# Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, 
-                                algorithm, 
+function calculate_loglikelihood(::Val{:kalman},
+                                ::Val,
                                 observables_index::Vector{Int}, 
-                                𝐒, 
-                                data_in_deviations, 
-                                constants_obj::constants, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                opts,
-                                on_failure_loglikelihood,
-                                workspaces::workspaces) #; 
-                                # timer::TimerOutput = TimerOutput())
-    return calculate_kalman_filter_loglikelihood(observables_index, 
-                                                𝐒, 
-                                                data_in_deviations, 
-                                                constants_obj,
-                                                workspaces,
-                                                presample_periods = presample_periods, 
-                                                initial_covariance = initial_covariance, 
-                                                # timer = timer, 
-                                                opts = opts,
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
+                                                state,
                                                 workspaces::workspaces; 
                                                 # timer::TimerOutput = TimerOutput(), 
+                                                warmup_iterations::Int = 0,
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
+                                                filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}

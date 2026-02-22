@@ -8,47 +8,18 @@ from the origin with gradient-based solvers (including the default LagrangeNewto
 returns the root whose basin contains the origin rather than guaranteeing the global
 minimum.
 """
-# Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, 
-                                algorithm, observables_index::Vector{Int}, 
-                                𝐒, 
-                                data_in_deviations, 
-                                constants_obj::constants, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                opts,
-                                on_failure_loglikelihood,
-                                workspaces::workspaces) #; 
-                                # timer::TimerOutput = TimerOutput())
-    return calculate_inversion_filter_loglikelihood(Val(algorithm), 
-                                                    state, 
-                                                    𝐒, 
-                                                    data_in_deviations, 
-                                                    observables_index, 
-                                                    constants_obj, 
-                                                    workspaces,
-                                                    warmup_iterations = warmup_iterations, 
-                                                    presample_periods = presample_periods, 
-                                                    filter_algorithm = filter_algorithm, 
-                                                    # timer = timer, 
-                                                    opts = opts,
-                                                    on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-
-function calculate_inversion_filter_loglikelihood(::Val{:first_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:first_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Matrix{R}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables_index::Vector{Int},
                                                     constants::constants,
+                                                    state::Vector{Vector{R}}, 
                                                     workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
@@ -167,17 +138,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:pruned_second_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables_index::Vector{Int},
                                                     constants::constants,
+                                                    state::Vector{Vector{R}}, 
                                                     workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     T = constants.post_model_macro
@@ -414,17 +387,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:second_order},
-                                                    state::Vector{R}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:second_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables_index::Vector{Int},
                                                     constants::constants,
+                                                    state::Vector{R}, 
                                                     workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     T = constants.post_model_macro
@@ -652,17 +627,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:pruned_third_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables_index::Vector{Int},
                                                     constants::constants,
+                                                    state::Vector{Vector{R}}, 
                                                     workspaces::workspaces;
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     T = constants.post_model_macro
@@ -1082,17 +1059,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:third_order},
-                                                    state::Vector{R}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:third_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables_index::Vector{Int},
                                                     constants::constants,
+                                                    state::Vector{R}, 
                                                     workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     T = constants.post_model_macro

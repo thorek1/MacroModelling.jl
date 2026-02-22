@@ -744,16 +744,21 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 end
 
 
-function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
-                                                𝐒::Union{Matrix{ℱ.Dual{Z,S,N}},Vector{AbstractMatrix{ℱ.Dual{Z,S,N}}}},
-                                                data_in_deviations::Matrix{R},
-                                                constants::constants,
-                                                workspaces::workspaces;
-                                                presample_periods::Int = 0,
-                                                initial_covariance::Symbol = :theoretical,
-                                                lyapunov_algorithm::Symbol = :doubling,
-                                                on_failure_loglikelihood::U = -Inf,
-                                                opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
+function calculate_loglikelihood(::Val{:kalman},
+                                ::Val,
+                                observables_index::Vector{Int},
+                                𝐒::Union{Matrix{ℱ.Dual{Z,S,N}},Vector{AbstractMatrix{ℱ.Dual{Z,S,N}}}},
+                                data_in_deviations::Matrix{R},
+                                constants::constants,
+                                state,
+                                workspaces::workspaces;
+                                warmup_iterations::Int = 0,
+                                presample_periods::Int = 0,
+                                initial_covariance::Symbol = :theoretical,
+                                filter_algorithm::Symbol = :LagrangeNewton,
+                                lyapunov_algorithm::Symbol = :doubling,
+                                on_failure_loglikelihood::U = -Inf,
+                                opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
                                                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
