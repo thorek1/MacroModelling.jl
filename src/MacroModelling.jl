@@ -5063,11 +5063,11 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.first_order_solution_matrix)
-        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0
-        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
-        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0
-        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
+        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values)
+        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values)
+        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) 
+        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values)
+        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values)
 
         obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
         if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
@@ -5078,7 +5078,7 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
-            SS_and_pars, (solution_error, iters) = get_cached_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+            SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
             # end # timeit_debug
 
@@ -5092,12 +5092,13 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            S₁, qme_sol, solved = get_cached_first_order_solution(∇₁,
-                                                                  𝓂.parameter_values,
-                                                                  constants,
-                                                                  𝓂;
-                                                                  opts = opts)
-            
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                                constants,
+                                                                𝓂.workspaces,
+                                                                𝓂.caches;
+                                                                opts = opts,
+                                                                initial_guess = 𝓂.caches.qme_solution)
+
             update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
             # end # timeit_debug
@@ -8031,60 +8032,6 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 end
 
 
-function get_cached_NSSS_and_parameters(𝓂::ℳ,
-                                        parameter_values::Vector{S};
-                                        opts::CalculationOptions = merge_calculation_options(),
-                                        cold_start::Bool = false,
-                                        estimation::Bool = false,
-                                        allow_cache_hit::Bool = true)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
-    nsss_valid = allow_cache_hit && !cold_start && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-    if nsss_valid
-        return convert(Vector{S}, 𝓂.caches.non_stochastic_steady_state), (eps(S), 0)
-    end
-
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts, cold_start = cold_start, estimation = estimation)
-
-    solved = !(solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error))
-    if solved
-        SS_and_pars_value = eltype(SS_and_pars) <: ℱ.Dual ? Float64.(ℱ.value.(SS_and_pars)) : Float64.(SS_and_pars)
-        𝓂.caches.non_stochastic_steady_state = SS_and_pars_value
-        𝓂.caches.valid_for.non_stochastic_steady_state = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
-    end
-
-    return SS_and_pars, (solution_error, iters)
-end
-
-
-function get_cached_first_order_solution(∇₁::AbstractMatrix{S},
-                                         parameter_values::Vector{S},
-                                         constants_obj::constants,
-                                         𝓂::ℳ;
-                                         opts::CalculationOptions = merge_calculation_options(),
-                                         allow_cache_hit::Bool = true)::Tuple{Matrix{S}, Matrix{S}, Bool} where S <: Real
-    first_order_valid = allow_cache_hit && S === Float64 &&
-                        cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, parameter_values) &&
-                        size(𝓂.caches.first_order_solution_matrix, 1) > 0 && size(𝓂.caches.first_order_solution_matrix, 2) > 0
-    if first_order_valid
-        return convert(Matrix{S}, 𝓂.caches.first_order_solution_matrix), convert(Matrix{S}, 𝓂.caches.qme_solution), true
-    end
-
-    S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants_obj,
-                                                        𝓂.workspaces,
-                                                        𝓂.caches;
-                                                        opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
-
-    if solved && S === Float64
-        𝓂.caches.first_order_solution_matrix = S₁
-        𝓂.caches.valid_for.first_order_solution = Float64.(parameter_values)
-    end
-
-    return S₁, qme_sol, solved
-end
-
-
-
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
     if !all(isfinite,parameter_values) return true end
 
@@ -8201,7 +8148,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     # Initialize constants at entry point
     constants_obj = initialise_constants!(𝓂)
 
-    SS_and_pars, (solution_error, iters) = get_cached_NSSS_and_parameters(𝓂, parameter_values, opts = opts, estimation = estimation, allow_cache_hit = false) # timer = timer,
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts, estimation = estimation) # timer = timer,
 
     state = zeros(𝓂.constants.post_model_macro.nVars)
 
@@ -8212,12 +8159,13 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
 
-    𝐒₁, qme_sol, solved = get_cached_first_order_solution(∇₁,
-                                                         parameter_values,
-                                                         constants_obj,
-                                                         𝓂;
-                                                         opts = opts,
-                                                         allow_cache_hit = false)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants_obj,
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
+                                                        opts = opts,
+                                                        initial_guess = 𝓂.caches.qme_solution)
+
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 

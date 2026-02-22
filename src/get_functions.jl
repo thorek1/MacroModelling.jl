@@ -856,7 +856,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
         S₁ = 𝓂.caches.first_order_solution_matrix
-        S₁ = [S₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) S₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
+        Ŝ₁ = [S₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) S₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
 
         S₂ = nothing
         if size(𝓂.caches.second_order_solution, 2) > 0
@@ -878,7 +878,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       cond_var_idx,
                                                       free_shock_idx,
                                                       state_update,
-                                                      S₁,
+                                                      Ŝ₁,
                                                       S₂,
                                                       S₃,
                                                       𝓂.constants,
@@ -920,7 +920,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               cond_var_idx,
                                                               free_shock_idx,
                                                               state_update,
-                                                              S₁,
+                                                              Ŝ₁,
                                                               S₂,
                                                               S₃,
                                                               𝓂.constants,
@@ -1085,7 +1085,7 @@ function get_irf(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
-    reference_steady_state, (solution_error, iters) = get_cached_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation, allow_cache_hit = false)
+    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
     
     if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
@@ -1093,12 +1093,12 @@ function get_irf(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    sol_mat, qme_sol, solved = get_cached_first_order_solution(∇₁,
-                                                              parameters,
-                                                              constants,
-                                                              𝓂;
-                                                              opts = opts,
-                                                              allow_cache_hit = false)
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants,
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
+                                                        opts = opts,
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -2754,7 +2754,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = get_cached_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+    NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
 
