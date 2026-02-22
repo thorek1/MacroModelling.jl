@@ -748,8 +748,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 𝐒::Union{Matrix{ℱ.Dual{Z,S,N}},Vector{AbstractMatrix{ℱ.Dual{Z,S,N}}}},
                                                 data_in_deviations::Matrix{R},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace;
+                                                workspaces::workspaces;
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
@@ -758,6 +757,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
+    kalman_ws = workspaces.kalman
 
     observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
     observables_sorted = sort(observables_index)

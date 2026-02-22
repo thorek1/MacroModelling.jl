@@ -657,7 +657,7 @@ end
     Kalman_workspace(;T::Type = Float64)
 
 Create a workspace for Kalman filter computations with lazy buffer allocation.
-All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_buffers!.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_workspaces!.
 """
 function Kalman_workspace(;T::Type = Float64)
     empty_lu_factors = zeros(T, 1, 1)
@@ -682,11 +682,14 @@ end
 
 
 """
-    ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+    ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
 
-Ensure the Kalman workspaces are allocated for the given dimensions.
+Ensure the Kalman workspace inside `workspaces` is allocated for the given dimensions and return it.
 """
-function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
+    ws = workspaces.kalman
+    T = eltype(ws.u)
+
     # Check if dimensions changed
     if ws.n_obs == n_obs && ws.n_states == n_states
         return ws

@@ -23,17 +23,13 @@ function calculate_loglikelihood(::Val{:inversion},
                                 on_failure_loglikelihood,
                                 workspaces::workspaces) #; 
                                 # timer::TimerOutput = TimerOutput())
-    T = constants_obj.post_model_macro
-    third_order = algorithm in (:pruned_third_order, :third_order)
-    ensure_inversion_buffers!(workspaces.inversion, T.nExo, T.nPast_not_future_and_mixed; third_order = third_order)
-
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
                                                     𝐒, 
                                                     data_in_deviations, 
                                                     observables_index, 
                                                     constants_obj, 
-                                                    workspaces.inversion,
+                                                    workspaces,
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
@@ -49,7 +45,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     data_in_deviations::Matrix{R}, 
                                                     observables_index::Vector{Int},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
@@ -57,6 +53,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
@@ -175,7 +173,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     data_in_deviations::Matrix{R}, 
                                                     observables_index::Vector{Int},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
@@ -183,6 +181,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
     
@@ -421,7 +420,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     data_in_deviations::Matrix{R}, 
                                                     observables_index::Vector{Int},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -429,6 +428,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -658,7 +658,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     data_in_deviations::Matrix{R}, 
                                                     observables_index::Vector{Int},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64};
+                                                    workspaces::workspaces;
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -666,6 +666,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter" begin
 
     # Ensure workspaces are properly sized
@@ -1087,7 +1088,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     data_in_deviations::Matrix{R}, 
                                                     observables_index::Vector{Int},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
@@ -1095,6 +1096,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 

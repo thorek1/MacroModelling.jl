@@ -377,7 +377,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
         fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
@@ -3983,8 +3983,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
                 𝐒::AbstractMatrix{Float64},
                 data_in_deviations::Matrix{Float64},
                 constants::constants,
-                lyap_ws::lyapunov_workspace,
-                kalman_ws::kalman_workspace;
+                workspaces::workspaces;
                 presample_periods::Int = 0,
                 initial_covariance::Symbol = :theoretical,
                 lyapunov_algorithm::Symbol = :doubling,
@@ -3993,6 +3992,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
     observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
     observables_sorted = sort(observables_index)
     I_nVars = idx_constants.diag_nVars
@@ -4004,7 +4004,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
 
     C = @views I_nVars[observables_sorted, observables_and_states]
 
-    ensure_kalman_buffers!(kalman_ws, size(C, 1), size(C, 2))
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
     𝐁 = kalman_ws.𝐁
     ℒ.mul!(𝐁, B, B')
 
@@ -4046,7 +4046,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
     for t in 2:Tt
         if !all(isfinite.(z))
             if opts.verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         v[t] .= data_in_deviations[:, t-1] .- z
@@ -4060,7 +4060,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
 
         if !solved_F
             if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         logabsdetF = 0.0
@@ -4069,7 +4069,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
             di = F[i, i]
             if di == 0
                 if opts.verbose println("KF factorisation failed step $t") end
-                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             logabsdetF += log(abs(di))
             signF *= sign(di)
@@ -4077,7 +4077,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
 
         if signF <= 0 || logabsdetF < log(eps(Float64))
             if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         fill!(invF[t], 0.0)
@@ -4221,7 +4221,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
         @views ∂𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] .+= ∂A * A_map'
         @views ∂𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end] .+= ∂B
 
-        return NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent()
     end
 
     return llh, calculate_kalman_filter_loglikelihood_pullback

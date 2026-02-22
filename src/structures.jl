@@ -998,7 +998,7 @@ end
 """  
 Workspace for Kalman filter computations.
 Contains pre-allocated buffers for state estimates, covariances, and matrix operations.
-Buffers are lazily allocated and resized as needed via ensure_kalman_buffers!.
+Buffers are lazily allocated and resized as needed via ensure_kalman_workspaces!.
 """
 mutable struct kalman_workspace{T <: Real}
     # Dimensions (for reallocation checks)

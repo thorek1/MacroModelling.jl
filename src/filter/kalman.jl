@@ -16,15 +16,11 @@ function calculate_loglikelihood(::Val{:kalman},
                                 on_failure_loglikelihood,
                                 workspaces::workspaces) #; 
                                 # timer::TimerOutput = TimerOutput())
-    lyap_ws = ensure_lyapunov_workspace!(workspaces, constants_obj.post_model_macro.nVars, :first_order)
-    kalman_ws = workspaces.kalman
-
     return calculate_kalman_filter_loglikelihood(observables_index, 
                                                 𝐒, 
                                                 data_in_deviations, 
                                                 constants_obj,
-                                                lyap_ws,
-                                                kalman_ws,
+                                                workspaces,
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
@@ -36,8 +32,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
+                                                workspaces::workspaces; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
@@ -46,6 +41,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
 
     observables_and_states = sort(union(T.past_not_future_and_mixed_idx,observables_index))
     observables_sorted = sort(observables_index)
@@ -56,7 +52,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
 
     C = @views I_nVars[observables_sorted, observables_and_states]
 
-    ensure_kalman_buffers!(kalman_ws, size(C, 1), size(C, 2))
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
+
     𝐁 = kalman_ws.𝐁
     ℒ.mul!(𝐁, B, B')
 
@@ -109,11 +106,6 @@ function run_kalman_iterations(A::Matrix{S},
                                 verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
-    # Ensure workspaces are properly sized
-    n_obs = size(C, 1)
-    n_states = size(C, 2)
-    ensure_kalman_buffers!(ws, n_obs, n_states)
-    
     # Use workspaces
     u = ws.u
     z = ws.z
