@@ -3994,27 +3994,25 @@ function rrule(::typeof(run_kalman_iterations),
     # so we cannot cache them in the workspace. Only small fixed-size buffers could potentially be cached.
     T = size(data_in_deviations, 2) + 1
 
-    Cnum = Matrix{promote_type(eltype(A), eltype(P), eltype(𝐁), eltype(data_in_deviations))}(C)
-
     z = zeros(size(data_in_deviations, 1))
 
-    ū = zeros(size(Cnum,2))
+    ū = zeros(size(C,2))
 
     P̄ = deepcopy(P) 
 
     temp_N_N = similar(P)
 
-    PCtmp = similar(Cnum')
+    PCtmp = similar(C')
 
-    F = similar(Cnum * Cnum')
+    F = similar(C * C')
 
     u = [similar(ū) for _ in 1:T] # used in backward pass
 
     P = [copy(P̄) for _ in 1:T] # used in backward pass
 
-    CP = [zero(Cnum) for _ in 1:T] # used in backward pass
+    CP = [zero(C) for _ in 1:T] # used in backward pass
 
-    K = [similar(Cnum') for _ in 1:T] # used in backward pass
+    K = [similar(C') for _ in 1:T] # used in backward pass
 
     invF = [similar(F) for _ in 1:T] # used in backward pass
 
@@ -4033,10 +4031,10 @@ function rrule(::typeof(run_kalman_iterations),
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
 
         # CP[t] .= C * P̄[t-1]
-        ℒ.mul!(CP[t], Cnum, P̄)#[t-1])
+        ℒ.mul!(CP[t], C, P̄)#[t-1])
     
         # F[t] .= CP[t] * C'
-        ℒ.mul!(F, CP[t], Cnum')
+        ℒ.mul!(F, CP[t], C')
     
         luF = RF.lu(F, check = false)
     
@@ -4061,7 +4059,7 @@ function rrule(::typeof(run_kalman_iterations),
         end
 
         # K[t] .= P̄[t-1] * C' * invF[t]
-        ℒ.mul!(PCtmp, P̄, Cnum')
+        ℒ.mul!(PCtmp, P̄, C')
         ℒ.mul!(K[t], PCtmp, invF[t])
 
         # P[t] .= P̄[t-1] - K[t] * CP[t]
@@ -4081,7 +4079,7 @@ function rrule(::typeof(run_kalman_iterations),
         ℒ.mul!(ū, A, u[t])
 
         # z[t] .= C * ū[t]
-        ℒ.mul!(z, Cnum, ū)
+        ℒ.mul!(z, C, ū)
     end
 
     llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
@@ -4139,15 +4137,15 @@ function rrule(::typeof(run_kalman_iterations),
             # F[t] .= C * P̄[t-1] * C'
             # ∂P += C' * (∂F + ∂Faccum) * C
             ℒ.axpy!(1, ∂Faccum, ∂F)
-            ℒ.mul!(PCtmp, Cnum', ∂F) 
-            ℒ.mul!(∂P, PCtmp, Cnum, 1, 1) 
+            ℒ.mul!(PCtmp, C', ∂F) 
+            ℒ.mul!(∂P, PCtmp, C, 1, 1) 
         
             # ∂ū∂P
             # K[t] .= P̄[t-1] * C' * invF[t]
             # u[t] .= K[t] * v[t] + ū[t-1]
             # ū[t] .= A * u[t]
             # ∂P += A' * ∂ū * v[t]' * invF[t]' * C
-            ℒ.mul!(CP[1], invF[t]', Cnum) # using CP[1] as temporary storage
+            ℒ.mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
             ℒ.mul!(PCtmp, ∂ū , v[t]')
             ℒ.mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
             ℒ.mul!(∂P, A', P[1], 1, 1) 
@@ -4172,8 +4170,8 @@ function rrule(::typeof(run_kalman_iterations),
             # ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
             ℒ.mul!(u[1], A', ∂ū) # using u[1] as temporary storage
             ℒ.mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
-            ℒ.mul!(∂ū, Cnum', v[1])
-            ℒ.mul!(u[1], Cnum', v[1], -1, 1)
+            ℒ.mul!(∂ū, C', v[1])
+            ℒ.mul!(u[1], C', v[1], -1, 1)
             copy!(∂ū, u[1])
         
             # ∂llh∂ū
@@ -4181,7 +4179,7 @@ function rrule(::typeof(run_kalman_iterations),
             # v[t] .= data_in_deviations[:, t-1] .- z
             # z[t] .= C * ū[t]
             # ∂ū -= ∂ū∂v
-            ℒ.mul!(u[1], Cnum', ∂v) # using u[1] as temporary storage
+            ℒ.mul!(u[1], C', ∂v) # using u[1] as temporary storage
             ℒ.axpy!(-1, u[1], ∂ū)
         
             if t > 2
@@ -4216,8 +4214,8 @@ function rrule(::typeof(run_kalman_iterations),
                 # ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
                 ℒ.mul!(PCtmp, ∂P, K[t-1])
                 ℒ.mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
-                ℒ.mul!(∂P, PCtmp, Cnum, -1, 1)
-                ℒ.mul!(∂P, Cnum', CP[1], -1, 1)
+                ℒ.mul!(∂P, PCtmp, C, -1, 1)
+                ℒ.mul!(∂P, C', CP[1], -1, 1)
         
                 # ∂ū∂F
                 # K[t] .= P̄[t-1] * C' * invF[t]
