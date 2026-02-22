@@ -1580,16 +1580,36 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
     current_best = Inf
     closest_solution = cache[end]
 
-    for pars in cache
+    target_parameters_norm_squared = 0.0
+    @inbounds for i in eachindex(initial_parameters)
+        pi = initial_parameters[i]
+        target_parameters_norm_squared += pi * pi
+    end
+
+    @inbounds for idx in length(cache):-1:1
+        pars = cache[idx]
         if length(pars) < expected_length || !(pars[end] isa Vector{Float64}) || length(pars[end]) != length(initial_parameters)
             continue
         end
+
+        cached_parameters = pars[end]
         squared_distance = 0.0
-        @inbounds for i in eachindex(initial_parameters)
-            d = pars[end][i] - initial_parameters[i]
+        cached_parameters_norm_squared = 0.0
+        for i in eachindex(initial_parameters)
+            ci = cached_parameters[i]
+            d = ci - initial_parameters[i]
             squared_distance += d * d
+            cached_parameters_norm_squared += ci * ci
         end
-        if squared_distance <= current_best
+
+        normalisation_norm_squared = max(target_parameters_norm_squared, cached_parameters_norm_squared)
+        relative_parameter_distance_squared = squared_distance / normalisation_norm_squared
+
+        if relative_parameter_distance_squared < eps()
+            return squared_distance, pars
+        end
+
+        if squared_distance < current_best
             current_best = squared_distance
             closest_solution = pars
         end
@@ -1597,9 +1617,10 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
 
     if !isfinite(current_best)
         if (closest_solution[end] isa Vector{Float64}) && (length(closest_solution[end]) == length(initial_parameters))
+            cached_parameters = closest_solution[end]
             current_best = 0.0
             @inbounds for i in eachindex(initial_parameters)
-                d = closest_solution[end][i] - initial_parameters[i]
+                d = cached_parameters[i] - initial_parameters[i]
                 current_best += d * d
             end
         else
