@@ -5063,13 +5063,14 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values)
-        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values)
-        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) 
-        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values)
-        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values)
+        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.first_order_solution_matrix)
+        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0
+        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
+        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0
+        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
 
         obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
+        
         if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && (pruned_second_order_needs_recalc || (obc && obc_not_solved))) ||
