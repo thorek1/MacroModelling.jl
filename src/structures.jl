@@ -1013,6 +1013,7 @@ mutable struct kalman_workspace{T <: Real}
     
     # Matrix buffers
     Ctmp::Matrix{T}          # (n_obs, n_states) - C*P buffer
+    𝐁::Matrix{T}             # (n_states, n_states) - B*B' buffer
     F::Matrix{T}             # (n_obs, n_obs) - innovation covariance
     K::Matrix{T}             # (n_states, n_obs) - Kalman gain
     tmp::Matrix{T}           # (n_states, n_states) - temp for P

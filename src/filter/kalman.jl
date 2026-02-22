@@ -89,10 +89,11 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
     B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    # C = @views I_nVars[observables_sorted, observables_and_states]
-    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+    C = @views I_nVars[observables_sorted, observables_and_states]
 
-    𝐁 = B * B'
+    ensure_kalman_buffers!(kalman_ws, size(C, 1), size(C, 2))
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
 
     # Gaussian Prior
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
@@ -126,27 +127,27 @@ function get_initial_covariance(::Val{:diagonal},
                                 lyap_ws::lyapunov_workspace; 
                                 opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-    P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
+    P = collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
 
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
-                                C::Matrix{S}, 
+                                C::AbstractMatrix{R}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
+                                verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
     # Ensure workspaces are properly sized
     n_obs = size(C, 1)
     n_states = size(C, 2)
-    @ignore_derivatives ensure_kalman_buffers!(ws, n_obs, n_states)
+    ensure_kalman_buffers!(ws, n_obs, n_states)
     
     # Use workspaces
     u = ws.u

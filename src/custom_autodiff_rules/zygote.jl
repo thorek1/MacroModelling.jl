@@ -4002,9 +4002,11 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
     A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * A_map
     B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+    C = @views I_nVars[observables_sorted, observables_and_states]
 
-    𝐁 = B * B'
+    ensure_kalman_buffers!(kalman_ws, size(C, 1), size(C, 2))
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
 
     lyap_pullback = nothing
     P = if initial_covariance == :theoretical
@@ -4029,13 +4031,13 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
     P̄ = deepcopy(P)
 
     temp_N_N = similar(P)
-    PCtmp = similar(C')
-    F = similar(C * C')
+    PCtmp = similar(P, size(P, 1), size(C, 1))
+    F = similar(P, size(C, 1), size(C, 1))
 
     u = [similar(ū) for _ in 1:Tt]
     P_seq = [copy(P̄) for _ in 1:Tt]
-    CP = [zero(C) for _ in 1:Tt]
-    K = [similar(C') for _ in 1:Tt]
+    CP = [zeros(eltype(P), size(C, 1), size(P, 2)) for _ in 1:Tt]
+    K = [similar(P, size(P, 1), size(C, 1)) for _ in 1:Tt]
     invF = [similar(F) for _ in 1:Tt]
     v = [zeros(size(data_in_deviations, 1)) for _ in 1:Tt]
 

@@ -667,6 +667,7 @@ function Kalman_workspace(;T::Type = Float64)
         zeros(T, 0),            # ztmp (n_obs)
         zeros(T, 0),            # utmp (n_states)
         zeros(T, 0, 0),         # Ctmp (n_obs × n_states)
+    zeros(T, 0, 0),         # 𝐁 (n_states × n_states)
         zeros(T, 0, 0),         # F (n_obs × n_obs)
         zeros(T, 0, 0),         # K (n_states × n_obs)
         zeros(T, 0, 0),         # tmp (n_states × n_states)
@@ -705,6 +706,9 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
     # Matrix buffers
     if size(ws.Ctmp, 1) != n_obs || size(ws.Ctmp, 2) != n_states
         ws.Ctmp = zeros(T, n_obs, n_states)
+    end
+    if size(ws.𝐁, 1) != n_states || size(ws.𝐁, 2) != n_states
+        ws.𝐁 = zeros(T, n_states, n_states)
     end
     if size(ws.F, 1) != n_obs || size(ws.F, 2) != n_obs
         ws.F = zeros(T, n_obs, n_obs)

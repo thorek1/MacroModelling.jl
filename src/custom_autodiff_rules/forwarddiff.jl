@@ -766,16 +766,17 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
     B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(maximum(observables_and_states)))[observables_sorted, observables_and_states]
+    C = @views I_nVars[observables_sorted, observables_and_states]
     𝐁 = B * B'
 
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
 
     if !(eltype(P) <: ℱ.Dual)
         dual_zero = zero(A[1])
-        P = similar(A, size(P, 1), size(P, 2))
+        P_float = P
+        P = similar(A, size(P_float, 1), size(P_float, 2))
         @inbounds for i in eachindex(P)
-            P[i] = dual_zero + S(P[i])
+            P[i] = dual_zero + S(P_float[i])
         end
     end
 
