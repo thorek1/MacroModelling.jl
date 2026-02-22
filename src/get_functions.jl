@@ -1828,7 +1828,14 @@ function get_solution(𝓂::ℳ;
             axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.post_model_macro.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.post_model_macro.exo)]
         end
 
-        return KeyedArray([𝓂.caches.non_stochastic_steady_state[1:length(𝓂.constants.post_model_macro.var)] solution_matrix]';
+        n_vars = length(𝓂.constants.post_model_macro.var)
+        nsss = if length(𝓂.caches.non_stochastic_steady_state) >= n_vars
+            𝓂.caches.non_stochastic_steady_state[1:n_vars]
+        else
+            get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
+        end
+
+        return KeyedArray([nsss solution_matrix]';
                             Steady_state__States__Shocks = axis1,
                             Variables = axis2)
     end

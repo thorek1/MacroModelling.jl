@@ -4011,6 +4011,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     𝓂.caches.non_stochastic_steady_state = SS_and_pars
+    
     if found_solution
         𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
     end
@@ -5070,7 +5071,7 @@ function solve!(𝓂::ℳ;
         pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
 
         obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        
+
         if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && (pruned_second_order_needs_recalc || (obc && obc_not_solved))) ||
@@ -5137,6 +5138,8 @@ function solve!(𝓂::ℳ;
                 state_update₁̂ = (x,y)->nothing
             end
             
+            𝓂.caches.first_order_solution_matrix = S₁
+            𝓂.caches.non_stochastic_steady_state = SS_and_pars
             𝓂.functions.first_order_state_update = state_update₁
             𝓂.functions.first_order_state_update_obc = state_update₁̂
         end
