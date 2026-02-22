@@ -3989,7 +3989,7 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
                 initial_covariance::Symbol = :theoretical,
                 lyapunov_algorithm::Symbol = :doubling,
                 on_failure_loglikelihood::U = -Inf,
-                opts::CalculationOptions = merge_calculation_options()) where U <: AbstractFloat
+                opts::CalculationOptions = merge_calculation_options()) where {U <: AbstractFloat}
                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters

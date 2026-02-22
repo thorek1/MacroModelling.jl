@@ -3,7 +3,7 @@
 # Specialization for :kalman filter
 function calculate_loglikelihood(::Val{:kalman}, 
                                 algorithm, 
-                                observables, 
+                                observables_index::Vector{Int}, 
                                 𝐒, 
                                 data_in_deviations, 
                                 constants_obj::constants, 
@@ -19,7 +19,7 @@ function calculate_loglikelihood(::Val{:kalman},
     lyap_ws = ensure_lyapunov_workspace!(workspaces, constants_obj.post_model_macro.nVars, :first_order)
     kalman_ws = workspaces.kalman
 
-    return calculate_kalman_filter_loglikelihood(observables, 
+    return calculate_kalman_filter_loglikelihood(observables_index, 
                                                 𝐒, 
                                                 data_in_deviations, 
                                                 constants_obj,
@@ -30,42 +30,6 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 # timer = timer, 
                                                 opts = opts,
                                                 on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
-                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
-                                                data_in_deviations::Matrix{S},
-                                                constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
-                                                # timer::TimerOutput = TimerOutput(), 
-                                                on_failure_loglikelihood::U = -Inf,
-                                                presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
-
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
-end
-
-function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
-                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
-                                                data_in_deviations::Matrix{S},
-                                                constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
-                                                # timer::TimerOutput = TimerOutput(), 
-                                                presample_periods::Int = 0, 
-                                                on_failure_loglikelihood::U = -Inf,
-                                                initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
-
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
@@ -82,8 +46,9 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
-    observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
-    observables_sorted = @ignore_derivatives sort(observables_index)
+
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx,observables_index))
+    observables_sorted = sort(observables_index)
     I_nVars = idx_constants.diag_nVars
 
     A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
@@ -320,7 +285,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_present)))),:]
+    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables, sort(union(T.aux, T.var, T.exo_present)))),:]
 
     𝐁 = B * B'
 

@@ -3604,9 +3604,9 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
+    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
 
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
+    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
@@ -3631,7 +3631,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, 𝓂.workspaces) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, obs_indices, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, 𝓂.workspaces) # timer = timer
 
     # end # timeit_debug
 

@@ -10,7 +10,7 @@ minimum.
 """
 # Specialization for :inversion filter
 function calculate_loglikelihood(::Val{:inversion}, 
-                                algorithm, observables, 
+                                algorithm, observables_index::Vector{Int}, 
                                 𝐒, 
                                 data_in_deviations, 
                                 constants_obj::constants, 
@@ -31,7 +31,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     state, 
                                                     𝐒, 
                                                     data_in_deviations, 
-                                                    observables, 
+                                                    observables_index, 
                                                     constants_obj, 
                                                     workspaces.inversion,
                                                     warmup_iterations = warmup_iterations, 
@@ -47,7 +47,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     state::Vector{Vector{R}}, 
                                                     𝐒::Matrix{R}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    observables_index::Vector{Int},
                                                     constants::constants,
                                                     ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
@@ -65,7 +65,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
 
     shocks² = 0.0
@@ -99,7 +99,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         end
 
         for i in 1:warmup_iterations
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
@@ -113,7 +113,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     x = zeros(T.nExo)
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
-    if T.nExo == length(observables)
+    if T.nExo == length(observables_index)
         jacdecomp = ℒ.lu(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
@@ -164,7 +164,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     # end # timeit_debug
     # end # timeit_debug
 
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
@@ -173,7 +173,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     state::Vector{Vector{R}}, 
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    observables_index::Vector{Int},
                                                     constants::constants,
                                                     ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
@@ -193,7 +193,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -380,7 +380,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -411,7 +411,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf and Fair and Taylor (1983)
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
@@ -419,7 +419,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     state::Vector{R}, 
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    observables_index::Vector{Int},
                                                     constants::constants,
                                                     ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
@@ -441,7 +441,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -617,7 +617,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1] # ./ precision_factor
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc)) # ./ precision_factor
@@ -649,14 +649,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     state::Vector{Vector{R}}, 
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    observables_index::Vector{Int},
                                                     constants::constants,
                                                     ws::inversion_workspace{Float64};
                                                     # timer::TimerOutput = TimerOutput(), 
@@ -677,7 +677,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -1029,7 +1029,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -1077,7 +1077,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
@@ -1085,7 +1085,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     state::Vector{R}, 
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    observables_index::Vector{Int},
                                                     constants::constants,
                                                     ws::inversion_workspace{Float64}; 
                                                     # timer::TimerOutput = TimerOutput(),
@@ -1107,7 +1107,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -1380,7 +1380,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -1406,7 +1406,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 function filter_data_with_model(𝓂::ℳ,
