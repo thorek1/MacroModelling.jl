@@ -1018,6 +1018,11 @@ mutable struct kalman_workspace{T <: Real}
     K::Matrix{T}             # (n_states, n_obs) - Kalman gain
     tmp::Matrix{T}           # (n_states, n_states) - temp for P
     Ptmp::Matrix{T}          # (n_states, n_states) - temp for P
+
+    # FastLapackInterface LU workspace for F factorization/solves
+    fast_lu_ws_f::FastLapackInterface.LUWs
+    fast_lu_dims_f::NTuple{2, Int}
+    fast_lu_rhs_t_k::Matrix{T} # (n_obs, n_states) scratch for right solves
 end
 
 

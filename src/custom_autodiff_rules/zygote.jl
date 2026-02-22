@@ -4054,28 +4054,45 @@ function rrule(::typeof(calculate_kalman_filter_loglikelihood),
         ℒ.mul!(CP[t], C, P̄)
         ℒ.mul!(F, CP[t], C')
 
-        luF = RF.lu(F, check = false)
+        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+                                                                                           kalman_ws.fast_lu_ws_f,
+                                                                                           kalman_ws.fast_lu_dims_f)
 
-        if !ℒ.issuccess(luF)
+        if !solved_F
             if opts.verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        Fdet = ℒ.det(luF)
+        logabsdetF = 0.0
+        signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, eachindex(kalman_ws.fast_lu_ws_f.ipiv))) ? -1.0 : 1.0
+        @inbounds for i in 1:size(F, 1)
+            di = F[i, i]
+            if di == 0
+                if opts.verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+            logabsdetF += log(abs(di))
+            signF *= sign(di)
+        end
 
-        if Fdet < eps(Float64)
+        if signF <= 0 || logabsdetF < log(eps(Float64))
             if opts.verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        copy!(invF[t], inv(luF))
+        fill!(invF[t], 0.0)
+        @inbounds for i in 1:size(invF[t], 1)
+            invF[t][i, i] = 1.0
+        end
+        solve_lu_left!(F, invF[t], kalman_ws.fast_lu_ws_f, luF)
 
         if t - 1 > presample_periods
-            loglik += log(Fdet) + ℒ.dot(v[t], invF[t], v[t])
+            loglik += logabsdetF + ℒ.dot(v[t], invF[t], v[t])
         end
 
         ℒ.mul!(PCtmp, P̄, C')
-        ℒ.mul!(K[t], PCtmp, invF[t])
+        copyto!(K[t], PCtmp)
+        solve_lu_right!(F, K[t], kalman_ws.fast_lu_ws_f, luF, kalman_ws.fast_lu_rhs_t_k)
 
         ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)
         P_seq[t] .+= P̄

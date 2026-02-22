@@ -181,18 +181,30 @@ function run_kalman_iterations(A::Matrix{S},
         # F = C * P * C'
 
         # @timeit_debug timer "LU factorisation" begin
-        luF = RF.lu!(F, check = false) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+                                                                           ws.fast_lu_ws_f,
+                                                                           ws.fast_lu_dims_f)
         # end # timeit_debug
 
-        if !ℒ.issuccess(luF)
+        if !solved_F
             if verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
         end
 
-        Fdet = ℒ.det(luF)
+        logabsdetF = zero(S)
+        signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, eachindex(ws.fast_lu_ws_f.ipiv))) ? -one(S) : one(S)
+        @inbounds for i in 1:size(F, 1)
+            di = F[i, i]
+            if di == 0
+                if verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood
+            end
+            logabsdetF += log(abs(di))
+            signF *= sign(di)
+        end
 
         # Early return if determinant is too small, indicating numerical instability.
-        if Fdet < eps(Float64)
+        if signF <= 0 || logabsdetF < log(eps(Float64))
             if verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
         end
@@ -201,8 +213,9 @@ function run_kalman_iterations(A::Matrix{S},
 
         # @timeit_debug timer "LU div" begin
         if t > presample_periods
-            ℒ.ldiv!(ztmp, luF, z)
-            loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
+            copyto!(ztmp, z)
+            solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)
+            loglik += logabsdetF + ℒ.dot(z', ztmp) ###
             # loglik += log(Fdet) + z' * invF * z###
             # loglik += log(Fdet) + v' * invF * v###
         end
@@ -210,7 +223,7 @@ function run_kalman_iterations(A::Matrix{S},
         # ℒ.mul!(Ktmp, P, C')
         # ℒ.mul!(K, Ktmp, invF)
         ℒ.mul!(K, P, C')
-        ℒ.rdiv!(K, luF)
+        solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
         # K = P * Ct / luF
         # K = P * C' * invF
 

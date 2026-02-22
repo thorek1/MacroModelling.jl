@@ -660,6 +660,9 @@ Create a workspace for Kalman filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_buffers!.
 """
 function Kalman_workspace(;T::Type = Float64)
+    empty_lu_factors = zeros(T, 1, 1)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+
     kalman_workspace{T}(
         0, 0,                   # n_obs, n_states dimensions
         zeros(T, 0),            # u (n_states)
@@ -671,7 +674,10 @@ function Kalman_workspace(;T::Type = Float64)
         zeros(T, 0, 0),         # F (n_obs × n_obs)
         zeros(T, 0, 0),         # K (n_states × n_obs)
         zeros(T, 0, 0),         # tmp (n_states × n_states)
-        zeros(T, 0, 0))         # Ptmp (n_states × n_states)
+        zeros(T, 0, 0),         # Ptmp (n_states × n_states)
+        empty_lu_ws,
+        (0, 0),
+        zeros(T, 0, 0))         # fast_lu_rhs_t_k (n_obs × n_states)
 end
 
 
@@ -721,6 +727,9 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
     end
     if size(ws.Ptmp, 1) != n_states || size(ws.Ptmp, 2) != n_states
         ws.Ptmp = zeros(T, n_states, n_states)
+    end
+    if size(ws.fast_lu_rhs_t_k, 1) != n_obs || size(ws.fast_lu_rhs_t_k, 2) != n_states
+        ws.fast_lu_rhs_t_k = zeros(T, n_obs, n_states)
     end
     
     return ws
