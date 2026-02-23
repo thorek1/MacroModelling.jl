@@ -1,0 +1,109 @@
+# Agent Progress
+
+## Session: 2026-02-22
+
+### Completed
+- Removed `rrule(::typeof(run_kalman_iterations), ...)` from `src/custom_autodiff_rules/zygote.jl`.
+- Kept and used parent rule `rrule(::typeof(calculate_kalman_filter_loglikelihood), ...)` as the Kalman reverse-mode AD entrypoint.
+- Added ForwardDiff specialization:
+	- `calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 𝐒::Union{Matrix{Dual}, Vector{AbstractMatrix{Dual}}}, ...)`
+	- implemented in `src/custom_autodiff_rules/forwarddiff.jl`.
+- Removed now-redundant ForwardDiff overload `run_kalman_iterations(::Matrix{Dual}, ...)` from `src/custom_autodiff_rules/forwarddiff.jl`.
+- Ran focused SW07 estimation-data validation comparing `ForwardDiff` and `Zygote` gradients for Kalman likelihood.
+- Refactored `get_loglikelihood` in `src/get_functions.jl` to compute `obs_indices` once from `SS_and_pars_names` and pass indices into filter dispatch.
+- Updated Kalman path signatures to consume precomputed indices:
+	- `calculate_loglikelihood(::Val{:kalman}, ..., observables_index::Vector{Int}, ...)`
+	- `calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, ...)`
+- Updated Inversion path signatures similarly:
+	- `calculate_loglikelihood(::Val{:inversion}, ..., observables_index::Vector{Int}, ...)`
+	- all five `calculate_inversion_filter_loglikelihood` algorithm overloads now take `observables_index::Vector{Int}`.
+- Updated Kalman AD specializations to match index-based call shape:
+	- ForwardDiff `calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, ...)`
+	- Zygote `rrule(::typeof(calculate_kalman_filter_loglikelihood), observables_index::Vector{Int}, ...)`.
+- Unified likelihood signatures to pass root `workspaces::workspaces` instead of specialized workspace arguments:
+	- `src/filter/kalman.jl`: `calculate_kalman_filter_loglikelihood(..., workspaces::workspaces; ...)` now performs internal `ensure_lyapunov_workspace!` and uses `workspaces.kalman`.
+	- `src/filter/inversion.jl`: all `calculate_inversion_filter_loglikelihood` algorithm overloads now take `workspaces::workspaces` and resolve `ws = workspaces.inversion` internally.
+	- `src/custom_autodiff_rules/forwarddiff.jl`: Dual Kalman specialization now takes `workspaces::workspaces` and resolves Lyapunov/Kalman buffers internally.
+	- `src/custom_autodiff_rules/zygote.jl`: Kalman `rrule` now takes `workspaces::workspaces`, resolves internal workspaces, and pullback tangent arity updated to match new argument list.
+- Renamed Kalman workspace ensure API from `ensure_kalman_buffers!` to `ensure_kalman_workspaces!`, updated to accept `workspaces::workspaces` and return `workspaces.kalman`, and migrated Kalman/Zygote callsites.
+- Removed filter wrapper/branch dispatch for likelihood evaluation and moved to unified `Val` dispatch:
+	- `get_loglikelihood` now calls a single `calculate_loglikelihood(Val(filter), Val(algorithm), ...)` entrypoint.
+	- `src/filter/kalman.jl` now dispatches directly on `calculate_loglikelihood(::Val{:kalman}, ::Val, ...)`.
+	- `src/filter/inversion.jl` now dispatches directly on `calculate_loglikelihood(::Val{:inversion}, ::Val{:...}, ...)` across all inversion algorithms.
+	- AD signatures aligned to the same shape in `src/custom_autodiff_rules/forwarddiff.jl` and `src/custom_autodiff_rules/zygote.jl`.
+- Enabled inversion ForwardDiff dispatch compatibility after unified `Val` call path:
+	- Relaxed inversion primal method constraints from `R <: AbstractFloat` to `R <: Real`.
+	- Removed over-constrained `state` argument typing in inversion primal methods to accept the existing Float64 state container under Dual parameter differentiation.
+	- Made first-order inversion temporary allocations (`state`, `y`, `x`, accumulators) element-type aware (`R`) to avoid Float64/Dual write failures.
+- Fixed inversion Zygote first-order pullback tangent ordering/arity in `src/custom_autodiff_rules/zygote.jl`:
+	- Updated early on-failure pullback tuples to match current argument count.
+	- Corrected final pullback return order so `∂𝐒` maps to the `𝐒` argument and not to `observables_index`.
+- Fixed the same inversion Zygote pullback tangent ordering/arity issue across higher-order inversion `rrule`s in `src/custom_autodiff_rules/zygote.jl`:
+	- `::Val{:pruned_second_order}`
+	- `::Val{:second_order}`
+	- `::Val{:pruned_third_order}`
+	- `::Val{:third_order}`
+	- Updated pullbacks to return tangents in the unified signature order `(Val(filter), Val(algorithm), observables_index, 𝐒, data_in_deviations, constants, state, workspaces)`.
+- Added and executed a focused estimation-like validation harness (`tasks/estimation_like_llh_checks.jl`) that triggers only primal/AD loglikelihood entry calls (no NUTS/MAP loops) for:
+	- FS2000: `:kalman`, `:inversion`, `:second_order`, `:pruned_second_order`
+	- SW07 linear + nonlinear Kalman paths with the same parameter-combination closure used in `test/test_sw07_estimation.jl`
+	- Caldara estimation model: `:third_order` and `:pruned_third_order`
+
+### Validation
+- Command: `julia --project=test /tmp/sw07_forwarddiff_check.jl`
+- Results:
+	- `llh = -2635.770595135343`
+	- `fd_grad_norm = 21347.478116235467`
+	- `zyg_grad_norm = 21347.478116410843`
+	- `grad_l2_diff = 9.04564016567317e-6`
+	- `grad_rel_l2_diff = 4.237334319466685e-10`
+	- `grad_max_abs_diff = 7.286309596565843e-6`
+- Command: `julia --project=. -e 'using MacroModelling, Random, Zygote, AxisKeys; include("models/RBC_baseline.jl"); ...'`
+- Results:
+	- `llh_kalman = 121.85330481734195`
+	- `llh_inversion = 5.957260480727086`
+	- `grad_len = 9`
+- Command: `julia --project=. -e 'using MacroModelling, Random, Zygote, AxisKeys, LinearAlgebra; include("models/RBC_baseline.jl"); ... filter=:inversion, algorithm=:first_order ...'`
+- Results:
+	- `inversion_zyg_grad_len = 9`
+	- `inversion_zyg_grad_norm = 433.6404769627417`
+- Command: `julia --project=. -e 'using MacroModelling, Random, Zygote, ForwardDiff, AxisKeys, LinearAlgebra; include("models/RBC_baseline.jl"); ...'`
+- Results:
+	- `kalman_fd_norm = 76.52119024797734`
+	- `kalman_zyg_norm = 76.52119024797322`
+	- `kalman_l2_diff = 8.635598691372916e-12`
+	- `kalman_rel_diff = 1.1285238328609476e-13`
+	- `inversion_fd_norm = 433.64047696274184`
+	- `inversion_zyg_norm = 433.6404769627417`
+	- `inversion_l2_diff = 1.2844645335482865e-12`
+	- `inversion_rel_diff = 2.962049443688457e-15`
+- Command: `julia --project=test /tmp/sw07_forwarddiff_check.jl`
+- Results:
+	- `llh = -2635.7705951463795`
+	- `fd_grad_norm = 21347.478117349143`
+	- `zyg_grad_norm = 21347.478117376842`
+	- `grad_l2_diff = 4.333325677993045e-6`
+	- `grad_rel_l2_diff = 2.0299005129161924e-10`
+	- `grad_max_abs_diff = 3.0615947252954356e-6`
+- Command: `julia --project=test tasks/estimation_like_llh_checks.jl`
+- Results:
+	- `18/18` estimation-like LLH cases passed (primal + AD paths), including previously failing Zygote higher-order inversion cases.
+	- Representative AD outcomes:
+		- `fs2000_second_zyg grad_len=9`
+		- `fs2000_pruned2_zyg grad_len=9`
+		- `caldara_third_zyg grad_len=10`
+		- `caldara_pruned3_zyg grad_len=10`
+- Command: `julia --project=. -e 'using MacroModelling; println("ok")'`
+- Results:
+	- `ok`
+- Command: `julia --project=. -e 'using MacroModelling, Random, Zygote, AxisKeys; include("models/RBC_baseline.jl"); ...'`
+- Results:
+	- `llh_kalman = 121.85330481734195`
+	- `llh_inversion = 5.957260480727086`
+	- `grad_len = 9`
+
+### Remaining
+- Optional: add a permanent test case to `test/functionality_tests.jl` for SW07 ForwardDiff-vs-Zygote Kalman gradient parity.
+- Optional: add a compact regression test covering inversion first-order gradient parity (`ForwardDiff` vs `Zygote`) on a small model (e.g. `RBC_baseline`) to guard pullback tangent ordering.
+- Optional: add compact regression tests for higher-order inversion Zygote pullback ordering (`:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`) using one-shot gradient calls (no full estimation loops).
+

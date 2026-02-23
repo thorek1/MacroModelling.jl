@@ -1,0 +1,23 @@
+# Task TODO
+
+- [x] Sweep changed branch areas for docstring/comment drift vs current logic.
+- [x] Patch stale comments in filter code paths.
+- [x] Run focused validation (`using MacroModelling`).
+- [x] Record session progress and lessons.
+- [x] Second pass on `docs/src` for cache-validity wording (`valid_for`) consistency.
+- [x] Add standalone `rrule(::typeof(calculate_kalman_filter_loglikelihood), ...)` that inlines Kalman forward/reverse logic instead of relying on `run_kalman_iterations` AD rule.
+- [x] Validate package load and new rrule method registration (`using MacroModelling`; `ChainRulesCore.rrule` method scan).
+- [x] Remove `rrule(::typeof(run_kalman_iterations), ...)` after introducing parent Kalman loglikelihood rule.
+- [x] Add ForwardDiff specialization for `calculate_kalman_filter_loglikelihood`.
+- [x] Validate SW07 Kalman loglikelihood gradients with `ForwardDiff` vs `Zygote`.
+- [x] Refactor `get_loglikelihood` to compute `obs_indices` once and pass indices to Kalman/Inversion loglikelihood paths.
+- [x] Re-run focused parity/smoke check after index-plumbing and workspace-signature refactor.
+- [x] Rename `ensure_kalman_buffers!` to `ensure_kalman_workspaces!` and route Kalman workspace allocation through root `workspaces`.
+- [x] Remove filter if/else wrapper and use unified `calculate_loglikelihood(Val(filter), Val(algorithm), ...)` dispatch with aligned Kalman/Inversion AD signatures.
+- [x] Validate AD paths for both filters (`:kalman`, `:inversion`) with both `ForwardDiff` and `Zygote` on `RBC_baseline`.
+- [x] Fix inversion first-order AD dispatch/type constraints for ForwardDiff dual parameters.
+- [x] Fix inversion first-order Zygote pullback tangent ordering/arity after unified call-signature migration.
+- [x] Re-run SW07 ForwardDiff-vs-Zygote Kalman parity check after inversion AD fixes.
+- [x] Add and run estimation-like LLH harness that triggers primal/AD calls without running full estimation loops.
+- [x] Fix higher-order inversion Zygote pullback tangent ordering for `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`.
+- [x] Re-run estimation-like harness and confirm all targeted cases pass.
