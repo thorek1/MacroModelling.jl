@@ -4705,12 +4705,18 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     
+    # Pre-allocate augmented state vector [x; 1]
+    x_aug = Vector{R}(undef, length(x) + 1)
+    x_aug[end] = one(R)
+
     # end # timeit_debug
       
     # @timeit_debug timer "Iterations" begin
 
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
+        copyto!(x_aug, 1, x, 1, length(x))
+
+        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -4718,7 +4724,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
             return x, false
         end
 
-        x̂ = A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2
+        x̂ = A * x + B̂ * ℒ.kron(x_aug, x_aug) / 2
 
         Δx = ∂x̂ \ (x̂ - x)
         
@@ -4732,7 +4738,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
 
     # end # timeit_debug
 
-    return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+    copyto!(x_aug, 1, x, 1, length(x))
+    return x, isapprox(A * x + B̂ * ℒ.kron(x_aug, x_aug) / 2, x, rtol = tol)
 end
 
 
@@ -4913,8 +4920,17 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+
+    # Pre-allocate augmented state vector [x; 1]
+    x_aug = Vector{Float64}(undef, length(x) + 1)
+    x_aug[end] = 1.0
+
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
+        copyto!(x_aug, 1, x, 1, length(x))
+        kron_x_aug = ℒ.kron(x_aug, x_aug)
+        kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+
+        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
         
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -4922,9 +4938,9 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
             return x, false
         end
         
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
+        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
 
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
+        if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
             break
         end
         
@@ -4932,7 +4948,10 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
         ℒ.axpy!(-1, Δx, x)
     end
 
-    return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
+    copyto!(x_aug, 1, x, 1, length(x))
+    kron_x_aug = ℒ.kron(x_aug, x_aug)
+    kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+    return x, isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
 end
 
 

@@ -164,8 +164,14 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    x_aug = Vector{Float64}(undef, length(x) + 1)
+    x_aug[end] = 1.0
+
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
+        copyto!(x_aug, 1, x, 1, length(x))
+        kron_x_aug = ℒ.kron(x_aug, x_aug)
+
+        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -173,9 +179,9 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
             return x, false
         end
         
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
+        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 - x)
 
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+        if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)
             break
         end
         
@@ -183,7 +189,9 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
         ℒ.axpy!(-1, Δx, x)
     end
 
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
+    copyto!(x_aug, 1, x, 1, length(x))
+    kron_x_aug = ℒ.kron(x_aug, x_aug)
+    solved = isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)         
 
     # println(x)
 
@@ -196,11 +204,11 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
 
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
+        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
-        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * kron_x_aug' / 2
 
         # end # timeit_debug
 
@@ -242,8 +250,15 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    x_aug = Vector{Float64}(undef, length(x) + 1)
+    x_aug[end] = 1.0
+
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
+        copyto!(x_aug, 1, x, 1, length(x))
+        kron_x_aug = ℒ.kron(x_aug, x_aug)
+        kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+
+        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
         
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -251,9 +266,9 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
             return x, false
         end
         
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
+        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
 
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
+        if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
             break
         end
         
@@ -261,20 +276,23 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
         ℒ.axpy!(-1, Δx, x)
     end
 
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)         
+    copyto!(x_aug, 1, x, 1, length(x))
+    kron_x_aug = ℒ.kron(x_aug, x_aug)
+    kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+    solved = isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)         
 
     ∂𝐒₁ =  zero(𝐒₁)
     ∂𝐒₂ =  zero(𝐒₂)
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
+        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
-        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+        ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * kron_x_aug' / 2
 
-        ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
+        ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * kron_x_kron' / 6
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
     end
@@ -897,7 +915,37 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false) where S <: AbstractFloat
-    y = get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        pruning = false,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[7]
+    𝐒₂ = ss_out[8]
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = collect(sss) - all_SS
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
 
     pullback = function (ȳ)
         Δy = unthunk(ȳ)
@@ -905,32 +953,13 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
 
-        ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
-                            parameter_values,
-                            𝓂;
-                            opts = opts,
-                            pruning = false,
-                            estimation = estimation)
-
-        if ss_rrule === nothing
-            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-        end
-
-        ss_out, ss_pb = ss_rrule
-        converged = ss_out[2]
-        SS_and_pars = ss_out[3]
-        solution_error = ss_out[4]
-
         ΔSS_and_pars = Δy[2]
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
         Δsss = Δstate
-        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
-            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-            E = ms.steady_state_expand_matrix
-            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
-        end
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -953,7 +982,38 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false) where S <: AbstractFloat
-    y = get_relevant_steady_state_and_state_update(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        pruning = true,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[7]
+    𝐒₂ = ss_out[8]
+    nVars = 𝓂.constants.post_model_macro.nVars
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, nVars), zeros(S, nVars)], converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = [zeros(S, nVars), collect(sss) - all_SS]
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
 
     pullback = function (ȳ)
         Δy = unthunk(ȳ)
@@ -961,33 +1021,13 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
 
-        ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
-                            parameter_values,
-                            𝓂;
-                            opts = opts,
-                            pruning = true,
-                            estimation = estimation)
-
-        if ss_rrule === nothing
-            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-        end
-
-        ss_out, ss_pb = ss_rrule
-        converged = ss_out[2]
-        SS_and_pars = ss_out[3]
-        solution_error = ss_out[4]
-
         ΔSS_and_pars = Δy[2]
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
-        Δsss = zeros(S, length(ss_out[1]))
-        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
-            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-            E = ms.steady_state_expand_matrix
-            Δsss = Δstate[2]
-            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
-        end
+        E = ms.steady_state_expand_matrix
+        Δsss = Δstate[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1010,7 +1050,38 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false) where S <: AbstractFloat
-    y = get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        pruning = false,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[8]
+    𝐒₂ = ss_out[9]
+    𝐒₃ = ss_out[10]
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = collect(sss) - all_SS
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
 
     pullback = function (ȳ)
         Δy = unthunk(ȳ)
@@ -1018,32 +1089,13 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
 
-        ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
-                            parameter_values,
-                            𝓂;
-                            opts = opts,
-                            pruning = false,
-                            estimation = estimation)
-
-        if ss_rrule === nothing
-            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-        end
-
-        ss_out, ss_pb = ss_rrule
-        converged = ss_out[2]
-        SS_and_pars = ss_out[3]
-        solution_error = ss_out[4]
-
         ΔSS_and_pars = Δy[2]
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
         Δsss = Δstate
-        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
-            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-            E = ms.steady_state_expand_matrix
-            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
-        end
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1068,7 +1120,39 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false) where S <: AbstractFloat
-    y = get_relevant_steady_state_and_state_update(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        pruning = true,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[8]
+    𝐒₂ = ss_out[9]
+    𝐒₃ = ss_out[10]
+    nVars = 𝓂.constants.post_model_macro.nVars
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)], converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
 
     pullback = function (ȳ)
         Δy = unthunk(ȳ)
@@ -1076,33 +1160,13 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
 
-        ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
-                            parameter_values,
-                            𝓂;
-                            opts = opts,
-                            pruning = true,
-                            estimation = estimation)
-
-        if ss_rrule === nothing
-            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-        end
-
-        ss_out, ss_pb = ss_rrule
-        converged = ss_out[2]
-        SS_and_pars = ss_out[3]
-        solution_error = ss_out[4]
-
         ΔSS_and_pars = Δy[2]
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
-        Δsss = zeros(S, length(ss_out[1]))
-        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
-            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-            E = ms.steady_state_expand_matrix
-            Δsss = Δstate[2]
-            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
-        end
+        E = ms.steady_state_expand_matrix
+        Δsss = Δstate[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1451,19 +1515,42 @@ function rrule(::typeof(calculate_first_order_solution),
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
         ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
 
-        ∂∇₁[:,idx_constants.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
+        # Shared sub-expression: W = M' * ∂𝐒ᵉ * ∇ₑ' * M'
+        # Use workspace buffers to avoid repeated intermediate allocations.
+        # t1 = M' * ∂𝐒ᵉ  (nVars × nExo)
+        t1 = M' * ∂𝐒ᵉ  # one alloc for nVars×nExo
 
-        ∂∇₁[:,idx_constants.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+        # ∂∇₁[:,nabla_e_start:end] = -t1
+        @views ∂∇₁[:,idx_constants.nabla_e_start:end] .= .-t1
 
-        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
+        # t2 = t1 * ∇ₑ'  (nVars × nVars) → store in 𝐗 workspace
+        t2 = qme_ws.sylvester_ws.𝐗
+        ℒ.mul!(t2, t1, ∇ₑ')
 
-        ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand_past'
+        # W = t2 * M'  (nVars × nVars) → store in 𝐂_dbl workspace
+        W = qme_ws.sylvester_ws.𝐂_dbl
+        ℒ.mul!(W, t2, M')
+
+        @views ∂∇₁[:,idx_constants.nabla_zero_cols] .= W
+
+        # Wp = W * expand_past'  (nVars × nPast) → store in view of 𝐂¹ workspace (nVars×nVars)
+        Wp = @view qme_ws.sylvester_ws.𝐂¹[:, 1:T.nPast_not_future_and_mixed]
+        ℒ.mul!(Wp, W, expand_past')
+
+        # ∂∇₁[:,1:nFuture] = (Wp * 𝐒ᵗ')[:,future_idx]
+        # WpSt = Wp * 𝐒ᵗ'  (nVars × nVars) → store in 𝐂B workspace
+        WpSt = qme_ws.sylvester_ws.𝐂B
+        ℒ.mul!(WpSt, Wp, 𝐒ᵗ')
+        @views ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= WpSt[:,T.future_not_past_and_mixed_idx]
+
+        # ∂𝐒ᵗ += ∇₊' * Wp  (nVars × nPast, ∇₊ is nVars×nVars, Wp is nVars×nPast)
+        ℒ.mul!(∂𝐒ᵗ, ∇₊', Wp, 1, 1)
 
         tmp1 = qme_ws.sylvester_ws.𝐂
-        # Legacy readable expression replaced by workspace chain:
-        #   tmp1 = M' * ∂𝐒ᵗ * expand_past
-        tmp_small = M' * ∂𝐒ᵗ
-        ℒ.mul!(tmp1, tmp_small, expand_past)
+        # tmp1 = M' * ∂𝐒ᵗ * expand_past  (nVars × nVars)
+        # t_ms = M' * ∂𝐒ᵗ  (nVars × nPast) → reuse Wp (view of 𝐂¹, same dims)
+        ℒ.mul!(Wp, M', ∂𝐒ᵗ)
+        ℒ.mul!(tmp1, Wp, expand_past)
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
@@ -1475,9 +1562,15 @@ function rrule(::typeof(calculate_first_order_solution),
             NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
-        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,idx_constants.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
-        ∂∇₁[:,idx_constants.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
+        # ss_Sht = ss * 𝐒̂ᵗ'  (nVars × nVars) → reuse t2
+        ℒ.mul!(t2, ss, 𝐒̂ᵗ')
+        @views ∂∇₁[:,idx_constants.nabla_zero_cols] .+= t2
+
+        # ss_Sht_Sht = t2 * 𝐒̂ᵗ'  (nVars × nVars) → reuse W
+        ℒ.mul!(W, t2, 𝐒̂ᵗ')
+        @views ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= W[:,T.future_not_past_and_mixed_idx]
+
+        @views ∂∇₁[:,idx_constants.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
         return NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
@@ -2846,24 +2939,12 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants!(constants)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    cc = ensure_conditional_forecast_constants!(constants)
+    shock_idxs = cc.shock_idxs
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = cc.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
+    var²_idxs = cc.var²_idxs
     
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒⁻¹ᵉ = 𝐒[1][T.past_not_future_and_mixed_idx,end-T.nExo+1:end]
@@ -3321,24 +3402,12 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants!(constants)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    cc = ensure_conditional_forecast_constants!(constants)
+    shock_idxs = cc.shock_idxs
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = cc.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
+    var²_idxs = cc.var²_idxs
     
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒⁻¹ᵉ = 𝐒[1][T.past_not_future_and_mixed_idx,end-T.nExo+1:end]
@@ -3733,7 +3802,7 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0]
+        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2])]
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
@@ -3787,30 +3856,24 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants!(constants)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-
-    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
-    shockvar_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    cc = ensure_conditional_forecast_constants!(constants; third_order = true)
+    tc = constants.third_order
+    # pruned variant needs kron(e, s_in_s) (no vol), not the cached kron(e, s_in_s⁺)
+    shockvar_idxs = sparse(ℒ.kron(cc.e_in_s⁺, cc.s_in_s)).nzind
+    shock_idxs = cc.shock_idxs
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = cc.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
+    var²_idxs = cc.var²_idxs
+    var_vol³_idxs = tc.var_vol³_idxs
+    shock_idxs2 = tc.shock_idxs2
+    shock_idxs3 = tc.shock_idxs3
+    shock³_idxs = tc.shock³_idxs
+    shockvar1_idxs = tc.shockvar1_idxs
+    shockvar2_idxs = tc.shockvar2_idxs
+    shockvar3_idxs = tc.shockvar3_idxs
+    shockvar³2_idxs = tc.shockvar³2_idxs
+    shockvar³_idxs = tc.shockvar³_idxs
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -3830,31 +3893,6 @@ function rrule(::typeof(calculate_loglikelihood),
     𝐒²⁻ᵛᵉ   = nnz(𝐒²⁻ᵛᵉ)   / length(𝐒²⁻ᵛᵉ) > .1 ? collect(𝐒²⁻ᵛᵉ)   : 𝐒²⁻ᵛᵉ
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
-
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
 
     𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
@@ -4277,7 +4315,7 @@ function rrule(::typeof(calculate_loglikelihood),
         end
         # end # timeit_debug
 
-        ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0, copy(𝐒[3]) * 0]
+        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed] += ∂𝐒¹⁻
@@ -4343,24 +4381,22 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = ensure_computational_constants!(constants)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    cc = ensure_conditional_forecast_constants!(constants; third_order = true)
+    tc = constants.third_order
+    shock_idxs = cc.shock_idxs
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = cc.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
+    var²_idxs = cc.var²_idxs
+    var_vol³_idxs = tc.var_vol³_idxs
+    shock_idxs2 = tc.shock_idxs2
+    shock_idxs3 = tc.shock_idxs3
+    shock³_idxs = tc.shock³_idxs
+    shockvar1_idxs = tc.shockvar1_idxs
+    shockvar2_idxs = tc.shockvar2_idxs
+    shockvar3_idxs = tc.shockvar3_idxs
+    shockvar³2_idxs = tc.shockvar³2_idxs
+    shockvar³_idxs = tc.shockvar³_idxs
     
     𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒⁻¹ᵉ = 𝐒[1][T.past_not_future_and_mixed_idx,end-T.nExo+1:end]
@@ -4379,31 +4415,6 @@ function rrule(::typeof(calculate_loglikelihood),
     𝐒²⁻ᵉ    = nnz(𝐒²⁻ᵉ)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
-
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
 
     𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
@@ -4743,7 +4754,7 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0, copy(𝐒[3]) * 0]
+        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
