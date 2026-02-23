@@ -3154,30 +3154,61 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂kronstate¹⁻_vol = zero(ℒ.kron(state¹⁻_vol, state¹⁻_vol))
 
+    ∂𝐒ⁱ = zero(𝐒ⁱ)
+
+    ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+
+    ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+
+    ∂𝐒⁻¹ = zero(𝐒⁻¹)
+
+    ∂𝐒⁻² = zero(𝐒⁻²)
+
+    ∂𝐒¹⁻ = zero(𝐒¹⁻)
+
+    ∂state¹⁻_vol = zero(state¹⁻_vol)
+
+    ∂x = zero(x[1])
+
+    ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
+
+    kronSλ = zeros(length(cond_var_idx) * T.nExo)
+
+    kronxS = zeros(T.nExo * length(cond_var_idx))
+
+    ∂𝐒 = [zero(𝐒[1]), zeros(size(𝐒[2]))]
+
     function inversion_filter_loglikelihood_pullback(∂llh) 
         # @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
         # @timeit_debug timer "Preallocation" begin
         
-        ∂𝐒ⁱ = zero(𝐒ⁱ)
-        ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+        fill!(∂𝐒ⁱ, 0)
+        fill!(∂𝐒ⁱ²ᵉ, 0)
 
-        ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+        fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵉ, 0)
 
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+        fill!(∂𝐒¹⁻ᵛ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0)
 
-        ∂𝐒⁻¹ = zero(𝐒⁻¹)
-        ∂𝐒⁻² = zero(𝐒⁻²)
+        fill!(∂𝐒⁻¹, 0)
+        fill!(∂𝐒⁻², 0)
 
-        ∂𝐒¹⁻ = zero(𝐒¹⁻)
+        fill!(∂𝐒¹⁻, 0)
 
-        ∂state¹⁻_vol = zero(state¹⁻_vol)
-        ∂x = zero(x[1])
-        ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
+        fill!(∂state¹⁻_vol, 0)
+        fill!(∂x, 0)
+        fill!(∂state[1], 0)
+        fill!(∂state[2], 0)
 
-        kronSλ = zeros(length(cond_var_idx) * T.nExo)
-        kronxS = zeros(T.nExo * length(cond_var_idx))
+        fill!(kronSλ, 0)
+        fill!(kronxS, 0)
         
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin
@@ -3334,7 +3365,8 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒 = [zero(𝐒[1]), zeros(size(𝐒[2]))]
+        fill!(∂𝐒[1], 0)
+        fill!(∂𝐒[2], 0)
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] .+= ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] .+= ∂𝐒²⁻ᵉ
@@ -3602,21 +3634,40 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂kronstate¹⁻_vol = zero(kronstate¹⁻_vol[1])
 
-    ∂state = similar(state)
 
-    ∂𝐒 = copy(𝐒)
+    ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2])]
 
     ∂data_in_deviations = similar(data_in_deviations)
 
     ∂kronIx = zero(ℒ.kron(ℒ.I(length(x[1])), x[1]))
+
+    ∂𝐒ⁱ = zero(𝐒ⁱ)
+
+    ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+
+    ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+
+    ∂𝐒⁻¹ = zero(𝐒⁻¹)
+
+    ∂𝐒⁻² = zero(𝐒⁻²)
+
+    ∂state¹⁻_vol = zero(state¹⁻_vol)
+
+    ∂state = zeros(T.nPast_not_future_and_mixed)
 
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter 2nd - pullback" begin
 
         # @timeit_debug timer "Preallocation" begin
 
-        ∂𝐒ⁱ = zero(𝐒ⁱ)
-        ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+        fill!(∂𝐒ⁱ, 0)
+        fill!(∂𝐒ⁱ²ᵉ, 0)
         
         # Allocate or reuse workspaces for pullback temps
         if size(ws.∂𝐒ⁱ²ᵉtmp) != (T.nExo, T.nExo * length(λ[1]))
@@ -3633,18 +3684,18 @@ function rrule(::typeof(calculate_loglikelihood),
         end
         ∂𝐒ⁱ²ᵉtmp2 = ws.∂𝐒ⁱ²ᵉtmp2
 
-        ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+        fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵉ, 0)
 
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+        fill!(∂𝐒¹⁻ᵛ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0)
 
-        ∂𝐒⁻¹ = zero(𝐒⁻¹)
-        ∂𝐒⁻² = zero(𝐒⁻²)
+        fill!(∂𝐒⁻¹, 0)
+        fill!(∂𝐒⁻², 0)
 
-        ∂state¹⁻_vol = zero(state¹⁻_vol)
+        fill!(∂state¹⁻_vol, 0)
         # ∂x = zero(x[1])
-        ∂state = zeros(T.nPast_not_future_and_mixed)
+        fill!(∂state, 0)
 
         ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
@@ -3802,7 +3853,8 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2])]
+        fill!(∂𝐒[1], 0)
+        fill!(∂𝐒[2], 0)
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
@@ -4070,42 +4122,87 @@ function rrule(::typeof(calculate_loglikelihood),
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
-    ∂state = similar(state)
 
-    ∂𝐒 = copy(𝐒)
+    ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
 
     ∂data_in_deviations = similar(data_in_deviations)
 
     # end # timeit_debug
 
+    ∂𝐒ⁱ = zero(𝐒ⁱ)
+
+    ∂𝐒²ᵉ = zero(𝐒²ᵉ)
+
+    ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+
+    ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+
+    ∂𝐒¹⁻ = zero(𝐒¹⁻)
+
+    ∂𝐒²⁻ = zero(𝐒²⁻)
+
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+
+    ∂𝐒²⁻ᵛᵉ = zero(𝐒²⁻ᵛᵉ)
+
+    ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
+
+    ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+
+    ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+
+    ∂𝐒⁻¹ = zero(𝐒⁻¹)
+
+    ∂𝐒⁻² = zero(𝐒⁻²)
+
+    ∂𝐒⁻³ = zero(𝐒⁻³)
+
+    ∂aug_state₁̂ = zero(aug_state₁̂[1])
+
+    ∂state¹⁻_vol = zero(state¹⁻_vol)
+
+    ∂x = zero(x[1])
+
+    ∂kronxx = zero(kronxx[1])
+
+    ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
+
+    ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
+
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter - pullback" begin
-        ∂𝐒ⁱ = zero(𝐒ⁱ)
-        ∂𝐒²ᵉ = zero(𝐒²ᵉ)
-        ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+        fill!(∂𝐒ⁱ, 0)
+        fill!(∂𝐒²ᵉ, 0)
+        fill!(∂𝐒ⁱ³ᵉ, 0)
 
-        ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
-        ∂𝐒¹⁻ = zero(𝐒¹⁻)
-        ∂𝐒²⁻ = zero(𝐒²⁻)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒²⁻ᵛᵉ = zero(𝐒²⁻ᵛᵉ)
-        ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
-        ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+        fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒¹⁻, 0)
+        fill!(∂𝐒²⁻, 0)
+        fill!(∂𝐒²⁻ᵉ, 0)
+        fill!(∂𝐒²⁻ᵛᵉ, 0)
+        fill!(∂𝐒³⁻ᵉ, 0)
+        fill!(∂𝐒³⁻ᵉ², 0)
 
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+        fill!(∂𝐒¹⁻ᵛ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0)
+        fill!(∂𝐒³⁻ᵛ, 0)
         
-        ∂𝐒⁻¹ = zero(𝐒⁻¹)
-        ∂𝐒⁻² = zero(𝐒⁻²)
-        ∂𝐒⁻³ = zero(𝐒⁻³)
+        fill!(∂𝐒⁻¹, 0)
+        fill!(∂𝐒⁻², 0)
+        fill!(∂𝐒⁻³, 0)
 
-        ∂aug_state₁̂ = zero(aug_state₁̂[1])
-        ∂state¹⁻_vol = zero(state¹⁻_vol)
-        ∂x = zero(x[1])
-        ∂kronxx = zero(kronxx[1])
-        ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
-        ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
+        fill!(∂aug_state₁̂, 0)
+        fill!(∂state¹⁻_vol, 0)
+        fill!(∂x, 0)
+        fill!(∂kronxx, 0)
+        fill!(∂kronstate¹⁻_vol, 0)
+        fill!(∂state[1], 0)
+        fill!(∂state[2], 0)
+        fill!(∂state[3], 0)
 
         # @timeit_debug timer "Loop" begin
         for i in reverse(axes(data_in_deviations,2))
@@ -4315,7 +4412,9 @@ function rrule(::typeof(calculate_loglikelihood),
         end
         # end # timeit_debug
 
-        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
+        fill!(∂𝐒[1], 0)
+        fill!(∂𝐒[2], 0)
+        fill!(∂𝐒[3], 0)
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed] += ∂𝐒¹⁻
@@ -4566,38 +4665,73 @@ function rrule(::typeof(calculate_loglikelihood),
     # end # timeit_debug
     # end # timeit_debug
 
-    ∂state = similar(state)
 
-    ∂𝐒 = copy(𝐒)
+    ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
 
     ∂data_in_deviations = similar(data_in_deviations)
+
+    ∂𝐒ⁱ = zero(𝐒ⁱ)
+
+    ∂𝐒²ᵉ = zero(𝐒²ᵉ)
+
+    ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+
+    ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+
+    ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
+
+    ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+
+    ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+
+    ∂𝐒⁻¹ = zero(𝐒⁻¹)
+
+    ∂𝐒⁻² = zero(𝐒⁻²)
+
+    ∂𝐒⁻³ = zero(𝐒⁻³)
+
+    ∂state¹⁻_vol = zero(state¹⁻_vol)
+
+    ∂x = zero(x[1])
+
+    ∂kronxx = zero(kronxx[1])
+
+    ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
+
+    ∂state = zeros(T.nPast_not_future_and_mixed)
 
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
         # @timeit_debug timer "Preallocation" begin
 
-        ∂𝐒ⁱ = zero(𝐒ⁱ)
-        ∂𝐒²ᵉ = zero(𝐒²ᵉ)
-        ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+        fill!(∂𝐒ⁱ, 0)
+        fill!(∂𝐒²ᵉ, 0)
+        fill!(∂𝐒ⁱ³ᵉ, 0)
 
-        ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
-        ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+        fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵉ, 0)
+        fill!(∂𝐒³⁻ᵉ, 0)
+        fill!(∂𝐒³⁻ᵉ², 0)
 
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+        fill!(∂𝐒¹⁻ᵛ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0)
+        fill!(∂𝐒³⁻ᵛ, 0)
         
-        ∂𝐒⁻¹ = zero(𝐒⁻¹)
-        ∂𝐒⁻² = zero(𝐒⁻²)
-        ∂𝐒⁻³ = zero(𝐒⁻³)
+        fill!(∂𝐒⁻¹, 0)
+        fill!(∂𝐒⁻², 0)
+        fill!(∂𝐒⁻³, 0)
 
-        ∂state¹⁻_vol = zero(state¹⁻_vol)
-        ∂x = zero(x[1])
-        ∂kronxx = zero(kronxx[1])
-        ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
-        ∂state = zeros(T.nPast_not_future_and_mixed)
+        fill!(∂state¹⁻_vol, 0)
+        fill!(∂x, 0)
+        fill!(∂kronxx, 0)
+        fill!(∂kronstate¹⁻_vol, 0)
+        fill!(∂state, 0)
 
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin
@@ -4754,7 +4888,9 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
+        fill!(∂𝐒[1], 0)
+        fill!(∂𝐒[2], 0)
+        fill!(∂𝐒[3], 0)
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
