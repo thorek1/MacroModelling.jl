@@ -467,6 +467,659 @@ function rrule(::typeof(get_NSSS_and_parameters),
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
 
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:first_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    constants_obj = initialise_constants!(𝓂)
+
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters,
+                                𝓂,
+                                parameter_values;
+                                opts = opts,
+                                estimation = estimation)
+
+    SS_and_pars = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    state = zeros(S, 𝓂.constants.post_model_macro.nVars)
+
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
+
+        pullback = function (ȳ)
+            Δy = unthunk(ȳ)
+            if Δy isa NoTangent || Δy isa AbstractZero
+                return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+            end
+
+            ΔSS_and_pars = Δy[2]
+            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+            ∂parameter_values = nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameter_values, NoTangent()
+        end
+
+        return y, pullback
+    end
+
+    ∇₁, jac_pb = rrule(calculate_jacobian,
+                        parameter_values,
+                        SS_and_pars,
+                        𝓂.caches,
+                        𝓂.functions.jacobian)
+
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                opts = opts,
+                                initial_guess = 𝓂.caches.qme_solution)
+
+    𝐒₁ = first_out[1]
+    solved = first_out[3]
+
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
+
+        pullback = function (ȳ)
+            Δy = unthunk(ȳ)
+            if Δy isa NoTangent || Δy isa AbstractZero
+                return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+            end
+
+            ΔSS_and_pars = Δy[2]
+
+            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+            ∂parameter_values = nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameter_values, NoTangent()
+        end
+
+        return y, pullback
+    end
+
+    y = (𝓂.constants, SS_and_pars, 𝐒₁, [state], true)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒₁ = Δy[3]
+
+        first_grads = first_pb((Δ𝐒₁, NoTangent(), NoTangent()))
+        ∂∇₁ = first_grads[2]
+
+        jac_grads = jac_pb(∂∇₁)
+        ∂parameter_values = jac_grads[2]
+        ∂SS_and_pars_from_jac = jac_grads[3]
+
+        nsss_grads = nsss_pb((ΔSS_and_pars + ∂SS_and_pars_from_jac, NoTangent()))
+        ∂parameter_values .+= nsss_grads[3]
+
+        return NoTangent(), NoTangent(), ∂parameter_values, NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(calculate_second_order_stochastic_steady_state),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                pruning::Bool = false,
+                estimation::Bool = false) where S <: AbstractFloat
+    y = calculate_second_order_stochastic_steady_state(parameters, 𝓂; opts = opts, pruning = pruning, estimation = estimation)
+
+    function calculate_second_order_stochastic_steady_state_pullback(ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), zeros(S, length(parameters)), NoTangent()
+        end
+
+        Δsss        = Δy[1] isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[1])) : collect(unthunk(Δy[1]))
+        ΔSS_and_pars = Δy[3] isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[3])) : collect(unthunk(Δy[3]))
+        Δ∇₁          = Δy[5] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[5]))   : Matrix(unthunk(Δy[5]))
+        Δ∇₂          = Δy[6] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[6]))   : Matrix(unthunk(Δy[6]))
+        Δ𝐒₁          = Δy[7] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[7]))   : Matrix(unthunk(Δy[7]))
+        Δ𝐒₂          = Δy[8] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[8]))   : Matrix(unthunk(Δy[8]))
+
+        ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars .+= E' * Δsss
+
+        ∂parameters = zeros(S, length(parameters))
+
+        if size(y[5], 1) == 0
+            nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
+            if !(nsss_rr === nothing)
+                _, nsss_pb = nsss_rr
+                nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+                ∂parameters .+= nsss_grads[3]
+            end
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+
+        constants = initialise_constants!(𝓂)
+        T = constants.post_model_macro
+
+        nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
+        if nsss_rr === nothing
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+        nsss_out, nsss_pb = nsss_rr
+        SS_and_pars = nsss_out[1]
+
+        ∇₁_rr = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+        if ∇₁_rr === nothing
+            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+        ∇₁, jac_pb = ∇₁_rr
+
+        fo_rr = rrule(calculate_first_order_solution,
+                        ∇₁,
+                        constants,
+                        𝓂.workspaces,
+                        𝓂.caches;
+                        opts = opts,
+                        initial_guess = 𝓂.caches.qme_solution)
+        if fo_rr === nothing
+            jac_grads = jac_pb(Δ∇₁)
+            ∂parameters .+= jac_grads[2]
+            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3], NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+        fo_out, fo_pb = fo_rr
+        𝐒₁_raw = fo_out[1]
+
+        hs_rr = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        if hs_rr === nothing
+            Δ𝐒₁_raw = Δ𝐒₁[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
+            fo_grads = fo_pb((Δ𝐒₁_raw, NoTangent(), NoTangent()))
+            jac_grads = jac_pb(Δ∇₁ + fo_grads[2])
+            ∂parameters .+= jac_grads[2]
+            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3], NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+        ∇₂, hess_pb = hs_rr
+
+        so_rr = rrule(calculate_second_order_solution,
+                        ∇₁,
+                        ∇₂,
+                        𝐒₁_raw,
+                        constants,
+                        𝓂.workspaces,
+                        𝓂.caches;
+                        initial_guess = 𝓂.caches.second_order_solution,
+                        opts = opts)
+
+        Δ𝐒₁_raw = Δ𝐒₁[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
+        Δ𝐒₁_before_newton = copy(Δ𝐒₁)
+
+        if !(so_rr === nothing)
+            Δ𝐒₂_raw = Δ𝐒₂ * constants.second_order.𝐔₂'
+            so_grads = so_rr[2]((Δ𝐒₂_raw, NoTangent()))
+            Δ∇₁ .+= so_grads[2]
+            Δ∇₂ .+= Matrix(so_grads[3])
+            if !(so_grads[4] isa Union{NoTangent, AbstractZero})
+                Δ𝐒₁_raw .+= Matrix(unthunk(so_grads[4]))
+            end
+        end
+
+        if !pruning && y[2]
+            cc = ensure_computational_constants!(constants)
+            x = y[1][T.past_not_future_and_mixed_idx]
+            𝐒₂_dense = Matrix(y[8])
+            A = y[7][:, 1:T.nPast_not_future_and_mixed]
+            B = 𝐒₂_dense[:, cc.kron_s⁺_s]
+            B̂ = 𝐒₂_dense[:, cc.kron_s⁺_s⁺]
+
+            Δx = (A + B * ℒ.kron(vcat(x, one(S)), T.I_nPast))' * Δsss
+
+            Δ𝐒₁[:, 1:T.nPast_not_future_and_mixed] .+= Δsss * x'
+            Δ𝐒₂[:, cc.kron_s⁺_s⁺] .+= Δsss * ℒ.kron(vcat(x, one(S)), vcat(x, one(S)))' / 2
+
+            newton_rr = rrule(calculate_second_order_stochastic_steady_state,
+                                Val(:newton),
+                                y[7],
+                                y[8],
+                                collect(x),
+                                𝓂)
+            if !(newton_rr === nothing)
+                newton_grads = newton_rr[2]((Δx, NoTangent()))
+                if !(newton_grads[3] isa Union{NoTangent, AbstractZero})
+                    Δ𝐒₁ .+= Matrix(unthunk(newton_grads[3]))
+                end
+                if !(newton_grads[4] isa Union{NoTangent, AbstractZero})
+                    Δ𝐒₂ .+= Matrix(unthunk(newton_grads[4]))
+                end
+                Δ𝐒₁_raw .+= (Δ𝐒₁ - Δ𝐒₁_before_newton)[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
+            end
+        end
+
+        fo_grads = fo_pb((Δ𝐒₁_raw, NoTangent(), NoTangent()))
+
+        hess_grads = hess_pb(Δ∇₂)
+        ∂parameters .+= hess_grads[2]
+        ΔSS_and_pars .+= hess_grads[3]
+
+        jac_grads = jac_pb(Δ∇₁ + fo_grads[2])
+        ∂parameters .+= jac_grads[2]
+        ΔSS_and_pars .+= jac_grads[3]
+
+        nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+        ∂parameters .+= nsss_grads[3]
+
+        return NoTangent(), ∂parameters, NoTangent()
+    end
+
+    return y, calculate_second_order_stochastic_steady_state_pullback
+end
+
+function rrule(::typeof(calculate_third_order_stochastic_steady_state),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                pruning::Bool = false,
+                estimation::Bool = false) where S <: AbstractFloat
+    y = calculate_third_order_stochastic_steady_state(parameters, 𝓂; opts = opts, pruning = pruning, estimation = estimation)
+
+    function calculate_third_order_stochastic_steady_state_pullback(ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), zeros(S, length(parameters)), NoTangent()
+        end
+
+        Δsss        = Δy[1]  isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[1]))  : collect(unthunk(Δy[1]))
+        ΔSS_and_pars = Δy[3]  isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[3]))  : collect(unthunk(Δy[3]))
+        Δ∇₁          = Δy[5]  isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[5]))    : Matrix(unthunk(Δy[5]))
+        Δ∇₂          = Δy[6]  isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[6]))    : Matrix(unthunk(Δy[6]))
+        Δ∇₃          = Δy[7]  isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[7]))    : Matrix(unthunk(Δy[7]))
+        Δ𝐒₁          = Δy[8]  isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[8]))    : Matrix(unthunk(Δy[8]))
+        Δ𝐒₂          = Δy[9]  isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[9]))    : Matrix(unthunk(Δy[9]))
+        Δ𝐒₃          = Δy[10] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[10]))   : Matrix(unthunk(Δy[10]))
+
+        ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars .+= E' * Δsss
+
+        ∂parameters = zeros(S, length(parameters))
+
+        if size(y[5], 1) == 0
+            nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
+            if !(nsss_rr === nothing)
+                _, nsss_pb = nsss_rr
+                nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+                ∂parameters .+= nsss_grads[3]
+            end
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+
+        constants = initialise_constants!(𝓂)
+        T = constants.post_model_macro
+
+        nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
+        if nsss_rr === nothing
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+        nsss_out, nsss_pb = nsss_rr
+        SS_and_pars = nsss_out[1]
+
+        ∇₁_rr = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+        hs_rr = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        td_rr = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+
+        if ∇₁_rr === nothing || hs_rr === nothing || td_rr === nothing
+            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+
+        ∇₁, jac_pb = ∇₁_rr
+        ∇₂, hess_pb = hs_rr
+        ∇₃, td_pb = td_rr
+
+        fo_rr = rrule(calculate_first_order_solution,
+                        ∇₁,
+                        constants,
+                        𝓂.workspaces,
+                        𝓂.caches;
+                        opts = opts,
+                        initial_guess = 𝓂.caches.qme_solution)
+        if fo_rr === nothing
+            jac_grads = jac_pb(Δ∇₁)
+            hess_grads = hess_pb(Δ∇₂)
+            td_grads = td_pb(Δ∇₃)
+            ∂parameters .+= jac_grads[2] + hess_grads[2] + td_grads[2]
+            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3] + hess_grads[3] + td_grads[3], NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+
+        𝐒₁_raw = fo_rr[1][1]
+
+        so_rr = rrule(calculate_second_order_solution,
+                        ∇₁,
+                        ∇₂,
+                        𝐒₁_raw,
+                        constants,
+                        𝓂.workspaces,
+                        𝓂.caches;
+                        initial_guess = 𝓂.caches.second_order_solution,
+                        opts = opts)
+        if so_rr === nothing
+            jac_grads = jac_pb(Δ∇₁)
+            hess_grads = hess_pb(Δ∇₂)
+            td_grads = td_pb(Δ∇₃)
+            ∂parameters .+= jac_grads[2] + hess_grads[2] + td_grads[2]
+            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3] + hess_grads[3] + td_grads[3], NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+            return NoTangent(), ∂parameters, NoTangent()
+        end
+
+        𝐒₂_raw = so_rr[1][1]
+
+        to_rr = rrule(calculate_third_order_solution,
+                        ∇₁,
+                        ∇₂,
+                        ∇₃,
+                        𝐒₁_raw,
+                        sparse(𝐒₂_raw * constants.second_order.𝐔₂),
+                        constants,
+                        𝓂.workspaces,
+                        𝓂.caches;
+                        initial_guess = 𝓂.caches.third_order_solution,
+                        opts = opts)
+
+        Δ𝐒₁_raw = Δ𝐒₁[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
+
+        if !(to_rr === nothing)
+            Δ𝐒₂_raw = Δ𝐒₂ * constants.second_order.𝐔₂'
+            Δ𝐒₃_raw = Δ𝐒₃ * constants.third_order.𝐔₃'
+            try
+                to_grads = to_rr[2]((Δ𝐒₃_raw, NoTangent()))
+                Δ∇₁ .+= to_grads[2]
+                Δ∇₂ .+= Matrix(to_grads[3])
+                Δ∇₃ .+= Matrix(to_grads[4])
+                if !(to_grads[5] isa Union{NoTangent, AbstractZero})
+                    Δ𝐒₁_raw .+= Matrix(unthunk(to_grads[5]))
+                end
+                if !(to_grads[6] isa Union{NoTangent, AbstractZero})
+                    Δ𝐒₂_raw .+= Matrix(unthunk(to_grads[6]))
+                end
+                so_grads = so_rr[2]((Δ𝐒₂_raw, NoTangent()))
+                Δ∇₁ .+= so_grads[2]
+                Δ∇₂ .+= Matrix(so_grads[3])
+                if !(so_grads[4] isa Union{NoTangent, AbstractZero})
+                    Δ𝐒₁_raw .+= Matrix(unthunk(so_grads[4]))
+                end
+            catch
+                # Keep previously accumulated cotangents when third-order pullback
+                # receives an unsupported cotangent layout.
+            end
+        end
+
+        fo_grads = fo_rr[2]((Δ𝐒₁_raw, NoTangent(), NoTangent()))
+
+        hess_grads = hess_pb(Δ∇₂)
+        td_grads = td_pb(Δ∇₃)
+        ∂parameters .+= hess_grads[2] + td_grads[2]
+        ΔSS_and_pars .+= hess_grads[3] + td_grads[3]
+
+        jac_grads = jac_pb(Δ∇₁ + fo_grads[2])
+        ∂parameters .+= jac_grads[2]
+        ΔSS_and_pars .+= jac_grads[3]
+
+        nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+        ∂parameters .+= nsss_grads[3]
+
+        return NoTangent(), ∂parameters, NoTangent()
+    end
+
+    return y, calculate_third_order_stochastic_steady_state_pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:second_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    y = get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
+                            parameter_values,
+                            𝓂;
+                            opts = opts,
+                            pruning = false,
+                            estimation = estimation)
+
+        if ss_rrule === nothing
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_out, ss_pb = ss_rrule
+        converged = ss_out[2]
+        SS_and_pars = ss_out[3]
+        solution_error = ss_out[4]
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        Δsss = Δstate
+        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
+            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+            E = ms.steady_state_expand_matrix
+            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
+        end
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒[1],
+                            Δ𝐒[2]))
+
+        return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:pruned_second_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    y = get_relevant_steady_state_and_state_update(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
+                            parameter_values,
+                            𝓂;
+                            opts = opts,
+                            pruning = true,
+                            estimation = estimation)
+
+        if ss_rrule === nothing
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_out, ss_pb = ss_rrule
+        converged = ss_out[2]
+        SS_and_pars = ss_out[3]
+        solution_error = ss_out[4]
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        Δsss = zeros(S, length(ss_out[1]))
+        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
+            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+            E = ms.steady_state_expand_matrix
+            Δsss = Δstate[2]
+            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
+        end
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒[1],
+                            Δ𝐒[2]))
+
+        return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:third_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    y = get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
+                            parameter_values,
+                            𝓂;
+                            opts = opts,
+                            pruning = false,
+                            estimation = estimation)
+
+        if ss_rrule === nothing
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_out, ss_pb = ss_rrule
+        converged = ss_out[2]
+        SS_and_pars = ss_out[3]
+        solution_error = ss_out[4]
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        Δsss = Δstate
+        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
+            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+            E = ms.steady_state_expand_matrix
+            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
+        end
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒[1],
+                            Δ𝐒[2],
+                            Δ𝐒[3]))
+
+        return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:pruned_third_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    y = get_relevant_steady_state_and_state_update(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
+                            parameter_values,
+                            𝓂;
+                            opts = opts,
+                            pruning = true,
+                            estimation = estimation)
+
+        if ss_rrule === nothing
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ss_out, ss_pb = ss_rrule
+        converged = ss_out[2]
+        SS_and_pars = ss_out[3]
+        solution_error = ss_out[4]
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        Δsss = zeros(S, length(ss_out[1]))
+        if converged && solution_error <= opts.tol.NSSS_acceptance_tol
+            ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+            E = ms.steady_state_expand_matrix
+            Δsss = Δstate[2]
+            ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
+        end
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒[1],
+                            Δ𝐒[2],
+                            Δ𝐒[3]))
+
+        return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
+    end
+
+    return y, pullback
+end
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
