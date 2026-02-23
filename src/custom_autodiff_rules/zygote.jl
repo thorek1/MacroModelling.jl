@@ -1883,7 +1883,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         invjac = inv(jacdecomp)
@@ -1896,7 +1896,7 @@ function rrule(::typeof(calculate_loglikelihood),
     logabsdets *= size(data_in_deviations,2) - presample_periods
 
     if !isfinite(logabsdets) 
-        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
@@ -1910,7 +1910,7 @@ function rrule(::typeof(calculate_loglikelihood),
         if i > presample_periods
             shocks² += sum(abs2,x[i])
             if !isfinite(shocks²) 
-                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
         end
 
@@ -1921,7 +1921,7 @@ function rrule(::typeof(calculate_loglikelihood),
     llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
     if llh < -1e12
-        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     ∂𝐒 = zero(𝐒)
@@ -2029,7 +2029,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
         # end # timeit_debug
 
-        return NoTangent(), NoTangent(), [∂state * ∂llh], ∂𝐒 * ∂llh, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒 * ∂llh, ∂data_in_deviations * ∂llh, NoTangent(), [∂state * ∂llh], NoTangent()
     end
     
     return llh, inversion_pullback
@@ -2501,7 +2501,7 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), NoTangent(), ∂state, ∂𝐒, ∂data_in_deviations, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), ∂state, NoTangent()
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
@@ -2967,7 +2967,7 @@ function rrule(::typeof(calculate_loglikelihood),
         ∂𝐒[1] *= ∂llh
         ∂𝐒[2] *= ∂llh
 
-        return NoTangent(), NoTangent(),  ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(), ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, NoTangent()
     end
 
     # end # timeit_debug
@@ -3527,7 +3527,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
         # end # timeit_debug
 
-        return NoTangent(), NoTangent(), ∂state, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(), ∂state, NoTangent()
     end
 
     return llh, inversion_filter_loglikelihood_pullback
@@ -3984,7 +3984,7 @@ function rrule(::typeof(calculate_loglikelihood),
         ∂𝐒[2] *= ∂llh
         ∂𝐒[3] *= ∂llh
 
-        return NoTangent(), NoTangent(), ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(), ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, NoTangent()
     end
 
     # end # timeit_debug
