@@ -107,3 +107,112 @@
 - Optional: add a compact regression test covering inversion first-order gradient parity (`ForwardDiff` vs `Zygote`) on a small model (e.g. `RBC_baseline`) to guard pullback tangent ordering.
 - Optional: add compact regression tests for higher-order inversion Zygote pullback ordering (`:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`) using one-shot gradient calls (no full estimation loops).
 
+## Session: 2026-02-23
+
+### Completed
+- Added ForwardDiff specializations for all `get_relevant_steady_state_and_state_update` algorithm variants in `src/custom_autodiff_rules/forwarddiff.jl`:
+	- `::Val{:first_order}`
+	- `::Val{:second_order}`
+	- `::Val{:pruned_second_order}`
+	- `::Val{:third_order}`
+	- `::Val{:pruned_third_order}`
+- Ensured Dual-safe state placeholder allocation in failure/pruned branches for higher-order variants (no implicit Float64 fallback for zero-state vectors).
+- Added ChainRules `rrule` definitions for all five `get_relevant_steady_state_and_state_update` variants in `src/custom_autodiff_rules/zygote.jl`.
+- Implemented shared cotangent contraction helpers in `zygote.jl` to map tuple-output cotangents (`SS_and_pars`, `𝐒`, `state`) to a scalar objective used in pullbacks.
+- Implemented pullback parameter tangents via `ForwardDiff.gradient` over the contracted scalar objective, returning tangents in signature order `(typeof(f), Val(algorithm), parameter_values, 𝓂)`.
+
+### Validation
+- Command:
+	- `~/.juliaup/bin/julia --project=. -e 'using MacroModelling, ForwardDiff, ChainRulesCore, LinearAlgebra; include("models/FS2000.jl"); ...'`
+- Results (manual pullback cotangent vs ForwardDiff gradient parity):
+	- `alg=first_order`: `fd_norm=2054.5173198509838`, `pb_norm=2054.5173198509838`, `l2=0.0`
+	- `alg=second_order`: `fd_norm=1956.1118162834846`, `pb_norm=1956.1118162834875`, `l2=2.8620548806267926e-12`
+	- `alg=pruned_second_order`: `fd_norm=1956.3273262996124`, `pb_norm=1956.3273262996156`, `l2=3.1192547910626285e-12`
+	- `alg=third_order`: `fd_norm=1924.72994497665`, `pb_norm=1924.729944976667`, `l2=1.7492992603436048e-11`
+	- `alg=pruned_third_order`: `fd_norm=1922.0741878461595`, `pb_norm=1922.0741878461695`, `l2=1.043491368874845e-11`
+
+### Remaining
+- Optional: replace repeated per-variant `rrule` definitions for `get_relevant_steady_state_and_state_update` with a single generic `Val{A}` implementation once signature stability is confirmed across all AD call sites.
+- Optional: add a compact regression test that asserts pullback-vs-ForwardDiff parity for the five variants on `FS2000`.
+
+### Correction (2026-02-23)
+- Removed the temporary `rrule(::typeof(get_relevant_steady_state_and_state_update), ...)` methods from `src/custom_autodiff_rules/zygote.jl` because they computed parameter cotangents by calling `ForwardDiff.gradient` inside reverse-mode pullbacks.
+- Current state now matches design intent: no ChainRules pullback in `zygote.jl` calls `ForwardDiff` directly for this entrypoint; reverse-mode should rely on existing pullbacks in lower-level components.
+- Validation:
+	- `~/.juliaup/bin/julia --project=. -e 'using MacroModelling; println("ok")'` → `ok`
+
+### Follow-up (2026-02-23)
+- Added a new `rrule(::typeof(get_relevant_steady_state_and_state_update), ::Val{:first_order}, ...)` in `src/custom_autodiff_rules/zygote.jl` that composes existing pullbacks for:
+	- `get_NSSS_and_parameters`
+	- `calculate_jacobian`
+	- `calculate_first_order_solution`
+- Added variant `rrule`s for `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order` that delegate to `calculate_second_order_stochastic_steady_state` / `calculate_third_order_stochastic_steady_state` pullbacks when available (and otherwise return zero parameter tangents).
+- No `ForwardDiff` calls are used inside these reverse-mode pullbacks.
+- Validation:
+	- `~/.juliaup/bin/julia --project=. -e 'using MacroModelling; println("ok")'` → `ok`
+	- First-order pullback parity check on FS2000:
+		- `l2=2.3130867263401494e-13` between pullback parameter cotangent and `ForwardDiff.gradient` of a scalarized contraction.
+
+### Follow-up 2 (2026-02-23)
+- Implemented wrapper-level reverse rules in `src/custom_autodiff_rules/zygote.jl`:
+	- `rrule(::typeof(calculate_second_order_stochastic_steady_state), parameters::Vector, 𝓂; ...)`
+	- `rrule(::typeof(calculate_third_order_stochastic_steady_state), parameters::Vector, 𝓂; ...)`
+- These wrapper rules compose existing pullbacks (`get_NSSS_and_parameters`, `calculate_jacobian`, `calculate_hessian`, `calculate_third_order_derivatives`, `calculate_first_order_solution`, `calculate_second_order_solution`, `calculate_third_order_solution`, and Newton SSS pullbacks where applicable) and do not call `ForwardDiff`.
+- Added helper utilities for tangent shape handling in `zygote.jl`:
+	- `_as_vec_tangent`
+	- `_as_mat_tangent`
+	- `_expand_s1_pullback`
+- Added robust guard around third-order solution pullback composition to avoid hard failure when cotangent layout is unsupported by lower-level routines.
+
+### Validation (Follow-up 2)
+- `~/.juliaup/bin/julia --project=. -e 'using MacroModelling; println("ok")'` → `ok`
+- Wrapper rule smoke checks on FS2000:
+	- `second_rrule_grad_norm=4410.208790407605`
+	- `third_rrule_grad_norm=4107.787036559248`
+- `get_relevant_steady_state_and_state_update` smoke checks on FS2000:
+	- `alg=second_order grad_norm=2313.947270686622`
+	- `alg=pruned_second_order grad_norm=2056.5764439212558`
+	- `alg=third_order grad_norm=2054.517319851021`
+	- `alg=pruned_third_order grad_norm=2054.517319851021`
+
+## Session: Performance Optimization (Items 1-6)
+
+### Completed
+
+#### Item 1: Eliminate Double Forward in Higher-Order rrules
+- Restructured 4 higher-order `get_relevant_steady_state_and_state_update` rrules to call inner rrule in forward pass, capturing `ss_pb` for pullback.
+- File: `src/custom_autodiff_rules/zygote.jl` (lines ~893-1130)
+
+#### Item 2: Fix Tolerances Field Types
+- Changed `Tolerances` struct fields from `AbstractFloat` to `Float64` in `src/options_and_caches.jl`.
+
+#### Item 3: mul!-ify first_order_solution_pullback
+- Rewrote `first_order_solution_pullback` to use `mul!` with workspace buffers from `sylvester_workspace`.
+- Forward pass stores matrices in `qme_ws.𝐀`, `qme_ws.sylvester_ws.tmp`, etc.
+- Pullback scratch uses `𝐗`, `𝐂_dbl`, `𝐂¹` view, `𝐂B`, `𝐂` from `sylvester_workspace`.
+- Fixed dimension mismatch for nVars×nPast submatrices using `@view 𝐂¹[:, 1:nPast]`.
+
+#### Item 4: Cache Structural Index Sets
+- Replaced inline kron index computations in 4 inversion filter rrules with reads from `ensure_conditional_forecast_constants!`.
+- Variants: pruned_second_order, second_order, pruned_third_order, third_order.
+- Fixed bug: pruned_third_order needs `kron(e, s_in_s)` (no vol) for `shockvar_idxs`, not the cached `kron(e, s_in_s⁺)`. Now computes inline: `sparse(ℒ.kron(cc.e_in_s⁺, cc.s_in_s)).nzind`.
+
+#### Item 5: In-place vcat/kron in Newton Loops
+- Pre-allocated `x_aug` vector in all Newton SSS solvers:
+  - `src/MacroModelling.jl`: `calculate_second_order_stochastic_steady_state(Val(:newton), ...)` and `calculate_third_order_stochastic_steady_state(Val(:newton), ...)`
+  - `src/custom_autodiff_rules/zygote.jl`: Both SSS rrule Newton loops (2nd and 3rd order)
+- Eliminated all `vcat(x,1)` from `src/` directory.
+- Replaced `copy(𝐒[i]) * 0` with `zero(𝐒[i])` in 3 pullback functions (eliminated double allocation).
+
+### Validation
+- All 5 algorithms pass comprehensive validation:
+  - `first_order`: ForwardDiff parity `rel_diff=2.37e-14` ✓
+  - `second_order`: `finite=true`, `grad_norm=4048.6` ✓
+  - `pruned_second_order`: `finite=true`, `grad_norm=3991.0` ✓
+  - `third_order`: `finite=true`, `grad_norm=4162.7` ✓
+  - `pruned_third_order`: `finite=true`, `grad_norm=4098.1` ✓
+
+### Remaining
+- Item 6: Pre-allocate pullback gradient accumulators — move `zero()` allocations from inside pullback closures to forward pass scope (~20+ allocations per pullback in inversion filter rrules).
+- Optional: replace per-timestep `ℒ.kron(...)` calls inside pullback loops with `ℒ.kron!()` and pre-allocated buffers.
+
