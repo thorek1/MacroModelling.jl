@@ -689,8 +689,12 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
         if !(so_rr === nothing)
             Δ𝐒₂_raw = Δ𝐒₂ * constants.second_order.𝐔₂'
             so_grads = so_rr[2]((Δ𝐒₂_raw, NoTangent()))
-            Δ∇₁ .+= so_grads[2]
-            Δ∇₂ .+= Matrix(so_grads[3])
+            if !(so_grads[2] isa Union{NoTangent, AbstractZero})
+                Δ∇₁ .+= so_grads[2]
+            end
+            if !(so_grads[3] isa Union{NoTangent, AbstractZero})
+                Δ∇₂ .+= Matrix(so_grads[3])
+            end
             if !(so_grads[4] isa Union{NoTangent, AbstractZero})
                 Δ𝐒₁_raw .+= Matrix(unthunk(so_grads[4]))
             end
@@ -868,9 +872,15 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
             Δ𝐒₃_raw = Δ𝐒₃ * constants.third_order.𝐔₃'
             try
                 to_grads = to_rr[2]((Δ𝐒₃_raw, NoTangent()))
-                Δ∇₁ .+= to_grads[2]
-                Δ∇₂ .+= Matrix(to_grads[3])
-                Δ∇₃ .+= Matrix(to_grads[4])
+                if !(to_grads[2] isa Union{NoTangent, AbstractZero})
+                    Δ∇₁ .+= to_grads[2]
+                end
+                if !(to_grads[3] isa Union{NoTangent, AbstractZero})
+                    Δ∇₂ .+= Matrix(to_grads[3])
+                end
+                if !(to_grads[4] isa Union{NoTangent, AbstractZero})
+                    Δ∇₃ .+= Matrix(to_grads[4])
+                end
                 if !(to_grads[5] isa Union{NoTangent, AbstractZero})
                     Δ𝐒₁_raw .+= Matrix(unthunk(to_grads[5]))
                 end
@@ -878,8 +888,12 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                     Δ𝐒₂_raw .+= Matrix(unthunk(to_grads[6]))
                 end
                 so_grads = so_rr[2]((Δ𝐒₂_raw, NoTangent()))
-                Δ∇₁ .+= so_grads[2]
-                Δ∇₂ .+= Matrix(so_grads[3])
+                if !(so_grads[2] isa Union{NoTangent, AbstractZero})
+                    Δ∇₁ .+= so_grads[2]
+                end
+                if !(so_grads[3] isa Union{NoTangent, AbstractZero})
+                    Δ∇₂ .+= Matrix(so_grads[3])
+                end
                 if !(so_grads[4] isa Union{NoTangent, AbstractZero})
                     Δ𝐒₁_raw .+= Matrix(unthunk(so_grads[4]))
                 end
@@ -1754,7 +1768,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # @timeit_debug timer "Sylvester" begin
         if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
-            return (𝐒₂, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
@@ -1764,7 +1778,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₂, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         # end # timeit_debug
@@ -2250,7 +2264,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₃, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0, min_length = 0)
