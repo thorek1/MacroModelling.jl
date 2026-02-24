@@ -573,6 +573,14 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         ΔSS_and_pars = Δy[2]
         Δ𝐒₁ = Δy[3]
 
+        # When the caller passes NoTangent for the solution matrix cotangent
+        # (e.g. filter failure), skip the first-order solution pullback and
+        # only propagate through the steady-state.
+        if Δ𝐒₁ isa Union{NoTangent, AbstractZero}
+            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
+            return NoTangent(), NoTangent(), nsss_grads[3], NoTangent()
+        end
+
         first_grads = first_pb((Δ𝐒₁, NoTangent(), NoTangent()))
         ∂∇₁ = first_grads[2]
 
@@ -971,9 +979,14 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
-        Δsss = Δstate
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+
+        Δsss = Δstate_val
         E = ms.steady_state_expand_matrix
-        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -981,8 +994,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                             NoTangent(),
                             NoTangent(),
                             NoTangent(),
-                            Δ𝐒[1],
-                            Δ𝐒[2]))
+                            Δ𝐒₁,
+                            Δ𝐒₂))
 
         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
     end
@@ -1040,8 +1053,13 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         Δstate = Δy[4]
 
         E = ms.steady_state_expand_matrix
-        Δsss = Δstate[2]
-        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars)] : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+
+        Δsss = Δstate_val[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1049,8 +1067,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                             NoTangent(),
                             NoTangent(),
                             NoTangent(),
-                            Δ𝐒[1],
-                            Δ𝐒[2]))
+                            Δ𝐒₁,
+                            Δ𝐒₂))
 
         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
     end
@@ -1107,9 +1125,15 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         Δ𝐒 = Δy[3]
         Δstate = Δy[4]
 
-        Δsss = Δstate
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+        Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
+
+        Δsss = Δstate_val
         E = ms.steady_state_expand_matrix
-        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1118,9 +1142,9 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                             NoTangent(),
                             NoTangent(),
                             NoTangent(),
-                            Δ𝐒[1],
-                            Δ𝐒[2],
-                            Δ𝐒[3]))
+                            Δ𝐒₁,
+                            Δ𝐒₂,
+                            Δ𝐒₃))
 
         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
     end
@@ -1179,8 +1203,14 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         Δstate = Δy[4]
 
         E = ms.steady_state_expand_matrix
-        Δsss = Δstate[2]
-        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate[2]
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)] : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+        Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
+
+        Δsss = Δstate_val[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
 
         ss_grads = ss_pb((Δsss,
                             NoTangent(),
@@ -1189,9 +1219,9 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                             NoTangent(),
                             NoTangent(),
                             NoTangent(),
-                            Δ𝐒[1],
-                            Δ𝐒[2],
-                            Δ𝐒[3]))
+                            Δ𝐒₁,
+                            Δ𝐒₂,
+                            Δ𝐒₃))
 
         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
     end
@@ -1304,6 +1334,14 @@ function rrule(::typeof(get_loglikelihood),
         ∂𝐒              = llh_grads[5]
         ∂data_in_devs    = llh_grads[6]
         ∂state           = llh_grads[8]
+
+        # When the filter forward pass fails (non-finite states, factorisation
+        # failure, etc.) the filter rrule returns on_failure_loglikelihood with
+        # an all-NoTangent pullback.  The loglikelihood is then a constant, so
+        # the parameter gradient is exactly zero.
+        if ∂𝐒 isa Union{NoTangent, AbstractZero}
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
+        end
 
         # backprop through data_in_deviations = dt .- SS_and_pars[obs_indices]
         ∂SS_and_pars = zeros(S, length(SS_and_pars))
@@ -1524,6 +1562,13 @@ function rrule(::typeof(calculate_first_order_solution),
     ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
+        # Guard: if the cotangent for the solution matrix is NoTangent
+        # (e.g. because a downstream filter failure returned all-NoTangent),
+        # return zero gradients immediately.
+        if ∂𝐒[1] isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(∇₁), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+
         ∂∇₁ = zero(∇₁)
 
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
