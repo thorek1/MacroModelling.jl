@@ -20,9 +20,88 @@ If packages are missing, install them first (for example with `Pkg.add(...)`).
 
 ## Revise-Based Iteration (Required for Interactive Work)
 
-Always use Revise for iterative development.
+Always use Revise for iterative development. **Never use one-shot `julia -e` commands** — they discard the session and force full recompilation on every call.
 
-### One-time session setup
+### Persistent REPL via Named Pipe (for AI Agents)
+
+AI agents cannot type into a REPL interactively. Use a named-pipe pattern to maintain a persistent Julia session across tool calls.
+
+#### 1. Start the session (once per conversation)
+
+Use `.julia_repl/` inside the project directory (already in `.gitignore`) instead of `/tmp/` to avoid VS Code trusted-folder approval prompts.
+
+```bash
+# Create infrastructure (inside the project — no approval needed)
+mkdir -p .julia_repl
+rm -f .julia_repl/pipe .julia_repl/out
+mkfifo .julia_repl/pipe
+touch .julia_repl/out
+
+# Start Julia reading from pipe (background process)
+tail -f .julia_repl/pipe | julia -t auto --project=. 2>&1 | tee .julia_repl/out &
+```
+
+Start this with `isBackground=true` so the terminal stays alive.
+
+#### 2. Load packages (once)
+
+```bash
+echo 'using Revise; using MacroModelling; println("REPL_READY")' > .julia_repl/pipe
+sleep 30 && tail -3 .julia_repl/out
+```
+
+Wait for `REPL_READY` in the output before proceeding. Package loading takes 10-30 seconds.
+
+#### 3. Execute code
+
+**Preferred method** — write code to a file, then include it:
+
+```bash
+# Step A: Write Julia code to a .jl file (using create_file tool — no terminal command needed)
+# File: tasks/_repl_cmd.jl
+
+# Step B: Run it in the persistent session (one terminal command)
+echo 'include("tasks/_repl_cmd.jl")' > .julia_repl/pipe
+sleep 5 && tail -20 .julia_repl/out
+```
+
+**For short one-liners**, send directly:
+
+```bash
+echo 'println(1 + 1)' > .julia_repl/pipe
+sleep 2 && tail -3 .julia_repl/out
+```
+
+#### 4. Read output
+
+Always end code with a sentinel `println` (e.g., `println("DONE")`) and check for it:
+
+```bash
+tail -30 .julia_repl/out   # recent output
+grep "DONE" .julia_repl/out  # verify completion
+```
+
+To reset the output file (avoid stale reads):
+
+```bash
+: > .julia_repl/out
+```
+
+#### 5. Key rules
+
+- **Always use sentinel markers** — end every code block with `println("STEP_NAME_DONE")` so the agent can confirm execution completed.
+- **Adjust sleep durations** — use longer sleeps for compilation-heavy first calls (~30s), shorter for cached calls (~2-5s).
+- **The session persists** — variables, models, compiled methods all survive between `echo` commands. This is the whole point.
+- **Revise picks up edits** — after editing `src/` files with the editor tool, the running session sees the changes automatically.
+- **For test project deps**, use `--project=test` instead of `--project=.` when tests need extra packages (Zygote, Turing, etc.).
+- **To reset the session**, send `exit()` to the pipe, then re-run steps 1-2:
+  ```bash
+  echo 'exit()' > .julia_repl/pipe && sleep 2
+  rm -f .julia_repl/pipe .julia_repl/out && mkfifo .julia_repl/pipe && touch .julia_repl/out
+  # Then restart with tail -f ... & and reload packages
+  ```
+
+### Human Developer REPL Setup
 
 1. Start one REPL and keep it running:
 
@@ -35,8 +114,6 @@ julia -t auto --project=.
 
 ```julia
 using Revise
-using Pkg
-Pkg.activate(".")
 using MacroModelling
 ```
 
@@ -44,7 +121,7 @@ using MacroModelling
 
 ### Why
 
-- Avoids repeated precompilation cost
+- Avoids repeated precompilation cost (minutes per call → zero)
 - Preserves session/model state between edits
 - Enables rapid edit-test-fix loops
 
