@@ -46,11 +46,11 @@ Start this with `isBackground=true` so the terminal stays alive.
 #### 2. Load packages (once)
 
 ```bash
-echo 'using Revise; using MacroModelling; println("REPL_READY")' > .julia_repl/pipe
-sleep 30 && tail -3 .julia_repl/out
+: > .julia_repl/out && echo 'using Revise; using MacroModelling; println("REPL_READY")' > .julia_repl/pipe
+for i in {1..60}; do grep -q "REPL_READY" .julia_repl/out && break; sleep 1; done; tail -5 .julia_repl/out
 ```
 
-Wait for `REPL_READY` in the output before proceeding. Package loading takes 10-30 seconds.
+The polling loop checks every second for `REPL_READY` and exits immediately when found (timeout: 60s). Package loading typically takes 10-30 seconds.
 
 #### 3. Execute code
 
@@ -59,44 +59,49 @@ Wait for `REPL_READY` in the output before proceeding. Package loading takes 10-
 ```bash
 # Step A: Write Julia code to a .jl file (using create_file tool — no terminal command needed)
 # File: tasks/_repl_cmd.jl
+# IMPORTANT: End the file with println("DONE") as a sentinel marker.
 
-# Step B: Run it in the persistent session (one terminal command)
-echo 'include("tasks/_repl_cmd.jl")' > .julia_repl/pipe
-sleep 5 && tail -20 .julia_repl/out
+# Step B: Clear output, run it, and poll for the sentinel
+: > .julia_repl/out && echo 'include("tasks/_repl_cmd.jl")' > .julia_repl/pipe
+for i in {1..600}; do grep -q "DONE" .julia_repl/out && break; sleep 1; done; tail -20 .julia_repl/out
 ```
 
 **For short one-liners**, send directly:
 
 ```bash
-echo 'println(1 + 1)' > .julia_repl/pipe
-sleep 2 && tail -3 .julia_repl/out
+: > .julia_repl/out && echo 'println(1 + 1); println("DONE")' > .julia_repl/pipe
+for i in {1..120}; do grep -q "DONE" .julia_repl/out && break; sleep 1; done; tail -5 .julia_repl/out
 ```
 
-#### 4. Read output
+#### 4. Sentinel-based completion detection
 
-Always end code with a sentinel `println` (e.g., `println("DONE")`) and check for it:
+Always end code with a sentinel `println` (e.g., `println("DONE")`). Use a polling loop to wait for it instead of fixed `sleep` durations:
 
 ```bash
-tail -30 .julia_repl/out   # recent output
-grep "DONE" .julia_repl/out  # verify completion
+# Pattern: clear output, send command, poll for sentinel, read result
+: > .julia_repl/out && echo '...; println("DONE")' > .julia_repl/pipe
+for i in {1..TIMEOUT}; do grep -q "DONE" .julia_repl/out && break; sleep 1; done; tail -20 .julia_repl/out
 ```
 
-To reset the output file (avoid stale reads):
+Choose TIMEOUT based on expected work:
+- Package loading / first compilation: `120`
+- Warm cached calls: `30`
+- Simple one-liners: `10`
 
-```bash
-: > .julia_repl/out
-```
+If the sentinel is not found within the timeout, check `.julia_repl/out` for errors.
 
 #### 5. Key rules
 
-- **Always use sentinel markers** — end every code block with `println("STEP_NAME_DONE")` so the agent can confirm execution completed.
-- **Adjust sleep durations** — use longer sleeps for compilation-heavy first calls (~30s), shorter for cached calls (~2-5s).
+- **Always use sentinel markers** — end every code block with `println("STEP_NAME_DONE")` so the polling loop can detect completion.
+- **Always clear output first** — run `: > .julia_repl/out` before each command to avoid matching stale sentinels.
+- **Poll, don't sleep** — use `for i in {1..N}; do grep -q "SENTINEL" .julia_repl/out && break; sleep 1; done` instead of fixed `sleep` durations. This returns as soon as the task finishes.
 - **The session persists** — variables, models, compiled methods all survive between `echo` commands. This is the whole point.
 - **Revise picks up edits** — after editing `src/` files with the editor tool, the running session sees the changes automatically.
 - **For test project deps**, use `--project=test` instead of `--project=.` when tests need extra packages (Zygote, Turing, etc.).
-- **To reset the session**, send `exit()` to the pipe, then re-run steps 1-2:
+- **To reset the session**, send `exit()` to the pipe, wait for the process to end, then re-run steps 1-2:
   ```bash
-  echo 'exit()' > .julia_repl/pipe && sleep 2
+  echo 'exit()' > .julia_repl/pipe
+  for i in {1..10}; do jobs -l 2>/dev/null | grep -q julia || break; sleep 1; done
   rm -f .julia_repl/pipe .julia_repl/out && mkfifo .julia_repl/pipe && touch .julia_repl/out
   # Then restart with tail -f ... & and reload packages
   ```
