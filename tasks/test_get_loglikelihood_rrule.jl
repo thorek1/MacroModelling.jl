@@ -19,10 +19,11 @@
 #   3. Calls clear_solution_caches! again so the timed call doesn't hit
 #      cached results.  evals is left at the default (auto-tuned).
 
-using MacroModelling, Random, CSV, DataFrames, AxisKeys, Zygote, ForwardDiff, LinearAlgebra
+using MacroModelling, Random, DelimitedFiles, AxisKeys, Zygote, ForwardDiff, LinearAlgebra
 using BenchmarkTools
 
-const BENCHMARK_MODE = get(ENV, "BENCHMARK", "0") == "1"
+const BENCHMARK_MODE = true
+# const BENCHMARK_MODE = get(ENV, "BENCHMARK", "0") == "1"
 
 # Print git metadata for traceability
 println("Julia:  ", VERSION)
@@ -109,7 +110,7 @@ function run_case(name::String; model, data, params, kwargs...)
             setup = begin
                 MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
                 get_loglikelihood($(Ref(model))[], $(Ref(data))[], $(Ref(warmup_params))[]; $(kw)...)
-                MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
+                # MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
             end
         )
         med_p = median(b_primal)
@@ -123,7 +124,7 @@ function run_case(name::String; model, data, params, kwargs...)
             setup = begin
                 MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
                 get_loglikelihood($(Ref(model))[], $(Ref(data))[], $(Ref(warmup_params))[]; $(kw)...)
-                MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
+                # MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
             end
         )
         med_g = median(b_grad)
@@ -206,7 +207,7 @@ function sw07_grad_case(name, model, data_sw, obs_sw, p_est, fixed; kwargs...)
             setup = begin
                 MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
                 get_loglikelihood($(Ref(model))[], $(Ref(data_obs))[], $(Ref(warmup_combo))[]; $(kw)...)
-                MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
+                # MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
             end
         )
         med_p = median(b_primal)
@@ -220,7 +221,7 @@ function sw07_grad_case(name, model, data_sw, obs_sw, p_est, fixed; kwargs...)
             setup = begin
                 MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
                 get_loglikelihood($(Ref(model))[], $(Ref(data_obs))[], $(Ref(warmup_combo))[]; $(kw)...)
-                MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
+                # MacroModelling.clear_solution_caches!($(Ref(model))[], $(Ref(algo))[])
             end
         )
         med_g = median(b_grad)
@@ -243,12 +244,12 @@ println("  Loading FS2000 model + data")
 println("="^70, "\n")
 
 include(joinpath(@__DIR__, "..", "models", "FS2000.jl"))
-dat_fs = CSV.read(joinpath(@__DIR__, "..", "test", "data", "FS2000_data.csv"), DataFrame)
-data_fs = KeyedArray(permutedims(Matrix(dat_fs)),
-                     Variable = Symbol.("log_" .* names(dat_fs)),
+dat_fs, header_fs = readdlm(joinpath(@__DIR__, "..", "test", "data", "FS2000_data.csv"), ',', header = true)
+data_fs = KeyedArray(permutedims(Float64.(dat_fs)),
+                     Variable = Symbol.("log_" .* String.(vec(header_fs))),
                      Time = 1:size(dat_fs,1))
 data_fs = log.(data_fs)
-obs_fs  = sort(Symbol.("log_" .* names(dat_fs)))
+obs_fs  = sort(Symbol.("log_" .* String.(vec(header_fs))))
 data_fs = data_fs(obs_fs, :)
 p_fs    = copy(FS2000.parameter_values)
 
@@ -286,9 +287,9 @@ println("  Loading Caldara et al 2012 model + data")
 println("="^70, "\n")
 
 include(joinpath(@__DIR__, "..", "test", "models", "Caldara_et_al_2012_estim.jl"))
-dat_us = CSV.read(joinpath(@__DIR__, "..", "test", "data", "usmodel.csv"), DataFrame)
-data_us = KeyedArray(permutedims(Matrix(dat_us)),
-                     Variable = Symbol.(strip.(names(dat_us))),
+dat_us, header_us = readdlm(joinpath(@__DIR__, "..", "test", "data", "usmodel.csv"), ',', header = true)
+data_us = KeyedArray(permutedims(Float64.(dat_us)),
+                     Variable = Symbol.(strip.(String.(vec(header_us)))),
                      Time = 1:size(dat_us,1))
 data_cal = data_us([:dy], 75:230)
 p_cal    = copy(Caldara_et_al_2012_estim.parameter_values)
@@ -312,9 +313,9 @@ println("\n", "="^70)
 println("  Loading Smets & Wouters 2007 linear model + data")
 println("="^70, "\n")
 
-dat_sw  = CSV.read(joinpath(@__DIR__, "..", "test", "data", "usmodel.csv"), DataFrame)
-data_sw = KeyedArray(permutedims(Matrix(dat_sw)),
-                     Variable = Symbol.(strip.(names(dat_sw))),
+dat_sw, header_sw = readdlm(joinpath(@__DIR__, "..", "test", "data", "usmodel.csv"), ',', header = true)
+data_sw = KeyedArray(permutedims(Float64.(dat_sw)),
+                     Variable = Symbol.(strip.(String.(vec(header_sw)))),
                      Time = 1:size(dat_sw,1))
 obs_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 obs_sw  = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs]
@@ -423,3 +424,8 @@ for r in RESULTS
 end
 
 npass == ntot || exit(1)
+
+#  CaseResult("fs2000_kalman_1st", true, 952.9749262097612, 40649.11694120837, 9, 416085.0, 34312, 1.905887e6, 538392, "")
+#  CaseResult("fs2000_kalman_explicit", true, 952.9749262097612, 40649.11694120837, 9, 427710.5, 34568, 1.9576125e6, 538776, "")
+#  CaseResult("fs2000_inversion_1st", true, 151.88766208925284, 56289.59941035291, 9, 151083.5, 67080, 6.471321e6, 2800952, "")
+#  CaseResult("fs2000_second_order", true, 151.8703437893189, 61689.2159163563, 9, 1.564667e6, 746096, 6.3061865e6, 4608368, "")
