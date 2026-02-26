@@ -14,6 +14,7 @@ Read this file first. Read the companion files only when needed.
 
 ## Core Engineering Principles
 
+- Write all output/log files to the project folder (e.g. `tasks/`), never to `/tmp`.
 - Keep changes minimal, focused, and at root cause.
 - Preserve performance characteristics (type stability, allocations, threading behavior).
 - Update user-facing docs/docstrings when public APIs change.
