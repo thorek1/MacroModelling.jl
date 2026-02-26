@@ -283,6 +283,15 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
 end
 
 
+# Mark helper functions as non-differentiable to avoid overhead
+ChainRulesCore.@non_differentiable initialise_constants!(::Any)
+ChainRulesCore.@non_differentiable ensure_model_structure_constants!(::Any...)
+ChainRulesCore.@non_differentiable ensure_qme_workspace!(::Any)
+ChainRulesCore.@non_differentiable ensure_sylvester_1st_order_workspace!(::Any)
+ChainRulesCore.@non_differentiable update_perturbation_counter!(::Any...)
+ChainRulesCore.@non_differentiable expand_steady_state(::Any...)
+
+
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
                 SS_and_pars, 
