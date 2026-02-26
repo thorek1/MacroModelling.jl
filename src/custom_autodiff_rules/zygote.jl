@@ -597,165 +597,289 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     return y, pullback
 end
 
+# Custom rrule for the outer calculate_second_order_stochastic_steady_state
+# that composes the rrules of the inner functions to propagate gradients
+# from the 8-tuple output back to the parameters vector.
 function rrule(::typeof(calculate_second_order_stochastic_steady_state),
-                parameters::Vector{S},
+                parameters::Vector{Float64},
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 pruning::Bool = false,
-                estimation::Bool = false) where S <: AbstractFloat
-    y = calculate_second_order_stochastic_steady_state(parameters, 𝓂; opts = opts, pruning = pruning, estimation = estimation)
+                estimation::Bool = false)
 
-    function calculate_second_order_stochastic_steady_state_pullback(ȳ)
-        Δy = unthunk(ȳ)
-        if Δy isa NoTangent || Δy isa AbstractZero
-            return NoTangent(), zeros(S, length(parameters)), NoTangent()
+    # Initialize constants (non-differentiable)
+    constants = initialise_constants!(𝓂)
+    T = constants.post_model_macro
+    nVars = T.nVars
+    nPast = T.nPast_not_future_and_mixed
+    nExo = T.nExo
+    past_idx = T.past_not_future_and_mixed_idx
+
+    # ── Step 1: NSSS ────────────────────────────────────────────────
+    (SS_and_pars, (solution_error, iters)), nsss_pullback =
+        rrule(get_NSSS_and_parameters, 𝓂, parameters, opts = opts, estimation = estimation)
+
+    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        result = (zeros(Float64, nVars), false, SS_and_pars, solution_error,
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0))
+        return result, _ -> (NoTangent(), zeros(Float64, length(parameters)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+
+    # ── Step 2: Jacobian ────────────────────────────────────────────
+    ∇₁, jacobian_pullback =
+        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+
+    # ── Step 3: First order solution ────────────────────────────────
+    (𝐒₁_raw, qme_sol, solved), first_order_pullback =
+        rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
+              opts = opts, initial_guess = 𝓂.caches.qme_solution)
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        result = (all_SS, false, SS_and_pars, solution_error,
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0))
+        return result, _ -> (NoTangent(), zeros(Float64, length(parameters)), NoTangent())
+    end
+
+    # ── Step 4: Hessian ─────────────────────────────────────────────
+    ∇₂, hessian_pullback =
+        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+
+    # ── Step 5: Second order solution ───────────────────────────────
+    (𝐒₂_raw, solved2), second_order_pullback =
+        rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+              initial_guess = 𝓂.caches.second_order_solution, opts = opts)
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
+    # ── Step 6: Apply 𝐔₂ and sparsify ──────────────────────────────
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+
+    if !solved2
+        result = (all_SS, false, SS_and_pars, solution_error,
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0))
+        return result, _ -> (NoTangent(), zeros(Float64, length(parameters)), NoTangent())
+    end
+
+    # ── Step 7: Augment 𝐒₁ ─────────────────────────────────────────
+    𝐒₁ = [𝐒₁_raw[:, 1:nPast] zeros(nVars) 𝐒₁_raw[:, nPast+1:end]]
+
+    aug_state₁ = sparse([zeros(nPast); 1; zeros(nExo)])
+
+    tmp = (T.I_nPast - 𝐒₁[past_idx, 1:nPast])
+    tmp̄_lu = ℒ.lu(tmp, check = false)
+
+    if !ℒ.issuccess(tmp̄_lu)
+        result = (all_SS, false, SS_and_pars, solution_error,
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                  zeros(Float64, 0, 0), spzeros(Float64, 0, 0))
+        return result, _ -> (NoTangent(), zeros(Float64, length(parameters)), NoTangent())
+    end
+
+    SSSstates_init = collect(tmp̄_lu \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[past_idx])
+
+    # ── Step 8: Compute stochastic steady state ─────────────────────
+    if pruning
+        state = 𝐒₁[:, 1:nPast] * SSSstates_init + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        converged = true
+        # Store what we need for pullback
+        SSSstates_final = SSSstates_init
+        used_newton = false
+    else
+        so = 𝓂.constants.second_order
+        kron_s⁺_s⁺ = so.kron_s⁺_s⁺
+
+        (SSSstates_final, converged), sss_newton_pullback =
+            rrule(calculate_second_order_stochastic_steady_state, Val(:newton), 𝐒₁, 𝐒₂, collect(SSSstates_init), 𝓂)
+
+        if !converged
+            result = (all_SS, false, SS_and_pars, solution_error,
+                      zeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                      zeros(Float64, 0, 0), spzeros(Float64, 0, 0))
+            return result, _ -> (NoTangent(), zeros(Float64, length(parameters)), NoTangent())
         end
 
-        Δsss        = Δy[1] isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[1])) : collect(unthunk(Δy[1]))
-        ΔSS_and_pars = Δy[3] isa Union{NoTangent, AbstractZero} ? zeros(S, length(y[3])) : collect(unthunk(Δy[3]))
-        Δ∇₁          = Δy[5] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[5]))   : Matrix(unthunk(Δy[5]))
-        Δ∇₂          = Δy[6] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[6]))   : Matrix(unthunk(Δy[6]))
-        Δ𝐒₁          = Δy[7] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[7]))   : Matrix(unthunk(Δy[7]))
-        Δ𝐒₂          = Δy[8] isa Union{NoTangent, AbstractZero} ? zeros(S, size(y[8]))   : Matrix(unthunk(Δy[8]))
+        A_sss = 𝐒₁[:, 1:nPast]
+        B̂_sss = 𝐒₂[:, kron_s⁺_s⁺]
+        state = A_sss * SSSstates_final + B̂_sss * ℒ.kron(vcat(SSSstates_final, 1), vcat(SSSstates_final, 1)) / 2
+        used_newton = true
+    end
 
-        ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-        E = ms.steady_state_expand_matrix
-        ΔSS_and_pars .+= E' * Δsss
+    state_vec = Vector{Float64}(state)
+    sss = all_SS + state_vec
 
-        ∂parameters = zeros(S, length(parameters))
+    result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
-        if size(y[5], 1) == 0
-            nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
-            if !(nsss_rr === nothing)
-                _, nsss_pb = nsss_rr
-                nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
-                ∂parameters .+= nsss_grads[3]
-            end
-            return NoTangent(), ∂parameters, NoTangent()
+    # ── Pullback ─────────────────────────────────────────────────────
+    function calculate_second_order_sss_pullback(∂result)
+        ∂sss          = ∂result[1]
+        # ∂result[2] (converged) is non-differentiable
+        ∂SS_and_pars_direct = ∂result[3]
+        # ∂result[4] (solution_error) is non-differentiable
+        ∂∇₁_direct    = ∂result[5]
+        ∂∇₂_direct    = ∂result[6]
+        ∂𝐒₁_direct    = ∂result[7]
+        ∂𝐒₂_direct    = ∂result[8]
+
+        # ── Backprop through sss = all_SS + state_vec ───────────────
+        ∂all_SS   = ∂sss
+        ∂state_vec = ∂sss
+
+        # ── Backprop through state computation ──────────────────────
+        if used_newton
+            # state = A_sss * SSSstates_final + B̂_sss * kron(vcat(SSSstates_final,1), vcat(SSSstates_final,1)) / 2
+            so = 𝓂.constants.second_order
+            kron_s⁺_s⁺_local = so.kron_s⁺_s⁺
+
+            A_sss = 𝐒₁[:, 1:nPast]
+            B̂_sss = 𝐒₂[:, kron_s⁺_s⁺_local]
+
+            aug_sss = vcat(SSSstates_final, 1)
+            kron_aug = ℒ.kron(aug_sss, aug_sss)
+
+            # ∂A_sss (contributes to ∂𝐒₁_aug)
+            ∂𝐒₁_aug = zeros(Float64, size(𝐒₁))
+            ∂𝐒₁_aug[:, 1:nPast] += ∂state_vec * SSSstates_final'
+
+            # ∂B̂_sss (contributes to ∂𝐒₂)
+            ∂𝐒₂_state = spzeros(Float64, size(𝐒₂)...)
+            ∂𝐒₂_state[:, kron_s⁺_s⁺_local] += ∂state_vec * kron_aug' / 2
+
+            # ∂SSSstates_final from state = A*x + B̂*kron(aug,aug)/2
+            # where aug = [x; 1], so ∂kron/∂x involves the Kronecker derivative
+            ∂SSSstates_from_state = A_sss' * ∂state_vec
+            # derivative of kron(vcat(x,1), vcat(x,1)) w.r.t. x:
+            # d/dx kron([x;1],[x;1]) = kron(I_aug, [x;1]) * [I;0] + kron([x;1], I_aug) * [I;0]
+            n_aug = length(aug_sss)
+            I_aug = Matrix{Float64}(ℒ.I, n_aug, n_aug)
+            pad = vcat(Matrix{Float64}(ℒ.I, nPast, nPast), zeros(1, nPast))
+            dkron_dx = ℒ.kron(I_aug, aug_sss) * pad + ℒ.kron(aug_sss, I_aug) * pad
+            ∂SSSstates_from_state += (B̂_sss' * ∂state_vec)' * dkron_dx / 2 |> vec
+
+            # ── Backprop through Newton SSS ─────────────────────────
+            # sss_newton_pullback expects a tuple tangent (∂x, ∂solved)
+            sss_newton_tangents = sss_newton_pullback((∂SSSstates_from_state, NoTangent()))
+            # Returns: (NoTangent(), NoTangent(), ∂𝐒₁_newton, ∂𝐒₂_newton, NoTangent(), NoTangent(), NoTangent())
+            ∂𝐒₁_newton = sss_newton_tangents[3]
+            ∂𝐒₂_newton = sss_newton_tangents[4]
+
+            # Combine ∂𝐒₁ contributions from Newton and from state computation
+            ∂𝐒₁_aug += ∂𝐒₁_newton
+
+            # Combine ∂𝐒₂ contributions  
+            ∂𝐒₂_total = ∂𝐒₂_state + ∂𝐒₂_newton
+        else
+            # pruning: state = 𝐒₁[:,1:nPast] * SSSstates_init + 𝐒₂ * kron(aug_state₁, aug_state₁) / 2
+            kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
+
+            ∂𝐒₁_aug = zeros(Float64, size(𝐒₁))
+            ∂𝐒₁_aug[:, 1:nPast] += ∂state_vec * SSSstates_init'
+
+            ∂𝐒₂_total = spzeros(Float64, size(𝐒₂)...)
+            ∂𝐒₂_total += ∂state_vec * kron_aug1' / 2
+
+            # ∂SSSstates_init from pruning state
+            ∂SSSstates_init_from_state = 𝐒₁[:, 1:nPast]' * ∂state_vec
+
+            # Backprop through SSSstates_init = tmp \ (𝐒₂ * kron(aug₁,aug₁)/2)[past_idx]
+            # where tmp = I - 𝐒₁[past_idx, 1:nPast]
+            rhs = (𝐒₂ * kron_aug1 / 2)[past_idx]
+            ∂rhs = tmp̄_lu' \ ∂SSSstates_init_from_state
+            # ∂tmp from tmp \ rhs:  ∂tmp = -tmp⁻ᵀ * ∂out * x' = -(tmp'\∂out) * SSSstates_init'
+            ∂tmp = -(tmp̄_lu' \ ∂SSSstates_init_from_state) * SSSstates_init'
+            # tmp = I - 𝐒₁[past_idx, 1:nPast], so ∂𝐒₁_aug[past_idx, 1:nPast] -= ∂tmp
+            ∂𝐒₁_aug[past_idx, 1:nPast] -= ∂tmp
+            # ∂𝐒₂ from rhs = (𝐒₂ * kron(aug₁,aug₁)/2)[past_idx]
+            ∂𝐒₂_from_rhs = spzeros(Float64, size(𝐒₂)...)
+            ∂𝐒₂_from_rhs[past_idx, :] += ∂rhs * kron_aug1' / 2
+            ∂𝐒₂_total += ∂𝐒₂_from_rhs
         end
 
-        constants = initialise_constants!(𝓂)
-        T = constants.post_model_macro
-
-        nsss_rr = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts, estimation = estimation)
-        if nsss_rr === nothing
-            return NoTangent(), ∂parameters, NoTangent()
+        # Add direct tangents from output tuple for 𝐒₁ and 𝐒₂
+        if !(∂𝐒₁_direct isa AbstractZero)
+            ∂𝐒₁_aug += ∂𝐒₁_direct
         end
-        nsss_out, nsss_pb = nsss_rr
-        SS_and_pars = nsss_out[1]
-
-        ∇₁_rr = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
-        if ∇₁_rr === nothing
-            nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
-            ∂parameters .+= nsss_grads[3]
-            return NoTangent(), ∂parameters, NoTangent()
-        end
-        ∇₁, jac_pb = ∇₁_rr
-
-        fo_rr = rrule(calculate_first_order_solution,
-                        ∇₁,
-                        constants,
-                        𝓂.workspaces,
-                        𝓂.caches;
-                        opts = opts,
-                        initial_guess = 𝓂.caches.qme_solution)
-        if fo_rr === nothing
-            jac_grads = jac_pb(Δ∇₁)
-            ∂parameters .+= jac_grads[2]
-            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3], NoTangent()))
-            ∂parameters .+= nsss_grads[3]
-            return NoTangent(), ∂parameters, NoTangent()
-        end
-        fo_out, fo_pb = fo_rr
-        𝐒₁_raw = fo_out[1]
-
-        hs_rr = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
-        if hs_rr === nothing
-            Δ𝐒₁_raw = Δ𝐒₁[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
-            fo_grads = fo_pb((Δ𝐒₁_raw, NoTangent(), NoTangent()))
-            jac_grads = jac_pb(Δ∇₁ + fo_grads[2])
-            ∂parameters .+= jac_grads[2]
-            nsss_grads = nsss_pb((ΔSS_and_pars + jac_grads[3], NoTangent()))
-            ∂parameters .+= nsss_grads[3]
-            return NoTangent(), ∂parameters, NoTangent()
-        end
-        ∇₂, hess_pb = hs_rr
-
-        so_rr = rrule(calculate_second_order_solution,
-                        ∇₁,
-                        ∇₂,
-                        𝐒₁_raw,
-                        constants,
-                        𝓂.workspaces,
-                        𝓂.caches;
-                        initial_guess = 𝓂.caches.second_order_solution,
-                        opts = opts)
-
-        Δ𝐒₁_raw = Δ𝐒₁[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
-        Δ𝐒₁_before_newton = copy(Δ𝐒₁)
-
-        if !(so_rr === nothing)
-            Δ𝐒₂_raw = Δ𝐒₂ * constants.second_order.𝐔₂'
-            so_grads = so_rr[2]((Δ𝐒₂_raw, NoTangent()))
-            if !(so_grads[2] isa Union{NoTangent, AbstractZero})
-                Δ∇₁ .+= so_grads[2]
-            end
-            if !(so_grads[3] isa Union{NoTangent, AbstractZero})
-                Δ∇₂ .+= Matrix(so_grads[3])
-            end
-            if !(so_grads[4] isa Union{NoTangent, AbstractZero})
-                Δ𝐒₁_raw .+= Matrix(unthunk(so_grads[4]))
-            end
+        if !(∂𝐒₂_direct isa AbstractZero)
+            ∂𝐒₂_total += ∂𝐒₂_direct
         end
 
-        if !pruning && y[2]
-            cc = ensure_computational_constants!(constants)
-            x = y[1][T.past_not_future_and_mixed_idx]
-            𝐒₂_dense = Matrix(y[8])
-            A = y[7][:, 1:T.nPast_not_future_and_mixed]
-            B = 𝐒₂_dense[:, cc.kron_s⁺_s]
-            B̂ = 𝐒₂_dense[:, cc.kron_s⁺_s⁺]
+        # ── Backprop through all_SS = X * SS_and_pars ───────────────
+        X = ms.steady_state_expand_matrix
+        ∂SS_and_pars_from_allSS = X' * ∂all_SS
 
-            Δx = (A + B * ℒ.kron(vcat(x, one(S)), T.I_nPast))' * Δsss
+        # ── De-augment ∂𝐒₁_aug → ∂𝐒₁_raw ──────────────────────────
+        # 𝐒₁ = [𝐒₁_raw[:,1:nPast] zeros(nVars) 𝐒₁_raw[:,nPast+1:end]]
+        # So column nPast+1 of 𝐒₁ is the zero column, not from 𝐒₁_raw
+        ∂𝐒₁_raw = hcat(∂𝐒₁_aug[:, 1:nPast], ∂𝐒₁_aug[:, nPast+2:end])
 
-            Δ𝐒₁[:, 1:T.nPast_not_future_and_mixed] .+= Δsss * x'
-            Δ𝐒₂[:, cc.kron_s⁺_s⁺] .+= Δsss * ℒ.kron(vcat(x, one(S)), vcat(x, one(S)))' / 2
+        # ── Backprop through 𝐒₂ = sparse(𝐒₂_raw * 𝐔₂) ─────────────
+        ∂𝐒₂_raw = ∂𝐒₂_total * 𝐔₂'
 
-            newton_rr = rrule(calculate_second_order_stochastic_steady_state,
-                                Val(:newton),
-                                y[7],
-                                y[8],
-                                collect(x),
-                                𝓂)
-            if !(newton_rr === nothing)
-                newton_grads = newton_rr[2]((Δx, NoTangent()))
-                if !(newton_grads[3] isa Union{NoTangent, AbstractZero})
-                    Δ𝐒₁ .+= Matrix(unthunk(newton_grads[3]))
-                end
-                if !(newton_grads[4] isa Union{NoTangent, AbstractZero})
-                    Δ𝐒₂ .+= Matrix(unthunk(newton_grads[4]))
-                end
-                Δ𝐒₁_raw .+= (Δ𝐒₁ - Δ𝐒₁_before_newton)[:, [1:T.nPast_not_future_and_mixed; T.nPast_not_future_and_mixed+2:end]]
-            end
+        # ── Backprop through second order solution ──────────────────
+        # second_order_pullback expects ((∂𝐒₂_raw, ∂solved2))
+        so2_tangents = second_order_pullback((∂𝐒₂_raw, NoTangent()))
+        # Returns: (NoTangent(), ∂∇₁, ∂∇₂, ∂𝐒₁_raw_from_so2, NoTangent(), NoTangent(), NoTangent())
+        ∂∇₁_from_so2    = so2_tangents[2]
+        ∂∇₂_from_so2    = so2_tangents[3]
+        ∂𝐒₁_raw_from_so2 = so2_tangents[4]
+
+        # ── Backprop through hessian ────────────────────────────────
+        ∂∇₂_total = ∂∇₂_from_so2
+        if !(∂∇₂_direct isa AbstractZero)
+            ∂∇₂_total = ∂∇₂_total + ∂∇₂_direct
         end
+        # hessian_pullback expects ∂∇₂
+        hess_tangents = hessian_pullback(∂∇₂_total)
+        # Returns: (NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent())
+        ∂params_from_hess    = hess_tangents[2]
+        ∂SS_and_pars_from_hess = hess_tangents[3]
 
-        fo_grads = fo_pb((Δ𝐒₁_raw, NoTangent(), NoTangent()))
+        # ── Backprop through first order solution ───────────────────
+        ∂𝐒₁_raw_total = ∂𝐒₁_raw
+        if !(∂𝐒₁_raw_from_so2 isa AbstractZero)
+            ∂𝐒₁_raw_total = ∂𝐒₁_raw_total + ∂𝐒₁_raw_from_so2
+        end
+        # first_order_pullback expects ((∂𝐒₁, ∂qme_sol, ∂solved))
+        fo_tangents = first_order_pullback((∂𝐒₁_raw_total, NoTangent(), NoTangent()))
+        # Returns: (NoTangent(), ∂∇₁, NoTangent(), NoTangent(), NoTangent(), ...)
+        ∂∇₁_from_fo = fo_tangents[2]
 
-        hess_grads = hess_pb(Δ∇₂)
-        ∂parameters .+= hess_grads[2]
-        ΔSS_and_pars .+= hess_grads[3]
+        # ── Backprop through jacobian ───────────────────────────────
+        ∂∇₁_total = ∂∇₁_from_so2 + ∂∇₁_from_fo
+        if !(∂∇₁_direct isa AbstractZero)
+            ∂∇₁_total = ∂∇₁_total + ∂∇₁_direct
+        end
+        # jacobian_pullback expects ∂∇₁
+        jac_tangents = jacobian_pullback(∂∇₁_total)
+        # Returns: (NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent())
+        ∂params_from_jac     = jac_tangents[2]
+        ∂SS_and_pars_from_jac = jac_tangents[3]
 
-        jac_grads = jac_pb(Δ∇₁ + fo_grads[2])
-        ∂parameters .+= jac_grads[2]
-        ΔSS_and_pars .+= jac_grads[3]
+        # ── Backprop through NSSS ───────────────────────────────────
+        ∂SS_and_pars_total = ∂SS_and_pars_from_allSS + ∂SS_and_pars_from_hess + ∂SS_and_pars_from_jac
+        if !(∂SS_and_pars_direct isa AbstractZero)
+            ∂SS_and_pars_total = ∂SS_and_pars_total + ∂SS_and_pars_direct
+        end
+        # nsss_pullback expects ((∂SS_and_pars, ∂(solution_error, iters)))
+        nsss_tangents = nsss_pullback((∂SS_and_pars_total, NoTangent()))
+        # Returns: (NoTangent(), NoTangent(), ∂parameters, NoTangent())
+        ∂params_from_nsss = nsss_tangents[3]
 
-        nsss_grads = nsss_pb((ΔSS_and_pars, NoTangent()))
-        ∂parameters .+= nsss_grads[3]
+        # ── Aggregate parameter gradients ───────────────────────────
+        ∂parameters = ∂params_from_nsss + ∂params_from_jac + ∂params_from_hess
 
         return NoTangent(), ∂parameters, NoTangent()
     end
 
-    return y, calculate_second_order_stochastic_steady_state_pullback
+    return result, calculate_second_order_sss_pullback
 end
 
 function rrule(::typeof(calculate_third_order_stochastic_steady_state),
