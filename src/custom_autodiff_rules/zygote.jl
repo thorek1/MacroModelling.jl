@@ -284,12 +284,12 @@ end
 
 
 # Mark helper functions as non-differentiable to avoid overhead
-ChainRulesCore.@non_differentiable initialise_constants!(::Any)
-ChainRulesCore.@non_differentiable ensure_model_structure_constants!(::Any...)
-ChainRulesCore.@non_differentiable ensure_qme_workspace!(::Any)
-ChainRulesCore.@non_differentiable ensure_sylvester_1st_order_workspace!(::Any)
-ChainRulesCore.@non_differentiable update_perturbation_counter!(::Any...)
-ChainRulesCore.@non_differentiable expand_steady_state(::Any...)
+@non_differentiable initialise_constants!(::Any)
+@non_differentiable ensure_model_structure_constants!(::Any...)
+@non_differentiable ensure_qme_workspace!(::Any)
+@non_differentiable ensure_sylvester_1st_order_workspace!(::Any)
+@non_differentiable update_perturbation_counter!(::Any...)
+@non_differentiable expand_steady_state(::Any...)
 
 
 # Outer rrule for third-order stochastic steady state calculation
@@ -353,7 +353,11 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     ∇₃, ∇₃_back = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
 
     # Third order solution with pullback
-    (𝐒₃, solved3), S3_back = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.constants, 𝓂.workspaces; initial_guess = 𝓂.caches.third_order_solution, opts = opts)
+    S3_result = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.constants, 𝓂.workspaces; initial_guess = 𝓂.caches.third_order_solution, opts = opts)
+    if S3_result === nothing
+        error("rrule for calculate_third_order_solution returned nothing")
+    end
+    (𝐒₃, solved3), S3_back = S3_result
 
     @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
