@@ -1357,438 +1357,438 @@ function rrule(::typeof(calculate_stochastic_steady_state),
 end
 
 
-# function rrule(::typeof(get_relevant_steady_state_and_state_update),
-#                 ::Val{:second_order},
-#                 parameter_values::Vector{S},
-#                 𝓂::ℳ;
-#                 opts::CalculationOptions = merge_calculation_options(),
-#                 estimation::Bool = false) where S <: AbstractFloat
-#     # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
-#     ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
-#                         parameter_values,
-#                         𝓂;
-#                         opts = opts,
-#                         pruning = false,
-#                         estimation = estimation)
-
-#     if ss_rrule === nothing
-#         y = get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ss_out, ss_pb = ss_rrule
-#     sss = ss_out[1]
-#     converged = ss_out[2]
-#     SS_and_pars = ss_out[3]
-#     solution_error = ss_out[4]
-#     𝐒₁ = ss_out[7]
-#     𝐒₂ = ss_out[8]
-
-#     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
-#         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-#     all_SS = expand_steady_state(SS_and_pars, ms)
-#     state = collect(sss) - all_SS
-
-#     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
-
-#     pullback = function (ȳ)
-#         Δy = unthunk(ȳ)
-#         if Δy isa NoTangent || Δy isa AbstractZero
-#             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-#         end
-
-#         ΔSS_and_pars = Δy[2]
-#         Δ𝐒 = Δy[3]
-#         Δstate = Δy[4]
-
-#         # Guard against NoTangent cotangents from filter failure
-#         Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
-#         Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
-#         Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
-
-#         Δsss = Δstate_val
-#         E = ms.steady_state_expand_matrix
-#         ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
-
-#         ss_grads = ss_pb((Δsss,
-#                             NoTangent(),
-#                             ΔSS_and_pars,
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             Δ𝐒₁,
-#                             Δ𝐒₂))
-
-#         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
-#     end
-
-#     return y, pullback
-# end
-
-# function rrule(::typeof(get_relevant_steady_state_and_state_update),
-#                 ::Val{:pruned_second_order},
-#                 parameter_values::Vector{S},
-#                 𝓂::ℳ;
-#                 opts::CalculationOptions = merge_calculation_options(),
-#                 estimation::Bool = false) where S <: AbstractFloat
-#     # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
-#     ss_rrule = rrule(calculate_second_order_stochastic_steady_state,
-#                         parameter_values,
-#                         𝓂;
-#                         opts = opts,
-#                         pruning = true,
-#                         estimation = estimation)
-
-#     if ss_rrule === nothing
-#         y = get_relevant_steady_state_and_state_update(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ss_out, ss_pb = ss_rrule
-#     sss = ss_out[1]
-#     converged = ss_out[2]
-#     SS_and_pars = ss_out[3]
-#     solution_error = ss_out[4]
-#     𝐒₁ = ss_out[7]
-#     𝐒₂ = ss_out[8]
-#     nVars = 𝓂.constants.post_model_macro.nVars
-
-#     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
-#         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, nVars), zeros(S, nVars)], converged)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-#     all_SS = expand_steady_state(SS_and_pars, ms)
-#     state = [zeros(S, nVars), collect(sss) - all_SS]
-
-#     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
-
-#     pullback = function (ȳ)
-#         Δy = unthunk(ȳ)
-#         if Δy isa NoTangent || Δy isa AbstractZero
-#             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-#         end
-
-#         ΔSS_and_pars = Δy[2]
-#         Δ𝐒 = Δy[3]
-#         Δstate = Δy[4]
-
-#         E = ms.steady_state_expand_matrix
-#         # Guard against NoTangent cotangents from filter failure
-#         Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars)] : Δstate
-#         Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
-#         Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
-
-#         Δsss = Δstate_val[2]
-#         ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
-
-#         ss_grads = ss_pb((Δsss,
-#                             NoTangent(),
-#                             ΔSS_and_pars,
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             Δ𝐒₁,
-#                             Δ𝐒₂))
-
-#         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
-#     end
-
-#     return y, pullback
-# end
-
-# function rrule(::typeof(get_relevant_steady_state_and_state_update),
-#                 ::Val{:third_order},
-#                 parameter_values::Vector{S},
-#                 𝓂::ℳ;
-#                 opts::CalculationOptions = merge_calculation_options(),
-#                 estimation::Bool = false) where S <: AbstractFloat
-#     # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
-#     ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
-#                         parameter_values,
-#                         𝓂;
-#                         opts = opts,
-#                         pruning = false,
-#                         estimation = estimation)
-
-#     if ss_rrule === nothing
-#         y = get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ss_out, ss_pb = ss_rrule
-#     sss = ss_out[1]
-#     converged = ss_out[2]
-#     SS_and_pars = ss_out[3]
-#     solution_error = ss_out[4]
-#     𝐒₁ = ss_out[8]
-#     𝐒₂ = ss_out[9]
-#     𝐒₃ = ss_out[10]
-
-#     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
-#         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-#     all_SS = expand_steady_state(SS_and_pars, ms)
-#     state = collect(sss) - all_SS
-
-#     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
-
-#     pullback = function (ȳ)
-#         Δy = unthunk(ȳ)
-#         if Δy isa NoTangent || Δy isa AbstractZero
-#             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-#         end
-
-#         ΔSS_and_pars = Δy[2]
-#         Δ𝐒 = Δy[3]
-#         Δstate = Δy[4]
-
-#         # Guard against NoTangent cotangents from filter failure
-#         Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
-#         Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
-#         Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
-#         Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
-
-#         Δsss = Δstate_val
-#         E = ms.steady_state_expand_matrix
-#         ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
-
-#         ss_grads = ss_pb((Δsss,
-#                             NoTangent(),
-#                             ΔSS_and_pars,
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             Δ𝐒₁,
-#                             Δ𝐒₂,
-#                             Δ𝐒₃))
-
-#         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
-#     end
-
-#     return y, pullback
-# end
-
-# function rrule(::typeof(get_relevant_steady_state_and_state_update),
-#                 ::Val{:pruned_third_order},
-#                 parameter_values::Vector{S},
-#                 𝓂::ℳ;
-#                 opts::CalculationOptions = merge_calculation_options(),
-#                 estimation::Bool = false) where S <: AbstractFloat
-#     # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
-#     ss_rrule = rrule(calculate_third_order_stochastic_steady_state,
-#                         parameter_values,
-#                         𝓂;
-#                         opts = opts,
-#                         pruning = true,
-#                         estimation = estimation)
-
-#     if ss_rrule === nothing
-#         y = get_relevant_steady_state_and_state_update(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ss_out, ss_pb = ss_rrule
-#     sss = ss_out[1]
-#     converged = ss_out[2]
-#     SS_and_pars = ss_out[3]
-#     solution_error = ss_out[4]
-#     𝐒₁ = ss_out[8]
-#     𝐒₂ = ss_out[9]
-#     𝐒₃ = ss_out[10]
-#     nVars = 𝓂.constants.post_model_macro.nVars
-
-#     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
-#         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)], converged)
-#         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
-#     end
-
-#     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
-#     all_SS = expand_steady_state(SS_and_pars, ms)
-#     state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
-
-#     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
-
-#     pullback = function (ȳ)
-#         Δy = unthunk(ȳ)
-#         if Δy isa NoTangent || Δy isa AbstractZero
-#             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
-#         end
-
-#         ΔSS_and_pars = Δy[2]
-#         Δ𝐒 = Δy[3]
-#         Δstate = Δy[4]
-
-#         E = ms.steady_state_expand_matrix
-#         # Guard against NoTangent cotangents from filter failure
-#         Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)] : Δstate
-#         Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
-#         Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
-#         Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
-
-#         Δsss = Δstate_val[2]
-#         ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
-
-#         ss_grads = ss_pb((Δsss,
-#                             NoTangent(),
-#                             ΔSS_and_pars,
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             NoTangent(),
-#                             Δ𝐒₁,
-#                             Δ𝐒₂,
-#                             Δ𝐒₃))
-
-#         return NoTangent(), NoTangent(), ss_grads[2], NoTangent()
-#     end
-
-#     return y, pullback
-# end
-
-# function rrule(::typeof(get_loglikelihood),
-#                 𝓂::ℳ,
-#                 data::KeyedArray{Float64},
-#                 parameter_values::Vector{S};
-#                 steady_state_function::SteadyStateFunctionType = missing,
-#                 algorithm::Symbol = DEFAULT_ALGORITHM,
-#                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
-#                 on_failure_loglikelihood::U = -Inf,
-#                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
-#                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
-#                 initial_covariance::Symbol = :theoretical,
-#                 filter_algorithm::Symbol = :LagrangeNewton,
-#                 tol::Tolerances = Tolerances(),
-#                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-#                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-#                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-#                 verbose::Bool = DEFAULT_VERBOSE) where {S <: Real, U <: AbstractFloat}
-
-#     opts = merge_calculation_options(tol = tol, verbose = verbose,
-#                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-#                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-#                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-#                             lyapunov_algorithm = lyapunov_algorithm)
-
-#     estimation = true
-
-#     filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
-
-#     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
-
-#     solve!(𝓂, opts = opts, steady_state_function = steady_state_function, algorithm = algorithm)
-
-#     bounds_violated = check_bounds(parameter_values, 𝓂)
-
-#     if bounds_violated
-#         llh = S(on_failure_loglikelihood)
-#         return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
-#     end
-
-#     obs_indices = convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.SS_and_pars_names))
-
-#     # ── step 1: get_relevant_steady_state_and_state_update ──
-#     ss_rrule = rrule(get_relevant_steady_state_and_state_update,
-#                      Val(algorithm), parameter_values, 𝓂;
-#                      opts = opts, estimation = estimation)
-
-#     if ss_rrule === nothing
-#         # fall back to primal-only when no rrule is available
-#         constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(
-#             Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = estimation)
-#         ss_pb = nothing
-#     else
-#         (constants_obj, SS_and_pars, 𝐒, state, solved), ss_pb = ss_rrule
-#     end
-
-#     if !solved
-#         llh = S(on_failure_loglikelihood)
-#         return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
-#     end
-
-#     # ── step 2: data_in_deviations = dt .- SS_and_pars[obs_indices] ──
-#     dt = if collect(axiskeys(data, 1)) isa Vector{String}
-#         collect(rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices)(observables))
-#     else
-#         collect(data(observables))
-#     end
-
-#     data_in_deviations = dt .- SS_and_pars[obs_indices]
-
-#     # ── step 3: calculate_loglikelihood ──
-#     llh_rrule = rrule(calculate_loglikelihood,
-#                       Val(filter), Val(algorithm), obs_indices,
-#                       𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
-#                       warmup_iterations = warmup_iterations,
-#                       presample_periods = presample_periods,
-#                       initial_covariance = initial_covariance,
-#                       filter_algorithm = filter_algorithm,
-#                       opts = opts,
-#                       on_failure_loglikelihood = on_failure_loglikelihood)
-
-#     if llh_rrule === nothing
-#         llh = calculate_loglikelihood(Val(filter), Val(algorithm), obs_indices,
-#                     𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
-#                     warmup_iterations = warmup_iterations,
-#                     presample_periods = presample_periods,
-#                     initial_covariance = initial_covariance,
-#                     filter_algorithm = filter_algorithm,
-#                     opts = opts,
-#                     on_failure_loglikelihood = on_failure_loglikelihood)
-
-#         return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
-#     end
-
-#     llh, llh_pb = llh_rrule
-
-#     # ── pullback ──
-#     pullback = function (∂llh_bar)
-#         ∂llh = unthunk(∂llh_bar)
-
-#         # backprop through calculate_loglikelihood
-#         # returns: (_, _, _, _, ∂𝐒, ∂data_in_deviations, _, ∂state, _)
-#         llh_grads = llh_pb(∂llh)
-#         ∂𝐒              = llh_grads[5]
-#         ∂data_in_devs    = llh_grads[6]
-#         ∂state           = llh_grads[8]
-
-#         # When the filter forward pass fails (non-finite states, factorisation
-#         # failure, etc.) the filter rrule returns on_failure_loglikelihood with
-#         # an all-NoTangent pullback.  The loglikelihood is then a constant, so
-#         # the parameter gradient is exactly zero.
-#         if ∂𝐒 isa Union{NoTangent, AbstractZero}
-#             return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
-#         end
-
-#         # backprop through data_in_deviations = dt .- SS_and_pars[obs_indices]
-#         ∂SS_and_pars = zeros(S, length(SS_and_pars))
-#         if !(∂data_in_devs isa Union{NoTangent, AbstractZero})
-#             ∂SS_and_pars[obs_indices] .-= vec(sum(∂data_in_devs, dims = 2))
-#         end
-
-#         if ss_pb === nothing
-#             return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
-#         end
-
-#         # backprop through get_relevant_steady_state_and_state_update
-#         # cotangent: (Δconstants, ΔSS_and_pars, Δ𝐒, Δstate, Δsolved)
-#         ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒, ∂state, NoTangent()))
-#         ∂parameter_values = ss_grads[3]
-
-#         return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values
-#     end
-
-#     return llh, pullback
-# end
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:second_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_stochastic_steady_state,
+                        Val(:second_order),
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[7]
+    𝐒₂ = ss_out[8]
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = collect(sss) - all_SS
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+
+        Δsss = Δstate_val
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒₁,
+                            Δ𝐒₂))
+
+        return NoTangent(), NoTangent(), ss_grads[3], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:pruned_second_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_stochastic_steady_state,
+                        Val(:pruned_second_order),
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[7]
+    𝐒₂ = ss_out[8]
+    nVars = 𝓂.constants.post_model_macro.nVars
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, nVars), zeros(S, nVars)], converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = [zeros(S, nVars), collect(sss) - all_SS]
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        E = ms.steady_state_expand_matrix
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars)] : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+
+        Δsss = Δstate_val[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒₁,
+                            Δ𝐒₂))
+
+        return NoTangent(), NoTangent(), ss_grads[3], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:third_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_stochastic_steady_state,
+                        Val(:third_order),
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[8]
+    𝐒₂ = ss_out[9]
+    𝐒₃ = ss_out[10]
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = collect(sss) - all_SS
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? zeros(S, length(state)) : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+        Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
+
+        Δsss = Δstate_val
+        E = ms.steady_state_expand_matrix
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒₁,
+                            Δ𝐒₂,
+                            Δ𝐒₃))
+
+        return NoTangent(), NoTangent(), ss_grads[3], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_relevant_steady_state_and_state_update),
+                ::Val{:pruned_third_order},
+                parameter_values::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options(),
+                estimation::Bool = false) where S <: AbstractFloat
+    # Call inner rrule in the forward pass to capture pullback (avoids re-computing in backward)
+    ss_rrule = rrule(calculate_stochastic_steady_state,
+                        Val(:pruned_third_order),
+                        parameter_values,
+                        𝓂;
+                        opts = opts,
+                        estimation = estimation)
+
+    if ss_rrule === nothing
+        y = get_relevant_steady_state_and_state_update(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ss_out, ss_pb = ss_rrule
+    sss = ss_out[1]
+    converged = ss_out[2]
+    SS_and_pars = ss_out[3]
+    solution_error = ss_out[4]
+    𝐒₁ = ss_out[8]
+    𝐒₂ = ss_out[9]
+    𝐒₃ = ss_out[10]
+    nVars = 𝓂.constants.post_model_macro.nVars
+
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)], converged)
+        return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+    state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
+
+    y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
+
+    pullback = function (ȳ)
+        Δy = unthunk(ȳ)
+        if Δy isa NoTangent || Δy isa AbstractZero
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+
+        ΔSS_and_pars = Δy[2]
+        Δ𝐒 = Δy[3]
+        Δstate = Δy[4]
+
+        E = ms.steady_state_expand_matrix
+        # Guard against NoTangent cotangents from filter failure
+        Δstate_val = Δstate isa Union{NoTangent, AbstractZero} ? [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)] : Δstate
+        Δ𝐒₁ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₁)) : Δ𝐒[1]
+        Δ𝐒₂ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Δ𝐒[2]
+        Δ𝐒₃ = Δ𝐒 isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₃)) : Δ𝐒[3]
+
+        Δsss = Δstate_val[2]
+        ΔSS_and_pars = ΔSS_and_pars - E' * Δstate_val[2]
+
+        ss_grads = ss_pb((Δsss,
+                            NoTangent(),
+                            ΔSS_and_pars,
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            NoTangent(),
+                            Δ𝐒₁,
+                            Δ𝐒₂,
+                            Δ𝐒₃))
+
+        return NoTangent(), NoTangent(), ss_grads[3], NoTangent()
+    end
+
+    return y, pullback
+end
+
+function rrule(::typeof(get_loglikelihood),
+                𝓂::ℳ,
+                data::KeyedArray{Float64},
+                parameter_values::Vector{S};
+                steady_state_function::SteadyStateFunctionType = missing,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
+                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                on_failure_loglikelihood::U = -Inf,
+                warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                initial_covariance::Symbol = :theoretical,
+                filter_algorithm::Symbol = :LagrangeNewton,
+                tol::Tolerances = Tolerances(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                verbose::Bool = DEFAULT_VERBOSE) where {S <: Real, U <: AbstractFloat}
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            lyapunov_algorithm = lyapunov_algorithm)
+
+    estimation = true
+
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
+
+    solve!(𝓂, opts = opts, steady_state_function = steady_state_function, algorithm = algorithm)
+
+    bounds_violated = check_bounds(parameter_values, 𝓂)
+
+    if bounds_violated
+        llh = S(on_failure_loglikelihood)
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+    end
+
+    obs_indices = convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.SS_and_pars_names))
+
+    # ── step 1: get_relevant_steady_state_and_state_update ──
+    ss_rrule = rrule(get_relevant_steady_state_and_state_update,
+                     Val(algorithm), parameter_values, 𝓂;
+                     opts = opts, estimation = estimation)
+
+    if ss_rrule === nothing
+        # fall back to primal-only when no rrule is available
+        constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(
+            Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = estimation)
+        ss_pb = nothing
+    else
+        (constants_obj, SS_and_pars, 𝐒, state, solved), ss_pb = ss_rrule
+    end
+
+    if !solved
+        llh = S(on_failure_loglikelihood)
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+    end
+
+    # ── step 2: data_in_deviations = dt .- SS_and_pars[obs_indices] ──
+    dt = if collect(axiskeys(data, 1)) isa Vector{String}
+        collect(rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices)(observables))
+    else
+        collect(data(observables))
+    end
+
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
+
+    # ── step 3: calculate_loglikelihood ──
+    llh_rrule = rrule(calculate_loglikelihood,
+                      Val(filter), Val(algorithm), obs_indices,
+                      𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
+                      warmup_iterations = warmup_iterations,
+                      presample_periods = presample_periods,
+                      initial_covariance = initial_covariance,
+                      filter_algorithm = filter_algorithm,
+                      opts = opts,
+                      on_failure_loglikelihood = on_failure_loglikelihood)
+
+    if llh_rrule === nothing
+        llh = calculate_loglikelihood(Val(filter), Val(algorithm), obs_indices,
+                    𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
+                    warmup_iterations = warmup_iterations,
+                    presample_periods = presample_periods,
+                    initial_covariance = initial_covariance,
+                    filter_algorithm = filter_algorithm,
+                    opts = opts,
+                    on_failure_loglikelihood = on_failure_loglikelihood)
+
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+    end
+
+    llh, llh_pb = llh_rrule
+
+    # ── pullback ──
+    pullback = function (∂llh_bar)
+        ∂llh = unthunk(∂llh_bar)
+
+        # backprop through calculate_loglikelihood
+        # returns: (_, _, _, _, ∂𝐒, ∂data_in_deviations, _, ∂state, _)
+        llh_grads = llh_pb(∂llh)
+        ∂𝐒              = llh_grads[5]
+        ∂data_in_devs    = llh_grads[6]
+        ∂state           = llh_grads[8]
+
+        # When the filter forward pass fails (non-finite states, factorisation
+        # failure, etc.) the filter rrule returns on_failure_loglikelihood with
+        # an all-NoTangent pullback.  The loglikelihood is then a constant, so
+        # the parameter gradient is exactly zero.
+        if ∂𝐒 isa Union{NoTangent, AbstractZero}
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
+        end
+
+        # backprop through data_in_deviations = dt .- SS_and_pars[obs_indices]
+        ∂SS_and_pars = zeros(S, length(SS_and_pars))
+        if !(∂data_in_devs isa Union{NoTangent, AbstractZero})
+            ∂SS_and_pars[obs_indices] .-= vec(sum(∂data_in_devs, dims = 2))
+        end
+
+        if ss_pb === nothing
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
+        end
+
+        # backprop through get_relevant_steady_state_and_state_update
+        # cotangent: (Δconstants, ΔSS_and_pars, Δ𝐒, Δstate, Δsolved)
+        ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒, ∂state, NoTangent()))
+        ∂parameter_values = ss_grads[3]
+
+        return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values
+    end
+
+    return llh, pullback
+end
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
