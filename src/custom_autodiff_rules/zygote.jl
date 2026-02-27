@@ -2909,11 +2909,12 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ###
         # B = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
-        ∂tmpkron += 𝐔₃t * ∂B * 𝐂₃t
-        ∂tmpkron += M₃.𝐏₁ₗ̄' * 𝐔₃t * ∂B * 𝐂₃t * M₃𝐏₁ᵣ̃t
-        ∂tmpkron += M₃.𝐏₂ₗ̄' * 𝐔₃t * ∂B * 𝐂₃t * M₃𝐏₂ᵣ̃t
+        ∂B̃ = 𝐔₃t * ∂B * 𝐂₃t
+        ∂tmpkron += ∂B̃
+        ∂tmpkron += M₃.𝐏₁ₗ̄' * ∂B̃ * M₃𝐏₁ᵣ̃t
+        ∂tmpkron += M₃.𝐏₂ₗ̄' * ∂B̃ * M₃𝐏₂ᵣ̃t
 
-        ∂kronkron𝐒₁₋╱𝟏ₑ = 𝐔₃t * ∂B * 𝐂₃t
+        ∂kronkron𝐒₁₋╱𝟏ₑ = ∂B
 
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, ∂kronkron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)
         
