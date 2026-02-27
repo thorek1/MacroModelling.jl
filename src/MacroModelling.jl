@@ -4546,26 +4546,26 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 end
 
 
-function _calculate_stochastic_steady_state_common_terms(parameters::Vector{M},
-                                                         𝓂::ℳ;
-                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                         estimation::Bool = false) where M
+function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
+                                                     𝓂::ℳ;
+                                                     opts::CalculationOptions = merge_calculation_options(),
+                                                     estimation::Bool = false) where M
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (ok = false,
-                all_SS = zeros(M, T.nVars),
-                SS_and_pars = SS_and_pars,
-                solution_error = solution_error,
-                ∇₁ = zeros(M,0,0),
-                ∇₂ = spzeros(M,0,0),
-                𝐒₁ = zeros(M,0,0),
-                𝐒₂ = spzeros(M,0,0),
-                SSSstates = zeros(M,0),
-                constants = constants)
+        return (false,
+            zeros(M, T.nVars),
+            SS_and_pars,
+            solution_error,
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0),
+            constants)
     end
 
     ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
@@ -4584,16 +4584,16 @@ function _calculate_stochastic_steady_state_common_terms(parameters::Vector{M},
 
     if !solved
         if opts.verbose println("1st order solution not found") end
-        return (ok = false,
-                all_SS = all_SS,
-                SS_and_pars = SS_and_pars,
-                solution_error = solution_error,
-                ∇₁ = zeros(M,0,0),
-                ∇₂ = spzeros(M,0,0),
-                𝐒₁ = zeros(M,0,0),
-                𝐒₂ = spzeros(M,0,0),
-                SSSstates = zeros(M,0),
-                constants = constants)
+        return (false,
+            all_SS,
+            SS_and_pars,
+            solution_error,
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0),
+            constants)
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
@@ -4607,16 +4607,16 @@ function _calculate_stochastic_steady_state_common_terms(parameters::Vector{M},
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
-        return (ok = false,
-                all_SS = all_SS,
-                SS_and_pars = SS_and_pars,
-                solution_error = solution_error,
-                ∇₁ = zeros(M,0,0),
-                ∇₂ = spzeros(M,0,0),
-                𝐒₁ = zeros(M,0,0),
-                𝐒₂ = spzeros(M,0,0),
-                SSSstates = zeros(M,0),
-                constants = constants)
+        return (false,
+            all_SS,
+            SS_and_pars,
+            solution_error,
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0),
+            constants)
     end
 
     𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
@@ -4627,30 +4627,30 @@ function _calculate_stochastic_steady_state_common_terms(parameters::Vector{M},
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
-        return (ok = false,
-                all_SS = all_SS,
-                SS_and_pars = SS_and_pars,
-                solution_error = solution_error,
-                ∇₁ = zeros(M,0,0),
-                ∇₂ = spzeros(M,0,0),
-                𝐒₁ = zeros(M,0,0),
-                𝐒₂ = spzeros(M,0,0),
-                SSSstates = zeros(M,0),
-                constants = constants)
+        return (false,
+            all_SS,
+            SS_and_pars,
+            solution_error,
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0,0),
+            spzeros(M,0,0),
+            zeros(M,0),
+            constants)
     end
 
     SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
-    return (ok = true,
-            all_SS = all_SS,
-            SS_and_pars = SS_and_pars,
-            solution_error = solution_error,
-            ∇₁ = ∇₁,
-            ∇₂ = ∇₂,
-            𝐒₁ = 𝐒₁,
-            𝐒₂ = 𝐒₂,
-            SSSstates = SSSstates,
-            constants = constants)
+        return (true,
+            all_SS,
+            SS_and_pars,
+            solution_error,
+            ∇₁,
+            ∇₂,
+            𝐒₁,
+            𝐒₂,
+            SSSstates,
+            constants)
 end
 
 function calculate_stochastic_steady_state(::Val{:second_order},
@@ -4658,26 +4658,27 @@ function calculate_stochastic_steady_state(::Val{:second_order},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M
-    common = _calculate_stochastic_steady_state_common_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
 
-    if !common.ok
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+    if !ok
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     so = 𝓂.constants.second_order
     kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
-    A = common.𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B̂ = common.𝐒₂[:,kron_s⁺_s⁺]
+    A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
+    B̂ = 𝐒₂[:,kron_s⁺_s⁺]
 
-    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:second_order), common.𝐒₁, common.𝐒₂, collect(common.SSSstates), 𝓂)
+    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:second_order), 𝐒₁, 𝐒₂, collect(SSSstates), 𝓂)
 
     if !converged
         if opts.verbose println("SSS not found") end
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
-    return common.all_SS + Vector{M}(state), converged, common.SS_and_pars, common.solution_error, common.∇₁, common.∇₂, common.𝐒₁, common.𝐒₂
+    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_second_order},
@@ -4685,16 +4686,17 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M
-    common = _calculate_stochastic_steady_state_common_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
 
-    if !common.ok
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
+    if !ok
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    state = common.𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * common.SSSstates +
-            common.𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
+    state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates +
+            𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
 
-    return common.all_SS + Vector{M}(state), true, common.SS_and_pars, common.solution_error, common.∇₁, common.∇₂, common.𝐒₁, common.𝐒₂
+    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
@@ -4772,15 +4774,18 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M <: Real
-    common = _calculate_stochastic_steady_state_common_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
 
-    if !common.ok
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
+    if !ok
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, common.SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
-    𝐒₃, solved3 = calculate_third_order_solution(common.∇₁, common.∇₂, ∇₃, common.𝐒₁, common.𝐒₂,
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
                                                  𝓂.constants,
                                                  𝓂.workspaces,
                                                  𝓂.caches;
@@ -4791,7 +4796,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
@@ -4807,20 +4812,20 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
 
-    A = common.𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B̂ = common.𝐒₂[:,kron_s⁺_s⁺]
+    A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
+    B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
 
-    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:third_order), common.𝐒₁, common.𝐒₂, 𝐒₃̂, collect(common.SSSstates), 𝓂)
+    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:third_order), 𝐒₁, 𝐒₂, 𝐒₃̂, collect(SSSstates), 𝓂)
 
     if !converged
         if opts.verbose println("SSS not found") end
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1), ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
 
-    return common.all_SS + Vector{M}(state), converged, common.SS_and_pars, common.solution_error, common.∇₁, common.∇₂, ∇₃, common.𝐒₁, common.𝐒₂, 𝐒₃̂
+    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_third_order},
@@ -4828,15 +4833,18 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M <: Real
-    common = _calculate_stochastic_steady_state_common_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
 
-    if !common.ok
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
+    if !ok
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, common.SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
-    𝐒₃, solved3 = calculate_third_order_solution(common.∇₁, common.∇₂, ∇₃, common.𝐒₁, common.𝐒₂,
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
                                                  𝓂.constants,
                                                  𝓂.workspaces,
                                                  𝓂.caches;
@@ -4847,7 +4855,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
-        return common.all_SS, false, common.SS_and_pars, common.solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
@@ -4860,9 +4868,9 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
 
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
-    state = common.𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * common.SSSstates + common.𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+    state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
-    return common.all_SS + Vector{M}(state), true, common.SS_and_pars, common.solution_error, common.∇₁, common.∇₂, ∇₃, common.𝐒₁, common.𝐒₂, 𝐒₃̂
+    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
