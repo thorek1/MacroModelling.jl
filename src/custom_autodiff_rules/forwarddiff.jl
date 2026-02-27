@@ -24,13 +24,12 @@ function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_wor
     sparse(Ŝ)
 end
 
-function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+function solve_stochastic_steady_state_newton(::Val{:second_order}, 
+                                              𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
+                                              𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                              x::Vector{ℱ.Dual{Z,S,N}},
+                                              𝓂::ℳ;
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -105,13 +104,13 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     end, size(x̂)), solved
 end
 
-function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+function solve_stochastic_steady_state_newton(::Val{:third_order}, 
+                                              𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
+                                              𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                              𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
+                                              x::Vector{ℱ.Dual{Z,S,N}},
+                                              𝓂::ℳ;
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
