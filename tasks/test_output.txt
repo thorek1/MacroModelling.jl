@@ -1,0 +1,222 @@
+Precompiling packages...
+   1075.7 ms  ✓ ConcreteStructs
+   1216.0 ms  ✓ LaTeXStrings
+    950.0 ms  ✓ IteratorInterfaceExtensions
+   1122.8 ms  ✓ ExprTools
+   2319.7 ms  ✓ Combinatorics
+   1898.3 ms  ✓ ADTypes
+   4114.3 ms  ✓ LinearMaps
+   5148.1 ms  ✓ FunctionWrappers
+   1158.1 ms  ✓ CommonEq
+   1265.6 ms  ✓ UnPack
+   2549.0 ms  ✓ OffsetArrays
+   4892.3 ms  ✓ CEnum
+   1309.2 ms  ✓ IntegerMathUtils
+   1144.8 ms  ✓ InverseFunctions
+   1238.2 ms  ✓ Statistics
+   3654.2 ms  ✓ Format
+   1027.9 ms  ✓ CommonSolve
+   7702.0 ms  ✓ ExproniconLite
+   1179.4 ms  ✓ ManualMemory
+   1429.0 ms  ✓ CompositeTypes
+    984.1 ms  ✓ DataValueInterfaces
+   2224.4 ms  ✓ Requires
+   1298.6 ms  ✓ EnumX
+    984.3 ms  ✓ WeakCacheSets
+   4891.3 ms  ✓ Grisu
+   1171.3 ms  ✓ Reexport
+   1006.6 ms  ✓ SIMDTypes
+   1422.9 ms  ✓ DocStringExtensions
+   4819.3 ms  ✓ OrderedCollections
+   1589.7 ms  ✓ AbstractTrees
+   1441.3 ms  ✓ UnsafePointers
+   1596.4 ms  ✓ IntervalSets
+   1122.2 ms  ✓ CompositionsBase
+   8779.8 ms  ✓ MacroTools
+   1189.4 ms  ✓ TaskLocalValues
+    927.5 ms  ✓ ReadOnlyArrays
+   1885.8 ms  ✓ Subscripts
+   1266.3 ms  ✓ IfElse
+    996.6 ms  ✓ CommonWorldInvalidations
+    830.0 ms  ✓ DataAPI
+   1132.2 ms  ✓ FastClosures
+   4228.4 ms  ✓ NaNMath
+   3826.0 ms  ✓ ConstructionBase
+   7193.2 ms  ✓ IrrationalConstants
+   1210.0 ms  ✓ TermInterface
+   1335.2 ms  ✓ SciMLPublic
+    984.3 ms  ✓ Suppressor
+   1329.0 ms  ✓ StaticArraysCore
+   3781.6 ms  ✓ FastLapackInterface
+   1778.1 ms  ✓ BlockTriangularForm
+   2076.5 ms  ✓ ThreadedSparseArrays
+   1125.6 ms  ✓ Scratch
+   4567.2 ms  ✓ Bijections
+   1554.6 ms  ✓ LoggingExtras
+   1782.3 ms  ✓ CpuId
+   4485.6 ms  ✓ StructUtils
+   1902.2 ms  ✓ Preferences
+   1196.5 ms  ✓ Pidfile
+    941.7 ms  ✓ TableTraits
+   2226.7 ms  ✓ AbstractPlutoDingetjes
+   5158.0 ms  ✓ Compat
+   4075.7 ms  ✓ RuntimeGeneratedFunctions
+   4973.1 ms  ✓ DifferentiationInterface
+   3193.6 ms  ✓ LinearMaps → LinearMapsSparseArraysExt
+   9361.1 ms  ✓ TimerOutputs
+  17522.1 ms  ✓ Krylov
+    746.5 ms  ✓ FunctionWrappersWrappers
+   7316.8 ms  ✓ MatrixEquations
+   1600.0 ms  ✓ InverseFunctions → InverseFunctionsTestExt
+   1932.7 ms  ✓ Primes
+   1411.0 ms  ✓ InverseFunctions → InverseFunctionsDatesExt
+   1364.8 ms  ✓ LinearMaps → LinearMapsStatisticsExt
+   2022.6 ms  ✓ Statistics → SparseArraysExt
+   3425.6 ms  ✓ NamedDims
+  16705.7 ms  ✓ MutableArithmetics
+   1457.4 ms  ✓ Adapt
+   1036.6 ms  ✓ Showoff
+   1278.5 ms  ✓ IntervalSets → IntervalSetsRandomExt
+   1412.1 ms  ✓ IntervalSets → IntervalSetsStatisticsExt
+   5218.4 ms  ✓ Jieko
+   1373.4 ms  ✓ CompositionsBase → CompositionsBaseInverseFunctionsExt
+   1028.2 ms  ✓ ConstructionBase → ConstructionBaseIntervalSetsExt
+   1164.9 ms  ✓ CommonSubexpressions
+   5431.1 ms  ✓ ThreadingUtilities
+   1331.3 ms  ✓ ConstructionBase → ConstructionBaseLinearAlgebraExt
+    843.4 ms  ✓ ADTypes → ADTypesConstructionBaseExt
+   1217.4 ms  ✓ DiffResults
+    842.5 ms  ✓ PrecompileTools
+   1677.9 ms  ✓ LogExpFunctions
+   5312.7 ms  ✓ DataStructures
+   1615.6 ms  ✓ JLLWrappers
+   1527.6 ms  ✓ SciMLLogging
+   1388.5 ms  ✓ Compat → CompatLinearAlgebraExt
+   1719.7 ms  ✓ DifferentiationInterface → DifferentiationInterfaceSparseArraysExt
+   1217.6 ms  ✓ Adapt → AdaptSparseArraysExt
+   1329.4 ms  ✓ GPUArraysCore
+   4731.6 ms  ✓ Tables
+   1051.3 ms  ✓ OffsetArrays → OffsetArraysAdaptExt
+   3687.0 ms  ✓ ArrayInterface
+   4608.4 ms  ✓ LinearOperators
+   6257.9 ms  ✓ DispatchDoctor
+   2974.4 ms  ✓ Setfield
+   5300.2 ms  ✓ RecipesBase
+   4264.9 ms  ✓ SparseBandedMatrices
+   8954.6 ms  ✓ Accessors
+    947.7 ms  ✓ LogExpFunctions → LogExpFunctionsInverseFunctionsExt
+   7156.1 ms  ✓ MultivariatePolynomials
+   1833.5 ms  ✓ DynarePreprocessor_jll
+  12733.2 ms  ✓ Static
+   2924.2 ms  ✓ JpegTurbo_jll
+   3591.1 ms  ✓ IntelOpenMP_jll
+   2187.4 ms  ✓ NLopt_jll
+  25499.5 ms  ✓ StaticArrays
+   4607.2 ms  ✓ oneTBB_jll
+   3386.3 ms  ✓ micromamba_jll
+   3367.6 ms  ✓ pixi_jll
+   2048.1 ms  ✓ OpenSpecFun_jll
+    957.3 ms  ✓ DifferentiationInterface → DifferentiationInterfaceGPUArraysCoreExt
+   1195.8 ms  ✓ StructUtils → StructUtilsTablesExt
+  32117.2 ms  ✓ Moshi
+   1385.2 ms  ✓ ArrayInterface → ArrayInterfaceGPUArraysCoreExt
+   1976.5 ms  ✓ ArrayInterface → ArrayInterfaceSparseArraysExt
+   1333.0 ms  ✓ ArrayInterface → ArrayInterfaceStaticArraysCoreExt
+   7768.2 ms  ✓ ChainRulesCore
+   5700.4 ms  ✓ AxisKeys
+   1404.8 ms  ✓ IntervalSets → IntervalSetsRecipesBaseExt
+   1447.7 ms  ✓ Accessors → LinearAlgebraExt
+   3549.2 ms  ✓ PreallocationTools
+   5109.0 ms  ✓ SciMLStructures
+   1598.3 ms  ✓ Accessors → IntervalSetsExt
+   1939.7 ms  ✓ Accessors → TestExt
+   1471.1 ms  ✓ BitTwiddlingConvenienceFunctions
+   3477.1 ms  ✓ CPUSummary
+   4492.8 ms  ✓ Ghostscript_jll
+  38406.8 ms  ✓ Parsers
+   2469.8 ms  ✓ NLopt
+   1694.1 ms  ✓ StaticArrays → StaticArraysStatisticsExt
+   8170.2 ms  ✓ DynamicPolynomials
+   1438.6 ms  ✓ ConstructionBase → ConstructionBaseStaticArraysExt
+   1607.3 ms  ✓ DifferentiationInterface → DifferentiationInterfaceStaticArraysExt
+   1692.6 ms  ✓ Adapt → AdaptStaticArraysExt
+   1726.0 ms  ✓ Accessors → StaticArraysExt
+   5949.5 ms  ✓ DomainSets
+   5996.5 ms  ✓ MicroMamba
+   4870.4 ms  ✓ ChainRulesCore → ChainRulesCoreSparseArraysExt
+   1622.0 ms  ✓ ADTypes → ADTypesChainRulesCoreExt
+   7557.6 ms  ✓ SpecialFunctions
+   1298.2 ms  ✓ LinearMaps → LinearMapsChainRulesCoreExt
+   1426.1 ms  ✓ DifferentiationInterface → DifferentiationInterfaceChainRulesCoreExt
+  10414.7 ms  ✓ MKL_jll
+   1360.8 ms  ✓ ArrayInterface → ArrayInterfaceChainRulesCoreExt
+   1709.0 ms  ✓ DispatchDoctor → DispatchDoctorChainRulesCoreExt
+   2128.4 ms  ✓ LinearOperators → LinearOperatorsChainRulesCoreExt
+   4714.5 ms  ✓ NamedDims → ChainRulesCoreExt
+   4426.6 ms  ✓ LogExpFunctions → LogExpFunctionsChainRulesCoreExt
+   1882.9 ms  ✓ AxisKeys → ChainRulesCoreExt
+   1845.6 ms  ✓ AxisKeys → StatisticsExt
+   4318.7 ms  ✓ StaticArrays → StaticArraysChainRulesCoreExt
+   1811.5 ms  ✓ AxisKeys → OffsetArraysExt
+   2488.7 ms  ✓ Accessors → AxisKeysExt
+   6107.4 ms  ✓ MultivariatePolynomials → MultivariatePolynomialsChainRulesCoreExt
+   2249.6 ms  ✓ PolyesterWeave
+   3090.4 ms  ✓ HostCPUFeatures
+   6702.8 ms  ✓ SymbolicIndexingInterface
+  31821.5 ms  ✓ StaticArrayInterface
+   7752.7 ms  ✓ SciMLOperators
+   2203.9 ms  ✓ DomainSets → DomainSetsRandomExt
+   1658.2 ms  ✓ DiffRules
+   4372.0 ms  ✓ SpecialFunctions → SpecialFunctionsChainRulesCoreExt
+   1570.0 ms  ✓ StaticArrayInterface → StaticArrayInterfaceStaticArraysExt
+   1294.4 ms  ✓ StaticArrayInterface → StaticArrayInterfaceOffsetArraysExt
+  11250.7 ms  ✓ Latexify
+   1394.8 ms  ✓ CloseOpenIntervals
+   1738.2 ms  ✓ LayoutPointers
+   1869.0 ms  ✓ SciMLOperators → SciMLOperatorsStaticArraysCoreExt
+   1988.3 ms  ✓ SciMLOperators → SciMLOperatorsSparseArraysExt
+  15120.5 ms  ✓ JSON
+   2152.6 ms  ✓ Latexify → SparseArraysExt
+  16248.9 ms  ✓ RecursiveArrayTools
+   2494.3 ms  ✓ StrideArraysCore
+  11677.1 ms  ✓ ForwardDiff
+  10648.6 ms  ✓ SymPyCore
+   1563.7 ms  ✓ RecursiveArrayTools → RecursiveArrayToolsStatisticsExt
+   2073.0 ms  ✓ RecursiveArrayTools → RecursiveArrayToolsSparseArraysExt
+   1477.5 ms  ✓ RecursiveArrayTools → RecursiveArrayToolsTablesExt
+   1799.7 ms  ✓ ForwardDiff → ForwardDiffStaticArraysExt
+   2167.2 ms  ✓ Polyester
+   2141.6 ms  ✓ PreallocationTools → PreallocationToolsForwardDiffExt
+   1528.8 ms  ✓ RecursiveArrayTools → RecursiveArrayToolsForwardDiffExt
+  10292.8 ms  ✓ CondaPkg
+   5114.7 ms  ✓ DifferentiationInterface → DifferentiationInterfaceForwardDiffExt
+  23302.6 ms  ✓ VectorizationBase
+   4255.2 ms  ✓ SLEEFPirates
+   4543.4 ms  ✓ VectorizedRNG
+   2157.8 ms  ✓ VectorizedRNG → VectorizedRNGStaticArraysExt
+  30393.7 ms  ✓ SciMLBase
+   2803.4 ms  ✓ SciMLBase → SciMLBaseChainRulesCoreExt
+   3453.7 ms  ✓ SciMLBase → SciMLBaseDifferentiationInterfaceExt
+   5784.5 ms  ✓ SciMLBase → SciMLBaseForwardDiffExt
+  58235.5 ms  ✓ PythonCall
+  29339.0 ms  ✓ LinearSolve
+   7051.8 ms  ✓ LinearSolve → LinearSolveForwardDiffExt
+   3904.6 ms  ✓ LinearSolve → LinearSolveFastLapackInterfaceExt
+  75268.0 ms  ✓ LoopVectorization
+  13530.9 ms  ✓ LinearSolve → LinearSolveSparseArraysExt
+   2473.8 ms  ✓ LoopVectorization → SpecialFunctionsExt
+  32497.4 ms  ✓ SciMLBase → SciMLBasePythonCallExt
+   5283.4 ms  ✓ LoopVectorization → ForwardDiffExt
+   4525.2 ms  ✓ TriangularSolve
+SymPyPythonCall Waiting for background task / IO / timer.
+[pid 13468] waiting for IO to finish:
+ Handle type        uv_handle_t->data
+ timer              0x38294870->0x7fa034fe3510
+This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+  45099.3 ms  ✓ SymPyPythonCall
+  17038.9 ms  ✓ RecursiveFactorization
+   2527.9 ms  ✓ LinearSolve → LinearSolveRecursiveFactorizationExt
+ 255149.6 ms  ✓ SymbolicUtils
+   3292.1 ms  ✓ SymbolicUtils → SymbolicUtilsChainRulesCoreExt
+   3504.6 ms  ✓ SymPyCore → SymPyCoreSymbolicUtilsExt
+   4547.7 ms  ✓ SymbolicLimits
