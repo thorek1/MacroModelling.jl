@@ -15,4 +15,5 @@
 - When caching kron-based index sets (e.g. `shockvar_idxs` in `ensure_computational_constants!`), verify that the basis vectors match each consumer. The pruned variants use `s_in_s` (states without volatility) while the cache computes `kron(e_in_s⁺, s_in_s⁺)` (with volatility). Always compare the original inline computation against the cached version before substituting.
 - `replace_string_in_file` cannot match strings containing multibyte Unicode characters (Δ, ∂, ℒ, x̂, B̂, Ĉ, etc.). Use Python `open(file, 'r', encoding='utf-8')` with line-index-based replacement for reliable editing of Julia files with mathematical Unicode identifiers.
 - `copy(X) * 0` is doubly wasteful — it allocates the copy then multiplies by zero. Use `zero(X)` instead for a single allocation.
+- In higher-order ChainRules pullbacks, `so3_tangents[...]` entries can be `NoTangent` when only a subset of outputs is active (e.g. Jacobian wrt `SS_and_pars` only). Always coerce each tangent to a typed zero before indexed assignment.
 

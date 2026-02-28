@@ -5744,6 +5744,25 @@ function take_nth_order_derivatives(
                     local X_col_idx # Column index in the final spX_order_n matrix (1 to X_ncols_n)
 
                     if output_compressed
+                        # For compressed output, only include entries where variable indices
+                        # are in non-increasing order (v_n <= v_{n-1} <= ... <= v_1).
+                        # This matches the compression rule used for the X-matrix.
+                        # Unsorted tuples represent the same derivative (by symmetry of
+                        # mixed partials) but the compressed column formula maps them to
+                        # WRONG positions, corrupting the Jacobian.
+                        is_compressed_P = true
+                        for k_rule = 1:(n-1)
+                            if var_indices_full[n-k_rule+1] > var_indices_full[n-k_rule]
+                                is_compressed_P = false
+                                break
+                            end
+                        end
+
+                        if !is_compressed_P
+                            k_temp_P += 1
+                            continue
+                        end
+
                         # Calculate the compressed column index
                         compressed_col_idx = 0
                         for k_formula = 1:(n-1)

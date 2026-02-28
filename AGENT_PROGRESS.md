@@ -216,3 +216,99 @@
 - Item 6: Pre-allocate pullback gradient accumulators — move `zero()` allocations from inside pullback closures to forward pass scope (~20+ allocations per pullback in inversion filter rrules).
 - Optional: replace per-timestep `ℒ.kron(...)` calls inside pullback loops with `ℒ.kron!()` and pre-allocated buffers.
 
+## Session: 2026-02-27 (rrule signature migration follow-up)
+
+### Completed
+- Updated `rrule(::typeof(get_relevant_steady_state_and_state_update), ...)` higher-order variants in `src/custom_autodiff_rules/zygote.jl` to call the new API:
+	- `rrule(calculate_stochastic_steady_state, Val(:second_order), ...)`
+	- `rrule(calculate_stochastic_steady_state, Val(:pruned_second_order), ...)`
+	- `rrule(calculate_stochastic_steady_state, Val(:third_order), ...)`
+	- `rrule(calculate_stochastic_steady_state, Val(:pruned_third_order), ...)`
+- Fixed pullback tangent index mapping after adding the `Val(...)` argument:
+	- changed `ss_grads[2]` → `ss_grads[3]` in all four `get_relevant_steady_state_and_state_update` higher-order pullbacks.
+
+### Validation
+- Command: `~/.juliaup/bin/julia --project=test tasks/test_get_loglikelihood_rrule.jl`
+- Results:
+	- `caldara_third_order`: `primal=-283.5304784490986`, `grad_norm=11018.921925125516`, `grad_len=10`, `PASS`
+	- `caldara_pruned_third_order`: `primal=-478.51170758012853`, `grad_norm=25116.677341363575`, `grad_len=10`, `PASS`
+
+## Session: 2026-02-27 (compare_ss_and_pars_jacobian_caldara Zygote fix)
+
+### Completed
+- Updated `tasks/compare_ss_and_pars_jacobian_caldara.jl` to make AD sections independently runnable via env toggles and to run `Zygote` before other Jacobian methods:
+	- `RUN_FD` (default `true`)
+	- `RUN_FWD` (default `true`)
+	- `RUN_ZYG` (default `true`)
+- Fixed `NoTangent` handling in higher-order Zygote pullbacks in `src/custom_autodiff_rules/zygote.jl`:
+	- guarded `so3_tangents[2:6]` in both third-order and pruned-third-order stochastic steady-state pullbacks.
+	- replaced direct use of possible `NoTangent` values with typed zero fallbacks (`zero(∇₁)`, `zero(∇₂)`, `zero(∇₃)`, `zero(𝐒₁_raw)`, `zero(𝐒₂)`).
+- Hardened `rrule(::typeof(get_relevant_steady_state_and_state_update), ::Val{:third_order}, ...)` against zero cotangents by using typed zero fallbacks for `ΔSS_and_pars`, `Δ𝐒₁`, `Δ𝐒₂`, `Δ𝐒₃`.
+- Removed temporary debug print `"Returning from third order rrule"`.
+
+### Validation
+- Command: `RUN_FD=false RUN_FWD=false RUN_ZYG=true ~/.juliaup/bin/julia --project=. tasks/compare_ss_and_pars_jacobian_caldara.jl`
+- Results (`ALGORITHM=third_order`):
+	- `Computing Zygote Jacobian...`
+	- `done - norm(J_zyg) = 684.45680426015`
+	- exit code `0`
+- Command: `ALGORITHM=pruned_third_order RUN_FD=false RUN_FWD=false RUN_ZYG=true ~/.juliaup/bin/julia --project=. tasks/compare_ss_and_pars_jacobian_caldara.jl`
+- Results:
+	- `Computing Zygote Jacobian...`
+	- `done - norm(J_zyg) = 684.45680426015`
+	- exit code `0`
+
+## Session: Custom rrule for calculate_third_order_solution
+
+### Completed
+- Implemented analytical pullback for `calculate_third_order_solution` in `src/custom_autodiff_rules/zygote.jl` (replaces ForwardDiff-inside-Zygote approach).
+- Pullback covers all 5 input arguments: ∂∇₃, ∂∇₂, ∂𝐒₂, ∂∇₁, ∂𝑺₁.
+- Added 6 buffer fields to `third_order_solution_caches` in `src/structures.jl` and corresponding initializers in `src/options_and_caches.jl`.
+- Forward pass in rrule mirrors primal logic and stores all intermediates needed for adjoint.
+- Adjoint Sylvester equation solved via `sylvester_solv!` to obtain `∂C_adj` from `∂𝐒₃`.
+- Decompose `∂C_adj` into `∂A`, `∂B`, `∂C` contributions through the Sylvester structure.
+- Fixed critical bug in `compressed_kron³_pullback!`: was using sparsity pattern (`ui`/`uj` from `findnz(sparse(X))`) to limit iteration bounds. This works for forward pass (zero entries → zero products) but is WRONG for pullback (derivative at zero entry can be nonzero: ∂(a·b·c)/∂a|_{a=0} = b·c ≠ 0). Fix: iterate over `1:n_rows` and `1:n_cols` instead.
+- Cleaned up all debug instrumentation (print statements, snapshot variables).
+
+### Validation
+- All 5 pullback blocks pass against finite differences (Caldara_et_al_2012 model):
+	- ∂∇₃: relative norm = 4.44e-11 ✓
+	- ∂∇₂: relative norm = 3.90e-10 ✓
+	- ∂𝐒₂: relative norm = 2.50e-10 ✓
+	- ∂∇₁: relative norm = 2.62e-11 ✓
+	- ∂𝑺₁: relative norm = 2.63e-10 ✓
+
+### Test files (in tasks/)
+- `test_third_order_rrule_grad3.jl` — ∂∇₃ test
+- `test_third_order_rrule_grad2.jl` — ∂∇₂ test
+- `test_third_order_rrule_s2.jl` — ∂𝐒₂ test
+- `test_third_order_rrule_grad1.jl` — ∂∇₁ test
+- `test_third_order_rrule_s1.jl` — ∂𝑺₁ test
+- `test_ck3_pullback.jl` — compressed_kron³_pullback isolation test
+
+## Session: Fix end-to-end third-order gradient (P-matrix compression bug)
+
+### Completed
+- Diagnosed that `calculate_third_order_derivatives` pullback produced wrong ∂parameters (2-73% per-column errors in Jacobian vs FD).
+- Root cause: in `take_nth_order_derivatives` (src/MacroModelling.jl), the P-matrix (parameter Jacobian) construction for `output_compressed=true` was missing the `is_compressed` filter that the X-matrix construction applies. Unsorted variable-index tuples (e.g., (1,2,3) instead of (3,2,1)) were fed into the compressed column formula, which maps them to WRONG positions, corrupting the Jacobian with spurious entries at incorrect rows.
+  - Before fix: Jacobian had 843 nnz, 362 unique nonzero rows (vs 134 nnz in ∇₃)
+  - After fix: Jacobian has 289 nnz, 127 unique nonzero rows — all correct
+- The second-order hessian was unaffected because it uses `output_compressed=false`.
+- Also previously removed `rowmask` from `compressed_kron³` in the third-order solution rrule forward pass (ck3_aux_mat), ensuring ∂∇₃ is correct at ALL positions including structural zeros.
+
+### Code changes
+- `src/MacroModelling.jl`: Added `is_compressed_P` filter to the P-matrix construction loop in `take_nth_order_derivatives`, matching the X-matrix's compression rule (lines ~5730-5790).
+- `src/custom_autodiff_rules/zygote.jl`: Removed `rowmask` from `compressed_kron³(aux)` call in third-order solution rrule forward pass (from prior session).
+
+### Validation
+- Jacobian column-by-column verification (`tasks/verify_pmatrix_fix.jl`):
+  - p[3]: rel = 5.9e-12 ✓ (was 0.73)
+  - p[4]: rel = 9.5e-13 ✓ (was 0.20)
+  - p[5]: rel = 8.6e-12 ✓ (was 0.71)
+  - p[7]: rel = 1.7e-12 ✓ (was 1.06)
+  - p[10]: rel = 1.8e-13 ✓
+- End-to-end gradient (`tasks/compare_ss_and_pars_jacobian_caldara.jl`):
+  - SOL_COMPONENT=S3: Zygote vs FD rel = 1.20e-11 ✓ (was 0.0234)
+  - SOL_COMPONENT=S3: ForwardDiff vs Zygote rel = 1.88e-15 ✓
+  - SOL_COMPONENT=S2: Zygote vs FD rel = 6.23e-12 ✓ (unchanged)
+

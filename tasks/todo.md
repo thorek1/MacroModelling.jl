@@ -26,6 +26,8 @@
 - [x] Implement `rrule(::typeof(get_relevant_steady_state_and_state_update), ...)` without calling `ForwardDiff` inside pullbacks (first-order fully chained; higher-order variants delegate to stochastic steady-state pullbacks when available).
 - [x] Implement wrapper `rrule`s for `calculate_second_order_stochastic_steady_state(parameters, 𝓂; ...)` and `calculate_third_order_stochastic_steady_state(parameters, 𝓂; ...)` by composing existing pullbacks.
 - [x] Validate pullback parameter cotangents against ForwardDiff gradients on FS2000 for all five variants.
+- [x] Make `tasks/compare_ss_and_pars_jacobian_caldara.jl` runnable in Zygote-only mode (env toggles for FD/FWD/ZYG and run Zygote first).
+- [x] Fix higher-order Zygote pullbacks to handle `NoTangent` safely before matrix slice assignments (`third_order`/`pruned_third_order`).
 
 ## Performance Optimization (Items 1-6)
 

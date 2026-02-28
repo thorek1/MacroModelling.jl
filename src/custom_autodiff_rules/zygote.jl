@@ -2556,7 +2556,11 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐗₃ = 𝐗₃_pre * M₃.𝐂₃
 
-    ck3_aux = ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
+    # positions (including currently-zero columns of ∇₃) so that gradients flow
+    # correctly through calculate_third_order_derivatives back to parameters.
+    ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    ck3_aux = ∇₃ * ck3_aux_mat
     𝐗₃ += ck3_aux
 
     C = spinv * 𝐗₃
@@ -2594,8 +2598,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
     𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
 
-    # store the compressed_kron³(aux) result (sparse matrix, not the ∇₃·ck3 product)
-    ck3_aux_mat = compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc6)
+    # ck3_aux_mat already computed above (without rowmask) — reuse for pullback
 
     # =========================================================================
     #   PULLBACK
