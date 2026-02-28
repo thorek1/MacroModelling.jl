@@ -2324,6 +2324,23 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         end
                     end
 
+                    clear_solution_caches!(m, algorithm)
+
+                    deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
+
+                    for i in 1:100
+                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_zyg[1]))
+                            @test isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
+                            break
+                        end
+                    end
+
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             clear_solution_caches!(m, algorithm)

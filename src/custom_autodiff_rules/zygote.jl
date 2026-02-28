@@ -639,7 +639,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
               opts = opts, initial_guess = 𝓂.caches.qme_solution)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         common = (false,
@@ -665,7 +665,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
               initial_guess = 𝓂.caches.second_order_solution, opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
@@ -1788,6 +1788,195 @@ function rrule(::typeof(get_loglikelihood),
     end
 
     return llh, pullback
+end
+
+function rrule(::typeof(get_irf),
+                𝓂::ℳ,
+                parameters::Vector{S};
+                steady_state_function::SteadyStateFunctionType = missing,
+                periods::Int = DEFAULT_PERIODS,
+                variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
+                shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
+                negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
+                initial_state::Vector{Float64} = DEFAULT_INITIAL_STATE,
+                levels::Bool = false,
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = Tolerances(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM) where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+
+    estimation = true
+
+    constants_obj = initialise_constants!(𝓂)
+
+    solve!(𝓂,
+            steady_state_function = steady_state_function,
+            opts = opts)
+
+    shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
+
+    shocks, negative_shock, _, periods, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, 1.0, periods, 𝓂)
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    nExo  = 𝓂.constants.post_model_macro.nExo
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    nPast = length(past_idx)
+    nShocks = shocks == :none ? 1 : length(shock_idx)
+
+    zero_result() = zeros(S, length(var_idx), periods, nShocks)
+    zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+
+    # ── step 1: NSSS ──
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters,
+                                𝓂,
+                                parameters;
+                                opts = opts,
+                                estimation = estimation)
+
+    reference_steady_state = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
+        return zero_result(), zero_pullback
+    end
+
+    # ── step 2: Jacobian ──
+    ∇₁, jac_pb = rrule(calculate_jacobian,
+                        parameters,
+                        reference_steady_state,
+                        𝓂.caches,
+                        𝓂.functions.jacobian)
+
+    # ── step 3: First-order solution ──
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                opts = opts,
+                                initial_guess = 𝓂.caches.qme_solution)
+
+    sol_mat = first_out[1]
+    solved  = first_out[3]
+
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        return zero_result(), zero_pullback
+    end
+
+    # ── step 4: Forward simulation (mutation-free, storing inputs for pullback) ──
+    init_state = initial_state == [0.0] ? zeros(S, nVars) : initial_state - reference_steady_state[1:length(𝓂.constants.post_model_macro.var)]
+
+    # Pre-allocate output and input storage
+    Y_all = zeros(S, nVars, periods, nShocks)
+    # Store the input vectors [state[past_idx]; shock] for each (shock_i, t) — needed for pullback
+    inputs_all = Array{Vector{S}}(undef, nShocks, periods)
+
+    for (si, ii) in enumerate(shock_idx)
+        # Build shock history for this shock index
+        if shocks isa Union{Symbol_input,String_input}
+            shock_hist = zeros(nExo, periods)
+            if shocks ≠ :none
+                shock_hist[ii, 1] = negative_shock ? -1.0 : 1.0
+            end
+        else
+            shock_hist = shock_history
+        end
+
+        # t = 1
+        prev_state = init_state
+        input_vec = vcat(prev_state[past_idx], shock_hist[:, 1])
+        y_t = sol_mat * input_vec
+        inputs_all[si, 1] = input_vec
+        Y_all[:, 1, si] = y_t
+
+        # t = 2:periods
+        for t in 2:periods
+            input_vec = vcat(y_t[past_idx], shock_hist[:, t])
+            y_t = sol_mat * input_vec
+            inputs_all[si, t] = input_vec
+            Y_all[:, t, si] = y_t
+        end
+    end
+
+    # ── step 5: Assemble output ──
+    deviations = Y_all[var_idx, :, :]
+
+    result = if levels
+        deviations .+ reference_steady_state[var_idx]
+    else
+        deviations
+    end
+
+    # ── step 6: Pullback ──
+    pullback = function (∂result_bar)
+        ∂result = unthunk(∂result_bar)
+
+        if ∂result isa Union{NoTangent, AbstractZero}
+            return NoTangent(), NoTangent(), zeros(S, length(parameters))
+        end
+
+        # Scatter var_idx back to full nVars dimension
+        ∂Y_all = zeros(S, nVars, periods, nShocks)
+        ∂Y_all[var_idx, :, :] .= ∂result
+
+        # SS gradient from levels mode
+        ∂SS_and_pars = zeros(S, length(reference_steady_state))
+        if levels
+            ∂SS_and_pars[var_idx] .+= dropdims(sum(∂result, dims = (2, 3)), dims = (2, 3))
+        end
+
+        # BPTT through the linear simulation to get ∂sol_mat
+        ∂sol_mat = zeros(S, size(sol_mat))
+
+        for si in 1:nShocks
+            # Accumulated gradient flowing backward through states
+            ∂y_accum = zeros(S, nVars)
+
+            for t in periods:-1:1
+                # Total gradient at time t = direct gradient + propagated from t+1
+                ∂y_t = ∂Y_all[:, t, si] .+ ∂y_accum
+
+                # ∂sol_mat += ∂y_t * input_t'
+                input_t = inputs_all[si, t]
+                ∂sol_mat .+= ∂y_t * input_t'
+
+                # Propagate gradient to previous state through sol_mat
+                # input_t = [y_{t-1}[past_idx]; shock_t]
+                # ∂input_t = sol_mat' * ∂y_t
+                ∂input_t = sol_mat' * ∂y_t
+
+                # Only the first nPast entries of ∂input_t flow to ∂y_{t-1}[past_idx]
+                ∂y_accum = zeros(S, nVars)
+                ∂y_accum[past_idx] .+= ∂input_t[1:nPast]
+            end
+        end
+
+        # ── Chain backward through sub-pullbacks ──
+        # first_pb expects cotangent tuple: (∂sol_mat, ∂qme_sol, ∂solved)
+        first_grads = first_pb((∂sol_mat, NoTangent(), NoTangent()))
+        ∂∇₁ = first_grads[2]
+
+        jac_grads = jac_pb(∂∇₁)
+        ∂parameters_from_jac = jac_grads[2]
+        ∂SS_from_jac = jac_grads[3]
+
+        ∂SS_and_pars .+= ∂SS_from_jac
+
+        nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+        ∂parameters_from_nsss = nsss_grads[3]
+
+        ∂parameters_total = ∂parameters_from_jac .+ ∂parameters_from_nsss
+
+        return NoTangent(), NoTangent(), ∂parameters_total
+    end
+
+    return result, pullback
 end
 
 function rrule(::typeof(calculate_first_order_solution), 
