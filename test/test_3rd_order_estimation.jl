@@ -87,7 +87,20 @@ println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
+@testset "Zygote vs FiniteDifferences gradient (3rd order)" begin
+    back_grad = Zygote.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :third_order), init_params)
+    @test !isnothing(back_grad[1])
+    @test all(isfinite, back_grad[1])
 
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1, max_range = 1e-3), x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :third_order), init_params)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
 
 
 # include("../models/FS2000.jl")
