@@ -201,6 +201,12 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂∇₁_3rd
                         zeros(T,0,0),  # ∂𝐒₁_3rd
                         zeros(T,0,0),  # ∂spinv_3rd
+                        zeros(T,0,0),  # ∂∇₂_3rd
+                        zeros(T,0,0),  # ∂∇₃_3rd
+                        zeros(T,0,0),  # ∂𝐒₂_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_3rd
+                        zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order

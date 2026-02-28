@@ -1054,6 +1054,12 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
+    ∂∇₂_3rd::Matrix{F}
+    ∂∇₃_3rd::Matrix{F}
+    ∂𝐒₂_3rd::Matrix{F}
+    ∂𝐒₁₋╱𝟏ₑ_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_3rd::Matrix{F}
+    ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd::Matrix{F}
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials
