@@ -755,6 +755,15 @@ function replace_e(equation::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonC
     return out
 end
 
+
+function ensure_triple_lookup!(ws::higher_order_workspace, n̄::Int)
+    if ws.triple_lookup_n̄ != n̄
+        ws.triple_lookup_∇ = build_triple_lookup(n̄)
+        ws.triple_lookup_n̄ = n̄
+    end
+    return ws.triple_lookup_∇
+end
+
 function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
     # equation.subs(variable, replacement)
     return SPyPyC.subs(equation, variable, replacement)
@@ -1931,11 +1940,38 @@ function compressed_kron³(a::AbstractMatrix{T};
     # end # timeit_debug
 
     # @timeit_debug timer "findnz" begin
-                
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
+
+    # Find unique non-zero row and column indices without materializing full findnz triplets.
+    # This preserves sparsity information while avoiding large temporary allocations.
+    ui = Int[]
+    uj = Int[]
+    if a isa SparseMatrixCSC
+        rowset = BitSet(a.rowval)
+        sizehint!(ui, length(rowset))
+        append!(ui, rowset)
+
+        sizehint!(uj, size(a, 2))
+        @inbounds for col in 1:size(a, 2)
+            if a.colptr[col] < a.colptr[col + 1]
+                push!(uj, col)
+            end
+        end
+    elseif a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        rowset = BitSet(a.A.rowval)
+        sizehint!(ui, length(rowset))
+        append!(ui, rowset)
+
+        sizehint!(uj, size(a, 2))
+        @inbounds for col in 1:size(a, 2)
+            if a.A.colptr[col] < a.A.colptr[col + 1]
+                push!(uj, col)
+            end
+        end
+    else
+        rowinds, colinds, _ = findnz(a)
+        ui = unique(rowinds)
+        uj = unique(colinds)
+    end
        
     # end # timeit_debug
 
@@ -1946,6 +1982,8 @@ function compressed_kron³(a::AbstractMatrix{T};
     # Threads.@threads for i1 in ui
     norowmask = length(rowmask) == 0
     nocolmask = length(colmask) == 0
+    rowmask_set = norowmask ? BitSet() : BitSet(rowmask)
+    colmask_set = nocolmask ? BitSet() : BitSet(colmask)
 
     for i1 in ui
         for j1 in ui
@@ -1955,7 +1993,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                         row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
 
-                        if norowmask || row in rowmask
+                        if norowmask || in(row, rowmask_set)
                             for i2 in uj
                                 for j2 in uj
                                     if j2 ≤ i2
@@ -1964,7 +2002,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                                                 col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
-                                                if nocolmask || col in colmask
+                                                if nocolmask || in(col, colmask_set)
                                                     # @timeit_debug timer "Multiplication" begin
                                                     @inbounds aii = â[i1, i2]
                                                     @inbounds aij = â[i1, j2]
@@ -2095,6 +2133,499 @@ function compressed_kron³(a::AbstractMatrix{T};
     end
 
     return out
+end
+
+
+"""
+    compressed_kron_sigma(S₁z, σ, nₑ₋, n₋, nₑ)
+
+Compute the σ-part of the B matrix for the third-order Sylvester equation directly in
+compressed space: `𝐔₃ * (I + P₁₃₂ + P₃₁₂) * kron(S₁z, σ) * 𝐂₃`, producing a `b₃ × b₃`
+result without materializing the `nₑ₋³ × nₑ₋³` intermediate.
+
+The σ matrix has exactly `nₑ` nonzeros mapping shock diagonal positions to
+the volatility (σ,σ) position. This extreme sparsity means the output is also
+very sparse: only columns where at least two of the three Kronecker indices
+equal `σ_pos = n₋+1` (the volatility position) are nonzero.
+"""
+function compressed_kron_sigma(S₁z::AbstractMatrix{T}, σ::SparseMatrixCSC, nₑ₋::Int, n₋::Int, nₑ::Int) where T
+    b₃ = nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    σ_pos = n₋ + 1  # volatility position in augmented state
+
+    # Compressed index for sorted triplet (i≥k≥l)
+    cidx(i, k, l) = (i - 1) * i * (i + 1) ÷ 6 + (k - 1) * k ÷ 2 + l
+
+    rows_out = Int[]
+    cols_out = Int[]
+    vals_out = T[]
+
+    # For each shock m, σ maps the shock diagonal (sₘ, sₘ) → (σ_pos, σ_pos).
+    # The three symmetrization terms place S₁z on slots 3, 2, 1 respectively.
+    # After compression, this produces entries at:
+    #   - Term 1: cols (I', σ_pos, σ_pos) for I' ≥ σ_pos
+    #   - Term 2: col (σ_pos, σ_pos, σ_pos) only
+    #   - Term 3: cols (σ_pos, σ_pos, L') for L' ≤ σ_pos
+    # All three overlap at the (σ_pos, σ_pos, σ_pos) column.
+    for m in 1:nₑ
+        s = n₋ + 1 + m  # shock position in augmented state
+
+        for d in 1:nₑ₋  # "dynamics" index (the one carrying S₁z)
+            # Compressed row = sort({s, s, d}) descending
+            if d > s
+                row = cidx(d, s, s)
+            elseif d < s
+                row = cidx(s, s, d)
+            else
+                row = cidx(s, s, s)
+            end
+
+            # Term 1 + Term 2 combined: cols (I', σ_pos, σ_pos) for I' = σ_pos:nₑ₋
+            for I′ in σ_pos:nₑ₋
+                col = cidx(I′, σ_pos, σ_pos)
+                val = S₁z[d, I′]
+                if I′ == σ_pos
+                    # All three terms (T1, T2, T3) contribute at (σ_pos, σ_pos, σ_pos)
+                    val *= 3
+                end
+                if abs(val) > eps(T)
+                    push!(rows_out, row)
+                    push!(cols_out, col)
+                    push!(vals_out, val)
+                end
+            end
+
+            # Term 3 only: cols (σ_pos, σ_pos, L') for L' = 1:σ_pos-1
+            for L′ in 1:(σ_pos - 1)
+                col = cidx(σ_pos, σ_pos, L′)
+                val = S₁z[d, L′]
+                if abs(val) > eps(T)
+                    push!(rows_out, row)
+                    push!(cols_out, col)
+                    push!(vals_out, val)
+                end
+            end
+        end
+    end
+
+    return sparse(rows_out, cols_out, vals_out, b₃, b₃)
+end
+
+
+"""
+    compressed_kron_sigma_pullback!(∂S₁z, ∂B_σ, nₑ₋, n₋, nₑ)
+
+Adjoint of `compressed_kron_sigma` w.r.t. `S₁z`.
+
+Since `compressed_kron_sigma` is *linear* in `S₁z`, the pullback does
+not need the forward values of `S₁z` — only the structural index mapping
+and `∂B_σ`.  The loop mirrors the forward: for each shock `m`, dynamics
+index `d`, and output-column index `q`, it accumulates
+`∂B_σ[row, col(q)] * μ_q` into `∂S₁z[d, q]`, where `μ_q = 3` when
+`q = σ_pos` (all three symmetrization terms overlap) and `μ_q = 1`
+otherwise.
+
+The `∂S₁z` matrix must be pre-allocated and zeroed (or already contain
+upstream contributions); this function adds into it.
+"""
+function compressed_kron_sigma_pullback!(∂S₁z::AbstractMatrix{T},
+                                          ∂B_σ::AbstractMatrix{T},
+                                          nₑ₋::Int, n₋::Int, nₑ::Int) where T
+    σ_pos = n₋ + 1
+    cidx(i, k, l) = (i - 1) * i * (i + 1) ÷ 6 + (k - 1) * k ÷ 2 + l
+
+    @inbounds for m in 1:nₑ
+        s = n₋ + 1 + m  # shock position in augmented state
+
+        for d in 1:nₑ₋
+            # Compressed row = sort({s, s, d}) descending
+            if d > s
+                row = cidx(d, s, s)
+            elseif d < s
+                row = cidx(s, s, d)
+            else
+                row = cidx(s, s, s)
+            end
+
+            # Merged loop over all q ∈ 1:nₑ₋ — the forward splits this into
+            # I' ∈ [σ_pos, nₑ₋] and L' ∈ [1, σ_pos-1], but the adjoint
+            # formula is the same:  ∂S₁z[d, q] += ∂B_σ[row, col(q)] * μ_q
+            for q in 1:nₑ₋
+                if q ≥ σ_pos
+                    col = cidx(q, σ_pos, σ_pos)
+                else
+                    col = cidx(σ_pos, σ_pos, q)
+                end
+                mult = (q == σ_pos) ? T(3) : T(1)
+                ∂S₁z[d, q] += ∂B_σ[row, col] * mult
+            end
+        end
+    end
+
+    return ∂S₁z
+end
+
+
+"""
+    ∇₃_kron_sigma_compressed!(out, ∇₃_compressed, g_z, E_σ, σ_pos, nₑ₋, n̄, triple_lookup_∇)
+
+Compute the ∇₃ contribution to the C matrix directly in compressed `b₃` column space,
+avoiding all cubic-sized intermediates (`𝐔∇₃`, `tmpkron22`, `𝐏₁ₗ̂`, `𝐏₂ₗ̂`).
+
+The computation replaces:
+```
+𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+𝐗₃ = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * 𝐏₁ₗ̂ * tmpkron22 * 𝐏₁ᵣ̃ + 𝐔∇₃ * 𝐏₂ₗ̂ * tmpkron22 * 𝐏₂ᵣ̃
+𝐗₃ *= 𝐂₃
+```
+where `tmpkron22 = kron(g_z, kron(h_z, h_z) * σ)`.
+
+Key insight: σ has only nₑ nonzeros, so `kron(h_z,h_z) * σ` has only one nonzero column
+(the σ-position column). This means `tmpkron22` has only `nₑ₋` nonzero columns
+(one per `g_z` column). After compression by `𝐂₃`, only ~`nₑ₋` compressed columns
+are nonzero.
+
+Arguments:
+- `out`: Pre-allocated dense matrix `n × b₃` to accumulate into (must be zeroed)
+- `∇₃_compressed`: Compressed third derivatives, `n × b̄₃` sparse
+- `g_z`: n̄ × nₑ₋ matrix (= ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+- `E_σ`: n̄ × n̄ matrix (= h_z[:, shocks] * h_z[:, shocks]', the expected quadratic form)
+- `σ_pos`: Volatility position in augmented state (= n₋ + 1)
+- `nₑ₋`: Augmented state dimension
+- `n̄`: Derivative argument dimension
+- `triple_lookup_∇`: Vector mapping compressed ∇₃ column → (i,k,l) sorted triple in n̄ space
+"""
+function ∇₃_kron_sigma_compressed!(out::AbstractMatrix{T},
+                                    ∇₃_compressed::SparseMatrixCSC{T},
+                                    g_z::AbstractMatrix{T},
+                                    E_σ::AbstractMatrix{T},
+                                    σ_pos::Int,
+                                    nₑ₋::Int,
+                                    n̄::Int,
+                                    triple_lookup_∇::Vector{NTuple{3,Int}}) where T
+    cidx(i, k, l) = (i - 1) * i * (i + 1) ÷ 6 + (k - 1) * k ÷ 2 + l
+
+    rows_nz, cols_nz, vals_nz = findnz(∇₃_compressed)
+
+    # Precompute the nₑ₋ output columns (only ~nₑ₋ compressed cols are affected)
+    out_cols = Vector{Int}(undef, nₑ₋)
+    for q in 1:nₑ₋
+        if q > σ_pos
+            out_cols[q] = cidx(q, σ_pos, σ_pos)
+        elseif q < σ_pos
+            out_cols[q] = cidx(σ_pos, σ_pos, q)
+        else
+            out_cols[q] = cidx(σ_pos, σ_pos, σ_pos)
+        end
+    end
+
+    # Note: only ONE factor assignment (g_z on slot 3, E_σ on slots 1,2) is used
+    # per permutation. All three assignments produce equal totals when summed
+    # over all permutations of the symmetric ∇₃, so using one gives the correct
+    # representative column value. For q=σ_pos where all three terms overlap
+    # at the same column, we multiply by 3 to account for all three contributions.
+    @inbounds for nz_idx in 1:length(vals_nz)
+        eq = rows_nz[nz_idx]
+        comp_col = cols_nz[nz_idx]
+        val = vals_nz[nz_idx]
+
+        # Decode compressed column to sorted triple (i≥k≥l) in n̄ space
+        (ii, kk, ll) = triple_lookup_∇[comp_col]
+
+        # Enumerate unique permutations; use "assignment 1": g_z[c,q] * E_σ[a,b]
+        if ii == kk && kk == ll
+            # 1 unique perm: (ii,ii,ii)
+            Eab = E_σ[ii, ii]
+            for q in 1:nₑ₋
+                v = val * g_z[ii, q] * Eab
+                if q == σ_pos
+                    v *= T(3)  # all 3 terms contribute at (σ_pos, σ_pos, σ_pos)
+                end
+                out[eq, out_cols[q]] += v
+            end
+        elseif ii == kk  # ii == kk > ll, 3 unique perms
+            for (a, b, c) in ((ii, ii, ll), (ii, ll, ii), (ll, ii, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    v = val * g_z[c, q] * Eab
+                    if q == σ_pos
+                        v *= T(3)
+                    end
+                    out[eq, out_cols[q]] += v
+                end
+            end
+        elseif kk == ll  # ii > kk == ll, 3 unique perms
+            for (a, b, c) in ((ii, kk, kk), (kk, ii, kk), (kk, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    v = val * g_z[c, q] * Eab
+                    if q == σ_pos
+                        v *= T(3)
+                    end
+                    out[eq, out_cols[q]] += v
+                end
+            end
+        else  # ii > kk > ll, 6 unique perms
+            for (a, b, c) in ((ii, kk, ll), (ii, ll, kk), (kk, ii, ll), (kk, ll, ii), (ll, ii, kk), (ll, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    v = val * g_z[c, q] * Eab
+                    if q == σ_pos
+                        v *= T(3)
+                    end
+                    out[eq, out_cols[q]] += v
+                end
+            end
+        end
+    end
+
+    return out
+end
+
+
+"""
+    ∇₃_kron_sigma_adjoint_∇₃!(∂∇₃, ∂out, g_z, E_σ, σ_pos, nₑ₋, n̄, triple_lookup_∇)
+
+Adjoint of `∇₃_kron_sigma_compressed!` w.r.t. `∇₃` (the sparse third derivatives).
+
+Because `∇₃_kron_sigma_compressed!` is *linear* in `∇₃`, we have
+`∂∇₃ = ∂out · Rᵀ` where `R` is the implicit `b̄₃ × b₃` matrix that the
+forward applies column-by-column.  This function computes `Rᵀ` on the
+fly without materialising `R`.
+
+**Critical:** ALL `b̄₃` compressed columns must be visited (not just nnz of ∇₃)
+because the gradient of the *output* w.r.t. a currently-zero ∇₃ entry is
+generally nonzero — those gradients flow back to the parameter Jacobian
+of `calculate_third_order_derivatives`.
+"""
+function ∇₃_kron_sigma_adjoint_∇₃!(∂∇₃::AbstractMatrix{T},
+                                     ∂out::AbstractMatrix{T},
+                                     g_z::AbstractMatrix{T},
+                                     E_σ::AbstractMatrix{T},
+                                     σ_pos::Int,
+                                     nₑ₋::Int,
+                                     n̄::Int,
+                                     triple_lookup_∇::Vector{NTuple{3,Int}}) where T
+    cidx(i, k, l) = (i - 1) * i * (i + 1) ÷ 6 + (k - 1) * k ÷ 2 + l
+    n = size(∂out, 1)  # number of equations
+
+    # Precompute the nₑ₋ live output columns (same as forward)
+    out_cols = Vector{Int}(undef, nₑ₋)
+    for q in 1:nₑ₋
+        if q > σ_pos
+            out_cols[q] = cidx(q, σ_pos, σ_pos)
+        elseif q < σ_pos
+            out_cols[q] = cidx(σ_pos, σ_pos, q)
+        else
+            out_cols[q] = cidx(σ_pos, σ_pos, σ_pos)
+        end
+    end
+
+    b̄₃ = length(triple_lookup_∇)
+    R_q = Vector{T}(undef, nₑ₋)
+
+    @inbounds for comp_col in 1:b̄₃
+        (ii, kk, ll) = triple_lookup_∇[comp_col]
+
+        # Compute R[comp_col, out_cols[q]] for each q
+        fill!(R_q, zero(T))
+
+        if ii == kk && kk == ll
+            Eab = E_σ[ii, ii]
+            for q in 1:nₑ₋
+                R_q[q] = g_z[ii, q] * Eab * ((q == σ_pos) ? T(3) : T(1))
+            end
+        elseif ii == kk  # ii == kk > ll
+            for (a, b, c) in ((ii, ii, ll), (ii, ll, ii), (ll, ii, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    R_q[q] += g_z[c, q] * Eab * ((q == σ_pos) ? T(3) : T(1))
+                end
+            end
+        elseif kk == ll  # ii > kk == ll
+            for (a, b, c) in ((ii, kk, kk), (kk, ii, kk), (kk, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    R_q[q] += g_z[c, q] * Eab * ((q == σ_pos) ? T(3) : T(1))
+                end
+            end
+        else  # ii > kk > ll
+            for (a, b, c) in ((ii, kk, ll), (ii, ll, kk), (kk, ii, ll), (kk, ll, ii), (ll, ii, kk), (ll, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    R_q[q] += g_z[c, q] * Eab * ((q == σ_pos) ? T(3) : T(1))
+                end
+            end
+        end
+
+        # Accumulate ∂∇₃[:, comp_col] = Σ_q ∂out[:, out_cols[q]] * R_q[q]
+        for q in 1:nₑ₋
+            rq = R_q[q]
+            iszero(rq) && continue
+            oc = out_cols[q]
+            for eq in 1:n
+                ∂∇₃[eq, comp_col] += ∂out[eq, oc] * rq
+            end
+        end
+    end
+
+    return ∂∇₃
+end
+
+
+"""
+    ∇₃_kron_sigma_adjoint_gz_Eσ!(∂g_z, ∂E_σ, ∂out, ∇₃_compressed, g_z, E_σ, σ_pos, nₑ₋, n̄, triple_lookup_∇)
+
+Adjoint of `∇₃_kron_sigma_compressed!` w.r.t. `g_z` (= ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+and `E_σ` (= h_z_shocks · h_z_shocksᵀ).
+
+Unlike `∇₃_kron_sigma_adjoint_∇₃!`, this function only iterates over
+the *nonzero* entries of `∇₃` — zero entries of `∇₃` produce zero
+contributions regardless of `g_z` or `E_σ`.
+
+After calling this function, the caller must propagate:
+- `∂g_z → ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋` (direct accumulation into ∂S1S1_stack)
+- `∂E_σ → ∂h_z_shocks = (∂E_σ + ∂E_σᵀ) · h_z_shocks → ∂𝐒₁₊╱𝟎[:,shock_cols]`
+"""
+function ∇₃_kron_sigma_adjoint_gz_Eσ!(∂g_z::AbstractMatrix{T},
+                                        ∂E_σ::AbstractMatrix{T},
+                                        ∂out::AbstractMatrix{T},
+                                        ∇₃_compressed::SparseMatrixCSC{T},
+                                        g_z::AbstractMatrix{T},
+                                        E_σ::AbstractMatrix{T},
+                                        σ_pos::Int,
+                                        nₑ₋::Int,
+                                        n̄::Int,
+                                        triple_lookup_∇::Vector{NTuple{3,Int}}) where T
+    cidx(i, k, l) = (i - 1) * i * (i + 1) ÷ 6 + (k - 1) * k ÷ 2 + l
+
+    rows_nz, cols_nz, vals_nz = findnz(∇₃_compressed)
+
+    # Precompute the nₑ₋ live output columns (same as forward)
+    out_cols = Vector{Int}(undef, nₑ₋)
+    for q in 1:nₑ₋
+        if q > σ_pos
+            out_cols[q] = cidx(q, σ_pos, σ_pos)
+        elseif q < σ_pos
+            out_cols[q] = cidx(σ_pos, σ_pos, q)
+        else
+            out_cols[q] = cidx(σ_pos, σ_pos, σ_pos)
+        end
+    end
+
+    @inbounds for nz_idx in 1:length(vals_nz)
+        eq       = rows_nz[nz_idx]
+        comp_col = cols_nz[nz_idx]
+        val      = vals_nz[nz_idx]
+
+        (ii, kk, ll) = triple_lookup_∇[comp_col]
+
+        if ii == kk && kk == ll
+            Eab = E_σ[ii, ii]
+            for q in 1:nₑ₋
+                μ  = (q == σ_pos) ? T(3) : T(1)
+                ∂v = ∂out[eq, out_cols[q]]
+                ∂g_z[ii, q]  += ∂v * val * Eab * μ
+                ∂E_σ[ii, ii] += ∂v * val * g_z[ii, q] * μ
+            end
+        elseif ii == kk  # ii == kk > ll
+            for (a, b, c) in ((ii, ii, ll), (ii, ll, ii), (ll, ii, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    μ  = (q == σ_pos) ? T(3) : T(1)
+                    ∂v = ∂out[eq, out_cols[q]]
+                    ∂g_z[c, q] += ∂v * val * Eab * μ
+                    ∂E_σ[a, b] += ∂v * val * g_z[c, q] * μ
+                end
+            end
+        elseif kk == ll  # ii > kk == ll
+            for (a, b, c) in ((ii, kk, kk), (kk, ii, kk), (kk, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    μ  = (q == σ_pos) ? T(3) : T(1)
+                    ∂v = ∂out[eq, out_cols[q]]
+                    ∂g_z[c, q] += ∂v * val * Eab * μ
+                    ∂E_σ[a, b] += ∂v * val * g_z[c, q] * μ
+                end
+            end
+        else  # ii > kk > ll
+            for (a, b, c) in ((ii, kk, ll), (ii, ll, kk), (kk, ii, ll), (kk, ll, ii), (ll, ii, kk), (ll, kk, ii))
+                Eab = E_σ[a, b]
+                for q in 1:nₑ₋
+                    μ  = (q == σ_pos) ? T(3) : T(1)
+                    ∂v = ∂out[eq, out_cols[q]]
+                    ∂g_z[c, q] += ∂v * val * Eab * μ
+                    ∂E_σ[a, b] += ∂v * val * g_z[c, q] * μ
+                end
+            end
+        end
+    end
+
+    return ∂g_z, ∂E_σ
+end
+
+
+"""
+    compressed_kron³_vec(x)
+
+Compute the compressed Kronecker cube of a vector: `𝐔₃ * kron(kron(x,x),x)`.
+
+The result has length `b₃ = binom(n+2, 3)` where `n = length(x)`.
+Each entry corresponds to a sorted triplet `(i≥k≥l)` and equals the
+sum of `x[π(i)] * x[π(j)] * x[π(k)]` over all permutations that map to
+the same sorted triplet.
+
+This is:
+- `6 * x[i]*x[k]*x[l]` when `i > k > l` (6 permutations)
+- `3 * x[i]*x[k]*x[l]` when exactly two indices are equal (3 permutations)
+- `1 * x[i]*x[k]*x[l]` when all three are equal (1 permutation)
+"""
+function compressed_kron³_vec(x::AbstractVector{T}) where T
+    n = length(x)
+    b₃ = n * (n + 1) * (n + 2) ÷ 6
+    result = Vector{T}(undef, b₃)
+    idx = 1
+    @inbounds for i in 1:n
+        xi = x[i]
+        for k in 1:i
+            xik = xi * x[k]
+            for l in 1:k
+                prod = xik * x[l]
+                # Multiplicity: number of distinct permutations of (i,k,l)
+                if i == k && k == l
+                    result[idx] = prod          # 1 perm
+                elseif i == k || k == l
+                    result[idx] = T(3) * prod   # 3 perms
+                else
+                    result[idx] = T(6) * prod   # 6 perms
+                end
+                idx += 1
+            end
+        end
+    end
+    return result
+end
+
+
+"""
+    build_triple_lookup(n)
+
+Build a lookup table mapping compressed triplet index → (i, k, l) sorted triple
+where i ≥ k ≥ l, for dimension `n`. Returns a Vector{NTuple{3,Int}} of length
+`binom(n+2, 3)`.
+"""
+function build_triple_lookup(n::Int)
+    b₃ = n * (n + 1) * (n + 2) ÷ 6
+    lookup = Vector{NTuple{3,Int}}(undef, b₃)
+    idx = 1
+    @inbounds for i in 1:n
+        for k in 1:i
+            for l in 1:k
+                lookup[idx] = (i, k, l)
+                idx += 1
+            end
+        end
+    end
+    return lookup
 end
 
 
@@ -5461,6 +5992,7 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐏₁ᵣ̃ = 𝐏₁ᵣ̃
     to.𝐏₂ᵣ̃ = 𝐏₂ᵣ̃
     to.𝐒𝐏 = 𝐒𝐏
+    to.𝐏𝐂₃ = 𝐏 * 𝐂₃
     return to
 end
 

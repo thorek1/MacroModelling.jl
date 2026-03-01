@@ -432,32 +432,16 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
 
     # @timeit_debug timer "Setup B" begin
-    # @timeit_debug timer "Add tmpkron" begin
+    # @timeit_debug timer "Compressed B sigma" begin
 
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
     
-    B = tmpkron
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 1" begin
-
-    B += M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 2" begin
-
-    B += M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-
-    # end # timeit_debug
-    # @timeit_debug timer "Mult" begin
-
-    B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
+    # Compute the σ-part of B directly in compressed space (b₃ × b₃)
+    # Replaces: tmpkron = kron(S₁z, σ); B = tmpkron + P₁*tmpkron*P₁ᵣ + P₂*tmpkron*P₂ᵣ; B = 𝐔₃*B*𝐂₃
+    B = choose_matrix_format(compressed_kron_sigma(𝐒₁₋╱𝟏ₑ, M₂.𝛔, nₑ₋, n₋, nₑ), tol = opts.tol.droptol, multithreaded = false)
 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
-    # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
 
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
@@ -479,26 +463,23 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # aux = choose_matrix_format(aux, density_threshold = 1.0, min_length = 10)
 
     # end # timeit_debug
-    # @timeit_debug timer "∇₃" begin   
+    # @timeit_debug timer "∇₃ compressed" begin   
 
-    if length(ℂ.tmpkron0) > 0 && eltype(ℂ.tmpkron0) == S
-        ℒ.kron!(ℂ.tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    else
-        ℂ.tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    end
+    # Compute E_σ = h_z[:, shock_cols] * h_z[:, shock_cols]' (n̄ × n̄)
+    # where h_z = 𝐒₁₊╱𝟎 and shock_cols are the shock positions in augmented state
+    n̄ = n₊ + n + n₋ + nₑ
+    shock_cols = (n₋ + 2):(n₋ + 1 + nₑ)
+    h_z_shocks = collect(𝐒₁₊╱𝟎[:, shock_cols])
+    E_σ = h_z_shocks * h_z_shocks'
+
+    # Build (or reuse) triple lookup for derivative space
+    triple_lookup_∇ = ensure_triple_lookup!(ℂ, n̄)
     
-    if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
-        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    else
-        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    end
+    # Compute ∇₃ contribution directly in compressed output space (n × b₃)
+    b₃ = nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    𝐗₃_∇₃ = zeros(S, n, b₃)
+    ∇₃_kron_sigma_compressed!(𝐗₃_∇₃, ∇₃, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, E_σ, n₋ + 1, nₑ₋, n̄, triple_lookup_∇)
 
-    # tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
-    𝐗₃ = 𝐔∇₃ * ℂ.tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₂ᵣ̃
-    
     # end # timeit_debug
     # @timeit_debug timer "∇₂ & ∇₁₊" begin
 
@@ -537,7 +518,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
 
     # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)# |> findnz
+    S2p0_sigma = choose_matrix_format(𝐒₂₊╱𝟎 * M₂.𝛔, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, S2p0_sigma, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)# |> findnz
 
     # end # timeit_debug
     # @timeit_debug timer "Step 5" begin
@@ -550,17 +532,22 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     
     # end # timeit_debug
     # @timeit_debug timer "Mult" begin
-    # ℒ.mul!(𝐗₃, out2, M₃.𝐏, 1, 1) # less memory but way slower; .+= also more memory and slower
-    𝐗₃ += out2 * M₃.𝐏
-
-    𝐗₃ *= M₃.𝐂₃
+    # Compress ∇₂ contribution: out2 * 𝐏𝐂₃ → n × b₃
+    𝐗₃ = 𝐗₃_∇₃ + out2 * M₃.𝐏𝐂₃
 
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
+    rowmask_∇₃ = Int[]
+    sizehint!(rowmask_∇₃, size(∇₃, 2))
+    @inbounds for col in 1:size(∇₃, 2)
+        if ∇₃.colptr[col] < ∇₃.colptr[col + 1]
+            push!(rowmask_∇₃, col)
+        end
+    end
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = rowmask_∇₃, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin

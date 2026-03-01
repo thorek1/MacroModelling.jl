@@ -2691,16 +2691,11 @@ function rrule(::typeof(calculate_third_order_solution),
 
     A = spinv * ∇₁₊
 
-    # --- B matrix -----------------------------------------------------------------
-    tmpkron_σ = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    # --- B matrix (compressed) ----------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    B_pre = tmpkron_σ + M₃.𝐏₁ₗ̄ * tmpkron_σ * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron_σ * M₃.𝐏₂ᵣ̃
-    B_pre *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B_pre, tol = opts.tol.droptol, multithreaded = false)
-
-    ck3_𝐒₁₋╱𝟏ₑ = compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
-    B += ck3_𝐒₁₋╱𝟏ₑ
+    B = choose_matrix_format(compressed_kron_sigma(𝐒₁₋╱𝟏ₑ, M₂.𝛔, nₑ₋, n₋, nₑ), tol = opts.tol.droptol, multithreaded = false)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
@@ -2712,17 +2707,19 @@ function rrule(::typeof(calculate_third_order_solution),
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    # tmpkron0 = kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    # tmpkron22 = kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * 𝛔)
-    tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
+    # --- ∇₃ contribution (compressed) --------------------------------------------
+    n̄ = n₊ + n + n₋ + nₑ
+    shock_cols = (n₋ + 2):(n₋ + 1 + nₑ)
+    h_z_shocks = collect(𝐒₁₊╱𝟎[:, shock_cols])
+    E_σ = h_z_shocks * h_z_shocks'
 
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+    triple_lookup_∇ = ensure_triple_lookup!(ℂ, n̄)
 
-    K22_sum = tmpkron22 + M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    b₃ = nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    𝐗₃_∇₃ = zeros(S, n, b₃)
+    ∇₃_kron_sigma_compressed!(𝐗₃_∇₃, ∇₃, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, E_σ, n₋ + 1, nₑ₋, n̄, triple_lookup_∇)
 
-    𝐗₃_∇₃_term = 𝐔∇₃ * K22_sum   # the ∇₃-dependent part (before 𝐂₃ and ck3)
-
+    # --- ∇₂ and ∇₁₊ terms --------------------------------------------------------
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -2735,22 +2732,21 @@ function rrule(::typeof(calculate_third_order_solution),
     out2  = ∇₂ * tmpkron1 * tmpkron2
     out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+    S2p0_sigma = choose_matrix_format(𝐒₂₊╱𝟎 * M₂.𝛔, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, S2p0_sigma, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
     out2 += ∇₁₊ * mm_𝐒₂_kron
 
-    𝐗₃_pre = 𝐗₃_∇₃_term + out2 * M₃.𝐏    # before 𝐂₃ compression
-
-    𝐗₃ = 𝐗₃_pre * M₃.𝐂₃
+    # --- assemble 𝐗₃ (compressed b₃ columns) ------------------------------------
+    𝐗₃ = 𝐗₃_∇₃ + out2 * M₃.𝐏𝐂₃
 
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
     ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
-    ck3_aux = ∇₃ * ck3_aux_mat
-    𝐗₃ += ck3_aux
+    𝐗₃ += ∇₃ * ck3_aux_mat
 
     C = spinv * 𝐗₃
 
@@ -2781,11 +2777,8 @@ function rrule(::typeof(calculate_third_order_solution),
     end
 
     # --- precompute transposed constants for pullback -----------------------------
-    𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
-    𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
-    𝐏t  = choose_matrix_format(M₃.𝐏',  density_threshold = 1.0)
-    𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
     𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
+    𝐏𝐂₃t = choose_matrix_format(M₃.𝐏𝐂₃', density_threshold = 1.0)
 
     # ck3_aux_mat already computed above (without rowmask) — reuse for pullback
 
@@ -2825,22 +2818,21 @@ function rrule(::typeof(calculate_third_order_solution),
         # =====================================================================
         #  ∂∇₃  (linear: ∇₃ appears in two additive terms of 𝐗₃)
         # =====================================================================
-        # Term 1:  𝐗₃ contains (∇₃·𝐔∇₃)·K22_sum  (goes through ·𝐂₃ then ·spinv⁻¹)
-        #   i.e.  𝐗₃_pre_part1 = ∇₃ · 𝐔∇₃ · K22_sum  →  𝐗₃ += 𝐗₃_pre_part1 · 𝐂₃
-        #   ∂∇₃_term1 = ∂𝐗₃ · 𝐂₃ᵀ · K22_sumᵀ · 𝐔∇₃ᵀ  (but that's = ∂𝐗₃_pre · K22_sumᵀ · 𝐔∇₃ᵀ)
+        # Term 1:  𝐗₃ contains ∇₃_kron_sigma_compressed!(𝐗₃_∇₃, ∇₃, g_z, E_σ, ...)
+        #   ∂∇₃_term1 computed via ∇₃_kron_sigma_adjoint_∇₃!
         # Term 2:  𝐗₃ += ∇₃ · ck3_aux_mat
         #   ∂∇₃_term2 = ∂𝐗₃ · ck3_aux_matᵀ
 
-        ∂𝐗₃_pre = ∂𝐗₃ * 𝐂₃t   # adjoint of 𝐗₃ = 𝐗₃_pre * 𝐂₃ + ck3_aux
-
-        ∂∇₃ = ∂𝐗₃_pre * K22_sum' * 𝐔∇₃t + ∂𝐗₃ * ck3_aux_mat'
+        ∂∇₃ = zeros(S, size(∇₃))
+        ∇₃_kron_sigma_adjoint_∇₃!(∂∇₃, Matrix{S}(∂𝐗₃), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), E_σ, n₋ + 1, nₑ₋, n̄, triple_lookup_∇)
+        ∂∇₃ += ∂𝐗₃ * ck3_aux_mat'
 
         # =====================================================================
-        #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃_pre → 𝐗₃)
+        #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃)
         # =====================================================================
-        # out2 enters 𝐗₃_pre as:  𝐗₃_pre = ... + out2 · 𝐏
-        # ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ
-        ∂out2 = ∂𝐗₃_pre * 𝐏t
+        # out2 enters 𝐗₃ as:  𝐗₃ = 𝐗₃_∇₃ + out2 · 𝐏𝐂₃ + ∇₃ · ck3_aux_mat
+        # ∂out2 = ∂𝐗₃ · 𝐏𝐂₃ᵀ
+        ∂out2 = ∂𝐗₃ * 𝐏𝐂₃t
 
         # out2  = ∇₂ · tmpkron1 · tmpkron2                                      (term a)
         #       + ∇₂ · tmpkron1 · 𝐏₁ₗ · tmpkron2 · 𝐏₁ᵣ                        (term b)
@@ -2852,7 +2844,7 @@ function rrule(::typeof(calculate_third_order_solution),
         R_a = tmpkron1 * tmpkron2                                       # term a right factor
         R_b = tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ                  # term b right factor
         R_c = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)  # term c right factor
-        R_d = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔))   # term d right factor
+        R_d = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, S2p0_sigma)   # term d right factor
 
         ∂∇₂ = ∂out2 * R_a' + ∂out2 * R_b' + ∂out2 * R_c' + ∂out2 * R_d'
 
@@ -2861,7 +2853,7 @@ function rrule(::typeof(calculate_third_order_solution),
         #  ∂𝐒₂  (𝐒₂ enters out2 via several stacking matrices)
         # =====================================================================
         # 𝐒₂ does NOT affect A, B, or the ∇₃ terms — only out2.
-        # We already have ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ from the ∂∇₂ section above.
+        # We already have ∂out2 = ∂𝐗₃ · 𝐏𝐂₃ᵀ from the ∂∇₂ section above.
         #
         # out2 terms that depend on 𝐒₂:
         #   (a) ∇₂ · tmpkron1 · tmpkron2           — tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -2914,7 +2906,6 @@ function rrule(::typeof(calculate_third_order_solution),
         # (same ∂kron_d = ∂kron_c since ∂out2 is the total adjoint — but we need
         #  the Kron adjoint for the actual kron pair (L, 𝐒₂₊╱𝟎·𝛔) )
         ∂L_d = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        S2p0_sigma = collect(𝐒₂₊╱𝟎 * M₂.𝛔)
         ∂R_d = zeros(S, size(S2p0_sigma))
         fill_kron_adjoint!(∂R_d, ∂L_d, Matrix{S}(∂kron_c), Matrix{S}(S2p0_sigma), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
 
@@ -2971,18 +2962,17 @@ function rrule(::typeof(calculate_third_order_solution),
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from out2 terms c,d (kron outer factors) ---
         ∂S1S1_stack .+= ∂L_c .+ ∂L_d
 
-        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from K22_sum → tmpkron22 ---
-        ∂K22_sum = 𝐔∇₃' * ∂𝐗₃_pre
-        ∂tmpkron22 = ∂K22_sum + M₃.𝐏₁ₗ̂' * ∂K22_sum * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∂K22_sum * M₃.𝐏₂ᵣ̃'
-        tmpkron0_σ = collect(tmpkron0 * M₂.𝛔)
-        ∂tmpkron0_σ = zeros(S, size(tmpkron0_σ))
-        ∂S1S1_from22 = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        fill_kron_adjoint!(∂tmpkron0_σ, ∂S1S1_from22, Matrix{S}(∂tmpkron22), Matrix{S}(tmpkron0_σ), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂S1S1_stack .+= ∂S1S1_from22
-        ∂tmpkron0 = ∂tmpkron0_σ * 𝛔t
-        ∂𝐒₁₊╱𝟎_tk0 = zeros(S, size(𝐒₁₊╱𝟎))
-        fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, Matrix{S}(∂tmpkron0), Matrix{S}(𝐒₁₊╱𝟎), Matrix{S}(𝐒₁₊╱𝟎))
-        ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tk0
+        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃_kron_sigma (compressed) ---
+        # The compressed adjoint replaces the old chain:
+        #   ∂K22_sum → unsymmetrize → fill_kron_adjoint(kron(g_z, tmpkron0·σ)) → ∂g_z + ∂tmpkron0 → kron_adjoint → ∂𝐒₁₊╱𝟎
+        ∂g_z = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        ∂E_σ = zeros(S, size(E_σ))
+        ∇₃_kron_sigma_adjoint_gz_Eσ!(∂g_z, ∂E_σ, Matrix{S}(∂𝐗₃), ∇₃, Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), E_σ, n₋ + 1, nₑ₋, n̄, triple_lookup_∇)
+        ∂S1S1_stack .+= ∂g_z
+
+        # Propagate ∂E_σ through E_σ = h_z_shocks * h_z_shocksᵀ
+        ∂h_z_shocks = (∂E_σ + ∂E_σ') * h_z_shocks
+        ∂𝐒₁₊╱𝟎₃[:, shock_cols] .+= ∂h_z_shocks
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
         ∂ck3_aux = ∇₃' * ∂𝐗₃
@@ -2993,12 +2983,8 @@ function rrule(::typeof(calculate_third_order_solution),
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
         ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tmp
 
-        # --- ∂𝐒₁₋╱𝟏ₑ : from B via tmpkron_σ = kron(B=𝐒₁₋╱𝟏ₑ, A=𝛔) ---
-        ∂B_pre = 𝐔₃t * ∂B_from_sylv
-        ∂B_pre_raw = ∂B_pre * 𝐂₃t
-        ∂tmpkron_σ₃ = ∂B_pre_raw + M₃.𝐏₁ₗ̄' * ∂B_pre_raw * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̄' * ∂B_pre_raw * M₃.𝐏₂ᵣ̃'
-        ∂𝛔_discard = zeros(S, size(M₂.𝛔))
-        fill_kron_adjoint!(∂𝛔_discard, ∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂tmpkron_σ₃), Matrix{S}(M₂.𝛔), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron_sigma (direct pullback) ---
+        compressed_kron_sigma_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂B_from_sylv), nₑ₋, n₋, nₑ)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
         compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂B_from_sylv), Matrix{S}(𝐒₁₋╱𝟏ₑ))

@@ -79,6 +79,7 @@ function Third_order_indices()
         empty_sparse_int,    # 𝐏₁ᵣ̃
         empty_sparse_int,    # 𝐏₂ᵣ̃
         empty_sparse_int,    # 𝐒𝐏
+        empty_sparse_int,    # 𝐏𝐂₃
         # Conditional forecast index caches
         Int[],               # var_vol³_idxs
         Int[],               # shock_idxs2
@@ -187,6 +188,8 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        NTuple{3, Int}[],
+                        0,
                         zeros(T,0,0),
                         Sylvester_workspace(S = S),
                         # Second order pullback gradient buffers (lazily allocated)

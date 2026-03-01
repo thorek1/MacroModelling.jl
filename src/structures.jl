@@ -363,6 +363,7 @@ mutable struct third_order_indices
     𝐏₁ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 1
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 2
     𝐒𝐏::SparseMatrixCSC{Int}             # Combined selection-permutation
+    𝐏𝐂₃::SparseMatrixCSC{Int}            # Precomputed 𝐏 * 𝐂₃ (nₑ₋³ × b₃, sparse)
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -1039,6 +1040,8 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    triple_lookup_∇::Vector{NTuple{3, Int}}
+    triple_lookup_n̄::Int
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G, H}
     # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
