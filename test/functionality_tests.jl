@@ -2341,6 +2341,42 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         end
                     end
 
+                    # Last period derivative tests (ForwardDiff)
+                    clear_solution_caches!(m, algorithm)
+
+                    deriv_for_last = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)
+
+                    for i in 1:100
+                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_last[1]))
+                            @test isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
+                            break
+                        end
+                    end
+
+                    # Last period derivative tests (Zygote)
+                    clear_solution_caches!(m, algorithm)
+
+                    deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
+
+                    for i in 1:100
+                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
+                            @test isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                            break
+                        end
+                    end
+
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             clear_solution_caches!(m, algorithm)
