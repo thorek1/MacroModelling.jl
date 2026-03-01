@@ -37,3 +37,17 @@
 - [x] Item 4: Cache structural kron index sets — replace inline `kron` index computations in 4 inversion filter rrules with reads from `ensure_conditional_forecast_constants!`.
 - [x] Item 5: Eliminate `vcat(x,1)` allocations in Newton loops — pre-allocate `x_aug` in SSS Newton solvers (MacroModelling.jl and zygote.jl SSS rrules). Also replace `copy()*0` with `zero()`.
 - [ ] Item 6: Pre-allocate pullback gradient accumulators — move `zero()` allocations from inside pullback closures to forward pass scope.
+
+## Compressed Third-Order Solution (see tasks/plan.md)
+
+- [x] Step 1: `compressed_kron_sigma` — B_σ in compressed b₃ space
+- [x] Step 2: `compressed_kron³_vec` — compressed cubic Kronecker product for vectors
+- [x] Step 3: B matrix in `calculate_third_order_solution` uses compressed functions
+- [x] Step 4: `∇₃_kron_sigma_compressed!` — ∇₃ contribution in compressed space
+- [x] Step 5: Precompute `𝐏𝐂₃ = 𝐏 * 𝐂₃` and use in C assembly
+- [x] Step 6: Apply sparsity micro-optimizations (BitSet mask checks in `compressed_kron³`, CSC `colptr` rowmask extraction in primal third-order path)
+- [x] Step 6b: Cache `triple_lookup_∇` in `higher_order_workspace` and reuse it in primal + AD third-order paths (validated parity + benchmark rerun)
+- [ ] Step 7: Update downstream `𝐒₃ * 𝐔₃` decompression sites (14+ sites in MacroModelling.jl, get_functions.jl, moments.jl, zygote.jl, filter code)
+- [ ] Step 8: Remove cubic-size auxiliary matrices from constants struct
+- [x] Step 9: Update Zygote rrules for third-order forward-pass changes (compressed adjoint functions validated on Caldara model)
+- [ ] Step 10: Clean up workspace fields (tmpkron0, tmpkron22 no longer needed)

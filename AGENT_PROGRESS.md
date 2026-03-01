@@ -1,5 +1,60 @@
 # Agent Progress
 
+## Session: 2026-02-28 (lookup-cache validation + benchmark rerun)
+
+### Completed
+- Re-ran focused third-order input gradient parity validation after caching `triple_lookup_∇` in workspace and wiring primal+AD to reuse it.
+- Re-ran benchmark harness `tasks/get_llh_rrule_bench.jl` with `BENCHMARK=1` on Caldara third-order and pruned-third-order cases.
+- Stored fresh benchmark log at `tasks/benchmarks/caldara_bench_lookup_cache.txt`.
+
+### Validation
+- Command:
+	- `RUN_FD=true RUN_FWD=false RUN_ZYG=true INPUT_BLOCKS=grad1,grad3,s1 FDM_ORDER=4 FDM_MAX_RANGE=1e-4 julia -t auto --project=test tasks/compare_third_order_input_gradients_caldara.jl`
+- Results:
+	- `grad1`: `max abs diff = 3.3782434911699966e-6`, `relative norm = 2.7764712972322462e-11`
+	- `grad3`: `max abs diff = 5.687943485099822e-7`, `relative norm = 4.218019985415767e-11`
+	- `s1`: `max abs diff = 3.5913473794835227e-7`, `relative norm = 2.340929812356666e-10`
+- Command:
+	- `BENCHMARK=1 julia -t auto --project=test tasks/get_llh_rrule_bench.jl`
+- Results (median):
+	- `caldara_third_order`: primal `4.077 ms`, grad `29.556 ms`, primal alloc `4521776 B`, grad alloc `75908736 B`
+	- `caldara_pruned_third_order`: primal `3.938 ms`, grad `30.24 ms`, primal alloc `2490032 B`, grad alloc `77666496 B`
+- Delta vs previous post-densify baseline (`tasks/benchmarks/caldara_bench_current_after_densify_cut.txt`):
+	- `caldara_third_order`: primal `-44.71%`, grad `-20.24%`, primal alloc `-1.43%`, grad alloc `-0.09%`
+	- `caldara_pruned_third_order`: primal `-16.11%`, grad `-0.95%`, primal alloc `-2.57%`, grad alloc `-0.08%`
+
+## Session: Third-order compressed solve optimization
+
+### Completed
+- Implemented compressed third-order perturbation solution (avoids `O(nₑ₋³)` intermediates in the Sylvester equation setup)
+- New utility functions in `src/MacroModelling.jl`:
+  - `compressed_kron_sigma(S₁z, σ, nₑ₋, n₋, nₑ)` — computes B_σ matrix directly in compressed `b₃ × b₃` space, avoiding `nₑ₋³ × nₑ₋³` permutation matrices
+  - `compressed_kron³_vec(x)` — computes `𝐔₃ * kron(kron(x,x),x)` without materializing the full cubic Kronecker product
+  - `∇₃_kron_sigma_compressed!(out, ∇₃, g_z, E_σ, σ_pos, nₑ₋, n̄, triple_lookup_∇)` — computes the ∇₃ contribution to the RHS directly in compressed `b₃` output space
+  - `build_triple_lookup(n)` — helper to decode compressed column indices to sorted triples
+- Modified `calculate_third_order_solution` in `src/perturbation.jl`:
+  - B matrix: uses `compressed_kron_sigma` + `compressed_kron³` directly in `b₃ × b₃` space
+  - ∇₃ block: uses `∇₃_kron_sigma_compressed!` to compute `(𝐔∇₃ * tmpkron22 + perms) * 𝐂₃` directly without forming `n̄³ × nₑ₋³` intermediates
+  - C matrix assembly: compressed ∇₃ + out2 contributions added in `b₃` space
+- Added `𝐏𝐂₃` precomputed constant (`𝐏 * 𝐂₃`, `nₑ₋³ × b₃` with ≤3b₃ nnz) to `third_order_indices` struct, saving one `nₑ₋³ × nₑ₋³` multiply per solve
+- All changes validated on:
+  - RBC model (n=3, nₑ₋=4): compressed functions match full-space references to machine precision (max error ~6.6e-24)
+  - Smets-Wouters 2007 (n=66, nₑ₋=34): solution converges correctly, IRFs work for both `:third_order` and `:pruned_third_order`
+  - Compression ratio: 5.5x (b₃=7140 vs nₑ₋³=39304 for SW07)
+
+### Files Modified
+- `src/MacroModelling.jl` — added 4 new functions, precompute `𝐏𝐂₃`, updated `create_third_order_auxiliary_matrices`
+- `src/perturbation.jl` — modified `calculate_third_order_solution` B matrix, ∇₃ block, C assembly
+- `src/structures.jl` — added `𝐏𝐂₃` field to `third_order_indices`
+- `src/options_and_caches.jl` — added `𝐏𝐂₃` to `Third_order_indices()` constructor
+
+### Remaining (from tasks/plan.md)
+- Step 7: Update downstream decompression sites (`𝐒₃ * 𝐔₃`) in MacroModelling.jl (stochastic SS), get_functions.jl, moments.jl, filter code (14+ sites)
+- Step 8: Cleanup unused cubic-size auxiliary matrices from constants (𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐔∇₃, etc.)
+- Step 9: Update Zygote rrules to match new forward-pass structure
+- Step 10: Clean up workspace fields (tmpkron0, tmpkron22 no longer needed)
+- These downstream changes require interface changes across the codebase and should be done incrementally
+
 ## Session: 2026-02-22
 
 ### Completed
@@ -312,3 +367,79 @@
   - SOL_COMPONENT=S3: ForwardDiff vs Zygote rel = 1.88e-15 ✓
   - SOL_COMPONENT=S2: Zygote vs FD rel = 6.23e-12 ✓ (unchanged)
 
+## Session: Compressed third-order AD (rrule optimization)
+
+### Completed
+- Updated the Zygote `rrule` for `calculate_third_order_solution` to use compressed functions, eliminating O(nₑ₋³) intermediates from both forward and pullback paths.
+
+#### New adjoint functions (src/MacroModelling.jl):
+- `compressed_kron_sigma_pullback!(∂S₁z, ∂B_σ, nₑ₋, n₋, nₑ)` — pullback of `compressed_kron_sigma`, accumulates into ∂S₁z
+- `∇₃_kron_sigma_adjoint_∇₃!(∂∇₃, ∂out, g_z, E_σ, ...)` — adjoint of `∇₃_kron_sigma_compressed!` w.r.t. ∇₃
+- `∇₃_kron_sigma_adjoint_gz_Eσ!(∂g_z, ∂E_σ, ∂out, ∇₃, ...)` — adjoint w.r.t. g_z and E_σ simultaneously
+
+#### rrule forward pass changes (src/custom_autodiff_rules/zygote.jl):
+- B matrix: `compressed_kron_sigma(...)` + `compressed_kron³(...)` instead of `𝐔₃ * (tmpkron_σ + perms) * 𝐂₃`
+- ∇₃ block: `∇₃_kron_sigma_compressed!(...)` instead of `𝐔∇₃ * K22_sum`
+- C assembly: `𝐗₃_∇₃ + out2 * M₃.𝐏𝐂₃` instead of `(𝐗₃_∇₃_term + out2 * 𝐏) * 𝐂₃`
+
+#### rrule pullback changes:
+- ∂∇₃: `∇₃_kron_sigma_adjoint_∇₃!` replaces `∂𝐗₃_pre * K22_sum' * 𝐔∇₃t`
+- ∂out2: `∂𝐗₃ * 𝐏𝐂₃t` (one multiply instead of two with `𝐏t`)
+- ∂g_z/∂E_σ: `∇₃_kron_sigma_adjoint_gz_Eσ!` replaces K22_sum/tmpkron22/tmpkron0 adjoint chain
+- ∂𝐒₁ through B: `compressed_kron_sigma_pullback!` replaces `𝐔₃t * ∂B_from_sylv * 𝐂₃t`
+- Removed precomputed transposes: `𝐂₃t`, `𝐔₃t`, `𝐏t`, `𝐔∇₃t` (kept `𝛔t`, added `𝐏𝐂₃t`)
+
+### Validation
+- All 5 gradient blocks pass against FiniteDifferences (Caldara_et_al_2012 model):
+  - ∇₁ (grad1): relative norm = 2.78e-11 ✓
+  - ∇₂ (grad2): relative norm = 3.36e-10 ✓
+  - ∇₃ (grad3): relative norm = 3.70e-11 ✓
+  - 𝐒₁ (s1): relative norm = 2.44e-10 ✓
+  - 𝐒₂ (s2): relative norm = 2.38e-10 ✓
+
+### Remaining (from tasks/plan.md)
+- Step 7: Update downstream decompression sites (`𝐒₃ * 𝐔₃`) in MacroModelling.jl (stochastic SS), get_functions.jl, moments.jl, filter code (14+ sites)
+- Step 8: Cleanup unused cubic-size auxiliary matrices from constants (𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐔∇₃, etc.)
+- Step 10: Clean up workspace fields (tmpkron0, tmpkron22 no longer needed)
+
+## Session: Sparsity micro-optimizations (third-order)
+
+### Completed
+- Optimized `compressed_kron³` mask handling in `src/MacroModelling.jl`:
+	- replaced linear membership checks (`row in rowmask`, `col in colmask`) with `BitSet` lookups in the hot nested loops.
+	- replaced `findnz`-triplet extraction with sparse-structure traversal (`rowval`/`colptr`) for unique nonzero row/column index sets.
+- Optimized primal third-order rowmask extraction in `src/perturbation.jl`:
+	- replaced `unique(findnz(∇₃)[2])` with direct `colptr` scan to build nonzero-column mask without `findnz` allocation.
+
+### Validation
+- Command:
+	- `INPUT_BLOCKS="grad1,grad3,s1" RUN_FWD=false RUN_ZYG=true RUN_FD=true julia -t auto --project=test tasks/compare_third_order_input_gradients_caldara.jl`
+- Results:
+	- `grad1` (`∇₁`): relative norm = `2.54e-11`
+	- `grad3` (`∇₃`): relative norm = `3.70e-11`
+	- `s1` (`𝐒₁`): relative norm = `2.44e-10`
+	- all blocks pass and remain consistent with previous FD parity.
+
+## Session: Densification reduction pass (third-order primal + AD)
+
+### Completed
+- Removed explicit `collect(𝐒₂₊╱𝟎 * M₂.𝛔)` densification in:
+	- `src/perturbation.jl` (third-order primal out2 term d)
+	- `src/custom_autodiff_rules/zygote.jl` (third-order rrule forward + pullback reuse)
+- Introduced reusable `S2p0_sigma = choose_matrix_format(𝐒₂₊╱𝟎 * M₂.𝛔, ...)` and reused it in both forward and pullback paths.
+
+### Correctness validation
+- Re-ran focused parity check:
+	- `INPUT_BLOCKS="grad1,grad3,s1" RUN_FWD=false RUN_ZYG=true RUN_FD=true julia -t auto --project=test tasks/compare_third_order_input_gradients_caldara.jl`
+	- Results remained unchanged within tolerance:
+		- `grad1`: `2.54e-11`
+		- `grad3`: `3.70e-11`
+		- `s1`: `2.44e-10`
+
+### BenchmarkTools validation (Caldara)
+- Command:
+	- `BENCHMARK=1 julia -t auto --project=test tasks/get_llh_rrule_bench.jl`
+- Compared against pre-change current benchmark (`tasks/benchmarks/caldara_bench_current.txt`):
+	- `caldara_third_order`: primal `+13.7%` slower, grad `+8.4%` slower, allocations ~unchanged
+	- `caldara_pruned_third_order`: primal `-37.2%` faster, grad `-24.9%` faster, allocations ~unchanged
+- Interpretation: mixed timing impact with negligible allocation change on this benchmark; warrants either repeated-run averaging or targeted follow-up on the third-order (non-pruned) path before retaining as a definitive optimization.
