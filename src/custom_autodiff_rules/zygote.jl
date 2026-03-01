@@ -1955,6 +1955,14 @@ function rrule(::typeof(get_irf),
                 ∂y_accum = zeros(S, nVars)
                 ∂y_accum[past_idx] .+= ∂input_t[1:nPast]
             end
+
+            # After BPTT for this shock, ∂y_accum is the gradient w.r.t. init_state.
+            # When init_state = initial_state - reference_steady_state[1:nVar],
+            # propagate gradient to reference_steady_state with negative sign.
+            if initial_state != [0.0]
+                nVar_len = length(𝓂.constants.post_model_macro.var)
+                ∂SS_and_pars[1:nVar_len] .-= ∂y_accum[1:nVar_len]
+            end
         end
 
         # ── Chain backward through sub-pullbacks ──
@@ -1978,6 +1986,720 @@ function rrule(::typeof(get_irf),
 
     return result, pullback
 end
+
+# ── calculate_covariance rrule ──────────────────────────────────────────────────
+function rrule(::typeof(calculate_covariance),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+
+    # ── Non-differentiable setup ──
+    constants_obj = initialise_constants!(𝓂)
+    idx_constants = constants_obj.post_complete_parameters
+    T = constants_obj.post_model_macro
+    nPast = T.nPast_not_future_and_mixed
+    past_idx = T.past_not_future_and_mixed_idx
+    P = idx_constants.diag_nVars[past_idx, :]  # (nPast, nVars) constant selection matrix
+
+    zero_result() = (zeros(S, 0, 0), zeros(S, 0, 0), zeros(S, 0, 0), zeros(S, 0), false)
+    zero_pb(_) = (NoTangent(), zeros(S, length(parameters)), NoTangent())
+
+    # ── Step 1: NSSS ──
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts)
+    SS_and_pars = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        return (zeros(S, 0, 0), zeros(S, 0, 0), zeros(S, 0, 0), SS_and_pars, false), zero_pb
+    end
+
+    # ── Step 2: Jacobian ──
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+
+    # ── Step 3: First-order solution ──
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                initial_guess = 𝓂.caches.qme_solution,
+                                opts = opts)
+    sol = first_out[1]
+    solved_first = first_out[3]
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
+
+    # ── Step 4: A, C, CC (mutation-free) ──
+    A = sol[:, 1:nPast] * P
+    C = sol[:, nPast+1:end]
+    CC = C * C'
+
+    if !solved_first
+        return (CC, sol, ∇₁, SS_and_pars, solved_first), zero_pb
+    end
+
+    # ── Step 5: Lyapunov ──
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
+
+    lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
+                                lyapunov_algorithm = opts.lyapunov_algorithm,
+                                tol = opts.tol.lyapunov_tol,
+                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                verbose = opts.verbose)
+    covar_raw = lyap_out[1]
+    solved_lyap = lyap_out[2]
+
+    solved = solved_first && solved_lyap
+
+    result = (covar_raw, sol, ∇₁, SS_and_pars, solved)
+
+    # ── Pullback ──
+    function calculate_covariance_pullback(Δout)
+        Δcovar, Δsol_ret, Δ∇₁_ret, ΔSS_ret, _ = Δout
+
+        # Materialise any InplaceableThunk / Thunk wrappers
+        Δcovar   = unthunk(Δcovar)
+        Δsol_ret = unthunk(Δsol_ret)
+        Δ∇₁_ret  = unthunk(Δ∇₁_ret)
+        ΔSS_ret  = unthunk(ΔSS_ret)
+
+        # Accumulators
+        ∂sol_total = zeros(S, size(sol))
+        ∂∇₁_total = zeros(S, size(∇₁))
+        ∂SS_total  = zeros(S, length(SS_and_pars))
+
+        # Direct cotangents passed through the tuple
+        if !(Δsol_ret isa AbstractZero)
+            ∂sol_total .+= Δsol_ret
+        end
+        if !(Δ∇₁_ret isa AbstractZero)
+            ∂∇₁_total .+= Δ∇₁_ret
+        end
+        if !(ΔSS_ret isa AbstractZero)
+            ∂SS_total .+= ΔSS_ret
+        end
+
+        # Backprop through Lyapunov equation
+        if !(Δcovar isa AbstractZero)
+            lyap_grad = lyap_pb((Δcovar, NoTangent()))
+            ΔA  = lyap_grad[2]   # ∂A
+            ΔCC = lyap_grad[3]   # ∂CC
+
+            # CC = C * C'  →  ∂C = (∂CC + ∂CC') * C
+            ΔC = (ΔCC + ΔCC') * C
+
+            # A = sol[:, 1:nPast] * P  →  ∂sol[:, 1:nPast] += ∂A * P'
+            ∂sol_total[:, 1:nPast] .+= ΔA * P'
+
+            # C = sol[:, nPast+1:end]
+            ∂sol_total[:, nPast+1:end] .+= ΔC
+        end
+
+        # Backprop through first-order solution
+        first_grad = first_pb((∂sol_total, NoTangent(), NoTangent()))
+        ∂∇₁_total .+= first_grad[2]
+
+        # Backprop through Jacobian
+        jac_grad = jac_pb(∂∇₁_total)
+        ∂parameters_from_jac = jac_grad[2]
+        ∂SS_from_jac = jac_grad[3]
+        ∂SS_total .+= ∂SS_from_jac
+
+        # Backprop through NSSS
+        nsss_grad = nsss_pb((∂SS_total, NoTangent()))
+        ∂parameters_from_nsss = nsss_grad[3]
+
+        ∂parameters_total = ∂parameters_from_jac .+ ∂parameters_from_nsss
+
+        return NoTangent(), ∂parameters_total, NoTangent()
+    end
+
+    return result, calculate_covariance_pullback
+end
+
+
+# ── Helper: VJP of kron(A, B) ───────────────────────────────────────────────────
+# Given C = kron(A, B) and cotangent ∂C, returns (∂A, ∂B).
+function _kron_vjp(∂C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
+    m, n = size(A)
+    p, q = size(B)
+    S = eltype(∂C)
+    ∂A = zeros(S, m, n)
+    ∂B = zeros(S, p, q)
+    @inbounds for j in 1:n
+        for i in 1:m
+            blk = @view ∂C[(i-1)*p+1:i*p, (j-1)*q+1:j*q]
+            ∂A[i,j] = ℒ.dot(blk, B)
+            if !iszero(A[i,j])
+                ∂B .+= A[i,j] .* blk
+            end
+        end
+    end
+    return ∂A, ∂B
+end
+
+
+# ── calculate_second_order_moments rrule ────────────────────────────────────────
+function rrule(::typeof(calculate_second_order_moments),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+
+    # ── Non-differentiable setup ──
+    constants_obj = initialise_constants!(𝓂)
+    ensure_moments_constants!(constants_obj)
+    so = constants_obj.second_order
+    T_pm = constants_obj.post_model_macro
+    nᵉ = T_pm.nExo
+    nˢ = T_pm.nPast_not_future_and_mixed
+    nVars = T_pm.nVars
+    iˢ = T_pm.past_not_future_and_mixed_idx
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    vec_Iₑ = so.vec_Iₑ
+
+    zero_10() = (zeros(S,0), zeros(S,0), zeros(S,0,0), zeros(S,0,0),
+                 zeros(S,0), zeros(S,0,0), zeros(S,0,0), spzeros(S,0,0), spzeros(S,0,0), false)
+    zero_pb(_) = (NoTangent(), zeros(S, length(parameters)), NoTangent())
+
+    # ── Step 1: Covariance ──
+    cov_out, cov_pb = rrule(calculate_covariance, parameters, 𝓂; opts = opts)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = cov_out
+
+    if !solved
+        return zero_10(), zero_pb
+    end
+
+    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+    # ── Step 2: Hessian ──
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+
+    # ── Step 3: Second-order solution ──
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    𝐒₂_raw = so2_out[1]
+    solved2 = so2_out[2]
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+
+    if !solved2
+        return (zeros(S,0), zeros(S,0), Σʸ₁, zeros(S,0,0), SS_and_pars, 𝐒₁, ∇₁, spzeros(S,0,0), ∇₂, solved2), zero_pb
+    end
+
+    # ── Step 4: Decompress S₂ (mutation-free) ──
+    𝐒₂_full = 𝐒₂_raw * 𝐔₂
+
+    # ── Step 5: Slicing and mean computation ──
+    kron_s_s = so.kron_states
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+
+    # First-order slices
+    s_to_y₁ = 𝐒₁[:, 1:nˢ]
+    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ+1):end]
+
+    # Second-order slices (dense)
+    s_s_to_y₂ = Matrix(𝐒₂_full[:, kron_s_s])
+    e_e_to_y₂ = Matrix(𝐒₂_full[:, kron_e_e])
+    v_v_to_y₂_v = vec(𝐒₂_full[:, kron_v_v])
+    s_s_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_s_s])
+    e_e_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_e_e])
+    v_v_to_s₂_v = vec(𝐒₂_full[iˢ, kron_v_v])
+
+    # Kronecker products
+    s₁_kron_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e₁_kron_e₁ = ℒ.kron(e_to_s₁, e_to_s₁) |> collect
+
+    # Block matrices
+    ŝ_to_ŝ₂ = [ s_to_s₁             zeros(S, nˢ, nˢ + nˢ^2)
+                 zeros(S, nˢ, nˢ)    s_to_s₁             s_s_to_s₂ / 2
+                 zeros(S, nˢ^2, 2*nˢ) s₁_kron_s₁                       ]
+
+    ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂ / 2]
+
+    ŝv₂ = vcat(zeros(S, nˢ),
+               v_v_to_s₂_v / 2 + e_e_to_s₂ * vec_Iₑ / 2,
+               e₁_kron_e₁ * vec_Iₑ)
+
+    yv₂ = (v_v_to_y₂_v + e_e_to_y₂ * vec_Iₑ) / 2
+
+    # Mean solve
+    A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
+    μˢ⁺₂ = A_mean \ ŝv₂
+
+    A_Δ = collect(ℒ.I(nˢ)) - s_to_s₁
+    rhs_Δ = s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂_v + e_e_to_s₂ * vec_Iₑ) / 2
+    Δμˢ₂ = vec(A_Δ \ rhs_Δ)
+
+    μʸ₂ = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+    slvd = solved && solved2
+    𝐒₂_sp = sparse(𝐒₂_full)
+
+    result = (μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_sp, ∇₂, slvd)
+
+    # ── Pullback ──
+    function calculate_second_order_moments_pullback(∂out)
+        ∂μʸ₂_in, ∂Δμˢ₂_in, ∂Σʸ₁_pass, ∂Σᶻ₁_pass, ∂SS_pass,
+            ∂𝐒₁_pass, ∂∇₁_pass, ∂𝐒₂_pass, ∂∇₂_pass, _ = ∂out
+
+        # Materialise any InplaceableThunk / Thunk wrappers
+        ∂μʸ₂_in   = unthunk(∂μʸ₂_in)
+        ∂Δμˢ₂_in  = unthunk(∂Δμˢ₂_in)
+        ∂Σʸ₁_pass = unthunk(∂Σʸ₁_pass)
+        ∂Σᶻ₁_pass = unthunk(∂Σᶻ₁_pass)
+        ∂SS_pass   = unthunk(∂SS_pass)
+        ∂𝐒₁_pass   = unthunk(∂𝐒₁_pass)
+        ∂∇₁_pass   = unthunk(∂∇₁_pass)
+        ∂𝐒₂_pass   = unthunk(∂𝐒₂_pass)
+        ∂∇₂_pass   = unthunk(∂∇₂_pass)
+
+        # Accumulators
+        ∂𝐒₁_acc = zeros(S, size(𝐒₁))
+        ∂S2f     = zeros(S, size(𝐒₂_full))
+        ∂SS_acc  = zeros(S, length(SS_and_pars))
+        ∂∇₁_acc  = zeros(S, size(∇₁))
+        ∂Σᶻ₁_acc = zeros(S, nˢ, nˢ)
+
+        # Pass-through cotangents
+        if !(∂𝐒₁_pass isa AbstractZero);  ∂𝐒₁_acc .+= ∂𝐒₁_pass;  end
+        if !(∂SS_pass  isa AbstractZero);  ∂SS_acc  .+= ∂SS_pass;   end
+        if !(∂𝐒₂_pass  isa AbstractZero);  ∂S2f     .+= ∂𝐒₂_pass;   end
+        if !(∂∇₁_pass  isa AbstractZero);  ∂∇₁_acc  .+= ∂∇₁_pass;   end
+        if !(∂Σᶻ₁_pass isa AbstractZero);  ∂Σᶻ₁_acc .+= ∂Σᶻ₁_pass;  end
+
+        # ──── Backprop through μʸ₂ ────
+        if !(∂μʸ₂_in isa AbstractZero)
+            ∂μʸ₂ = ∂μʸ₂_in
+            # μʸ₂ = SS[1:n] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            ∂SS_acc[1:nVars] .+= ∂μʸ₂
+            ∂ŝ_to_y₂ = ∂μʸ₂ * μˢ⁺₂'
+            ∂μˢ⁺₂ = ŝ_to_y₂' * ∂μʸ₂
+            ∂yv₂ = copy(∂μʸ₂)
+
+            # μˢ⁺₂ = A_mean \ ŝv₂  →  λ = A_mean' \ ∂μˢ⁺₂
+            λ = A_mean' \ ∂μˢ⁺₂
+            ∂ŝv₂ = copy(λ)
+            ∂ŝ_to_ŝ₂ = λ * μˢ⁺₂'  # from (I - ŝ_to_ŝ₂)
+
+            # ── yv₂ = (v_v_to_y₂_v + e_e_to_y₂ * vec_Iₑ) / 2 ──
+            ∂S2f[:, kron_v_v] .+= reshape(∂yv₂ / 2, :, 1)
+            ∂S2f[:, kron_e_e] .+= (∂yv₂ / 2) * vec_Iₑ'
+
+            # ── ŝv₂ = [0; v_v/2 + e_e·v/2; e₁⊗e₁·v] ──
+            ∂ŝv₂_mid = ∂ŝv₂[nˢ+1:2nˢ]
+            ∂ŝv₂_bot = ∂ŝv₂[2nˢ+1:end]
+
+            ∂S2f[iˢ, kron_v_v] .+= reshape(∂ŝv₂_mid / 2, :, 1)
+            ∂S2f[iˢ, kron_e_e] .+= (∂ŝv₂_mid / 2) * vec_Iₑ'
+            ∂e₁ke₁ = ∂ŝv₂_bot * vec_Iₑ'
+
+            # ── ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂/2] ──
+            ∂𝐒₁_acc[:, 1:nˢ] .+= ∂ŝ_to_y₂[:, 1:nˢ] .+ ∂ŝ_to_y₂[:, nˢ+1:2nˢ]
+            ∂S2f[:, kron_s_s]  .+= ∂ŝ_to_y₂[:, 2nˢ+1:end] / 2
+
+            # ── ŝ_to_ŝ₂ blocks ──
+            ∂s₁_from_ŝŝ  = ∂ŝ_to_ŝ₂[1:nˢ, 1:nˢ] + ∂ŝ_to_ŝ₂[nˢ+1:2nˢ, nˢ+1:2nˢ]
+            ∂ss2_from_ŝŝ = ∂ŝ_to_ŝ₂[nˢ+1:2nˢ, 2nˢ+1:end] / 2
+            ∂s₁ks₁       = ∂ŝ_to_ŝ₂[2nˢ+1:end, 2nˢ+1:end]
+
+            # ── Kron VJPs ──
+            ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁, s_to_s₁, s_to_s₁)
+            ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁, e_to_s₁, e_to_s₁)
+
+            # Aggregate into 𝐒₁
+            ∂𝐒₁_acc[iˢ, 1:nˢ]      .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R
+            ∂𝐒₁_acc[iˢ, nˢ+1:end]  .+= ∂e₁_L .+ ∂e₁_R
+
+            # Aggregate into S₂_full
+            ∂S2f[iˢ, kron_s_s] .+= ∂ss2_from_ŝŝ
+        end
+
+        # ──── Backprop through Δμˢ₂ ────
+        if !(∂Δμˢ₂_in isa AbstractZero)
+            ∂Δμˢ₂ = ∂Δμˢ₂_in
+            # Δμˢ₂ = A_Δ \ rhs_Δ
+            λ_Δ = A_Δ' \ ∂Δμˢ₂
+            # ∂(I - s_to_s₁) → ∂s_to_s₁
+            ∂𝐒₁_acc[iˢ, 1:nˢ] .+= λ_Δ * Δμˢ₂'
+            # rhs_Δ = s_s_to_s₂ * vec(Σᶻ₁)/2 + (v_v_to_s₂_v + e_e_to_s₂*vec_Iₑ)/2
+            ∂S2f[iˢ, kron_s_s]  .+= λ_Δ * vec(Σᶻ₁)' / 2
+            ∂Σᶻ₁_acc .+= reshape(s_s_to_s₂' * λ_Δ / 2, nˢ, nˢ)
+            ∂S2f[iˢ, kron_v_v]  .+= reshape(λ_Δ / 2, :, 1)
+            ∂S2f[iˢ, kron_e_e]  .+= (λ_Δ / 2) * vec_Iₑ'
+        end
+
+        # ── Σᶻ₁ → Σʸ₁ ──
+        ∂Σʸ₁ = zeros(S, size(Σʸ₁))
+        ∂Σʸ₁[iˢ, iˢ] .= ∂Σᶻ₁_acc
+        if !(∂Σʸ₁_pass isa AbstractZero)
+            ∂Σʸ₁ .+= ∂Σʸ₁_pass
+        end
+
+        # ── S₂_full → S₂_raw via 𝐔₂ ──
+        ∂S2_raw = ∂S2f * 𝐔₂'
+
+        # ── Chain through sub-rrule pullbacks ──
+        # Second-order solution
+        so2_grad = so2_pb((∂S2_raw, NoTangent()))
+        # Coerce AbstractZero returns to typed zeros
+        ∂∇₁_from_so2 = so2_grad[2] isa AbstractZero ? zeros(S, size(∇₁)) : so2_grad[2]
+        ∂∇₂_total    = so2_grad[3] isa AbstractZero ? zeros(S, size(∇₂)) : so2_grad[3]
+        ∂𝐒₁_from_so2 = so2_grad[4] isa AbstractZero ? zeros(S, size(𝐒₁)) : so2_grad[4]
+        ∂∇₁_acc .+= ∂∇₁_from_so2
+        ∂𝐒₁_acc .+= ∂𝐒₁_from_so2
+
+        if !(∂∇₂_pass isa AbstractZero)
+            ∂∇₂_total = ∂∇₂_total .+ ∂∇₂_pass
+        end
+
+        # Hessian
+        hess_grad = hess_pb(∂∇₂_total)
+        ∂params_hess = hess_grad[2] isa AbstractZero ? zeros(S, length(parameters)) : hess_grad[2]
+        ∂SS_from_hess = hess_grad[3] isa AbstractZero ? zeros(S, length(SS_and_pars)) : hess_grad[3]
+        ∂SS_acc .+= ∂SS_from_hess
+
+        # Covariance (chains through NSSS → Jacobian → 1st sol → Lyapunov)
+        cov_grad = cov_pb((∂Σʸ₁, ∂𝐒₁_acc, ∂∇₁_acc, ∂SS_acc, NoTangent()))
+        ∂params_cov = cov_grad[2] isa AbstractZero ? zeros(S, length(parameters)) : cov_grad[2]
+
+        ∂parameters_total = ∂params_hess .+ ∂params_cov
+
+        return NoTangent(), ∂parameters_total, NoTangent()
+    end
+
+    return result, calculate_second_order_moments_pullback
+end
+
+
+# ── calculate_second_order_moments_with_covariance rrule ────────────────────────
+function rrule(::typeof(calculate_second_order_moments_with_covariance),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+
+    # ── Non-differentiable setup ──
+    constants_obj = initialise_constants!(𝓂)
+    ensure_moments_constants!(constants_obj)
+    so = constants_obj.second_order
+    T_pm = constants_obj.post_model_macro
+    nᵉ = T_pm.nExo
+    nˢ = T_pm.nPast_not_future_and_mixed
+    nVars = T_pm.nVars
+    iˢ = T_pm.past_not_future_and_mixed_idx
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    vec_Iₑ = so.vec_Iₑ
+    I_plus_s_s = so.I_plus_s_s
+    e4_minus = so.e4_minus_vecIₑ_outer
+    Iₑ = collect(S, ℒ.I(nᵉ))
+
+    np = length(parameters)
+    zero_15() = (zeros(S,0,0), zeros(S,0,0), zeros(S,0), zeros(S,0),
+                 zeros(S,0,0), zeros(S,0,0), zeros(S,0,0),
+                 zeros(S,0,0), zeros(S,0,0), zeros(S,0),
+                 zeros(S,0,0), zeros(S,0,0), spzeros(S,0,0), spzeros(S,0,0), false)
+    zero_pb(_) = (NoTangent(), zeros(S, np), NoTangent())
+
+    # ── Step 1: Covariance ──
+    cov_out, cov_pb = rrule(calculate_covariance, parameters, 𝓂; opts = opts)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = cov_out
+
+    if !solved; return zero_15(), zero_pb; end
+
+    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+    # ── Step 2: Hessian ──
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+
+    # ── Step 3: Second-order solution ──
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    𝐒₂_raw, solved2 = so2_out
+
+    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+
+    if !solved2; return zero_15(), zero_pb; end
+
+    # ── Step 4: Decompress S₂ ──
+    𝐒₂_full = 𝐒₂_raw * 𝐔₂
+
+    # ── Step 5: Slicing ──
+    kron_s_s = so.kron_states
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_s_e = so.kron_s_e
+
+    s_to_y₁ = 𝐒₁[:, 1:nˢ]
+    e_to_y₁ = 𝐒₁[:, (nˢ+1):end]
+    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ+1):end]
+
+    s_s_to_y₂ = Matrix(𝐒₂_full[:, kron_s_s])
+    e_e_to_y₂ = Matrix(𝐒₂_full[:, kron_e_e])
+    v_v_to_y₂_v = vec(𝐒₂_full[:, kron_v_v])
+    s_e_to_y₂ = Matrix(𝐒₂_full[:, kron_s_e])
+
+    s_s_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_s_s])
+    e_e_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_e_e])
+    v_v_to_s₂_v = vec(𝐒₂_full[iˢ, kron_v_v])
+    s_e_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_s_e])
+
+    # Kronecker products
+    s₁_kron_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e₁_kron_e₁ = ℒ.kron(e_to_s₁, e_to_s₁) |> collect
+    s₁_kron_e₁ = ℒ.kron(s_to_s₁, e_to_s₁) |> collect
+
+    # ── Block matrices ──
+    ŝ_to_ŝ₂ = [ s_to_s₁             zeros(S, nˢ, nˢ + nˢ^2)
+                 zeros(S, nˢ, nˢ)    s_to_s₁             s_s_to_s₂ / 2
+                 zeros(S, nˢ^2, 2*nˢ) s₁_kron_s₁                       ]
+
+    ê_to_ŝ₂ = [ e_to_s₁         zeros(S, nˢ, nᵉ^2 + nᵉ * nˢ)
+                 zeros(S, nˢ, nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
+                 zeros(S, nˢ^2, nᵉ)  e₁_kron_e₁  I_plus_s_s * s₁_kron_e₁ ]
+
+    ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂ / 2]
+
+    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+    ŝv₂ = vcat(zeros(S, nˢ),
+               v_v_to_s₂_v / 2 + e_e_to_s₂ * vec_Iₑ / 2,
+               e₁_kron_e₁ * vec_Iₑ)
+
+    yv₂ = (v_v_to_y₂_v + e_e_to_y₂ * vec_Iₑ) / 2
+
+    # Mean solve
+    A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
+    μˢ⁺₂ = A_mean \ ŝv₂
+
+    A_Δ = collect(ℒ.I(nˢ)) - s_to_s₁
+    rhs_Δ = s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂_v + e_e_to_s₂ * vec_Iₑ) / 2
+    Δμˢ₂ = vec(A_Δ \ rhs_Δ)
+
+    μʸ₂ = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+    # ── Step 6: Pruned covariance ──
+    kron_Σᶻ₁_Iₑ = ℒ.kron(Σᶻ₁, Iₑ)
+
+    Γ₂ = [ Iₑ              zeros(S, nᵉ, nᵉ^2 + nᵉ * nˢ)
+            zeros(S, nᵉ^2, nᵉ)    e4_minus     zeros(S, nᵉ^2, nᵉ * nˢ)
+            zeros(S, nˢ * nᵉ, nᵉ + nᵉ^2)    kron_Σᶻ₁_Iₑ ]
+
+    CC = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
+
+    lyap_ws_2nd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₂, 1), :second_order)
+
+    lyap_out, lyap_pb = rrule(solve_lyapunov_equation,
+                              Float64.(ŝ_to_ŝ₂), Float64.(CC), lyap_ws_2nd;
+                              lyapunov_algorithm = opts.lyapunov_algorithm,
+                              tol = opts.tol.lyapunov_tol,
+                              acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                              verbose = opts.verbose)
+    Σᶻ₂ = lyap_out[1]
+    info = lyap_out[2]
+
+    if !info; return zero_15(), zero_pb; end
+
+    Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
+    autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
+
+    slvd = solved && solved2 && info
+    𝐒₂_sp = sparse(𝐒₂_full)
+
+    result = (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_sp, ∇₂, slvd)
+
+    # ── Pullback ──
+    function calculate_second_order_moments_with_covariance_pullback(∂out)
+        ∂Σʸ₂_in, ∂Σᶻ₂_pass, ∂μʸ₂_in, ∂Δμˢ₂_in, ∂at_in,
+            ∂ŝŝ₂_pass, ∂ŝy₂_pass, ∂Σʸ₁_pass, ∂Σᶻ₁_pass, ∂SS_pass,
+            ∂𝐒₁_pass, ∂∇₁_pass, ∂𝐒₂_pass, ∂∇₂_pass, _ = ∂out
+
+        # Materialise any InplaceableThunk / Thunk wrappers
+        ∂Σʸ₂_in   = unthunk(∂Σʸ₂_in)
+        ∂Σᶻ₂_pass = unthunk(∂Σᶻ₂_pass)
+        ∂μʸ₂_in   = unthunk(∂μʸ₂_in)
+        ∂Δμˢ₂_in  = unthunk(∂Δμˢ₂_in)
+        ∂at_in    = unthunk(∂at_in)
+        ∂ŝŝ₂_pass = unthunk(∂ŝŝ₂_pass)
+        ∂ŝy₂_pass = unthunk(∂ŝy₂_pass)
+        ∂Σʸ₁_pass = unthunk(∂Σʸ₁_pass)
+        ∂Σᶻ₁_pass = unthunk(∂Σᶻ₁_pass)
+        ∂SS_pass   = unthunk(∂SS_pass)
+        ∂𝐒₁_pass   = unthunk(∂𝐒₁_pass)
+        ∂∇₁_pass   = unthunk(∂∇₁_pass)
+        ∂𝐒₂_pass   = unthunk(∂𝐒₂_pass)
+        ∂∇₂_pass   = unthunk(∂∇₂_pass)
+
+        # Accumulators
+        ∂𝐒₁_acc = zeros(S, size(𝐒₁))
+        ∂S2f     = zeros(S, size(𝐒₂_full))
+        ∂SS_acc  = zeros(S, length(SS_and_pars))
+        ∂∇₁_acc  = zeros(S, size(∇₁))
+        ∂Σᶻ₁_acc = zeros(S, nˢ, nˢ)
+
+        ∂ŝ_to_ŝ₂_acc = zeros(S, size(ŝ_to_ŝ₂))
+        ∂ŝ_to_y₂_acc = zeros(S, size(ŝ_to_y₂))
+        ∂ê_to_ŝ₂_acc = zeros(S, size(ê_to_ŝ₂))
+        ∂ê_to_y₂_acc = zeros(S, size(ê_to_y₂))
+        ∂Γ₂_acc      = zeros(S, size(Γ₂))
+        ∂Σᶻ₂_acc     = zeros(S, size(Σᶻ₂))
+
+        # Pass-through cotangents
+        if !(∂𝐒₁_pass  isa AbstractZero); ∂𝐒₁_acc .+= ∂𝐒₁_pass;  end
+        if !(∂SS_pass   isa AbstractZero); ∂SS_acc  .+= ∂SS_pass;   end
+        if !(∂𝐒₂_pass   isa AbstractZero); ∂S2f     .+= ∂𝐒₂_pass;   end
+        if !(∂∇₁_pass   isa AbstractZero); ∂∇₁_acc  .+= ∂∇₁_pass;   end
+        if !(∂Σᶻ₁_pass  isa AbstractZero); ∂Σᶻ₁_acc .+= ∂Σᶻ₁_pass;  end
+        if !(∂Σᶻ₂_pass  isa AbstractZero); ∂Σᶻ₂_acc .+= ∂Σᶻ₂_pass;  end
+        if !(∂ŝŝ₂_pass  isa AbstractZero); ∂ŝ_to_ŝ₂_acc .+= ∂ŝŝ₂_pass; end
+        if !(∂ŝy₂_pass  isa AbstractZero); ∂ŝ_to_y₂_acc .+= ∂ŝy₂_pass; end
+
+        # ──── Backprop through Σʸ₂ ────
+        # Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
+        if !(∂Σʸ₂_in isa AbstractZero)
+            ∂Σʸ₂_sym = ∂Σʸ₂_in + ∂Σʸ₂_in'
+            ∂ŝ_to_y₂_acc .+= ∂Σʸ₂_sym * ŝ_to_y₂ * Σᶻ₂
+            ∂Σᶻ₂_acc     .+= ŝ_to_y₂' * ∂Σʸ₂_in * ŝ_to_y₂
+            ∂ê_to_y₂_acc .+= ∂Σʸ₂_sym * ê_to_y₂ * Γ₂
+            ∂Γ₂_acc      .+= ê_to_y₂' * ∂Σʸ₂_in * ê_to_y₂
+        end
+
+        # ──── Backprop through autocorr_tmp ────
+        # autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
+        # For C = A*X*B': ∂A = ∂C*B*X', ∂X = A'*∂C*B, ∂B = ∂C'*A*X
+        if !(∂at_in isa AbstractZero)
+            ∂at = ∂at_in
+            ∂ŝ_to_ŝ₂_acc .+= ∂at * ŝ_to_y₂ * Σᶻ₂
+            ∂Σᶻ₂_acc     .+= ŝ_to_ŝ₂' * ∂at * ŝ_to_y₂
+            ∂ŝ_to_y₂_acc .+= ∂at' * ŝ_to_ŝ₂ * Σᶻ₂
+            ∂ê_to_ŝ₂_acc .+= ∂at * ê_to_y₂ * Γ₂
+            ∂Γ₂_acc      .+= ê_to_ŝ₂' * ∂at * ê_to_y₂
+            ∂ê_to_y₂_acc .+= ∂at' * ê_to_ŝ₂ * Γ₂
+        end
+
+        # ──── Backprop through Lyapunov: Σᶻ₂ = lyap(ŝ_to_ŝ₂, CC) ────
+        lyap_grad = lyap_pb((∂Σᶻ₂_acc, NoTangent()))
+        ∂ŝ_to_ŝ₂_lyap = lyap_grad[2] isa AbstractZero ? zeros(S, size(ŝ_to_ŝ₂)) : S.(lyap_grad[2])
+        ∂CC            = lyap_grad[3] isa AbstractZero ? zeros(S, size(CC))         : S.(lyap_grad[3])
+        ∂ŝ_to_ŝ₂_acc .+= ∂ŝ_to_ŝ₂_lyap
+
+        # ──── Backprop through CC = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂' ────
+        ∂CC_sym = ∂CC + ∂CC'
+        ∂ê_to_ŝ₂_acc .+= ∂CC_sym * ê_to_ŝ₂ * Γ₂
+        ∂Γ₂_acc      .+= ê_to_ŝ₂' * ∂CC * ê_to_ŝ₂
+
+        # ──── Backprop through Γ₂ → ∂Σᶻ₁ ────
+        # Only the bottom-right block kron(Σᶻ₁, Iₑ) depends on parameters
+        br_row = nᵉ + nᵉ^2
+        ∂Γ₂_br = ∂Γ₂_acc[br_row+1:end, br_row+1:end]
+        ∂Σᶻ₁_from_Γ₂, _ = _kron_vjp(∂Γ₂_br, Σᶻ₁, Iₑ)
+        ∂Σᶻ₁_acc .+= ∂Σᶻ₁_from_Γ₂
+
+        # ──── Backprop through μʸ₂ (same as base) ────
+        if !(∂μʸ₂_in isa AbstractZero)
+            ∂μʸ₂ = ∂μʸ₂_in
+            ∂SS_acc[1:nVars] .+= ∂μʸ₂
+            ∂ŝ_to_y₂_acc .+= ∂μʸ₂ * μˢ⁺₂'
+            ∂μˢ⁺₂ = ŝ_to_y₂' * ∂μʸ₂
+            ∂yv₂ = copy(∂μʸ₂)
+
+            λ = A_mean' \ ∂μˢ⁺₂
+            ∂ŝv₂ = copy(λ)
+            ∂ŝ_to_ŝ₂_acc .+= λ * μˢ⁺₂'
+
+            # yv₂
+            ∂S2f[:, kron_v_v] .+= reshape(∂yv₂ / 2, :, 1)
+            ∂S2f[:, kron_e_e] .+= (∂yv₂ / 2) * vec_Iₑ'
+
+            # ŝv₂
+            ∂ŝv₂_mid = ∂ŝv₂[nˢ+1:2nˢ]
+            ∂ŝv₂_bot = ∂ŝv₂[2nˢ+1:end]
+            ∂S2f[iˢ, kron_v_v] .+= reshape(∂ŝv₂_mid / 2, :, 1)
+            ∂S2f[iˢ, kron_e_e] .+= (∂ŝv₂_mid / 2) * vec_Iₑ'
+            ∂e₁ke₁_from_ŝv = ∂ŝv₂_bot * vec_Iₑ'
+        else
+            ∂e₁ke₁_from_ŝv = zeros(S, size(e₁_kron_e₁))
+        end
+
+        # ──── Backprop through Δμˢ₂ ────
+        if !(∂Δμˢ₂_in isa AbstractZero)
+            λ_Δ = A_Δ' \ ∂Δμˢ₂_in
+            ∂𝐒₁_acc[iˢ, 1:nˢ] .+= λ_Δ * Δμˢ₂'
+            ∂S2f[iˢ, kron_s_s]  .+= λ_Δ * vec(Σᶻ₁)' / 2
+            ∂Σᶻ₁_acc .+= reshape(s_s_to_s₂' * λ_Δ / 2, nˢ, nˢ)
+            ∂S2f[iˢ, kron_v_v]  .+= reshape(λ_Δ / 2, :, 1)
+            ∂S2f[iˢ, kron_e_e]  .+= (λ_Δ / 2) * vec_Iₑ'
+        end
+
+        # ──── Distribute block matrix grads to slice grads ────
+        # ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂/2]
+        ∂𝐒₁_acc[:, 1:nˢ]    .+= ∂ŝ_to_y₂_acc[:, 1:nˢ] .+ ∂ŝ_to_y₂_acc[:, nˢ+1:2nˢ]
+        ∂S2f[:, kron_s_s]    .+= ∂ŝ_to_y₂_acc[:, 2nˢ+1:end] / 2
+
+        # ê_to_y₂ = [e_to_y₁  e_e_to_y₂/2  s_e_to_y₂]
+        ∂𝐒₁_acc[:, nˢ+1:end] .+= ∂ê_to_y₂_acc[:, 1:nᵉ]
+        ∂S2f[:, kron_e_e]     .+= ∂ê_to_y₂_acc[:, nᵉ+1:nᵉ+nᵉ^2] / 2
+        ∂S2f[:, kron_s_e]     .+= ∂ê_to_y₂_acc[:, nᵉ+nᵉ^2+1:end]
+
+        # ŝ_to_ŝ₂ blocks
+        ∂s₁_from_ŝŝ  = ∂ŝ_to_ŝ₂_acc[1:nˢ, 1:nˢ] + ∂ŝ_to_ŝ₂_acc[nˢ+1:2nˢ, nˢ+1:2nˢ]
+        ∂ss2_from_ŝŝ = ∂ŝ_to_ŝ₂_acc[nˢ+1:2nˢ, 2nˢ+1:end] / 2
+        ∂s₁ks₁_from_ŝŝ = ∂ŝ_to_ŝ₂_acc[2nˢ+1:end, 2nˢ+1:end]
+
+        # ê_to_ŝ₂ blocks
+        ∂𝐒₁_acc[iˢ, nˢ+1:end] .+= ∂ê_to_ŝ₂_acc[1:nˢ, 1:nᵉ]      # e_to_s₁
+        ∂S2f[iˢ, kron_e_e]     .+= ∂ê_to_ŝ₂_acc[nˢ+1:2nˢ, nᵉ+1:nᵉ+nᵉ^2] / 2  # e_e_to_s₂
+        ∂S2f[iˢ, kron_s_e]     .+= ∂ê_to_ŝ₂_acc[nˢ+1:2nˢ, nᵉ+nᵉ^2+1:end]       # s_e_to_s₂
+        ∂e₁ke₁_from_ê = ∂ê_to_ŝ₂_acc[2nˢ+1:end, nᵉ+1:nᵉ+nᵉ^2]
+        ∂Ips_s₁ke₁   = ∂ê_to_ŝ₂_acc[2nˢ+1:end, nᵉ+nᵉ^2+1:end]
+        # I_plus_s_s * s₁_kron_e₁ → ∂s₁_kron_e₁ += I_plus_s_s' * ∂Ips_s₁ke₁
+        ∂s₁ke₁_from_ê = I_plus_s_s' * ∂Ips_s₁ke₁
+
+        # ──── Kron VJPs ────
+        ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁_from_ŝŝ, s_to_s₁, s_to_s₁)
+        ∂e₁ke₁_total = ∂e₁ke₁_from_ŝv .+ ∂e₁ke₁_from_ê
+        ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁_total, e_to_s₁, e_to_s₁)
+        ∂s₁_se_L, ∂e₁_se_R = _kron_vjp(∂s₁ke₁_from_ê, s_to_s₁, e_to_s₁)
+
+        # Aggregate into 𝐒₁
+        ∂𝐒₁_acc[iˢ, 1:nˢ]     .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R .+ ∂s₁_se_L
+        ∂𝐒₁_acc[iˢ, nˢ+1:end] .+= ∂e₁_L .+ ∂e₁_R .+ ∂e₁_se_R
+        ∂S2f[iˢ, kron_s_s]    .+= ∂ss2_from_ŝŝ
+
+        # ── Σᶻ₁ → Σʸ₁ ──
+        ∂Σʸ₁ = zeros(S, size(Σʸ₁))
+        ∂Σʸ₁[iˢ, iˢ] .= ∂Σᶻ₁_acc
+        if !(∂Σʸ₁_pass isa AbstractZero); ∂Σʸ₁ .+= ∂Σʸ₁_pass; end
+
+        # ── S₂_full → S₂_raw ──
+        ∂S2_raw = ∂S2f * 𝐔₂'
+
+        # ── Chain through sub-rrule pullbacks ──
+        so2_grad = so2_pb((∂S2_raw, NoTangent()))
+        ∂∇₁_from_so2 = so2_grad[2] isa AbstractZero ? zeros(S, size(∇₁)) : so2_grad[2]
+        ∂∇₂_total    = so2_grad[3] isa AbstractZero ? zeros(S, size(∇₂)) : so2_grad[3]
+        ∂𝐒₁_from_so2 = so2_grad[4] isa AbstractZero ? zeros(S, size(𝐒₁)) : so2_grad[4]
+        ∂∇₁_acc .+= ∂∇₁_from_so2
+        ∂𝐒₁_acc .+= ∂𝐒₁_from_so2
+
+        if !(∂∇₂_pass isa AbstractZero); ∂∇₂_total = ∂∇₂_total .+ ∂∇₂_pass; end
+
+        hess_grad = hess_pb(∂∇₂_total)
+        ∂params_hess = hess_grad[2] isa AbstractZero ? zeros(S, np) : hess_grad[2]
+        ∂SS_from_hess = hess_grad[3] isa AbstractZero ? zeros(S, length(SS_and_pars)) : hess_grad[3]
+        ∂SS_acc .+= ∂SS_from_hess
+
+        cov_grad = cov_pb((∂Σʸ₁, ∂𝐒₁_acc, ∂∇₁_acc, ∂SS_acc, NoTangent()))
+        ∂params_cov = cov_grad[2] isa AbstractZero ? zeros(S, np) : cov_grad[2]
+
+        ∂parameters_total = ∂params_hess .+ ∂params_cov
+
+        return NoTangent(), ∂parameters_total, NoTangent()
+    end
+
+    return result, calculate_second_order_moments_with_covariance_pullback
+end
+
+
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R},
