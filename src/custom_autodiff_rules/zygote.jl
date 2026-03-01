@@ -1955,6 +1955,14 @@ function rrule(::typeof(get_irf),
                 ∂y_accum = zeros(S, nVars)
                 ∂y_accum[past_idx] .+= ∂input_t[1:nPast]
             end
+
+            # After BPTT for this shock, ∂y_accum is the gradient w.r.t. init_state.
+            # When init_state = initial_state - reference_steady_state[1:nVar],
+            # propagate gradient to reference_steady_state with negative sign.
+            if initial_state != [0.0]
+                nVar_len = length(𝓂.constants.post_model_macro.var)
+                ∂SS_and_pars[1:nVar_len] .-= ∂y_accum[1:nVar_len]
+            end
         end
 
         # ── Chain backward through sub-pullbacks ──
