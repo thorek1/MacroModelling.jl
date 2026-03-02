@@ -2524,7 +2524,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = :all_excluding_obc)[:mean], old_params)
             
-            if algorithm ∈ [:first_order, :pruned_second_order]
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 mean = :all_excluding_obc)[:mean], old_params)
             end
@@ -2540,7 +2540,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                         end, old_params)
                               
                 if isfinite(ℒ.norm(deriv2_fin[1]))
-                    if algorithm ∈ [:first_order, :pruned_second_order]
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-5)
                     end
                     
@@ -2554,7 +2554,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
             
-            if algorithm ∈ [:first_order, :pruned_second_order]
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
             end                    
@@ -2568,7 +2568,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                         end, old_params)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
-                    if algorithm ∈ [:first_order, :pruned_second_order]
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-5)
                     end
                     
@@ -2582,7 +2582,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = :all_excluding_obc)[:variance], old_params)
 
-            if algorithm ∈ [:first_order, :pruned_second_order]
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 variance = :all_excluding_obc)[:variance], old_params)
             end
@@ -2595,7 +2595,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 get_statistics(m, x, algorithm = algorithm, variance = :all_excluding_obc)[:variance]
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv4_fin[1]))
-                    if algorithm ∈ [:first_order, :pruned_second_order]
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-5)
                     end
                     @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
@@ -2610,7 +2610,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
-            if algorithm ∈ [:first_order, :pruned_second_order]
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                                 sylvester_acceptance_tol = 1e-14),
@@ -2628,7 +2628,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                     covariance = :all_excluding_obc)[:covariance]
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
-                    if algorithm ∈ [:first_order, :pruned_second_order]
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-4)
                     end
 
@@ -2643,7 +2643,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             deriv6 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)
 
-            if algorithm ∈ [:first_order, :pruned_second_order]
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)
             end
@@ -2656,7 +2656,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 get_statistics(m, x, algorithm = algorithm, autocorrelation = :all_excluding_obc)[:autocorrelation]
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv6_fin[1]))
-                    if algorithm ∈ [:first_order, :pruned_second_order]
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         @test isapprox(deriv6_zyg[1], deriv6_fin[1], rtol = 1e-4)
                     end
                     @test isapprox(deriv6, deriv6_fin[1], rtol = 1e-4)
@@ -2726,7 +2726,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             mean = :all_excluding_obc)[:mean], old_params)
                             @test isapprox(deriv2, DERIV2, rtol = 1e-8)
 
-                            if algorithm ∈ [:first_order, :pruned_second_order]
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -2748,7 +2748,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
                             @test isapprox(deriv3, DERIV3, rtol = 1e-8)
 
-                            if algorithm ∈ [:first_order, :pruned_second_order]
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -2770,7 +2770,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             variance = :all_excluding_obc)[:variance], old_params)
                             @test isapprox(deriv4, DERIV4, rtol = 1e-8)
 
-                            if algorithm ∈ [:first_order, :pruned_second_order]
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -2793,7 +2793,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             # println(ℒ.norm(deriv5 - DERIV5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))                      
 							@test isapprox(deriv5, DERIV5, rtol = 1e-4)
 
-                            if algorithm ∈ [:first_order, :pruned_second_order]
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -2815,7 +2815,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)
                             @test isapprox(deriv6, DERIV6, rtol = 1e-4)
 
-                            if algorithm ∈ [:first_order, :pruned_second_order]
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
