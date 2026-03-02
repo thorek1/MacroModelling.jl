@@ -2027,7 +2027,7 @@ function rrule(::typeof(calculate_covariance),
     sol = first_out[1]
     solved_first = first_out[3]
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
 
     # ── Step 4: A, C, CC (mutation-free) ──
     A = sol[:, 1:nPast] * P
@@ -2179,7 +2179,7 @@ function rrule(::typeof(calculate_second_order_moments),
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
     if !solved2
         return (zeros(S,0), zeros(S,0), Σʸ₁, zeros(S,0,0), SS_and_pars, 𝐒₁, ∇₁, spzeros(S,0,0), ∇₂, solved2), zero_pb
@@ -2415,7 +2415,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
     𝐒₂_raw, solved2 = so2_out
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
     if !solved2; return zero_15(), zero_pb; end
 
@@ -2735,7 +2735,7 @@ function rrule(::typeof(calculate_third_order_moments),
                             opts = opts)
     𝐒₃, solved3 = so3_out
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
     if !solved3; return zero_4(), zero_pb; end
 
@@ -3490,7 +3490,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                             opts = opts)
     𝐒₃, solved3 = so3_out
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
     if !solved3; return zero_5(), zero_pb; end
 
@@ -8224,4 +8224,553 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     return llh, calculate_loglikelihood_pullback
+end
+
+
+function _get_statistics_cotangent(Δret, key::Symbol)
+    Δ = unthunk(Δret)
+    if Δ isa Union{NoTangent, AbstractZero}
+        return NoTangent()
+    end
+
+    if Δ isa AbstractDict
+        return get(Δ, key, NoTangent())
+    end
+
+    if Δ isa NamedTuple
+        return get(Δ, key, NoTangent())
+    end
+
+    if hasproperty(Δ, key)
+        return getproperty(Δ, key)
+    end
+
+    if hasproperty(Δ, :pairs)
+        pairs_obj = getproperty(Δ, :pairs)
+        if pairs_obj isa AbstractDict
+            return get(pairs_obj, key, NoTangent())
+        elseif pairs_obj isa NamedTuple
+            return get(pairs_obj, key, NoTangent())
+        end
+    end
+
+    return NoTangent()
+end
+
+
+function rrule(::typeof(get_statistics),
+                𝓂,
+                parameter_values::Vector{T};
+                parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
+                steady_state_function::SteadyStateFunctionType = missing,
+                non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
+                mean::Union{Symbol_input,String_input} = Symbol[],
+                standard_deviation::Union{Symbol_input,String_input} = Symbol[],
+                variance::Union{Symbol_input,String_input} = Symbol[],
+                covariance::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
+                autocorrelation::Union{Symbol_input,String_input} = Symbol[],
+                autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = Tolerances()) where T
+
+    opts = merge_calculation_options(tol = tol,
+                                    verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    lyapunov_algorithm = lyapunov_algorithm)
+
+    @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
+
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+
+    SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
+    mean_var_idx = parse_variables_input_to_index(mean, 𝓂)
+    std_var_idx = parse_variables_input_to_index(standard_deviation, 𝓂)
+    var_var_idx = parse_variables_input_to_index(variance, 𝓂)
+    covar_var_idx = parse_variables_input_to_index(covariance, 𝓂)
+    covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
+    autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
+
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
+
+    all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
+    n_other = length(other_parameter_values)
+    inv_sort = invperm(sort_idx)
+
+    run_algorithm = algorithm
+    if run_algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+        run_algorithm = :pruned_second_order
+    end
+
+        solve!(𝓂,
+            algorithm = run_algorithm,
+            steady_state_function = steady_state_function,
+            opts = opts)
+
+    nVars = length(𝓂.constants.post_model_macro.var)
+
+    nsss_only = !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+
+    nsss_pb = nothing
+    cov_pb = nothing
+    som_pb = nothing
+    somc_pb = nothing
+    tom_pb = nothing
+    toma_pb = nothing
+
+    solved = true
+    SS_and_pars = zeros(T, 0)
+    SS = zeros(T, 0)
+    state_μ = zeros(T, 0)
+
+    covar_dcmp = zeros(T, 0, 0)
+    sol = zeros(T, 0, 0)
+
+    Σᶻ₂ = zeros(T, 0, 0)
+    Δμˢ₂ = zeros(T, 0)
+    autocorr_tmp = zeros(T, 0, 0)
+    ŝ_to_ŝ₂ = zeros(T, 0, 0)
+    ŝ_to_y₂ = zeros(T, 0, 0)
+
+    autocorr = zeros(T, 0, 0)
+    first_order_A = zeros(T, 0, 0)
+    first_order_P = zeros(T, 0, 0)
+    first_order_R_seq = Matrix{T}[]
+    first_order_d = zeros(T, 0)
+    first_order_mask = BitVector()
+
+    second_order_P_seq = Matrix{T}[]
+    second_order_M_seq = Matrix{T}[]
+    second_order_d = zeros(T, 0)
+    second_order_mask = BitVector()
+
+    st_dev = zeros(T, 0)
+    varrs = zeros(T, 0)
+    diag_covar = zeros(T, 0)
+    diag_gate = falses(0)
+
+    covar_dcmp_sp = zeros(T, 0, 0)
+    covar_group_pairs = NTuple{4,Int}[]
+
+    if nsss_only
+        nsss_out, nsss_pb_local = rrule(get_NSSS_and_parameters, 𝓂, all_parameters; opts = opts)
+        nsss_pb = nsss_pb_local
+
+        SS_and_pars = nsss_out[1]
+        solution_error = nsss_out[2][1]
+        SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
+
+        ret = Dict{Symbol,AbstractArray{T}}()
+        ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+
+        function nsss_only_pullback(Δret)
+            Δnsss = _get_statistics_cotangent(Δret, :non_stochastic_steady_state)
+            if Δnsss isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
+            end
+
+            ∂SS = zeros(T, length(SS))
+            ∂SS[SS_var_idx] .+= unthunk(Δnsss)
+
+            ∂SS_and_pars = zeros(T, length(SS_and_pars))
+            ∂SS_and_pars[1:length(SS)] .+= ∂SS
+
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂all_parameters = nsss_grads[3] isa AbstractZero ? zeros(T, length(all_parameters)) : nsss_grads[3]
+
+            ∂concat = ∂all_parameters[inv_sort]
+            ∂parameter_values = ∂concat[(n_other + 1):end]
+
+            return NoTangent(), NoTangent(), ∂parameter_values
+        end
+
+        return ret, nsss_only_pullback
+    end
+
+    if run_algorithm == :pruned_third_order
+        if !(autocorrelation == Symbol[])
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
+            toma_out, toma_pb_local = rrule(calculate_third_order_moments_with_autocorrelation,
+                                            all_parameters,
+                                            𝓂.constants.post_model_macro.var[second_mom_third_order],
+                                            𝓂;
+                                            covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                            opts = opts,
+                                            autocorrelation_periods = autocorrelation_periods)
+            toma_pb = toma_pb_local
+
+            covar_dcmp = toma_out[1]
+            state_μ = toma_out[2]
+            autocorr = toma_out[3]
+            SS_and_pars = toma_out[4]
+            solved = toma_out[5]
+        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+            tom_out, tom_pb_local = rrule(calculate_third_order_moments,
+                                        all_parameters,
+                                        𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx)],
+                                        𝓂;
+                                        covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                        opts = opts)
+            tom_pb = tom_pb_local
+
+            covar_dcmp = tom_out[1]
+            state_μ = tom_out[2]
+            SS_and_pars = tom_out[3]
+            solved = tom_out[4]
+        end
+    elseif run_algorithm == :pruned_second_order
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+            somc_out, somc_pb_local = rrule(calculate_second_order_moments_with_covariance, all_parameters, 𝓂; opts = opts)
+            somc_pb = somc_pb_local
+
+            covar_dcmp = somc_out[1]
+            Σᶻ₂ = somc_out[2]
+            state_μ = somc_out[3]
+            Δμˢ₂ = somc_out[4]
+            autocorr_tmp = somc_out[5]
+            ŝ_to_ŝ₂ = somc_out[6]
+            ŝ_to_y₂ = somc_out[7]
+            SS_and_pars = somc_out[10]
+            solved = somc_out[15]
+        else
+            som_out, som_pb_local = rrule(calculate_second_order_moments, all_parameters, 𝓂; opts = opts)
+            som_pb = som_pb_local
+
+            state_μ = som_out[1]
+            Δμˢ₂ = som_out[2]
+            SS_and_pars = som_out[5]
+            solved = som_out[10]
+        end
+    else
+        cov_out, cov_pb_local = rrule(calculate_covariance, all_parameters, 𝓂; opts = opts)
+        cov_pb = cov_pb_local
+
+        covar_dcmp = cov_out[1]
+        sol = cov_out[2]
+        SS_and_pars = cov_out[4]
+        solved = cov_out[5]
+    end
+
+    SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
+
+    if !(variance == Symbol[]) || !(standard_deviation == Symbol[])
+        diag_covar = convert(Vector{T}, ℒ.diag(covar_dcmp))
+        diag_max = max.(diag_covar, eps(Float64))
+        diag_gate = diag_covar .> eps(Float64)
+        if !(variance == Symbol[])
+            varrs = convert(Vector{T}, diag_max)
+        end
+        if !(standard_deviation == Symbol[])
+            st_dev = sqrt.(abs.(convert(Vector{T}, diag_max)))
+        end
+    end
+
+    if !(autocorrelation == Symbol[])
+        if run_algorithm == :pruned_second_order
+            P_i = Matrix{T}(ℒ.I(size(ŝ_to_ŝ₂, 1)))
+            autocorr = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+            second_order_P_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+            second_order_M_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+            second_order_d = max.(convert(Vector{T}, ℒ.diag(covar_dcmp)), eps(Float64))
+
+            for i in autocorrelation_periods
+                second_order_P_seq[i] = copy(P_i)
+                M_i = ŝ_to_y₂ * P_i * autocorr_tmp
+                second_order_M_seq[i] = M_i
+                autocorr[:, i] .= ℒ.diag(M_i) ./ second_order_d
+                P_i = P_i * ŝ_to_ŝ₂
+            end
+
+            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            autocorr[second_order_mask, :] .= 0
+        elseif !(run_algorithm == :pruned_third_order)
+            first_order_P = ℒ.diagm(ones(T, 𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, :]
+            first_order_A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * first_order_P
+            first_order_d = max.(convert(Vector{T}, ℒ.diag(covar_dcmp)), eps(Float64))
+            d_inv = 1 ./ first_order_d
+
+            autocorr = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+            first_order_R_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+
+            R = Matrix(covar_dcmp)
+            for i in 1:maximum(autocorrelation_periods)
+                R = first_order_A * R
+                first_order_R_seq[i] = copy(R)
+            end
+
+            for i in autocorrelation_periods
+                autocorr[:, i] .= ℒ.diag(first_order_R_seq[i]) .* d_inv
+            end
+
+            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            autocorr[first_order_mask, :] .= 0
+        end
+    end
+
+    if !(covariance == Symbol[])
+        covar_dcmp_sp = ℒ.triu(covar_dcmp)
+
+        if !isnothing(covar_groups)
+            for group in covar_groups
+                for i in group
+                    i_pos = findfirst(==(i), covar_var_idx)
+                    isnothing(i_pos) && continue
+                    for j in group
+                        j_pos = findfirst(==(j), covar_var_idx)
+                        isnothing(j_pos) && continue
+                        push!(covar_group_pairs, (i_pos, j_pos, i, j))
+                    end
+                end
+            end
+        end
+    end
+
+    ret = Dict{Symbol,AbstractArray{T}}()
+
+    if !(non_stochastic_steady_state == Symbol[])
+        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+    end
+    if !(mean == Symbol[])
+        if run_algorithm ∉ [:pruned_second_order,:pruned_third_order]
+            ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
+        else
+            ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
+        end
+    end
+    if !(standard_deviation == Symbol[])
+        ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(std_var_idx) ? 0 : length(std_var_idx))
+    end
+    if !(variance == Symbol[])
+        ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(var_var_idx) ? 0 : length(var_var_idx))
+    end
+    if !(covariance == Symbol[])
+        if !isnothing(covar_groups)
+            if solved
+                covar_result = zeros(T, length(covar_var_idx), length(covar_var_idx))
+                for (i_pos, j_pos, i, j) in covar_group_pairs
+                    covar_result[i_pos, j_pos] = covar_dcmp_sp[i, j]
+                end
+                ret[:covariance] = covar_result
+            else
+                ret[:covariance] = fill(Inf * sum(abs2,parameter_values), length(covar_var_idx), length(covar_var_idx))
+            end
+        else
+            ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx, covar_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
+    end
+    if !(autocorrelation == Symbol[])
+        ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx, :] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
+    end
+
+    function get_statistics_pullback(Δret)
+        if !solved
+            return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
+        end
+
+        Δnsss = unthunk(_get_statistics_cotangent(Δret, :non_stochastic_steady_state))
+        Δmean = unthunk(_get_statistics_cotangent(Δret, :mean))
+        Δstd = unthunk(_get_statistics_cotangent(Δret, :standard_deviation))
+        Δvar = unthunk(_get_statistics_cotangent(Δret, :variance))
+        Δcov = unthunk(_get_statistics_cotangent(Δret, :covariance))
+        Δautocorr = unthunk(_get_statistics_cotangent(Δret, :autocorrelation))
+
+        ∂SS_and_pars = zeros(T, length(SS_and_pars))
+        ∂state_μ = length(state_μ) == 0 ? zeros(T, 0) : zeros(T, length(state_μ))
+        ∂covar_dcmp = size(covar_dcmp, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(covar_dcmp))
+        ∂sol = size(sol, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(sol))
+        ∂autocorr_tmp = size(autocorr_tmp, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(autocorr_tmp))
+        ∂ŝ_to_ŝ₂ = size(ŝ_to_ŝ₂, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(ŝ_to_ŝ₂))
+        ∂ŝ_to_y₂ = size(ŝ_to_y₂, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(ŝ_to_y₂))
+
+        if !(Δnsss isa Union{NoTangent, AbstractZero})
+            ∂SS_and_pars[SS_var_idx] .+= Δnsss
+        end
+
+        if !(Δmean isa Union{NoTangent, AbstractZero})
+            if run_algorithm ∉ [:pruned_second_order,:pruned_third_order]
+                ∂SS_and_pars[mean_var_idx] .+= Δmean
+            else
+                ∂state_μ[mean_var_idx] .+= Δmean
+            end
+        end
+
+        if !(Δvar isa Union{NoTangent, AbstractZero})
+            ∂var_full = zeros(T, length(diag_covar))
+            ∂var_full[var_var_idx] .+= Δvar
+            @inbounds for i in eachindex(diag_covar)
+                if diag_gate[i]
+                    ∂covar_dcmp[i, i] += ∂var_full[i]
+                end
+            end
+        end
+
+        if !(Δstd isa Union{NoTangent, AbstractZero})
+            ∂std_full = zeros(T, length(diag_covar))
+            ∂std_full[std_var_idx] .+= Δstd
+            @inbounds for i in eachindex(diag_covar)
+                if diag_gate[i]
+                    ∂covar_dcmp[i, i] += ∂std_full[i] / (2 * st_dev[i])
+                end
+            end
+        end
+
+        if !(Δcov isa Union{NoTangent, AbstractZero})
+            ∂covar_dcmp_sp = zeros(T, size(covar_dcmp))
+
+            if !isnothing(covar_groups)
+                for (i_pos, j_pos, i, j) in covar_group_pairs
+                    ∂covar_dcmp_sp[i, j] += Δcov[i_pos, j_pos]
+                end
+            else
+                ∂covar_dcmp_sp[covar_var_idx, covar_var_idx] .+= Δcov
+            end
+
+            ∂covar_dcmp .+= ℒ.triu(∂covar_dcmp_sp)
+        end
+
+        if !(Δautocorr isa Union{NoTangent, AbstractZero}) && !(autocorrelation == Symbol[])
+            if run_algorithm == :pruned_second_order
+                ∂autocorr_full = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+                ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                ∂autocorr_full[second_order_mask, :] .= 0
+
+                ∂d = zeros(T, length(second_order_d))
+                ∂P = [zeros(T, size(second_order_P_seq[i])) for i in 1:length(second_order_P_seq)]
+
+                for i in reverse(collect(autocorrelation_periods))
+                    g = view(∂autocorr_full, :, i)
+                    M_i = second_order_M_seq[i]
+                    P_i = second_order_P_seq[i]
+
+                    ∂M_i = zeros(T, size(M_i))
+                    @inbounds for j in 1:size(M_i, 1)
+                        ∂M_i[j, j] += g[j] / second_order_d[j]
+                        ∂d[j] -= g[j] * M_i[j, j] / (second_order_d[j]^2)
+                    end
+
+                    P_aut = P_i * autocorr_tmp
+                    ∂ŝ_to_y₂ .+= ∂M_i * P_aut'
+
+                    ∂Paut = ŝ_to_y₂' * ∂M_i
+                    ∂P[i] .+= ∂Paut * autocorr_tmp'
+                    ∂autocorr_tmp .+= P_i' * ∂Paut
+                end
+
+                if length(second_order_P_seq) >= 2
+                    for i in reverse(1:(length(second_order_P_seq) - 1))
+                        ∂ŝ_to_ŝ₂ .+= second_order_P_seq[i]' * ∂P[i + 1]
+                        ∂P[i] .+= ∂P[i + 1] * ŝ_to_ŝ₂'
+                    end
+                end
+
+                diag_raw = convert(Vector{T}, ℒ.diag(covar_dcmp))
+                @inbounds for i in eachindex(∂d)
+                    if diag_raw[i] > eps(Float64)
+                        ∂covar_dcmp[i, i] += ∂d[i]
+                    end
+                end
+
+                ∂state_μ .+= zero(∂state_μ)
+            elseif run_algorithm != :pruned_third_order
+                ∂autocorr_full = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+                ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                ∂autocorr_full[first_order_mask, :] .= 0
+
+                d_inv = 1 ./ first_order_d
+                ∂d = zeros(T, length(first_order_d))
+                max_p = maximum(autocorrelation_periods)
+                ∂R = [zeros(T, size(covar_dcmp)) for _ in 1:max_p]
+                ∂A = zeros(T, size(first_order_A))
+
+                for i in reverse(collect(autocorrelation_periods))
+                    g = view(∂autocorr_full, :, i)
+                    Ri = first_order_R_seq[i]
+                    @inbounds for j in 1:length(g)
+                        ∂R[i][j, j] += g[j] * d_inv[j]
+                        ∂d[j] -= g[j] * Ri[j, j] / (first_order_d[j]^2)
+                    end
+                end
+
+                for i in reverse(1:max_p)
+                    if i < max_p
+                        ∂R[i] .+= first_order_A' * ∂R[i + 1]
+                    end
+                    R_prev = (i == 1) ? Matrix(covar_dcmp) : first_order_R_seq[i - 1]
+                    ∂A .+= ∂R[i] * R_prev'
+                end
+
+                if max_p >= 1
+                    ∂covar_dcmp .+= first_order_A' * ∂R[1]
+                end
+
+                diag_raw = convert(Vector{T}, ℒ.diag(covar_dcmp))
+                @inbounds for i in eachindex(∂d)
+                    if diag_raw[i] > eps(Float64)
+                        ∂covar_dcmp[i, i] += ∂d[i]
+                    end
+                end
+
+                ∂sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] .+= ∂A * first_order_P'
+            end
+        end
+
+        ∂all_parameters = zeros(T, length(all_parameters))
+
+        if nsss_only
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂all_parameters .+= (nsss_grads[3] isa AbstractZero ? zeros(T, length(all_parameters)) : nsss_grads[3])
+        elseif run_algorithm == :first_order
+            cov_grads = cov_pb((∂covar_dcmp, ∂sol, NoTangent(), ∂SS_and_pars, NoTangent()))
+            ∂all_parameters .+= (cov_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : cov_grads[2])
+        elseif run_algorithm == :pruned_second_order
+            if som_pb !== nothing
+                som_grads = som_pb((∂state_μ, NoTangent(), NoTangent(), NoTangent(), ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()))
+                ∂all_parameters .+= (som_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : som_grads[2])
+            else
+                somc_grads = somc_pb((∂covar_dcmp,
+                                    NoTangent(),
+                                    ∂state_μ,
+                                    NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂autocorr_tmp : NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂ŝ_to_ŝ₂ : NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂ŝ_to_y₂ : NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    ∂SS_and_pars,
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent()))
+                ∂all_parameters .+= (somc_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : somc_grads[2])
+            end
+        elseif run_algorithm == :pruned_third_order
+            if toma_pb !== nothing
+                ∂autocorr_full = zeros(T, size(autocorr))
+                if !(Δautocorr isa Union{NoTangent, AbstractZero})
+                    ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                end
+                toma_grads = toma_pb((∂covar_dcmp, ∂state_μ, ∂autocorr_full, ∂SS_and_pars, NoTangent()))
+                ∂all_parameters .+= (toma_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : toma_grads[2])
+            elseif tom_pb !== nothing
+                tom_grads = tom_pb((∂covar_dcmp, ∂state_μ, ∂SS_and_pars, NoTangent()))
+                ∂all_parameters .+= (tom_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : tom_grads[2])
+            end
+        end
+
+        ∂concat = ∂all_parameters[inv_sort]
+        ∂parameter_values = ∂concat[(n_other + 1):end]
+
+        return NoTangent(), NoTangent(), ∂parameter_values
+    end
+
+    return ret, get_statistics_pullback
 end
