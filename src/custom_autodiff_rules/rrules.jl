@@ -362,6 +362,39 @@ function rrule(::typeof(calculate_third_order_derivatives),
     return third_order_derivatives, calculate_third_order_derivatives_pullback
 end
 
+
+function rrule(::typeof(getindex), d::Dict{K,V}, key::K) where {K <: Symbol, V}
+    y = getindex(d, key)
+
+    function dict_getindex_pullback(Δy)
+        Δy = unthunk(Δy)
+        if Δy isa Union{NoTangent, AbstractZero}
+            return NoTangent(), NoTangent(), NoTangent()
+        end
+
+        return NoTangent(), Dict{K, Any}(key => Δy), NoTangent()
+    end
+
+    return y, dict_getindex_pullback
+end
+
+
+function _incremental_cotangent!(Δ, prev_ref::Base.RefValue)
+    if Δ isa Union{NoTangent, AbstractZero}
+        return Δ
+    end
+
+    Δu = unthunk(Δ)
+    prev = prev_ref[]
+    prev_ref[] = copy(Δu)
+
+    if prev === nothing
+        return Δu
+    end
+
+    return Δu .- prev
+end
+
 function rrule(::typeof(get_NSSS_and_parameters), 
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
@@ -477,7 +510,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
         return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
 
@@ -8471,6 +8503,13 @@ function _get_statistics_cotangent(Δret, key::Symbol)
         return NoTangent()
     end
 
+    if hasmethod(getindex, Tuple{typeof(Δ), Symbol})
+        try
+            return Δ[key]
+        catch
+        end
+    end
+
     if Δ isa AbstractDict
         return get(Δ, key, NoTangent())
     end
@@ -8483,12 +8522,30 @@ function _get_statistics_cotangent(Δret, key::Symbol)
         return getproperty(Δ, key)
     end
 
+    try
+        for (k, v) in pairs(Δ)
+            if k == key
+                return v
+            end
+        end
+    catch
+    end
+
     if hasproperty(Δ, :pairs)
         pairs_obj = getproperty(Δ, :pairs)
         if pairs_obj isa AbstractDict
             return get(pairs_obj, key, NoTangent())
         elseif pairs_obj isa NamedTuple
             return get(pairs_obj, key, NoTangent())
+        else
+            try
+                for (k, v) in pairs(pairs_obj)
+                    if k == key
+                        return v
+                    end
+                end
+            catch
+            end
         end
     end
 
@@ -8599,6 +8656,8 @@ function rrule(::typeof(get_statistics),
     covar_group_pairs = NTuple{4,Int}[]
 
     if nsss_only
+        prev_Δnsss = Ref{Any}(nothing)
+
         nsss_out, nsss_pb_local = rrule(get_NSSS_and_parameters, 𝓂, all_parameters; opts = opts)
         nsss_pb = nsss_pb_local
 
@@ -8610,7 +8669,7 @@ function rrule(::typeof(get_statistics),
         ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
         function nsss_only_pullback(Δret)
-            Δnsss = _get_statistics_cotangent(Δret, :non_stochastic_steady_state)
+            Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
             if Δnsss isa Union{NoTangent, AbstractZero}
                 return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
             end
@@ -8808,17 +8867,24 @@ function rrule(::typeof(get_statistics),
         ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx, :] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
     end
 
+    prev_Δnsss = Ref{Any}(nothing)
+    prev_Δmean = Ref{Any}(nothing)
+    prev_Δstd = Ref{Any}(nothing)
+    prev_Δvar = Ref{Any}(nothing)
+    prev_Δcov = Ref{Any}(nothing)
+    prev_Δautocorr = Ref{Any}(nothing)
+
     function get_statistics_pullback(Δret)
         if !solved
             return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
         end
 
-        Δnsss = unthunk(_get_statistics_cotangent(Δret, :non_stochastic_steady_state))
-        Δmean = unthunk(_get_statistics_cotangent(Δret, :mean))
-        Δstd = unthunk(_get_statistics_cotangent(Δret, :standard_deviation))
-        Δvar = unthunk(_get_statistics_cotangent(Δret, :variance))
-        Δcov = unthunk(_get_statistics_cotangent(Δret, :covariance))
-        Δautocorr = unthunk(_get_statistics_cotangent(Δret, :autocorrelation))
+        Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
+        Δmean = _incremental_cotangent!(_get_statistics_cotangent(Δret, :mean), prev_Δmean)
+        Δstd = _incremental_cotangent!(_get_statistics_cotangent(Δret, :standard_deviation), prev_Δstd)
+        Δvar = _incremental_cotangent!(_get_statistics_cotangent(Δret, :variance), prev_Δvar)
+        Δcov = _incremental_cotangent!(_get_statistics_cotangent(Δret, :covariance), prev_Δcov)
+        Δautocorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :autocorrelation), prev_Δautocorr)
 
         ∂SS_and_pars = zeros(T, length(SS_and_pars))
         ∂state_μ = length(state_μ) == 0 ? zeros(T, 0) : zeros(T, length(state_μ))
