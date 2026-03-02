@@ -2666,12 +2666,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             if algorithm == :pruned_third_order
                 var_obj = x -> begin
-                    MacroModelling.@ignore_derivatives clear_solution_caches!(m, algorithm)
+                    Zygote.ChainRulesCore.@ignore_derivatives clear_solution_caches!(m, algorithm)
                     get_statistics(m, x, algorithm = algorithm, variance = :all_excluding_obc)[:variance] |> sum
                 end
 
                 autocorr_obj = x -> begin
-                    MacroModelling.@ignore_derivatives clear_solution_caches!(m, algorithm)
+                    Zygote.ChainRulesCore.@ignore_derivatives clear_solution_caches!(m, algorithm)
                     get_statistics(m, x, algorithm = algorithm, autocorrelation = :all_excluding_obc)[:autocorrelation] |> sum
                 end
 
