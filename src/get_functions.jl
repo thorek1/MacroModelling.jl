@@ -1073,9 +1073,9 @@ function get_irf(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
-    @ignore_derivatives solve!(𝓂, 
-                                steady_state_function = steady_state_function,
-                                opts = opts)
+    solve!(𝓂, 
+           steady_state_function = steady_state_function,
+           opts = opts)
 
     shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
 
@@ -1100,7 +1100,7 @@ function get_irf(𝓂::ℳ,
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
@@ -1931,16 +1931,16 @@ function get_solution(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
-    @ignore_derivatives solve!(𝓂, 
-                                opts = opts, 
-                                steady_state_function = steady_state_function,
-                                algorithm = algorithm)
+    solve!(𝓂, 
+           opts = opts, 
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
 
     
     if length(𝓂.constants.post_parameters_macro.bounds) > 0
         for (k,v) in 𝓂.constants.post_parameters_macro.bounds
             if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                if @ignore_derivatives min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
+                if min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
                     return -Inf
                 end
             end
@@ -1968,7 +1968,7 @@ function get_solution(𝓂::ℳ,
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         if algorithm in [:second_order, :pruned_second_order]
@@ -1987,7 +1987,7 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                 opts = opts)
 
-        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -2003,7 +2003,7 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                 opts = opts)
     
-        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -2021,7 +2021,7 @@ function get_solution(𝓂::ℳ,
                             initial_guess = 𝓂.caches.third_order_solution,
                             opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
@@ -3317,25 +3317,25 @@ function get_statistics(𝓂,
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
+    SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
 
-    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂)
+    mean_var_idx = parse_variables_input_to_index(mean, 𝓂)
 
-    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂)
+    std_var_idx = parse_variables_input_to_index(standard_deviation, 𝓂)
 
-    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂)
+    var_var_idx = parse_variables_input_to_index(variance, 𝓂)
 
-    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂)
+    covar_var_idx = parse_variables_input_to_index(covariance, 𝓂)
     
     # Parse covariance groups if input is grouped format
-    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
+    covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
 
-    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
+    autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
 
 
-    other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
 
-    sort_idx = @ignore_derivatives sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
 
     all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
@@ -3345,10 +3345,10 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
-    @ignore_derivatives solve!(𝓂, 
-                                algorithm = algorithm, 
-                                steady_state_function = steady_state_function,
-                                opts = opts)
+    solve!(𝓂, 
+           algorithm = algorithm, 
+           steady_state_function = steady_state_function,
+           opts = opts)
 
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
@@ -3587,17 +3587,17 @@ function get_loglikelihood(𝓂::ℳ,
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    filter, _, algorithm, _, _, warmup_iterations = @ignore_derivatives normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
-    observables = @ignore_derivatives get_and_check_observables(𝓂.constants.post_model_macro, data)
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
-    @ignore_derivatives solve!(𝓂, 
-                                opts = opts,
-                                steady_state_function = steady_state_function,
-                                # timer = timer, 
-                                algorithm = algorithm)
+    solve!(𝓂, 
+           opts = opts,
+           steady_state_function = steady_state_function,
+           # timer = timer, 
+           algorithm = algorithm)
 
-    bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
+    bounds_violated = check_bounds(parameter_values, 𝓂)
 
     if bounds_violated 
         # println("Bounds violated")
@@ -3606,7 +3606,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
 
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, SS_and_pars_names))
+    obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
@@ -3621,10 +3621,10 @@ function get_loglikelihood(𝓂::ℳ,
     end
  
     if collect(axiskeys(data,1)) isa Vector{String}
-        data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
     end
 
-    dt = @ignore_derivatives collect(data(observables))
+    dt = collect(data(observables))
 
     # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]

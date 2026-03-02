@@ -161,7 +161,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
-    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
 
     n_obs = size(data_in_deviations,2)
 
@@ -170,7 +170,7 @@ function calculate_loglikelihood(::Val{:inversion},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺  = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺  = cc.e_in_s⁺
@@ -181,7 +181,7 @@ function calculate_loglikelihood(::Val{:inversion},
     tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
     shock²_idxs = tmp.nzind
     
-    shockvar²_idxs = @ignore_derivatives setdiff(shock_idxs, shock²_idxs)
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
 
     tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
     var_vol²_idxs = tmp.nzind
@@ -649,7 +649,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
-    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
 
     precision_factor = 1.0
 
@@ -660,7 +660,7 @@ function calculate_loglikelihood(::Val{:inversion},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺

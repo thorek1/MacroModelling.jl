@@ -60,7 +60,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
+import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -3003,7 +3003,7 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    ms = @ignore_derivatives ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
@@ -4046,7 +4046,7 @@ end
 
 
 function reverse_diff_friendly_push!(x,y)
-    @ignore_derivatives push!(x,y)
+    push!(x,y)
 end
 
 function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::Tolerances = Tolerances())::Float64
@@ -4568,7 +4568,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
     end
 
-    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
@@ -4580,7 +4580,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                          opts = opts,
                                                          initial_guess = 𝓂.caches.qme_solution)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         if opts.verbose println("1st order solution not found") end
@@ -4602,7 +4602,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                   initial_guess = 𝓂.caches.second_order_solution,
                                                   opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !solved2
@@ -4623,7 +4623,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)])
     tmp = (T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
-    tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
+    tmp̄ = ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
@@ -4666,7 +4666,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     end
 
     so = 𝓂.constants.second_order
-    kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
+    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B̂ = 𝐒₂[:,kron_s⁺_s⁺]
 
@@ -4792,7 +4792,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                                  initial_guess = 𝓂.caches.third_order_solution,
                                                  opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -4851,7 +4851,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                                  initial_guess = 𝓂.caches.third_order_solution,
                                                  opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -8034,7 +8034,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
         fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
@@ -8193,7 +8193,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         initial_guess = 𝓂.caches.qme_solution)
 
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         # println("NSSS not found")
@@ -8286,6 +8286,6 @@ include("./custom_autodiff_rules/forwarddiff.jl")
 
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions
-include("./custom_autodiff_rules/zygote.jl")
+include("./custom_autodiff_rules/rrules.jl")
 
 end

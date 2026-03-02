@@ -23,7 +23,7 @@ function calculate_covariance(parameters::Vector{R},
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
     # Direct constants access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_constants.diag_nVars[T.past_not_future_and_mixed_idx,:]
