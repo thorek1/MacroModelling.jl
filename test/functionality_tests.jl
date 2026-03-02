@@ -2997,6 +2997,122 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
             end
         end
+
+        # FD parity for get_moments derivative columns (rrule-based VJP Jacobians)
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # NSSS derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_nsss = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = true, standard_deviation = false, derivatives = true)
+            nsss_jac = collect(mom_nsss[:non_stochastic_steady_state])[:, 2:end]
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = true, standard_deviation = false, derivatives = false)[:non_stochastic_steady_state])
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test isapprox(nsss_jac, fd[1], rtol = 1e-5)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
+
+            # Variance derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_var = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, variance = true, derivatives = true)
+            var_jac = collect(mom_var[:variance])[:, 2:end]
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, variance = true, derivatives = false)[:variance])
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test isapprox(var_jac, fd[1], rtol = 1e-4)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
+
+            # Standard deviation derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_std = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = true, variance = false, derivatives = true)
+            std_jac = collect(mom_std[:standard_deviation])[:, 2:end]
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = true, variance = false, derivatives = false)[:standard_deviation])
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test isapprox(std_jac, fd[1], rtol = 1e-4)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
+
+            # Covariance derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_cov = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, covariance = true,
+                                  tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),
+                                  derivatives = true)
+            cov_ka = collect(mom_cov[:covariance])
+            n_cv = size(cov_ka, 1)
+            cov_jac = reshape(cov_ka[:, :, 2:end], n_cv * n_cv, :)
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        vec(collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, covariance = true,
+                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),
+                            derivatives = false)[:covariance]))
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test isapprox(cov_jac, fd[1], rtol = 1e-4)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
+
+            # Mean derivatives (for algorithms that support it)
+            if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+                clear_solution_caches!(m, algorithm)
+                mom_mean = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, mean = true, derivatives = true)
+                mean_jac = collect(mom_mean[:mean])[:, 2:end]
+
+                for i in 1:100
+                    local fd = FiniteDifferences.jacobian(
+                        FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                        x -> begin
+                            clear_solution_caches!(m, algorithm)
+                            collect(get_moments(m,
+                                parameters = m.constants.post_complete_parameters.parameters .=> x,
+                                algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, mean = true, derivatives = false)[:mean])
+                        end, old_params)
+                    if isfinite(ℒ.norm(fd[1]))
+                        @test isapprox(mean_jac, fd[1], rtol = 1e-4)
+                        break
+                    end
+                end
+                m.parameter_values .= old_params
+            end
+        end
     end
 
 
@@ -3225,6 +3341,51 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             verbose = false)
                 end
             end
+        end
+
+        # FD parity for get_steady_state derivative columns (rrule-based VJP Jacobians)
+        # NSSS derivatives
+        clear_solution_caches!(m, algorithm)
+        nsss_d = get_steady_state(m, algorithm = algorithm, stochastic = false, derivatives = true, return_variables_only = true)
+        nsss_jac = collect(nsss_d)[:, 2:end]
+
+        for i in 1:100
+            local fd = FiniteDifferences.jacobian(
+                FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                x -> begin
+                    clear_solution_caches!(m, algorithm)
+                    collect(get_steady_state(m,
+                        parameters = m.constants.post_complete_parameters.parameters .=> x,
+                        algorithm = algorithm, stochastic = false, derivatives = false, return_variables_only = true))
+                end, old_params)
+            if isfinite(ℒ.norm(fd[1]))
+                @test isapprox(nsss_jac, fd[1], rtol = 1e-5)
+                break
+            end
+        end
+        m.parameter_values .= old_params
+
+        # Stochastic SS derivatives (non-first-order only)
+        if algorithm != :first_order
+            clear_solution_caches!(m, algorithm)
+            sss_d = get_steady_state(m, algorithm = algorithm, stochastic = true, derivatives = true, return_variables_only = true)
+            sss_jac = collect(sss_d)[:, 2:end]
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        collect(get_steady_state(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, stochastic = true, derivatives = false, return_variables_only = true))
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test isapprox(sss_jac, fd[1], rtol = 1e-4)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
         end
     end
 
