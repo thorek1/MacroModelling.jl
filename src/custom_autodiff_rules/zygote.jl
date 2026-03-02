@@ -4514,7 +4514,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
             fill_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
 
-            if i > 1 && i < size(data_in_deviations,2)
+            if i < size(data_in_deviations,2)
                 ∂state[1] *= 0
                 ∂state[2] *= 0
             end
@@ -5009,7 +5009,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
             fill_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
 
-            if i > 1 && i < size(data_in_deviations,2)
+            if i < size(data_in_deviations,2)
                 ∂state *= 0
             end
 
@@ -5517,7 +5517,7 @@ function rrule(::typeof(calculate_loglikelihood),
             # kron_aug_state₁[i] = ℒ.kron(aug_state₁[i], aug_state₁[i])
             fill_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
 
-            if i > 1 && i < size(data_in_deviations,2)
+            if i < size(data_in_deviations,2)
                 ∂state[1] *= 0
                 ∂state[2] *= 0
                 ∂state[3] *= 0
@@ -6027,7 +6027,7 @@ function rrule(::typeof(calculate_loglikelihood),
     
             fill_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
 
-            if i > 1 && i < size(data_in_deviations,2)
+            if i < size(data_in_deviations,2)
                 ∂state *= 0
             end
 
