@@ -8774,3 +8774,409 @@ function rrule(::typeof(get_statistics),
 
     return ret, get_statistics_pullback
 end
+
+
+# ── get_solution rrule ──────────────────────────────────────────────────────────
+# Custom rrule for get_solution(𝓂, parameters; ...) that chains existing
+# sub-rrules without using AD inside the pullback.
+# Supports first_order, second_order/pruned_second_order,
+# and third_order/pruned_third_order algorithms.
+
+function rrule(::typeof(get_solution),
+                𝓂::ℳ,
+                parameters::Vector{S};
+                steady_state_function::SteadyStateFunctionType = missing,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = Tolerances(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂)) where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
+
+    estimation = true
+
+    constants_obj = initialise_constants!(𝓂)
+
+    solve!(𝓂,
+           opts = opts,
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
+
+    nVar = length(𝓂.constants.post_model_macro.var)
+
+    zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+
+    # ── Check parameter bounds ──
+    if length(𝓂.constants.post_parameters_macro.bounds) > 0
+        for (k, v) in 𝓂.constants.post_parameters_macro.bounds
+            if k ∈ 𝓂.constants.post_complete_parameters.parameters
+                idx = indexin([k], 𝓂.constants.post_complete_parameters.parameters)[1]
+                if min(max(parameters[idx], v[1]), v[2]) != parameters[idx]
+                    return -Inf, zero_pullback
+                end
+            end
+        end
+    end
+
+    # ── Step 1: NSSS ──
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters,
+                              𝓂,
+                              parameters;
+                              opts = opts,
+                              estimation = estimation)
+
+    SS_and_pars = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
+        if algorithm in [:second_order, :pruned_second_order]
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
+        elseif algorithm in [:third_order, :pruned_third_order]
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), spzeros(nVar, 2), false)
+        else
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), false)
+        end
+        return result, zero_pullback
+    end
+
+    # ── Step 2: Jacobian ──
+    ∇₁, jac_pb = rrule(calculate_jacobian,
+                        parameters,
+                        SS_and_pars,
+                        𝓂.caches,
+                        𝓂.functions.jacobian)
+
+    # ── Step 3: First-order solution ──
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                opts = opts,
+                                initial_guess = 𝓂.caches.qme_solution)
+
+    𝐒₁ = first_out[1]
+    solved = first_out[3]
+
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        if algorithm in [:second_order, :pruned_second_order]
+            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), false)
+        elseif algorithm in [:third_order, :pruned_third_order]
+            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), spzeros(nVar, 2), false)
+        else
+            result = (SS_and_pars[1:nVar], 𝐒₁, false)
+        end
+        return result, zero_pullback
+    end
+
+    # ── Branch by algorithm ──
+    if algorithm in [:second_order, :pruned_second_order]
+        # ── Step 4: Hessian ──
+        ∇₂, hess_pb = rrule(calculate_hessian,
+                             parameters,
+                             SS_and_pars,
+                             𝓂.caches,
+                             𝓂.functions.hessian)
+
+        # ── Step 5: Second-order solution ──
+        second_out, second_pb = rrule(calculate_second_order_solution,
+                                      ∇₁, ∇₂, 𝐒₁,
+                                      𝓂.constants,
+                                      𝓂.workspaces,
+                                      𝓂.caches;
+                                      initial_guess = 𝓂.caches.second_order_solution,
+                                      opts = opts)
+
+        𝐒₂_raw = second_out[1]
+        solved2 = second_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
+        𝐔₂ = 𝓂.constants.second_order.𝐔₂
+        𝐒₂ = 𝐒₂_raw * 𝐔₂
+
+        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+            𝐒₂ = sparse(𝐒₂)
+        end
+
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, true)
+
+        pullback_2nd = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            ∂𝐒₂_ext = Δ[3]
+            # Δ[4] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            ∂parameters = zeros(S, length(parameters))
+
+            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
+            if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₂_raw = zeros(S, size(𝐒₂_raw))
+            else
+                ∂𝐒₂_raw = Matrix{S}(∂𝐒₂_ext) * 𝐔₂'
+            end
+
+            # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
+            second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
+            ∂∇₁_from_2nd  = second_grads[2]
+            ∂∇₂_from_2nd  = second_grads[3]
+            ∂𝑺₁_from_2nd  = second_grads[4]
+
+            # ── hess_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            hess_grads = hess_pb(∂∇₂_from_2nd)
+            ∂parameters  .+= hess_grads[2]
+            ∂SS_and_pars .+= hess_grads[3]
+
+            # ── Accumulate ∂𝐒₁ ──
+            ∂𝐒₁_total = if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                ∂𝑺₁_from_2nd
+            else
+                ∂𝐒₁_ext + ∂𝑺₁_from_2nd
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            ∂∇₁_total = ∂∇₁_from_2nd + first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁_total)
+            ∂parameters  .+= jac_grads[2]
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_2nd
+
+    elseif algorithm in [:third_order, :pruned_third_order]
+        # ── Step 4: Hessian ──
+        ∇₂, hess_pb = rrule(calculate_hessian,
+                             parameters,
+                             SS_and_pars,
+                             𝓂.caches,
+                             𝓂.functions.hessian)
+
+        # ── Step 5: Second-order solution ──
+        second_out, second_pb = rrule(calculate_second_order_solution,
+                                      ∇₁, ∇₂, 𝐒₁,
+                                      𝓂.constants,
+                                      𝓂.workspaces,
+                                      𝓂.caches;
+                                      initial_guess = 𝓂.caches.second_order_solution,
+                                      opts = opts)
+
+        𝐒₂_raw = second_out[1]
+        solved2 = second_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
+        𝐔₂ = 𝓂.constants.second_order.𝐔₂
+        𝐒₂ = 𝐒₂_raw * 𝐔₂
+
+        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+            𝐒₂ = sparse(𝐒₂)
+        end
+
+        # ── Step 6: Third-order derivatives ──
+        ∇₃, third_deriv_pb = rrule(calculate_third_order_derivatives,
+                                    parameters,
+                                    SS_and_pars,
+                                    𝓂.caches,
+                                    𝓂.functions.third_order_derivatives)
+
+        # ── Step 7: Third-order solution ──
+        # calculate_third_order_solution receives 𝐒₂ after 𝐔₂ multiplication
+        third_out, third_pb = rrule(calculate_third_order_solution,
+                                    ∇₁, ∇₂, ∇₃,
+                                    𝐒₁, 𝐒₂,
+                                    𝓂.constants,
+                                    𝓂.workspaces,
+                                    𝓂.caches;
+                                    initial_guess = 𝓂.caches.third_order_solution,
+                                    opts = opts)
+
+        𝐒₃_raw = third_out[1]
+        solved3 = third_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+
+        𝐔₃ = 𝓂.constants.third_order.𝐔₃
+        𝐒₃ = 𝐒₃_raw * 𝐔₃
+
+        if !(typeof(𝐒₃) <: AbstractSparseMatrix)
+            𝐒₃ = sparse(𝐒₃)
+        end
+
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, 𝐒₃, true)
+
+        pullback_3rd = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            ∂𝐒₂_ext = Δ[3]
+            ∂𝐒₃_ext = Δ[4]
+            # Δ[5] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            ∂parameters = zeros(S, length(parameters))
+
+            # ── Adjoint of 𝐒₃ = 𝐒₃_raw * 𝐔₃ ──
+            if ∂𝐒₃_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₃_raw = zeros(S, size(𝐒₃_raw))
+            else
+                ∂𝐒₃_raw = Matrix{S}(∂𝐒₃_ext) * 𝐔₃'
+            end
+
+            # ── third_pb: (∂𝐒₃_raw, ∂solved3) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NT, NT, NT)
+            third_grads = third_pb((∂𝐒₃_raw, NoTangent()))
+            ∂∇₁_from_3rd  = third_grads[2]
+            ∂∇₂_from_3rd  = third_grads[3]
+            ∂∇₃_from_3rd  = third_grads[4]
+            ∂𝑺₁_from_3rd  = third_grads[5]
+            ∂𝐒₂_from_3rd  = third_grads[6]  # w.r.t. post-𝐔₂ version
+
+            # ── third_deriv_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            third_deriv_grads = third_deriv_pb(∂∇₃_from_3rd)
+            ∂parameters  .+= third_deriv_grads[2]
+            ∂SS_and_pars .+= third_deriv_grads[3]
+
+            # ── Accumulate ∂𝐒₂ (post-𝐔₂) from external + third-order ──
+            ∂𝐒₂_post = if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Matrix{S}(∂𝐒₂_from_3rd)
+            else
+                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? Matrix{S}(∂𝐒₂_ext) : Matrix{S}(∂𝐒₂_ext) + Matrix{S}(∂𝐒₂_from_3rd)
+            end
+
+            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
+            ∂𝐒₂_raw = ∂𝐒₂_post * 𝐔₂'
+
+            # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
+            second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
+            ∂∇₁_from_2nd  = second_grads[2]
+            ∂∇₂_from_2nd  = second_grads[3]
+            ∂𝑺₁_from_2nd  = second_grads[4]
+
+            # ── hess_pb (accumulate ∂∇₂ from 2nd and 3rd order) ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            ∂∇₂_total = ∂∇₂_from_3rd + ∂∇₂_from_2nd
+            hess_grads = hess_pb(∂∇₂_total)
+            ∂parameters  .+= hess_grads[2]
+            ∂SS_and_pars .+= hess_grads[3]
+
+            # ── Accumulate ∂𝐒₁ from external + 2nd + 3rd order ──
+            ∂𝐒₁_total = if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                ∂𝑺₁_from_2nd + ∂𝑺₁_from_3rd
+            else
+                ∂𝐒₁_ext + ∂𝑺₁_from_2nd + ∂𝑺₁_from_3rd
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            ∂∇₁_total = ∂∇₁_from_3rd + ∂∇₁_from_2nd + first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁_total)
+            ∂parameters  .+= jac_grads[2]
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_3rd
+
+    else
+        # ── First order ──
+        result = (SS_and_pars[1:nVar], 𝐒₁, true)
+
+        pullback_1st = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            # Δ[3] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            # Short-circuit when solution matrix cotangent is absent
+            if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+                return NoTangent(), NoTangent(), nsss_grads[3]
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_ext, NoTangent(), NoTangent()))
+            ∂∇₁ = first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁)
+            ∂parameters  = copy(jac_grads[2])
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_1st
+    end
+end
