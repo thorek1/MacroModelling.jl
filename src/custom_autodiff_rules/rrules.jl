@@ -381,22 +381,6 @@ function rrule(::typeof(calculate_third_order_derivatives),
 end
 
 
-function rrule(::typeof(getindex), d::Dict{K,V}, key::K) where {K <: Symbol, V}
-    y = getindex(d, key)
-
-    function dict_getindex_pullback(Δy)
-        Δy = unthunk(Δy)
-        if Δy isa Union{NoTangent, AbstractZero}
-            return NoTangent(), NoTangent(), NoTangent()
-        end
-
-        return NoTangent(), Dict{K, Any}(key => Δy), NoTangent()
-    end
-
-    return y, dict_getindex_pullback
-end
-
-
 function _incremental_cotangent!(Δ, prev_ref::Base.RefValue)
     if Δ isa Union{NoTangent, AbstractZero}
         return Δ
