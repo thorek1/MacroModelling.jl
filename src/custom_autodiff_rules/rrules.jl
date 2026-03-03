@@ -309,11 +309,17 @@ function rrule(::typeof(calculate_jacobian),
     jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
 
     function calculate_jacobian_pullback(∂∇₁)
+        if ∂∇₁ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₁u = unthunk(∂∇₁)
+
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
         jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
-        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
+        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁u)
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁u)
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
@@ -329,11 +335,17 @@ function rrule(::typeof(calculate_hessian),
     hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
 
     function calculate_hessian_pullback(∂∇₂)
+        if ∂∇₂ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₂u = unthunk(∂∇₂)
+
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
-        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
+        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂u)
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂u)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
@@ -350,11 +362,17 @@ function rrule(::typeof(calculate_third_order_derivatives),
     third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
+        if ∂∇₃ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₃u = unthunk(∂∇₃)
+
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
         third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
-        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
+        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃u)
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃u)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
