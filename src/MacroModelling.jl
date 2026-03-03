@@ -2099,6 +2099,164 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
+function compressed_kron²(a::AbstractMatrix{T};
+                    rowmask::Vector{Int} = Int[],
+                    colmask::Vector{Int} = Int[],
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
+
+    a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
+
+    if a_is_adjoint
+        â = copy(a')
+        a = sparse(a')
+
+        rmask = colmask
+        colmask = rowmask
+        rowmask = rmask
+    elseif typeof(a) <: DenseMatrix{T}
+        â = copy(a)
+        a = sparse(a)
+    else
+        â = convert(Matrix, a)  # Convert to dense matrix for faster access
+    end
+
+    # Get the number of rows and columns
+    n_rows, n_cols = size(a)
+
+    # Calculate the number of unique pair indices for rows and columns
+    m2_rows = n_rows * (n_rows + 1) ÷ 2    # For rows: i ≤ j
+    m2_cols = n_cols * (n_cols + 1) ÷ 2    # For columns: i ≤ j
+
+    if rowmask == Int[0] || colmask == Int[0]
+        if a_is_adjoint
+            return spzeros(T, m2_cols, m2_rows)
+        else
+            return spzeros(T, m2_rows, m2_cols)
+        end
+    end
+
+    # Initialize arrays to collect indices and values
+    lennz = nnz(a)
+
+    m2_c = length(colmask) > 0 ? length(colmask) : m2_cols
+    m2_r = length(rowmask) > 0 ? length(rowmask) : m2_rows
+
+    m2_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2 : 3
+
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = floor(Int, max(m2_r * m2_c * (lennz / length(a)) ^ m2_exp, 10000))
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
+    end
+
+    k = 0
+
+    # Find unique non-zero row and column indices
+    rowinds, colinds, _ = findnz(a)
+    ui = unique(rowinds)
+    uj = unique(colinds)
+
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+
+    for i1 in ui
+        for j1 in ui
+            if j1 ≤ i1
+
+                row = (i1 - 1) * i1 ÷ 2 + j1
+
+                if norowmask || row in rowmask
+                    for i2 in uj
+                        for j2 in uj
+                            if j2 ≤ i2
+
+                                col = (i2 - 1) * i2 ÷ 2 + j2
+
+                                if nocolmask || col in colmask
+                                    @inbounds aii = â[i1, i2]
+                                    @inbounds aij = â[i1, j2]
+                                    @inbounds aji = â[j1, i2]
+                                    @inbounds ajj = â[j1, j2]
+
+                                    # Sum over both permutations of (i2, j2)
+                                    val = aii * ajj + aij * aji
+
+                                    if abs(val) > tol
+                                        divisor = i1 == j1 ? 2 : 1
+
+                                        k += 1
+
+                                        if k > estimated_nnz
+                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
+                                            estimated_nnz = min(m2_cols * m2_rows, estimated_nnz)
+                                            resize!(I, estimated_nnz)
+                                            resize!(J, estimated_nnz)
+                                            resize!(V, estimated_nnz)
+                                        end
+
+                                        I[k] = row
+                                        J[k] = col
+                                        V[k] = val / divisor
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    # Create the sparse matrix from the collected indices and values
+    if a_is_adjoint
+        klasttouch = sparse_preallocation[4]
+        csrrowptr  = sparse_preallocation[5]
+        csrcolval  = sparse_preallocation[6]
+        csrnzval   = sparse_preallocation[7]
+
+        resize!(klasttouch, m2_rows)
+        resize!(csrrowptr, m2_cols + 1)
+        resize!(csrcolval, length(J))
+        resize!(csrnzval, length(J))
+
+        out = sparse!(J, I, V, m2_cols, m2_rows, +, klasttouch, csrrowptr, csrcolval, csrnzval, J, I, V)
+    else
+        klasttouch = sparse_preallocation[4]
+        csrrowptr  = sparse_preallocation[5]
+        csrcolval  = sparse_preallocation[6]
+        csrnzval   = sparse_preallocation[7]
+
+        resize!(klasttouch, m2_cols)
+        resize!(csrrowptr, m2_rows + 1)
+        resize!(csrcolval, length(I))
+        resize!(csrnzval, length(I))
+
+        out = sparse!(I, J, V, m2_rows, m2_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    end
+
+    return out
+end
+
+
 # function kron³(A::AbstractSparseMatrix{T}, M₃::third_order) where T <: Real
 #     rows, cols, vals = findnz(A)
 
@@ -5157,6 +5315,8 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     so = constants.second_order
     so.𝛔 = 𝛔
+    so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
+    so.𝛔𝐂₂ = 𝛔 * 𝐂₂
     so.𝐂₂ = 𝐂₂
     so.𝐔₂ = 𝐔₂
     so.𝐔∇₂ = 𝐔∇₂

@@ -273,6 +273,8 @@ mutable struct second_order_indices
     # Triggered by: write_functions_mapping! ← solve!
     # =========================================================================
     𝛔::SparseMatrixCSC{Int}              # Commutation matrix
+    𝛔c₂::SparseMatrixCSC{Int}             # Compressed volatility: 𝐔₂ * 𝛔 * 𝐂₂
+    𝛔𝐂₂::SparseMatrixCSC{Int}            # Product 𝛔 * 𝐂₂ (precomputed)
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order
     𝐔₂::SparseMatrixCSC{Int}             # Unique elements selector for 2nd order
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
