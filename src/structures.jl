@@ -862,6 +862,7 @@ mutable struct caches
     # Policy function coefficient matrices (𝐒₁, 𝐒₂, 𝐒₃)
     # =========================================================================
     first_order_solution_matrix::Matrix{<: Real}           # 𝐒₁ - first order policy
+    first_order_obc_solution_matrix::Matrix{<: Real}       # Ŝ₁ - first order OBC policy
     qme_solution::Matrix{<: Real}                          # Quadratic matrix eqn solution
     second_order_stochastic_steady_state::Vector{<: Real}  # E[x] deviation from NSSS (2nd)
     second_order_solution::AbstractMatrix{<: Real}         # 𝐒₂ - second order policy
@@ -910,17 +911,6 @@ mutable struct model_functions
     jacobian::jacobian_functions
     hessian::hessian_functions
     third_order_derivatives::third_order_derivatives_functions
-    # State update functions for perturbation solutions
-    first_order_state_update::Function
-    first_order_state_update_obc::Function
-    second_order_state_update::Function
-    second_order_state_update_obc::Function
-    pruned_second_order_state_update::Function
-    pruned_second_order_state_update_obc::Function
-    third_order_state_update::Function
-    third_order_state_update_obc::Function
-    pruned_third_order_state_update::Function
-    pruned_third_order_state_update_obc::Function
     # OBC-related functions
     obc_violation::Function
     # Whether all functions have been written/compiled

@@ -20,6 +20,8 @@ Read this file first. Read the companion files only when needed.
 - Update user-facing docs/docstrings when public APIs change.
 - Avoid second-person phrasing ("you") in docs/docstrings.
 - Cache reusable constants lazily in model caches when appropriate.
+- Avoid try-catch statements except for catching numerical issues that would otherwise error. Use explicit checks and validation instead of relying on exception handling for control flow.
+- **rrule implementation:** Always derive analytical results for pullback functions. Never use AD inside a pullback—compute adjoints directly via mathematical derivation.
 
 ## Task Files (Required Discipline)
 

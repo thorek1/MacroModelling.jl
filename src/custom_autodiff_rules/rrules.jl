@@ -309,11 +309,17 @@ function rrule(::typeof(calculate_jacobian),
     jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
 
     function calculate_jacobian_pullback(∂∇₁)
+        if ∂∇₁ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₁u = unthunk(∂∇₁)
+
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
         jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁)
-        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁)
+        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁u)
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁u)
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
@@ -329,11 +335,17 @@ function rrule(::typeof(calculate_hessian),
     hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
 
     function calculate_hessian_pullback(∂∇₂)
+        if ∂∇₂ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₂u = unthunk(∂∇₂)
+
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂)
-        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂)
+        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂u)
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂u)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
@@ -350,16 +362,39 @@ function rrule(::typeof(calculate_third_order_derivatives),
     third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
+        if ∂∇₃ isa Union{NoTangent, AbstractZero}
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+        end
+
+        ∂∇₃u = unthunk(∂∇₃)
+
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
         third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃)
-        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃)
+        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃u)
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃u)
 
         return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
+end
+
+
+function _incremental_cotangent!(Δ, prev_ref::Base.RefValue)
+    if Δ isa Union{NoTangent, AbstractZero}
+        return Δ
+    end
+
+    Δu = unthunk(Δ)
+    prev = prev_ref[]
+    prev_ref[] = copy(Δu)
+
+    if prev === nothing
+        return Δu
+    end
+
+    return Δu .- prev
 end
 
 function rrule(::typeof(get_NSSS_and_parameters), 
@@ -477,7 +512,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
         return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
 
@@ -857,7 +891,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     state = A * SSSstates_final + B̂ * ℒ.kron(vcat(SSSstates_final,1), vcat(SSSstates_final,1)) / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -959,7 +993,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -1112,7 +1146,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug3 = ℒ.kron(aug_sss, kron_aug)
 
     state = A * SSSstates_final + B̂ * kron_aug / 2 + Ĉ * kron_aug3 / 6
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
@@ -1282,7 +1316,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
@@ -2027,7 +2061,7 @@ function rrule(::typeof(calculate_covariance),
     sol = first_out[1]
     solved_first = first_out[3]
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
 
     # ── Step 4: A, C, CC (mutation-free) ──
     A = sol[:, 1:nPast] * P
@@ -2139,6 +2173,244 @@ function _kron_vjp(∂C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
 end
 
 
+# ── calculate_mean rrule ────────────────────────────────────────────────────────
+function rrule(::typeof(calculate_mean),
+                parameters::Vector{S},
+                𝓂::ℳ;
+                algorithm = :pruned_second_order,
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
+
+    # ── Non-differentiable setup ──
+    constants_obj = initialise_constants!(𝓂)
+    T_pm = constants_obj.post_model_macro
+    nVars = T_pm.nVars
+    np = length(parameters)
+
+    zero_pb(_) = (NoTangent(), zeros(S, np), NoTangent())
+
+    # ── Step 1: NSSS ──
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters, 𝓂, parameters; opts = opts)
+    SS_and_pars = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    # ── First-order path (mean = steady state) ──
+    if algorithm == :first_order
+        solved = solution_error < opts.tol.NSSS_acceptance_tol
+        mean_of_variables = SS_and_pars[1:nVars]
+
+        function first_order_mean_pullback(∂out)
+            ∂mean = unthunk(∂out[1])
+            if ∂mean isa AbstractZero
+                return NoTangent(), zeros(S, np), NoTangent()
+            end
+            ∂SS = zeros(S, length(SS_and_pars))
+            ∂SS[1:nVars] .= ∂mean
+            nsss_grad = nsss_pb((∂SS, NoTangent()))
+            ∂params = nsss_grad[3] isa AbstractZero ? zeros(S, np) : nsss_grad[3]
+            return NoTangent(), ∂params, NoTangent()
+        end
+
+        return (mean_of_variables, solved), first_order_mean_pullback
+    end
+
+    # ── Higher-order path: early exit on NSSS failure ──
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        return (SS_and_pars[1:nVars], false), zero_pb
+    end
+
+    ensure_moments_constants!(constants_obj)
+    so = constants_obj.second_order
+
+    nᵉ = T_pm.nExo
+    nˢ = T_pm.nPast_not_future_and_mixed
+    iˢ = T_pm.past_not_future_and_mixed_idx
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    vec_Iₑ = so.vec_Iₑ
+
+    # ── Step 2: Jacobian ──
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+
+    # ── Step 3: First-order solution ──
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                initial_guess = 𝓂.caches.qme_solution,
+                                opts = opts)
+    𝐒₁ = first_out[1]
+    solved_first = first_out[3]
+
+    update_perturbation_counter!(𝓂.counters, solved_first, order = 1)
+
+    if !solved_first
+        return (SS_and_pars[1:nVars], false), zero_pb
+    end
+
+    # ── Step 4: Hessian ──
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+
+    # ── Step 5: Second-order solution ──
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    𝐒₂_raw = so2_out[1]
+    solved2 = so2_out[2]
+
+    update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+
+    if !solved2
+        return (SS_and_pars[1:nVars], false), zero_pb
+    end
+
+    # ── Step 6: Decompress S₂ ──
+    𝐒₂_full = 𝐒₂_raw * 𝐔₂
+
+    # ── Step 7: Slicing and mean computation ──
+    kron_s_s = so.kron_states
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+
+    # First-order slices
+    s_to_y₁ = 𝐒₁[:, 1:nˢ]
+    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ+1):end]
+
+    # Second-order slices (dense)
+    s_s_to_y₂ = Matrix(𝐒₂_full[:, kron_s_s])
+    e_e_to_y₂ = Matrix(𝐒₂_full[:, kron_e_e])
+    v_v_to_y₂_v = vec(𝐒₂_full[:, kron_v_v])
+    s_s_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_s_s])
+    e_e_to_s₂ = Matrix(𝐒₂_full[iˢ, kron_e_e])
+    v_v_to_s₂_v = vec(𝐒₂_full[iˢ, kron_v_v])
+
+    # Kronecker products
+    s₁_kron_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e₁_kron_e₁ = ℒ.kron(e_to_s₁, e_to_s₁) |> collect
+
+    # Block transition matrix
+    ŝ_to_ŝ₂ = [ s_to_s₁              zeros(S, nˢ, nˢ + nˢ^2)
+                 zeros(S, nˢ, nˢ)     s_to_s₁              s_s_to_s₂ / 2
+                 zeros(S, nˢ^2, 2*nˢ)                       s₁_kron_s₁        ]
+
+    ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂ / 2]
+
+    ŝv₂ = vcat(zeros(S, nˢ),
+               v_v_to_s₂_v / 2 + e_e_to_s₂ * vec_Iₑ / 2,
+               e₁_kron_e₁ * vec_Iₑ)
+
+    yv₂ = (v_v_to_y₂_v + e_e_to_y₂ * vec_Iₑ) / 2
+
+    # Mean solve
+    A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
+    μˢ⁺₂ = A_mean \ ŝv₂
+
+    mean_of_variables = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+    slvd = solved_first && solved2
+
+    result = (mean_of_variables, slvd)
+
+    # ── Pullback ──
+    function calculate_mean_pullback(∂out)
+        ∂mean_in = unthunk(∂out[1])
+
+        if ∂mean_in isa AbstractZero
+            return NoTangent(), zeros(S, np), NoTangent()
+        end
+
+        # Accumulators
+        ∂𝐒₁_acc = zeros(S, size(𝐒₁))
+        ∂S2f     = zeros(S, size(𝐒₂_full))
+        ∂SS_acc  = zeros(S, length(SS_and_pars))
+
+        ∂μʸ = ∂mean_in
+
+        # ── Backprop through mean_of_variables ──
+        # mean_of_variables = SS[1:n] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+        ∂SS_acc[1:nVars] .+= ∂μʸ
+        ∂ŝ_to_y₂ = ∂μʸ * μˢ⁺₂'
+        ∂μˢ⁺₂ = ŝ_to_y₂' * ∂μʸ
+        ∂yv₂ = copy(∂μʸ)
+
+        # ── Backprop through (I - ŝ_to_ŝ₂) \ ŝv₂ ──
+        λ = A_mean' \ ∂μˢ⁺₂
+        ∂ŝv₂ = copy(λ)
+        ∂ŝ_to_ŝ₂ = λ * μˢ⁺₂'   # from -(I - A): sign is +
+
+        # ── yv₂ = (v_v_to_y₂_v + e_e_to_y₂ * vec_Iₑ) / 2 ──
+        ∂S2f[:, kron_v_v] .+= reshape(∂yv₂ / 2, :, 1)
+        ∂S2f[:, kron_e_e] .+= (∂yv₂ / 2) * vec_Iₑ'
+
+        # ── ŝv₂ = [0; v_v/2 + e_e·v/2; e₁⊗e₁·v] ──
+        ∂ŝv₂_mid = ∂ŝv₂[nˢ+1:2nˢ]
+        ∂ŝv₂_bot = ∂ŝv₂[2nˢ+1:end]
+
+        ∂S2f[iˢ, kron_v_v] .+= reshape(∂ŝv₂_mid / 2, :, 1)
+        ∂S2f[iˢ, kron_e_e] .+= (∂ŝv₂_mid / 2) * vec_Iₑ'
+        ∂e₁ke₁ = ∂ŝv₂_bot * vec_Iₑ'
+
+        # ── ŝ_to_y₂ = [s_to_y₁  s_to_y₁  s_s_to_y₂/2] ──
+        ∂𝐒₁_acc[:, 1:nˢ] .+= ∂ŝ_to_y₂[:, 1:nˢ] .+ ∂ŝ_to_y₂[:, nˢ+1:2nˢ]
+        ∂S2f[:, kron_s_s]  .+= ∂ŝ_to_y₂[:, 2nˢ+1:end] / 2
+
+        # ── ŝ_to_ŝ₂ block adjoints ──
+        ∂s₁_from_ŝŝ  = ∂ŝ_to_ŝ₂[1:nˢ, 1:nˢ] + ∂ŝ_to_ŝ₂[nˢ+1:2nˢ, nˢ+1:2nˢ]
+        ∂ss2_from_ŝŝ = ∂ŝ_to_ŝ₂[nˢ+1:2nˢ, 2nˢ+1:end] / 2
+        ∂s₁ks₁       = ∂ŝ_to_ŝ₂[2nˢ+1:end, 2nˢ+1:end]
+
+        # ── Kron VJPs ──
+        ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁, s_to_s₁, s_to_s₁)
+        ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁, e_to_s₁, e_to_s₁)
+
+        # Aggregate into 𝐒₁
+        ∂𝐒₁_acc[iˢ, 1:nˢ]      .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R
+        ∂𝐒₁_acc[iˢ, nˢ+1:end]  .+= ∂e₁_L .+ ∂e₁_R
+
+        # Aggregate into S₂_full
+        ∂S2f[iˢ, kron_s_s] .+= ∂ss2_from_ŝŝ
+
+        # ── S₂_full → S₂_raw via 𝐔₂ ──
+        ∂S2_raw = ∂S2f * 𝐔₂'
+
+        # ── Chain through sub-rrule pullbacks (reverse order) ──
+        # Second-order solution
+        so2_grad = so2_pb((∂S2_raw, NoTangent()))
+        ∂∇₁_acc  = so2_grad[2] isa AbstractZero ? zeros(S, size(∇₁)) : collect(S, so2_grad[2])
+        ∂∇₂_total = so2_grad[3] isa AbstractZero ? zeros(S, size(∇₂)) : so2_grad[3]
+        ∂𝐒₁_from_so2 = so2_grad[4] isa AbstractZero ? zeros(S, size(𝐒₁)) : collect(S, so2_grad[4])
+        ∂𝐒₁_acc .+= ∂𝐒₁_from_so2
+
+        # Hessian
+        hess_grad = hess_pb(∂∇₂_total)
+        ∂params_hess = hess_grad[2] isa AbstractZero ? zeros(S, np) : hess_grad[2]
+        ∂SS_from_hess = hess_grad[3] isa AbstractZero ? zeros(S, length(SS_and_pars)) : hess_grad[3]
+        ∂SS_acc .+= ∂SS_from_hess
+
+        # First-order solution
+        first_grad = first_pb((∂𝐒₁_acc, NoTangent(), NoTangent()))
+        ∂∇₁_from_first = first_grad[2] isa AbstractZero ? zeros(S, size(∇₁)) : first_grad[2]
+        ∂∇₁_acc .+= ∂∇₁_from_first
+
+        # Jacobian
+        jac_grad = jac_pb(∂∇₁_acc)
+        ∂params_jac = jac_grad[2] isa AbstractZero ? zeros(S, np) : jac_grad[2]
+        ∂SS_from_jac = jac_grad[3] isa AbstractZero ? zeros(S, length(SS_and_pars)) : jac_grad[3]
+        ∂SS_acc .+= ∂SS_from_jac
+
+        # NSSS
+        nsss_grad = nsss_pb((∂SS_acc, NoTangent()))
+        ∂params_nsss = nsss_grad[3] isa AbstractZero ? zeros(S, np) : nsss_grad[3]
+
+        ∂parameters_total = ∂params_hess .+ ∂params_jac .+ ∂params_nsss
+
+        return NoTangent(), ∂parameters_total, NoTangent()
+    end
+
+    return result, calculate_mean_pullback
+end
+
+
 # ── calculate_second_order_moments rrule ────────────────────────────────────────
 function rrule(::typeof(calculate_second_order_moments),
                 parameters::Vector{S},
@@ -2179,7 +2451,7 @@ function rrule(::typeof(calculate_second_order_moments),
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
     if !solved2
         return (zeros(S,0), zeros(S,0), Σʸ₁, zeros(S,0,0), SS_and_pars, 𝐒₁, ∇₁, spzeros(S,0,0), ∇₂, solved2), zero_pb
@@ -2415,7 +2687,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
     𝐒₂_raw, solved2 = so2_out
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
     if !solved2; return zero_15(), zero_pb; end
 
@@ -2699,6 +2971,1779 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     return result, calculate_second_order_moments_with_covariance_pullback
 end
 
+
+# ── calculate_third_order_moments rrule ────────────────────────────────────────
+function rrule(::typeof(calculate_third_order_moments),
+                parameters::Vector{T},
+                observables::Union{Symbol_input,String_input},
+                𝓂::ℳ;
+                covariance::Union{Symbol_input,String_input} = Symbol[],
+                opts::CalculationOptions = merge_calculation_options()) where T <: Real
+
+    # ── Non-differentiable constants ──
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
+    T_pm = 𝓂.constants.post_model_macro
+    np = length(parameters)
+    nᵉ = T_pm.nExo
+
+    zero_4() = (zeros(T,0,0), zeros(T,0), zeros(T,0), false)
+    zero_pb(_) = (NoTangent(), zeros(T, np), NoTangent(), NoTangent())
+
+    # ── Step 1: Second-order moments with covariance ──
+    som2_out, som2_pb = rrule(calculate_second_order_moments_with_covariance, parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = som2_out
+
+    if !solved; return zero_4(), zero_pb; end
+
+    # ── Step 2: Third-order derivatives ──
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+
+    # ── Step 3: Third-order solution ──
+    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+                            𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+                            initial_guess = 𝓂.caches.third_order_solution,
+                            opts = opts)
+    𝐒₃, solved3 = so3_out
+
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
+
+    if !solved3; return zero_4(), zero_pb; end
+
+    # ── Step 4: Decompress S₃ ──
+    𝐔₃ = 𝓂.constants.third_order.𝐔₃
+    𝐒₃_full = 𝐒₃ * 𝐔₃
+
+    𝐒₃_full = sparse(𝐒₃_full)
+
+    # ── Step 5: Determine iteration groups ──
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
+                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
+    vec_Iₑ = so.vec_Iₑ
+    e4_nᵉ²_nᵉ² = so.e4_nᵉ²_nᵉ²
+    e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
+    e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
+    e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    Σʸ₃ = zeros(T, size(Σʸ₂))
+    solved_lyapunov = true
+
+    # Per-iteration storage for pullback
+    n_iters = length(orders)
+    iter_data = Vector{Any}(undef, n_iters)
+
+    for (iter_idx, ords) in enumerate(orders)
+        variance_observable, dependencies_all_vars = ords
+
+        sort!(variance_observable)
+        sort!(dependencies_all_vars)
+
+        dependencies = intersect(T_pm.past_not_future_and_mixed, dependencies_all_vars)
+
+        obs_in_y = indexin(variance_observable, T_pm.var)
+
+        dependencies_in_states_idx = indexin(dependencies, T_pm.past_not_future_and_mixed)
+
+        dependencies_in_var_idx = Int.(indexin(dependencies, T_pm.var))
+
+        nˢ = length(dependencies)
+
+        iˢ = dependencies_in_var_idx
+
+        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+        dependencies_extended_idx = vcat(dependencies_in_states_idx,
+                dependencies_in_states_idx .+ T_pm.nPast_not_future_and_mixed,
+                findall(ℒ.kron(T_pm.past_not_future_and_mixed .∈ (intersect(T_pm.past_not_future_and_mixed,dependencies),),
+                               T_pm.past_not_future_and_mixed .∈ (intersect(T_pm.past_not_future_and_mixed,dependencies),))) .+ 2*T_pm.nPast_not_future_and_mixed)
+
+        Σ̂ᶻ₂ = Σᶻ₂[dependencies_extended_idx, dependencies_extended_idx]
+
+        Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
+
+        s_in_s⁺ = BitVector(vcat(T_pm.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+
+        substate_indices = ensure_moments_substate_indices!(𝓂, nˢ)
+        I_plus_s_s = substate_indices.I_plus_s_s
+        e_es = substate_indices.e_es
+        e_ss = substate_indices.e_ss
+        ss_s = substate_indices.ss_s
+        s_s = substate_indices.s_s
+
+        # first order slices
+        s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
+        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (T_pm.nPast_not_future_and_mixed + 1):end]
+
+        s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+        e_to_s₁ = 𝐒₁[iˢ, (T_pm.nPast_not_future_and_mixed + 1):end]
+
+        # second order slices
+        dep_kron = ensure_moments_dependency_kron_indices!(𝓂, dependencies, s_in_s⁺)
+        kron_s_s = dep_kron.kron_s_s
+        kron_s_e = dep_kron.kron_s_e
+
+        s_s_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_s]
+        e_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_e_e]
+        s_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_e]
+
+        s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+        e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+        v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+        s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+        s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+        e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+        s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+        # third order slices
+        kron_s_v = dep_kron.kron_s_v
+
+        kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
+        kron_s_s_e = ℒ.kron(kron_s_s, e_in_s⁺)
+        kron_s_e_e = ℒ.kron(kron_s_e, e_in_s⁺)
+        kron_e_e_e = ℒ.kron(kron_e_e, e_in_s⁺)
+        kron_s_v_v = ℒ.kron(kron_s_v, v_in_s⁺)
+        kron_e_v_v = ℒ.kron(kron_e_v, v_in_s⁺)
+
+        s_s_s_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_s_s]
+        s_s_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_s_e]
+        s_e_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_e_e]
+        e_e_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_e_e_e]
+        s_v_v_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_v_v]
+        e_v_v_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_e_v_v]
+
+        s_s_s_to_s₃ = 𝐒₃_full[iˢ, kron_s_s_s]
+        s_s_e_to_s₃ = 𝐒₃_full[iˢ, kron_s_s_e]
+        s_e_e_to_s₃ = 𝐒₃_full[iˢ, kron_s_e_e]
+        e_e_e_to_s₃ = 𝐒₃_full[iˢ, kron_e_e_e]
+        s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
+        e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
+
+        # Set up pruned state transition matrices
+        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
+                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
+                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
+                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
+                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
+                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+
+        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+
+        ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+                                    (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
+                                    s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
+                                    s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
+                                    s_v_v_to_s₃ * Σ̂ᶻ₁ / 2) * s_to_s₁' +
+                                    (s_e_to_s₂  * ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ)) +
+                                    e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
+                                    s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                    e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                    ), nˢ, nˢ)
+
+        Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
+                spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δ̂μˢ₂ * Δ̂μˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+                ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σ̂ᶻ₁), e4_nᵉ_nᵉ³)
+                spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)    spzeros(nˢ*nᵉ^2,nᵉ^3)
+                e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
+
+
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(ê_to_ŝ₃, eps())
+        droptol!(Eᴸᶻ, eps())
+        droptol!(Γ₃, eps())
+
+        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        droptol!(A_mat, eps())
+
+        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
+        droptol!(C_mat, eps())
+
+        # Ensure third-order lyapunov workspace and solve
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+
+        lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
+                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose)
+        Σᶻ₃ = lyap_out[1]
+        info = lyap_out[2]
+
+        if !info
+            return zero_4(), zero_pb
+        end
+
+        solved_lyapunov = solved_lyapunov && info
+
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+
+        for obs in variance_observable
+            Σʸ₃[indexin([obs], T_pm.var), indexin(variance_observable, T_pm.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
+        end
+
+        # Store per-iteration data for pullback
+        iter_data[iter_idx] = (
+            variance_observable = variance_observable,
+            obs_in_y = obs_in_y,
+            iˢ = iˢ,
+            nˢ = nˢ,
+            dependencies_in_states_idx = dependencies_in_states_idx,
+            dependencies_extended_idx = dependencies_extended_idx,
+            Σ̂ᶻ₁ = Σ̂ᶻ₁,
+            Σ̂ᶻ₂ = Σ̂ᶻ₂,
+            Δ̂μˢ₂ = Δ̂μˢ₂,
+            s_in_s⁺ = s_in_s⁺,
+            s_to_y₁ = s_to_y₁,
+            e_to_y₁ = e_to_y₁,
+            s_to_s₁ = s_to_s₁,
+            e_to_s₁ = e_to_s₁,
+            kron_s_s = kron_s_s,
+            kron_s_e = kron_s_e,
+            kron_s_v = kron_s_v,
+            kron_s_s_s = kron_s_s_s,
+            kron_s_s_e = kron_s_s_e,
+            kron_s_e_e = kron_s_e_e,
+            kron_e_e_e = kron_e_e_e,
+            kron_s_v_v = kron_s_v_v,
+            kron_e_v_v = kron_e_v_v,
+            s_s_to_y₂ = s_s_to_y₂,
+            e_e_to_y₂ = e_e_to_y₂,
+            s_e_to_y₂ = s_e_to_y₂,
+            s_s_to_s₂ = s_s_to_s₂,
+            e_e_to_s₂ = e_e_to_s₂,
+            v_v_to_s₂ = v_v_to_s₂,
+            s_e_to_s₂ = s_e_to_s₂,
+            s_to_s₁_by_s_to_s₁ = s_to_s₁_by_s_to_s₁,
+            e_to_s₁_by_e_to_s₁ = e_to_s₁_by_e_to_s₁,
+            s_to_s₁_by_e_to_s₁ = s_to_s₁_by_e_to_s₁,
+            s_s_s_to_y₃ = s_s_s_to_y₃,
+            s_s_e_to_y₃ = s_s_e_to_y₃,
+            s_e_e_to_y₃ = s_e_e_to_y₃,
+            e_e_e_to_y₃ = e_e_e_to_y₃,
+            s_v_v_to_y₃ = s_v_v_to_y₃,
+            e_v_v_to_y₃ = e_v_v_to_y₃,
+            s_s_s_to_s₃ = s_s_s_to_s₃,
+            s_s_e_to_s₃ = s_s_e_to_s₃,
+            s_e_e_to_s₃ = s_e_e_to_s₃,
+            e_e_e_to_s₃ = e_e_e_to_s₃,
+            s_v_v_to_s₃ = s_v_v_to_s₃,
+            e_v_v_to_s₃ = e_v_v_to_s₃,
+            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
+            ê_to_ŝ₃ = ê_to_ŝ₃,
+            ŝ_to_y₃ = ŝ_to_y₃,
+            ê_to_y₃ = ê_to_y₃,
+            Γ₃ = Γ₃,
+            Eᴸᶻ = Eᴸᶻ,
+            A_mat = A_mat,
+            C_mat = C_mat,
+            Σᶻ₃ = Σᶻ₃,
+            Σʸ₃tmp = Σʸ₃tmp,
+            μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
+            lyap_pb = lyap_pb_iter,
+            I_plus_s_s = I_plus_s_s,
+            ss_s = ss_s,
+            s_s = s_s,
+            e_es = e_es,
+            e_ss = e_ss,
+        )
+    end
+
+    result = (Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && solved_lyapunov)
+
+    # ── Pullback ──
+    function calculate_third_order_moments_pullback(∂out)
+        ∂Σʸ₃_in, ∂μʸ₂_in, ∂SS_in, _ = ∂out
+
+        ∂Σʸ₃_in = unthunk(∂Σʸ₃_in)
+        ∂μʸ₂_in = unthunk(∂μʸ₂_in)
+        ∂SS_in  = unthunk(∂SS_in)
+
+        n₋ = T_pm.nPast_not_future_and_mixed
+
+        # Accumulators for cotangents flowing to sub-rrule inputs
+        ∂Σʸ₁_acc  = zeros(T, size(Σʸ₁))
+        ∂Σᶻ₂_acc  = zeros(T, size(Σᶻ₂))
+        ∂Δμˢ₂_acc = zeros(T, length(Δμˢ₂))
+        ∂𝐒₁_acc   = zeros(T, size(𝐒₁))
+        ∂S2f_acc   = zeros(T, size(𝐒₂))
+        ∂S3f_acc   = zeros(T, size(𝐒₃_full))
+        ∂SS_acc    = zeros(T, length(SS_and_pars))
+        ∂∇₁_acc   = zeros(T, size(∇₁))
+        ∂∇₂_acc   = zeros(T, size(∇₂))
+        ∂∇₃_acc   = zeros(T, size(∇₃))
+
+        if !(∂SS_in isa AbstractZero); ∂SS_acc .+= ∂SS_in; end
+
+        # ──── Reverse loop over iterations ────
+        for iter_idx in n_iters:-1:1
+            d = iter_data[iter_idx]
+            nˢ_i = d.nˢ
+
+            # ── Gather ∂Σʸ₃tmp from ∂Σʸ₃ (reverse of scatter) ──
+            nObs_iter = length(d.variance_observable)
+            ∂Σʸ₃tmp = zeros(T, nObs_iter, nObs_iter)
+
+            if !(∂Σʸ₃_in isa AbstractZero)
+                ∂Σʸ₃tmp .= ∂Σʸ₃_in[d.obs_in_y, indexin(d.variance_observable, T_pm.var)]
+            end
+
+            if ℒ.norm(∂Σʸ₃tmp) < eps(T); continue; end
+
+            ∂Σʸ₃tmp_sym = ∂Σʸ₃tmp + ∂Σʸ₃tmp'
+
+            # ── Σʸ₃tmp = ŝ_y * Σᶻ₃ * ŝ_y' + ê_y * Γ₃ * ê_y' + ê_y * Eᴸᶻ * ŝ_y' + ŝ_y * Eᴸᶻ' * ê_y' ──
+            # Terms 1+2 are AXA' forms; terms 3+4 form M + M' where M = ê_y * Eᴸᶻ * ŝ_y'.
+            # Effective cotangent for M+M' is G_eff = ∂ + ∂' = ∂Σʸ₃tmp_sym.
+
+            ∂ŝ_to_y₃ = ∂Σʸ₃tmp_sym * (d.ŝ_to_y₃ * d.Σᶻ₃ + d.ê_to_y₃ * Matrix(d.Eᴸᶻ))
+            ∂ê_to_y₃ = ∂Σʸ₃tmp_sym * (d.ê_to_y₃ * d.Γ₃  + d.ŝ_to_y₃ * Matrix(d.Eᴸᶻ'))
+            ∂Σᶻ₃      = d.ŝ_to_y₃' * ∂Σʸ₃tmp * d.ŝ_to_y₃
+            ∂Γ₃_iter   = d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
+            ∂Eᴸᶻ_iter  = d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
+
+            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
+            ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
+            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+
+            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
+            # ê_s * Γ₃ * ê_s' is AXA': ∂ê += (∂C+∂C') * ê * Γ₃,  ∂Γ₃ += ê' * ∂C * ê
+            # A + A' with cotangent ∂C: ∂A = ∂C + ∂C'
+            ∂C_sym = ∂C_mat + ∂C_mat'
+
+            ∂ê_to_ŝ₃  = ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
+            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
+            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
+            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+
+            # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            # ŝ_to_y₃ = [s_to_y₁+svv/2 | s_to_y₁ | ss_to_y₂/2 | s_to_y₁ | ss_to_y₂ | sss_to_y₃/6]
+            c = 0
+            ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
+
+            ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4     # ∂s_to_y₁
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5           # ∂s_s_to_y₂
+            ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2                     # ∂s_v_v_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6                     # ∂s_s_s_to_y₃
+
+            # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            # ê_to_y₃ = [e_to_y₁+evv/2 | ee_to_y₂/2 | se_to_y₂ | se_to_y₂ | sse_to_y₃/2 | see_to_y₃/2 | eee_to_y₃/6]
+            c = 0
+            ∂eblk1 = ∂ê_to_y₃[:, c+1:c+nᵉ];          c += nᵉ
+            ∂eblk2 = ∂ê_to_y₃[:, c+1:c+nᵉ^2];        c += nᵉ^2
+            ∂eblk3 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ];     c += nˢ_i*nᵉ
+            ∂eblk4 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ];     c += nˢ_i*nᵉ
+            ∂eblk5 = ∂ê_to_y₃[:, c+1:c+nˢ_i^2*nᵉ];   c += nˢ_i^2*nᵉ
+            ∂eblk6 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ^2];   c += nˢ_i*nᵉ^2
+            ∂eblk7 = ∂ê_to_y₃[:, c+1:end]
+
+            ∂𝐒₁_acc[d.obs_in_y, n₋+1:end]    .+= ∂eblk1                  # ∂e_to_y₁
+            ∂S2f_acc[d.obs_in_y, kron_e_e]     .+= ∂eblk2 ./ 2            # ∂e_e_to_y₂
+            ∂S2f_acc[d.obs_in_y, d.kron_s_e]   .+= ∂eblk3 .+ ∂eblk4      # ∂s_e_to_y₂
+            ∂S3f_acc[d.obs_in_y, d.kron_e_v_v] .+= ∂eblk1 ./ 2            # ∂e_v_v_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_e] .+= ∂eblk5 ./ 2            # ∂s_s_e_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_s_e_e] .+= ∂eblk6 ./ 2            # ∂s_e_e_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_e_e_e] .+= ∂eblk7 ./ 6            # ∂e_e_e_to_y₃
+
+            # ════════════════════════════════════════════════════════════════════
+            # Stage 2+3: Disaggregate block matrices → slice & data cotangents
+            # ════════════════════════════════════════════════════════════════════
+            n = nˢ_i;  ne = nᵉ
+            Ine = Matrix{T}(ℒ.I(ne))
+            vec_Ie_col = reshape(T.(vec_Iₑ), :, 1)
+
+            # Dense copies of frequently used slices
+            s₁  = Matrix{T}(d.s_to_s₁)
+            e₁  = Matrix{T}(d.e_to_s₁)
+            s₁² = Matrix{T}(d.s_to_s₁_by_s_to_s₁)
+            e₁² = Matrix{T}(d.e_to_s₁_by_e_to_s₁)
+            s₁e₁ = Matrix{T}(d.s_to_s₁_by_e_to_s₁)
+            ss₂  = Matrix{T}(d.s_s_to_s₂)
+            ee₂  = Matrix{T}(d.e_e_to_s₂)
+            se₂  = Matrix{T}(d.s_e_to_s₂)
+            vv₂  = Matrix{T}(d.v_v_to_s₂)
+
+            # Local slice cotangent accumulators
+            ∂s₁_l  = zeros(T, n, n)
+            ∂e₁_l  = zeros(T, n, ne)
+            ∂ss₂_l = zeros(T, n, n^2)
+            ∂ee₂_l = zeros(T, n, ne^2)
+            ∂se₂_l = zeros(T, n, n * ne)
+            ∂vv₂_l = zeros(T, size(vv₂))
+            ∂Σ̂ᶻ₁  = zeros(T, n, n)
+            ∂Σ̂ᶻ₂  = zeros(T, size(d.Σ̂ᶻ₂))
+            ∂Δ̂μˢ₂_l = zeros(T, n)
+
+            # Block boundary arrays
+            sb = cumsum([0, n, n, n^2, n, n^2, n^3])          # ŝ_to_ŝ₃ row/col
+            eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])  # ê_to_ŝ₃ cols
+            gb = eb  # Γ₃ row/col (same block sizes)
+
+            vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
+
+            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
+            ∂ŝ₃ = ∂ŝ_to_ŝ₃   # already dense Matrix{T}
+
+            # Direct s₁ blocks: (1,1), (2,2), (4,4)
+            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
+                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
+                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
+            # (2,3) ss₂/2
+            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
+            # (4,5) ss₂
+            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
+            # (4,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
+            # (4,6) sss₃/6
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
+            # (3,3) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+            # (5,1) kron(s₁, vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
+            ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            # (5,5) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+            # (5,6) kron(s₁, ss₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
+            ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
+            # (6,6) kron(s₁, kron(s₁,s₁))
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
+            ∂s₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+
+            # ── 2b: ê_to_ŝ₃ disaggregation ──
+            ∂ê₃ = Matrix{T}(∂ê_to_ŝ₃)
+            ss_s1e1 = Matrix(d.s_s) * s₁e₁   # pre-compute
+
+            # Row 1: (1,1) e₁
+            ∂e₁_l .+= ∂ê₃[sb[1]+1:sb[2], eb[1]+1:eb[2]]
+            # Row 2: (2,2) ee₂/2; (2,3) se₂
+            ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
+            ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
+            # Row 3: (3,2) kron(e₁,e₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            ∂e₁_l .+= tmpL .+ tmpR
+            # (3,3) I_plus_s_s * kron(s₁,e₁)
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
+            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # Row 4: direct S₃ slices
+            ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂ê₃[sb[4]+1:sb[5], eb[1]+1:eb[2]] ./ 2
+            ∂se₂_l .+= ∂ê₃[sb[4]+1:sb[5], eb[4]+1:eb[5]]
+            ∂S3f_acc[d.iˢ, d.kron_s_s_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[5]+1:eb[6]] ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
+            # Row 5: (5,1) kron(e₁,vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
+            ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            # (5,4) s_s * kron(s₁,e₁)
+            ∂k54 = Matrix(d.s_s') * Matrix(∂ê₃[sb[5]+1:sb[6], eb[4]+1:eb[5]])
+            tmpA, tmpB = _kron_vjp(∂k54, s₁, e₁)
+            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # (5,5) kron(s₁,se₂) + s_s * kron(ss₂/2, e₁)
+            ∂b55 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[5]+1:eb[6]])
+            tmpA, tmpB = _kron_vjp(∂b55, s₁, se₂)
+            ∂s₁_l .+= tmpA;  ∂se₂_l .+= tmpB
+            ∂k55b = Matrix(d.s_s') * ∂b55
+            tmpA, tmpB = _kron_vjp(∂k55b, ssh, e₁)
+            ∂ss₂_l .+= tmpA ./ 2;  ∂e₁_l .+= tmpB
+            # (5,6) kron(s₁,ee₂/2) + s_s * kron(se₂, e₁)
+            ∂b56 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[6]+1:eb[7]])
+            tmpA, tmpB = _kron_vjp(∂b56, s₁, eeh)
+            ∂s₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            ∂k56b = Matrix(d.s_s') * ∂b56
+            tmpA, tmpB = _kron_vjp(∂k56b, se₂, e₁)
+            ∂se₂_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # (5,7) kron(e₁, ee₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
+            ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
+            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)                    # Term 1
+            ∂e₁_l .+= tmpB
+            tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            tmpA, tmpB = _kron_vjp(∂b65, s₁, ss_s1e1)                # Term 2
+            ∂s₁_l .+= tmpA
+            tmpC = Matrix(d.s_s') * tmpB
+            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂k65c = ∂b65 * Matrix(d.e_ss')                           # Term 3
+            tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
+            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)                  # Term 1
+            ∂e₁_l .+= tmpB
+            tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂pre = ∂b66 * Matrix(d.e_es')                            # shared for Terms 2+3
+            tmpA, tmpB = _kron_vjp(∂pre, e₁, s₁e₁)                  # Term 2
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpA, tmpB = _kron_vjp(∂pre, e₁, ss_s1e1)                # Term 3
+            ∂e₁_l .+= tmpA
+            tmpC = Matrix(d.s_s') * tmpB
+            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            # (6,7) kron(e₁, e₁²)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
+
+            # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
+            ∂Γ = Matrix{T}(∂Γ₃_iter)
+            vΣ = vec(d.Σ̂ᶻ₁)
+
+            # Row 1: (1,4) kron(Δ̂μˢ₂',Ine)
+            ∂tmp14 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
+            ∂Δ̂μˢ₂_l .+= vec(∂tmp14')
+            # (1,5) kron(vec(Σ̂ᶻ₁)',Ine)
+            ∂tmp15 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
+            ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp15'), n, n)
+            # Row 3: (3,3) kron(Σ̂ᶻ₁,Ine)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
+            # Row 4: (4,1) kron(Δ̂μˢ₂,Ine)
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            # (4,4) kron(Σ̂ᶻ₂_22 + Δ*Δ', Ine)
+            M44 = d.Σ̂ᶻ₂[n+1:2n, n+1:2n] + d.Δ̂μˢ₂ * d.Δ̂μˢ₂'
+            ∂M44 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
+            ∂Σ̂ᶻ₂[n+1:2n, n+1:2n] .+= ∂M44
+            ∂Δ̂μˢ₂_l .+= (∂M44 + ∂M44') * d.Δ̂μˢ₂
+            # (4,5) kron(Σ̂ᶻ₂_23 + Δ*vΣ', Ine)
+            M45 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
+            ∂M45 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
+            ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂M45
+            ∂Δ̂μˢ₂_l .+= ∂M45 * vΣ
+            ∂Σ̂ᶻ₁ .+= reshape(∂M45' * d.Δ̂μˢ₂, n, n)
+            # (4,7) kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
+            # Row 5: (5,1) kron(vΣ, Ine)
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
+            # (5,4) kron(Σ̂ᶻ₂_32 + vΣ*Δ', Ine)
+            M54 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
+            ∂M54 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
+            ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂M54
+            ∂Σ̂ᶻ₁ .+= reshape(∂M54 * d.Δ̂μˢ₂, n, n)
+            ∂Δ̂μˢ₂_l .+= ∂M54' * vΣ
+            # (5,5) kron(Σ̂ᶻ₂_33 + vΣ*vΣ', Ine)
+            M55 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            ∂M55 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂M55
+            ∂Σ̂ᶻ₁ .+= reshape((∂M55 + ∂M55') * vΣ, n, n)
+            # (5,7) kron(vΣ, e4_nᵉ_nᵉ³)
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
+            # Row 6: (6,6) kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
+            # Row 7: (7,4) kron(Δ̂μˢ₂', e4')
+            ∂tmp74 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂Δ̂μˢ₂_l .+= vec(∂tmp74')
+            # (7,5) kron(vΣ', e4')
+            ∂tmp75 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp75'), n, n)
+
+            # ── 3b: Eᴸᶻ disaggregation ──
+            ∂EL = Matrix{T}(∂Eᴸᶻ_iter)
+            # Only row block 6 is data-dependent
+            ∂EL6 = ∂EL[gb[6]+1:gb[7], :]
+            # Col 1: kron(Σ̂ᶻ₁, vec_Ie)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            # Col 4: kron(μˢ₃δμˢ₁', vec_Ie)
+            ∂μ_T = _kron_vjp(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
+            ∂μˢ₃δμˢ₁ = Matrix(∂μ_T')   # n×n
+            # Col 5: kron(C₄, vec_Ie)
+            inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
+            ss_s_M = Matrix(d.ss_s)
+            C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
+            ∂C4 = _kron_vjp(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
+            ∂iC4 = reshape(ss_s_M' * vec(∂C4), n, n^2)
+            ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
+            ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
+            ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
+            # Col 6: kron(C₅, vec_Ie)
+            inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            C5m = reshape(Matrix(inner_C5), n, n^3)
+            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            ∂iC5 = reshape(∂C5, n^2, n^2)
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
+            ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
+
+            # ── 3c: μˢ₃δμˢ₁ adjoint ──
+            # μˢ₃δμˢ₁ = reshape((I - s₁²) \ vec(RHS), n, n)
+            ∂x_μ = vec(∂μˢ₃δμˢ₁)
+            I_m_s₁² = Matrix{T}(ℒ.I(n^2)) - s₁²
+            ∂b_μ = I_m_s₁²' \ ∂x_μ
+            # ∂(kron(s₁,s₁)) = ∂b * vec(μ)'
+            ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
+            tmpL, tmpR = _kron_vjp(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+
+            # Decompose ∂RHS:  RHS = L₁ * s₁' + L₂ * e₁'
+            ∂RHS = reshape(∂b_μ, n, n)
+
+            # Reconstruct L₁ and L₂
+            inner_M1 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
+            M1 = reshape(ss_s_M * vec(inner_M1), n^2, n)
+            inner_M2 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            M2 = reshape(Matrix(inner_M2), n^3, n)
+            M3 = ℒ.kron(Matrix(d.Σ̂ᶻ₁), vec_Ie_col)
+
+            L₁ = ss₂ * M1 + Matrix(d.s_s_s_to_s₃) * M2 / 6 +
+                 Matrix(d.s_e_e_to_s₃) * M3 / 2 + Matrix(d.s_v_v_to_s₃) * Matrix(d.Σ̂ᶻ₁) / 2
+
+            M4 = ℒ.kron(reshape(d.Δ̂μˢ₂, :, 1), Ine)
+            M5 = Matrix(e4_nᵉ_nᵉ³')
+            M6 = ℒ.kron(reshape(vΣ, :, 1), Ine)
+
+            L₂ = se₂ * M4 + Matrix(d.e_e_e_to_s₃) * M5 / 6 +
+                 Matrix(d.s_s_e_to_s₃) * M6 / 2 + Matrix(d.e_v_v_to_s₃) * Ine / 2
+
+            ∂L₁ = ∂RHS * s₁;    ∂s₁_l .+= ∂RHS' * L₁
+            ∂L₂ = ∂RHS * e₁;    ∂e₁_l .+= ∂RHS' * L₂
+
+            # Decompose ∂L₁
+            ∂ss₂_l .+= ∂L₁ * M1'
+            ∂M1_raw = ss₂' * ∂L₁
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂L₁ * M2' ./ 6
+            ∂M2_raw = Matrix(d.s_s_s_to_s₃)' * ∂L₁ ./ 6
+            ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂L₁ * M3' ./ 2
+            ∂M3_raw = Matrix(d.s_e_e_to_s₃)' * ∂L₁ ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂L₁ * Matrix(d.Σ̂ᶻ₁)' ./ 2
+            ∂Σ̂ᶻ₁ .+= Matrix(d.s_v_v_to_s₃)' * ∂L₁ ./ 2
+
+            # Decompose ∂L₂
+            ∂se₂_l .+= ∂L₂ * M4'
+            ∂M4_raw = se₂' * ∂L₂
+            ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂L₂ * M5' ./ 6
+            ∂S3f_acc[d.iˢ, d.kron_s_s_e] .+= ∂L₂ * M6' ./ 2
+            ∂M6_raw = Matrix(d.s_s_e_to_s₃)' * ∂L₂ ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂L₂ ./ 2
+
+            # Decompose ∂M1 → ∂Σ̂ᶻ₂, ∂Σ̂ᶻ₁, ∂Δ̂μˢ₂
+            ∂iM1 = reshape(ss_s_M' * vec(∂M1_raw), n^2, n)
+            ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂iM1
+            ∂Σ̂ᶻ₁ .+= reshape(∂iM1 * d.Δ̂μˢ₂, n, n)
+            ∂Δ̂μˢ₂_l .+= ∂iM1' * vΣ
+            # Decompose ∂M2 → ∂Σ̂ᶻ₂, ∂Σ̂ᶻ₁
+            ∂iM2 = reshape(∂M2_raw, n^2, n^2)
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iM2
+            ∂Σ̂ᶻ₁ .+= reshape((∂iM2 + ∂iM2') * vΣ, n, n)
+            # Decompose ∂M3 → ∂Σ̂ᶻ₁
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            # Decompose ∂M4 → ∂Δ̂μˢ₂
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            # Decompose ∂M6 → ∂Σ̂ᶻ₁
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
+
+            # ── 4: Scatter local cotangents to global accumulators ──
+            ∂𝐒₁_acc[d.iˢ, d.dependencies_in_states_idx] .+= ∂s₁_l
+            ∂𝐒₁_acc[d.iˢ, n₋+1:size(∂𝐒₁_acc, 2)] .+= ∂e₁_l
+            ∂S2f_acc[d.iˢ, d.kron_s_s]  .+= ∂ss₂_l
+            ∂S2f_acc[d.iˢ, kron_e_e]    .+= ∂ee₂_l
+            ∂S2f_acc[d.iˢ, d.kron_s_e]  .+= ∂se₂_l
+            ∂S2f_acc[d.iˢ, kron_v_v]    .+= ∂vv₂_l
+            ∂Σʸ₁_acc[d.iˢ, d.iˢ]       .+= ∂Σ̂ᶻ₁
+            ∂Σᶻ₂_acc[d.dependencies_extended_idx, d.dependencies_extended_idx] .+= ∂Σ̂ᶻ₂
+            ∂Δμˢ₂_acc[d.dependencies_in_states_idx] .+= ∂Δ̂μˢ₂_l
+        end
+
+        # ── Sub-rrule pullback chain ──
+
+        # S₃_full = S₃ * 𝐔₃  →  ∂S₃ = ∂S₃_full * 𝐔₃'
+        ∂𝐒₃_compressed = ∂S3f_acc * 𝐔₃'
+
+        # Third-order solution pullback: returns (NoTangent, ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NT, NT, NT)
+        so3_grad = so3_pb((∂𝐒₃_compressed, NoTangent()))
+        if !(so3_grad[2] isa AbstractZero); ∂∇₁_acc .+= so3_grad[2]; end
+        if !(so3_grad[3] isa AbstractZero); ∂∇₂_acc .+= so3_grad[3]; end
+        if !(so3_grad[4] isa AbstractZero); ∂∇₃_acc .+= so3_grad[4]; end
+        if !(so3_grad[5] isa AbstractZero); ∂𝐒₁_acc .+= so3_grad[5]; end
+        if !(so3_grad[6] isa AbstractZero); ∂S2f_acc .+= so3_grad[6]; end
+
+        # Third-order derivatives pullback: returns (NoTangent, ∂params, ∂SS, NT, NT)
+        ∇₃_grad = ∇₃_pb(∂∇₃_acc)
+        ∂params_∇₃  = ∇₃_grad[2] isa AbstractZero ? zeros(T, np) : ∇₃_grad[2]
+        if !(∇₃_grad[3] isa AbstractZero); ∂SS_acc .+= ∇₃_grad[3]; end
+
+        # Second-order moments pullback: cotangent tuple for 15-element output
+        # (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr, ŝŝ₂, ŝy₂, Σʸ₁, Σᶻ₁, SS, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd)
+        ∂som2 = (
+            NoTangent(),             # ∂Σʸ₂ (not used by third-order)
+            ∂Σᶻ₂_acc,               # ∂Σᶻ₂
+            ∂μʸ₂_in isa AbstractZero ? NoTangent() : ∂μʸ₂_in,  # ∂μʸ₂
+            ∂Δμˢ₂_acc,              # ∂Δμˢ₂
+            NoTangent(),             # ∂autocorr (not used)
+            NoTangent(),             # ∂ŝ_to_ŝ₂ (not used)
+            NoTangent(),             # ∂ŝ_to_y₂ (not used)
+            ∂Σʸ₁_acc,               # ∂Σʸ₁
+            NoTangent(),             # ∂Σᶻ₁
+            ∂SS_acc,                 # ∂SS_and_pars
+            ∂𝐒₁_acc,                # ∂𝐒₁
+            ∂∇₁_acc,                # ∂∇₁
+            ∂S2f_acc,                # ∂𝐒₂
+            ∂∇₂_acc,                # ∂∇₂
+            NoTangent(),             # ∂slvd
+        )
+
+        som2_grad = som2_pb(∂som2)
+        ∂params_som2 = som2_grad[2] isa AbstractZero ? zeros(T, np) : som2_grad[2]
+
+        ∂parameters_total = ∂params_som2 .+ ∂params_∇₃
+
+        return NoTangent(), ∂parameters_total, NoTangent(), NoTangent()
+    end
+
+    return result, calculate_third_order_moments_pullback
+end
+
+# ── calculate_third_order_moments_with_autocorrelation rrule ───────────────────
+function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
+                parameters::Vector{T},
+                observables::Union{Symbol_input,String_input},
+                𝓂::ℳ;
+                autocorrelation_periods::U = 1:5,
+                covariance::Union{Symbol_input,String_input} = Symbol[],
+                opts::CalculationOptions = merge_calculation_options()) where {U, T <: Real}
+
+    # ── Non-differentiable constants ──
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
+    T_pm = 𝓂.constants.post_model_macro
+    np = length(parameters)
+    nᵉ = T_pm.nExo
+    n_ac = length(autocorrelation_periods)
+
+    zero_5() = (zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false)
+    zero_pb(_) = (NoTangent(), zeros(T, np), NoTangent(), NoTangent())
+
+    # ── Step 1: Second-order moments with covariance ──
+    som2_out, som2_pb = rrule(calculate_second_order_moments_with_covariance, parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = som2_out
+
+    if !solved; return zero_5(), zero_pb; end
+
+    # ── Step 2: Third-order derivatives ──
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+
+    # ── Step 3: Third-order solution ──
+    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+                            𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+                            initial_guess = 𝓂.caches.third_order_solution,
+                            opts = opts)
+    𝐒₃, solved3 = so3_out
+
+    update_perturbation_counter!(𝓂.counters, solved3, order = 3)
+
+    if !solved3; return zero_5(), zero_pb; end
+
+    # ── Step 4: Decompress S₃ ──
+    𝐔₃ = 𝓂.constants.third_order.𝐔₃
+    𝐒₃_full = 𝐒₃ * 𝐔₃
+
+    𝐒₃_full = sparse(𝐒₃_full)
+
+    # ── Step 5: Determine iteration groups ──
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
+                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
+    vec_Iₑ = so.vec_Iₑ
+    e4_nᵉ²_nᵉ² = so.e4_nᵉ²_nᵉ²
+    e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
+    e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
+    e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    Σʸ₃ = zeros(T, size(Σʸ₂))
+    autocorr = zeros(T, size(Σʸ₂, 1), n_ac)
+    solved_lyapunov = true
+
+    # Per-iteration storage for pullback
+    n_iters = length(orders)
+    iter_data = Vector{Any}(undef, n_iters)
+
+    for (iter_idx, ords) in enumerate(orders)
+        variance_observable, dependencies_all_vars = ords
+
+        sort!(variance_observable)
+        sort!(dependencies_all_vars)
+
+        dependencies = intersect(T_pm.past_not_future_and_mixed, dependencies_all_vars)
+
+        obs_in_y = indexin(variance_observable, T_pm.var)
+
+        dependencies_in_states_idx = indexin(dependencies, T_pm.past_not_future_and_mixed)
+
+        dependencies_in_var_idx = Int.(indexin(dependencies, T_pm.var))
+
+        nˢ = length(dependencies)
+
+        iˢ = dependencies_in_var_idx
+
+        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+        dependencies_extended_idx = vcat(dependencies_in_states_idx,
+                dependencies_in_states_idx .+ T_pm.nPast_not_future_and_mixed,
+                findall(ℒ.kron(T_pm.past_not_future_and_mixed .∈ (intersect(T_pm.past_not_future_and_mixed,dependencies),),
+                               T_pm.past_not_future_and_mixed .∈ (intersect(T_pm.past_not_future_and_mixed,dependencies),))) .+ 2*T_pm.nPast_not_future_and_mixed)
+
+        Σ̂ᶻ₂ = Σᶻ₂[dependencies_extended_idx, dependencies_extended_idx]
+
+        Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
+
+        s_in_s⁺ = BitVector(vcat(T_pm.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+
+        substate_indices = ensure_moments_substate_indices!(𝓂, nˢ)
+        I_plus_s_s = substate_indices.I_plus_s_s
+        e_es = substate_indices.e_es
+        e_ss = substate_indices.e_ss
+        ss_s = substate_indices.ss_s
+        s_s = substate_indices.s_s
+
+        # first order slices
+        s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
+        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (T_pm.nPast_not_future_and_mixed + 1):end]
+
+        s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+        e_to_s₁ = 𝐒₁[iˢ, (T_pm.nPast_not_future_and_mixed + 1):end]
+
+        # second order slices
+        dep_kron = ensure_moments_dependency_kron_indices!(𝓂, dependencies, s_in_s⁺)
+        kron_s_s = dep_kron.kron_s_s
+        kron_s_e = dep_kron.kron_s_e
+
+        s_s_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_s]
+        e_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_e_e]
+        s_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_e]
+
+        s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+        e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+        v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+        s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+        s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+        e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+        s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+        # third order slices
+        kron_s_v = dep_kron.kron_s_v
+
+        kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
+        kron_s_s_e = ℒ.kron(kron_s_s, e_in_s⁺)
+        kron_s_e_e = ℒ.kron(kron_s_e, e_in_s⁺)
+        kron_e_e_e = ℒ.kron(kron_e_e, e_in_s⁺)
+        kron_s_v_v = ℒ.kron(kron_s_v, v_in_s⁺)
+        kron_e_v_v = ℒ.kron(kron_e_v, v_in_s⁺)
+
+        s_s_s_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_s_s]
+        s_s_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_s_e]
+        s_e_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_e_e]
+        e_e_e_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_e_e_e]
+        s_v_v_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_s_v_v]
+        e_v_v_to_y₃ = 𝐒₃_full[obs_in_y,:][:, kron_e_v_v]
+
+        s_s_s_to_s₃ = 𝐒₃_full[iˢ, kron_s_s_s]
+        s_s_e_to_s₃ = 𝐒₃_full[iˢ, kron_s_s_e]
+        s_e_e_to_s₃ = 𝐒₃_full[iˢ, kron_s_e_e]
+        e_e_e_to_s₃ = 𝐒₃_full[iˢ, kron_e_e_e]
+        s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
+        e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
+
+        # Set up pruned state transition matrices
+        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
+                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
+                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
+                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
+                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
+                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+
+        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+
+        ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+                                    (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
+                                    s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
+                                    s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
+                                    s_v_v_to_s₃ * Σ̂ᶻ₁ / 2) * s_to_s₁' +
+                                    (s_e_to_s₂  * ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ)) +
+                                    e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
+                                    s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                    e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                    ), nˢ, nˢ)
+
+        Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
+                spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δ̂μˢ₂ * Δ̂μˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+                ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σ̂ᶻ₁), e4_nᵉ_nᵉ³)
+                spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)    spzeros(nˢ*nᵉ^2,nᵉ^3)
+                e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
+
+
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(ê_to_ŝ₃, eps())
+        droptol!(Eᴸᶻ, eps())
+        droptol!(Γ₃, eps())
+
+        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        droptol!(A_mat, eps())
+
+        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
+        droptol!(C_mat, eps())
+
+        # Ensure third-order lyapunov workspace and solve
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+
+        lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
+                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose)
+        Σᶻ₃ = lyap_out[1]
+        info = lyap_out[2]
+
+        if !info
+            return zero_5(), zero_pb
+        end
+
+        solved_lyapunov = solved_lyapunov && info
+
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+
+        for obs in variance_observable
+            Σʸ₃[indexin([obs], T_pm.var), indexin(variance_observable, T_pm.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
+        end
+
+        # ── Autocorrelation forward pass ──
+        Eᴸᶻ_orig = Eᴸᶻ   # save original for pullback
+
+        autocorr_tmp_ac = ŝ_to_ŝ₃ * Eᴸᶻ' * ê_to_y₃' + ê_to_ŝ₃ * Γ₃ * ê_to_y₃'
+
+        s_to_s₁ⁱ = Matrix{T}(ℒ.I(nˢ))
+        ŝ_to_ŝ₃ⁱ = Matrix{T}(ℒ.I(size(Σᶻ₃, 1)))
+        Σᶻ₃ⁱ = copy(Matrix{T}(Σᶻ₃))
+
+        norm_diag = max.(ℒ.diag(Σʸ₃tmp), eps(Float64))
+
+        per_period = Vector{Any}(undef, n_ac)
+        Eᴸᶻ_cur = Eᴸᶻ_orig   # tracks current Eᴸᶻ for step 1
+
+        for (pi, i) in enumerate(autocorrelation_periods)
+            # Snapshot before step 1
+            Σᶻ₃ⁱ_prev = copy(Σᶻ₃ⁱ)
+            Eᴸᶻ_used = Eᴸᶻ_cur  # Eᴸᶻ used in step 1
+
+            # Step 1: Σᶻ₃ⁱ update
+            Σᶻ₃ⁱ .= Matrix(ŝ_to_ŝ₃) * Σᶻ₃ⁱ + Matrix(ê_to_ŝ₃) * Matrix(Eᴸᶻ_cur)
+
+            # Step 2: s_to_s₁ⁱ update (snapshot before)
+            s_to_s₁ⁱ_prev = copy(s_to_s₁ⁱ)
+            s_to_s₁ⁱ = s_to_s₁ⁱ * Matrix{T}(s_to_s₁)
+
+            # Step 3: rebuild Eᴸᶻ with s_to_s₁ⁱ prefix
+            Eᴸᶻⁱ = [ spzeros(T, nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 + nˢ^3)
+                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁, vec_Iₑ)   zeros(T, nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁', vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ, 2*nˢ + 1:end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2*nˢ + 1:end, 2*nˢ + 1:end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
+                spzeros(T, nᵉ^3, 3*nˢ + 2*nˢ^2 + nˢ^3)]
+            Eᴸᶻ_cur = Eᴸᶻⁱ
+
+            # Step 4: compute autocorrelation
+            ŝ_to_ŝ₃ⁱ_snap = copy(ŝ_to_ŝ₃ⁱ)  # snapshot before step 5
+            num_mat = Matrix(ŝ_to_y₃) * Σᶻ₃ⁱ * Matrix(ŝ_to_y₃)' + Matrix(ŝ_to_y₃) * ŝ_to_ŝ₃ⁱ * Matrix(autocorr_tmp_ac) + Matrix(ê_to_y₃) * Matrix(Eᴸᶻⁱ) * Matrix(ŝ_to_y₃)'
+            num_diag_i = ℒ.diag(num_mat)
+            ac_val = num_diag_i ./ norm_diag
+            diag_Σ = ℒ.diag(Σʸ₃tmp)
+            zero_mask_i = diag_Σ .< opts.tol.lyapunov_acceptance_tol
+            ac_val[zero_mask_i] .= 0
+
+            for obs in variance_observable
+                autocorr[indexin([obs], T_pm.var), i] .= ac_val[indexin([obs], variance_observable)]
+            end
+
+            per_period[pi] = (
+                Σᶻ₃ⁱ_prev = Σᶻ₃ⁱ_prev,
+                Eᴸᶻ_used = Eᴸᶻ_used,
+                s_to_s₁ⁱ = copy(s_to_s₁ⁱ),       # after step 2
+                s_to_s₁ⁱ_prev = s_to_s₁ⁱ_prev,
+                Eᴸᶻⁱ = Eᴸᶻⁱ,                      # after step 3
+                ŝ_to_ŝ₃ⁱ = ŝ_to_ŝ₃ⁱ_snap,         # before step 5
+                Σᶻ₃ⁱ = copy(Σᶻ₃ⁱ),                # after step 1
+                num_diag = num_diag_i,
+                zero_mask = zero_mask_i,
+                period_index = i,
+            )
+
+            # Step 5: ŝ_to_ŝ₃ⁱ update
+            ŝ_to_ŝ₃ⁱ = ŝ_to_ŝ₃ⁱ * Matrix{T}(ŝ_to_ŝ₃)
+        end
+
+        # Store per-iteration data for pullback
+        iter_data[iter_idx] = (
+            variance_observable = variance_observable,
+            obs_in_y = obs_in_y,
+            iˢ = iˢ,
+            nˢ = nˢ,
+            dependencies_in_states_idx = dependencies_in_states_idx,
+            dependencies_extended_idx = dependencies_extended_idx,
+            Σ̂ᶻ₁ = Σ̂ᶻ₁,
+            Σ̂ᶻ₂ = Σ̂ᶻ₂,
+            Δ̂μˢ₂ = Δ̂μˢ₂,
+            s_in_s⁺ = s_in_s⁺,
+            s_to_y₁ = s_to_y₁,
+            e_to_y₁ = e_to_y₁,
+            s_to_s₁ = s_to_s₁,
+            e_to_s₁ = e_to_s₁,
+            kron_s_s = kron_s_s,
+            kron_s_e = kron_s_e,
+            kron_s_v = kron_s_v,
+            kron_s_s_s = kron_s_s_s,
+            kron_s_s_e = kron_s_s_e,
+            kron_s_e_e = kron_s_e_e,
+            kron_e_e_e = kron_e_e_e,
+            kron_s_v_v = kron_s_v_v,
+            kron_e_v_v = kron_e_v_v,
+            s_s_to_y₂ = s_s_to_y₂,
+            e_e_to_y₂ = e_e_to_y₂,
+            s_e_to_y₂ = s_e_to_y₂,
+            s_s_to_s₂ = s_s_to_s₂,
+            e_e_to_s₂ = e_e_to_s₂,
+            v_v_to_s₂ = v_v_to_s₂,
+            s_e_to_s₂ = s_e_to_s₂,
+            s_to_s₁_by_s_to_s₁ = s_to_s₁_by_s_to_s₁,
+            e_to_s₁_by_e_to_s₁ = e_to_s₁_by_e_to_s₁,
+            s_to_s₁_by_e_to_s₁ = s_to_s₁_by_e_to_s₁,
+            s_s_s_to_y₃ = s_s_s_to_y₃,
+            s_s_e_to_y₃ = s_s_e_to_y₃,
+            s_e_e_to_y₃ = s_e_e_to_y₃,
+            e_e_e_to_y₃ = e_e_e_to_y₃,
+            s_v_v_to_y₃ = s_v_v_to_y₃,
+            e_v_v_to_y₃ = e_v_v_to_y₃,
+            s_s_s_to_s₃ = s_s_s_to_s₃,
+            s_s_e_to_s₃ = s_s_e_to_s₃,
+            s_e_e_to_s₃ = s_e_e_to_s₃,
+            e_e_e_to_s₃ = e_e_e_to_s₃,
+            s_v_v_to_s₃ = s_v_v_to_s₃,
+            e_v_v_to_s₃ = e_v_v_to_s₃,
+            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
+            ê_to_ŝ₃ = ê_to_ŝ₃,
+            ŝ_to_y₃ = ŝ_to_y₃,
+            ê_to_y₃ = ê_to_y₃,
+            Γ₃ = Γ₃,
+            Eᴸᶻ = Eᴸᶻ_orig,
+            A_mat = A_mat,
+            C_mat = C_mat,
+            Σᶻ₃ = Σᶻ₃,
+            Σʸ₃tmp = Σʸ₃tmp,
+            μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
+            lyap_pb = lyap_pb_iter,
+            I_plus_s_s = I_plus_s_s,
+            ss_s = ss_s,
+            s_s = s_s,
+            e_es = e_es,
+            e_ss = e_ss,
+            # Autocorrelation-specific
+            autocorr_tmp_ac = autocorr_tmp_ac,
+            norm_diag = norm_diag,
+            per_period = per_period,
+        )
+    end
+
+    result = (Σʸ₃, μʸ₂, autocorr, SS_and_pars, solved && solved3 && solved_lyapunov)
+
+    # ── Pullback ──
+    function calculate_third_order_moments_with_autocorrelation_pullback(∂out)
+        ∂Σʸ₃_in, ∂μʸ₂_in, ∂autocorr_in, ∂SS_in, _ = ∂out
+
+        ∂Σʸ₃_in = unthunk(∂Σʸ₃_in)
+        ∂μʸ₂_in = unthunk(∂μʸ₂_in)
+        ∂autocorr_in = unthunk(∂autocorr_in)
+        ∂SS_in  = unthunk(∂SS_in)
+
+        n₋ = T_pm.nPast_not_future_and_mixed
+
+        # Accumulators for cotangents flowing to sub-rrule inputs
+        ∂Σʸ₁_acc  = zeros(T, size(Σʸ₁))
+        ∂Σᶻ₂_acc  = zeros(T, size(Σᶻ₂))
+        ∂Δμˢ₂_acc = zeros(T, length(Δμˢ₂))
+        ∂𝐒₁_acc   = zeros(T, size(𝐒₁))
+        ∂S2f_acc   = zeros(T, size(𝐒₂))
+        ∂S3f_acc   = zeros(T, size(𝐒₃_full))
+        ∂SS_acc    = zeros(T, length(SS_and_pars))
+        ∂∇₁_acc   = zeros(T, size(∇₁))
+        ∂∇₂_acc   = zeros(T, size(∇₂))
+        ∂∇₃_acc   = zeros(T, size(∇₃))
+
+        if !(∂SS_in isa AbstractZero); ∂SS_acc .+= ∂SS_in; end
+
+        # ──── Reverse loop over iterations ────
+        for iter_idx in n_iters:-1:1
+            d = iter_data[iter_idx]
+            nˢ_i = d.nˢ
+
+            # ═══════════════════════════════════════════════════════════════════
+            # Stage 0: Autocorrelation reverse loop
+            # ═══════════════════════════════════════════════════════════════════
+            nObs_iter = length(d.variance_observable)
+
+            # Initialize cotangents that accumulate through autocorrelation loop
+            ∂ŝ_to_y₃_ac = zeros(T, size(d.ŝ_to_y₃))
+            ∂ê_to_y₃_ac = zeros(T, size(d.ê_to_y₃))
+            ∂Σᶻ₃ⁱ_co   = zeros(T, size(d.Σᶻ₃))   # cotangent for Σᶻ₃ⁱ state
+            ∂ŝ_to_ŝ₃_ac = zeros(T, size(d.ŝ_to_ŝ₃))
+            ∂ê_to_ŝ₃_ac = zeros(T, size(d.ê_to_ŝ₃))
+            ∂Eᴸᶻ_ac = zeros(T, size(d.Eᴸᶻ))     # cotangent for original Eᴸᶻ
+            ∂Γ₃_ac  = zeros(T, size(d.Γ₃))
+            ∂autocorr_tmp_co = zeros(T, size(d.autocorr_tmp_ac))
+            ∂s₁_ac  = zeros(T, nˢ_i, nˢ_i)        # cotangent for s_to_s₁
+            ∂Σʸ₃tmp_ac = zeros(T, nObs_iter, nObs_iter) # cotangent from norm_diag
+            ∂ŝ_to_ŝ₃ⁱ_co = zeros(T, size(d.Σᶻ₃))  # cotangent for ŝ_to_ŝ₃ⁱ state
+            ∂s_to_s₁ⁱ_co = zeros(T, nˢ_i, nˢ_i)   # cotangent for s_to_s₁ⁱ state
+            # Data cotangents from Eᴸᶻⁱ disaggregation
+            ∂Σ̂ᶻ₁_ac = zeros(T, nˢ_i, nˢ_i)
+            ∂Σ̂ᶻ₂_ac = zeros(T, size(d.Σ̂ᶻ₂))
+            ∂Δ̂μˢ₂_ac = zeros(T, nˢ_i)
+            ∂μˢ₃δμˢ₁_ac = zeros(T, nˢ_i, nˢ_i)
+
+            ŝ_y = Matrix{T}(d.ŝ_to_y₃)
+            ê_y = Matrix{T}(d.ê_to_y₃)
+            ŝ_ŝ = Matrix{T}(d.ŝ_to_ŝ₃)
+            ê_ŝ = Matrix{T}(d.ê_to_ŝ₃)
+            vec_Ie_col = reshape(T.(vec_Iₑ), :, 1)
+            ss_s_M = Matrix(d.ss_s)
+            vΣ_ac = vec(d.Σ̂ᶻ₁)
+            n = nˢ_i; ne = nᵉ
+            sb_ac = cumsum([0, n, n, n^2, n, n^2, n^3])
+            eb_ac = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
+
+            # Reverse loop over autocorrelation periods
+            for pi in n_ac:-1:1
+                pp = d.per_period[pi]
+
+                # ── Step 5 reverse: ŝ_to_ŝ₃ⁱ_after = ŝ_to_ŝ₃ⁱ_before * ŝ_to_ŝ₃ ──
+                ∂ŝ_to_ŝ₃_ac .+= pp.ŝ_to_ŝ₃ⁱ' * ∂ŝ_to_ŝ₃ⁱ_co
+                ∂ŝ_to_ŝ₃ⁱ_co .= ∂ŝ_to_ŝ₃ⁱ_co * ŝ_ŝ'
+
+                # ── Step 4 reverse: autocorrelation output ──
+                # Gather ∂autocorr for this period
+                ∂ac = zeros(T, nObs_iter)
+                if !(∂autocorr_in isa AbstractZero)
+                    for obs in d.variance_observable
+                        obs_local = indexin([obs], d.variance_observable)
+                        obs_global = indexin([obs], T_pm.var)
+                        ∂ac[obs_local] .+= ∂autocorr_in[obs_global, pp.period_index]
+                    end
+                end
+
+                # Apply zero mask
+                ∂ac[pp.zero_mask] .= 0
+
+                if ℒ.norm(∂ac) > eps(T)
+                    # Division adjoint: ac = num_diag / norm_diag
+                    ∂num_diag = ∂ac ./ d.norm_diag
+                    ∂norm_diag_from_ac = -∂ac .* pp.num_diag ./ (d.norm_diag .^ 2)
+                    # norm_diag = max.(diag(Σʸ₃tmp), eps()) → adjoint only where diag >= eps
+                    norm_mask = ℒ.diag(d.Σʸ₃tmp) .>= eps(Float64)
+                    ∂Σʸ₃tmp_ac .+= ℒ.Diagonal(∂norm_diag_from_ac .* norm_mask)
+
+                    # Numerator: N = ŝ_y * Σᶻ₃ⁱ * ŝ_y' + ŝ_y * ŝ_ŝ₃ⁱ * ac_tmp + ê_y * Eᴸᶻⁱ * ŝ_y'
+                    # Adjoint of diag extraction: ∂D = Diagonal(∂num_diag)
+                    ∂D = ℒ.Diagonal(∂num_diag)
+
+                    Σᶻ₃ⁱ_i = pp.Σᶻ₃ⁱ
+                    ŝ_ŝ₃ⁱ_i = pp.ŝ_to_ŝ₃ⁱ
+                    ELⁱ = Matrix{T}(pp.Eᴸᶻⁱ)
+                    ac_tmp = Matrix{T}(d.autocorr_tmp_ac)
+
+                    # Term 1: diag(ŝ_y * Σᶻ₃ⁱ * ŝ_y')
+                    ∂ŝ_to_y₃_ac .+= ∂D * ŝ_y * (Σᶻ₃ⁱ_i + Σᶻ₃ⁱ_i')
+                    ∂Σᶻ₃ⁱ_co   .+= ŝ_y' * ∂D * ŝ_y
+
+                    # Term 2: diag(ŝ_y * ŝ_ŝ₃ⁱ * ac_tmp)
+                    ∂ŝ_to_y₃_ac   .+= ∂D * ac_tmp' * ŝ_ŝ₃ⁱ_i'
+                    ∂ŝ_to_ŝ₃ⁱ_co  .+= ŝ_y' * ∂D * ac_tmp'
+                    ∂autocorr_tmp_co .+= ŝ_ŝ₃ⁱ_i' * ŝ_y' * ∂D
+
+                    # Term 3: diag(ê_y * Eᴸᶻⁱ * ŝ_y')
+                    ∂ê_to_y₃_ac .+= ∂D * ŝ_y * ELⁱ'
+                    ∂ŝ_to_y₃_ac .+= ∂D * ê_y * ELⁱ
+                    ∂Eᴸᶻⁱ = ê_y' * ∂D * ŝ_y
+
+                    # ── Eᴸᶻⁱ disaggregation: only row block 6 has s_to_s₁ⁱ prefix ──
+                    ∂ELⁱ6 = ∂Eᴸᶻⁱ[eb_ac[6]+1:eb_ac[7], :]
+
+                    s₁ⁱ = pp.s_to_s₁ⁱ  # s₁^i (after step 2)
+
+                    # Col 1: kron(s₁ⁱ * Σ̂ᶻ₁, vec_Ie)
+                    A_c1 = s₁ⁱ * Matrix{T}(d.Σ̂ᶻ₁)
+                    ∂A_c1 = _kron_vjp(∂ELⁱ6[:, sb_ac[1]+1:sb_ac[2]], A_c1, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c1 * Matrix{T}(d.Σ̂ᶻ₁)'
+                    ∂Σ̂ᶻ₁_ac .+= s₁ⁱ' * ∂A_c1
+
+                    # Col 4: kron(s₁ⁱ * μˢ₃δμˢ₁', vec_Ie)
+                    A_c4 = s₁ⁱ * Matrix{T}(d.μˢ₃δμˢ₁')
+                    ∂A_c4 = _kron_vjp(∂ELⁱ6[:, sb_ac[4]+1:sb_ac[5]], A_c4, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c4 * Matrix{T}(d.μˢ₃δμˢ₁)
+                    ∂μˢ₃δμˢ₁_ac .+= ∂A_c4' * s₁ⁱ
+
+                    # Col 5: kron(s₁ⁱ * C4m, vec_Ie)
+                    inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ_ac'
+                    C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
+                    A_c5 = s₁ⁱ * C4m
+                    ∂A_c5 = _kron_vjp(∂ELⁱ6[:, sb_ac[5]+1:sb_ac[6]], A_c5, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c5 * C4m'
+                    ∂C4_i = s₁ⁱ' * ∂A_c5
+                    ∂iC4_i = reshape(ss_s_M' * vec(∂C4_i), n, n^2)
+                    ∂Σ̂ᶻ₂_ac[n+1:2n, 2n+1:end] .+= ∂iC4_i
+                    ∂Δ̂μˢ₂_ac .+= ∂iC4_i * vΣ_ac
+                    ∂Σ̂ᶻ₁_ac .+= reshape(∂iC4_i' * d.Δ̂μˢ₂, n, n)
+
+                    # Col 6: kron(s₁ⁱ * C5m, vec_Ie)
+                    inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
+                    C5m = reshape(Matrix{T}(inner_C5), n, n^3)
+                    A_c6 = s₁ⁱ * C5m
+                    ∂A_c6 = _kron_vjp(∂ELⁱ6[:, sb_ac[6]+1:sb_ac[7]], A_c6, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m'
+                    ∂C5_i = s₁ⁱ' * ∂A_c6
+                    ∂iC5_i = reshape(∂C5_i, n^2, n^2)
+                    ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5_i
+                    ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5_i + ∂iC5_i') * vΣ_ac, n, n)
+                end  # norm(∂ac) check
+
+                # ── Step 2 reverse: s_to_s₁ⁱ_after = s_to_s₁ⁱ_prev * s_to_s₁ ──
+                s₁_d = Matrix{T}(d.s_to_s₁)
+                ∂s₁_ac .+= pp.s_to_s₁ⁱ_prev' * ∂s_to_s₁ⁱ_co
+                ∂s_to_s₁ⁱ_co .= ∂s_to_s₁ⁱ_co * s₁_d'
+
+                # ── Step 1 reverse: Σᶻ₃ⁱ = ŝ_ŝ * Σᶻ₃ⁱ_prev + ê_ŝ * Eᴸᶻ_used ──
+                EL_used = Matrix{T}(pp.Eᴸᶻ_used)
+                ∂ŝ_to_ŝ₃_ac .+= ∂Σᶻ₃ⁱ_co * pp.Σᶻ₃ⁱ_prev'
+                ∂ê_to_ŝ₃_ac .+= ∂Σᶻ₃ⁱ_co * EL_used'
+                # ∂Eᴸᶻ_used: this flows to the previous period's Eᴸᶻⁱ or to the original Eᴸᶻ
+                ∂Eᴸᶻ_used = ê_ŝ' * ∂Σᶻ₃ⁱ_co
+                if pi == 1
+                    ∂Eᴸᶻ_ac .+= ∂Eᴸᶻ_used
+                else
+                    # Flows to previous period's Eᴸᶻⁱ — need to disaggregate
+                    # The previous Eᴸᶻⁱ has s_to_s₁ⁱ prefix from period pi-1
+                    pp_prev = d.per_period[pi-1]
+                    s₁ⁱ_prev = pp_prev.s_to_s₁ⁱ
+                    ∂ELprev6 = ∂Eᴸᶻ_used[eb_ac[6]+1:eb_ac[7], :]
+
+                    # Col 1
+                    A_pc1 = s₁ⁱ_prev * Matrix{T}(d.Σ̂ᶻ₁)
+                    ∂A_pc1 = _kron_vjp(∂ELprev6[:, sb_ac[1]+1:sb_ac[2]], A_pc1, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc1 * Matrix{T}(d.Σ̂ᶻ₁)'
+                    ∂Σ̂ᶻ₁_ac .+= s₁ⁱ_prev' * ∂A_pc1
+
+                    # Col 4
+                    A_pc4 = s₁ⁱ_prev * Matrix{T}(d.μˢ₃δμˢ₁')
+                    ∂A_pc4 = _kron_vjp(∂ELprev6[:, sb_ac[4]+1:sb_ac[5]], A_pc4, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc4 * Matrix{T}(d.μˢ₃δμˢ₁)
+                    ∂μˢ₃δμˢ₁_ac .+= ∂A_pc4' * s₁ⁱ_prev
+
+                    # Col 5
+                    inner_C4p = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ_ac'
+                    C4mp = reshape(ss_s_M * vec(inner_C4p), n, n^2)
+                    A_pc5 = s₁ⁱ_prev * C4mp
+                    ∂A_pc5 = _kron_vjp(∂ELprev6[:, sb_ac[5]+1:sb_ac[6]], A_pc5, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc5 * C4mp'
+                    ∂C4p = s₁ⁱ_prev' * ∂A_pc5
+                    ∂iC4p = reshape(ss_s_M' * vec(∂C4p), n, n^2)
+                    ∂Σ̂ᶻ₂_ac[n+1:2n, 2n+1:end] .+= ∂iC4p
+                    ∂Δ̂μˢ₂_ac .+= ∂iC4p * vΣ_ac
+                    ∂Σ̂ᶻ₁_ac .+= reshape(∂iC4p' * d.Δ̂μˢ₂, n, n)
+
+                    # Col 6
+                    inner_C5p = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
+                    C5mp = reshape(Matrix{T}(inner_C5p), n, n^3)
+                    A_pc6 = s₁ⁱ_prev * C5mp
+                    ∂A_pc6 = _kron_vjp(∂ELprev6[:, sb_ac[6]+1:sb_ac[7]], A_pc6, vec_Ie_col)[1]
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp'
+                    ∂C5p = s₁ⁱ_prev' * ∂A_pc6
+                    ∂iC5p = reshape(∂C5p, n^2, n^2)
+                    ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5p
+                    ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5p + ∂iC5p') * vΣ_ac, n, n)
+
+                    # The remaining rows (1-5 and 7) of ∂Eᴸᶻ_used are zero (spzeros in forward)
+                end
+
+                # Propagate ∂Σᶻ₃ⁱ to previous state
+                ∂Σᶻ₃ⁱ_co .= ŝ_ŝ' * ∂Σᶻ₃ⁱ_co
+            end  # end autocorrelation reverse loop
+
+            # ── autocorr_tmp adjoint ──
+            # autocorr_tmp = ŝ_ŝ * Eᴸᶻ' * ê_y' + ê_ŝ * Γ₃ * ê_y'
+            ∂act = Matrix{T}(∂autocorr_tmp_co)
+            EL_orig = Matrix{T}(d.Eᴸᶻ)
+            Γ₃_d = Matrix{T}(d.Γ₃)
+
+            # Term 1: ŝ_ŝ * Eᴸᶻ' * ê_y'
+            ∂ŝ_to_ŝ₃_ac .+= ∂act * ê_y * EL_orig
+            ∂Eᴸᶻ_ac    .+= ê_y' * ∂act' * ŝ_ŝ
+            ∂ê_to_y₃_ac .+= ∂act' * ŝ_ŝ * EL_orig'
+
+            # Term 2: ê_ŝ * Γ₃ * ê_y'
+            ∂ê_to_ŝ₃_ac .+= ∂act * ê_y * Γ₃_d'
+            ∂Γ₃_ac      .+= ê_ŝ' * ∂act * ê_y
+            ∂ê_to_y₃_ac .+= ∂act' * ê_ŝ * Γ₃_d
+
+            # Σᶻ₃ⁱ_co now holds the cotangent at the initial state (Σᶻ₃ⁱ₀ = Σᶻ₃)
+            # This adds to ∂Σᶻ₃ from the Lyapunov path
+
+            # ═══════════════════════════════════════════════════════════════════
+            # Stage 1: Output mapping (variance) — same as existing rrule
+            # ═══════════════════════════════════════════════════════════════════
+
+            # ── Gather ∂Σʸ₃tmp from ∂Σʸ₃ (reverse of scatter) ──
+            ∂Σʸ₃tmp = zeros(T, nObs_iter, nObs_iter)
+
+            if !(∂Σʸ₃_in isa AbstractZero)
+                ∂Σʸ₃tmp .= ∂Σʸ₃_in[d.obs_in_y, indexin(d.variance_observable, T_pm.var)]
+            end
+
+            # Add autocorrelation contribution to ∂Σʸ₃tmp (from norm_diag)
+            ∂Σʸ₃tmp .+= ∂Σʸ₃tmp_ac
+
+            if ℒ.norm(∂Σʸ₃tmp) + ℒ.norm(∂ŝ_to_y₃_ac) + ℒ.norm(∂ê_to_y₃_ac) + ℒ.norm(∂Σᶻ₃ⁱ_co) + ℒ.norm(∂ŝ_to_ŝ₃_ac) + ℒ.norm(∂ê_to_ŝ₃_ac) + ℒ.norm(∂Eᴸᶻ_ac) + ℒ.norm(∂Γ₃_ac) < eps(T); continue; end
+
+            ∂Σʸ₃tmp_sym = ∂Σʸ₃tmp + ∂Σʸ₃tmp'
+
+            # ── Σʸ₃tmp = ŝ_y * Σᶻ₃ * ŝ_y' + ê_y * Γ₃ * ê_y' + ê_y * Eᴸᶻ * ŝ_y' + ŝ_y * Eᴸᶻ' * ê_y' ──
+            ∂ŝ_to_y₃ = ∂ŝ_to_y₃_ac .+ ∂Σʸ₃tmp_sym * (d.ŝ_to_y₃ * d.Σᶻ₃ + d.ê_to_y₃ * Matrix(d.Eᴸᶻ))
+            ∂ê_to_y₃ = ∂ê_to_y₃_ac .+ ∂Σʸ₃tmp_sym * (d.ê_to_y₃ * d.Γ₃  + d.ŝ_to_y₃ * Matrix(d.Eᴸᶻ'))
+            ∂Σᶻ₃      = ∂Σᶻ₃ⁱ_co .+ d.ŝ_to_y₃' * ∂Σʸ₃tmp * d.ŝ_to_y₃
+            ∂Γ₃_iter   = ∂Γ₃_ac  .+ d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
+            ∂Eᴸᶻ_iter  = ∂Eᴸᶻ_ac .+ d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
+
+            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
+            ∂ŝ_to_ŝ₃ = ∂ŝ_to_ŝ₃_ac .+ (lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2]))
+            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+
+            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
+            ∂C_sym = ∂C_mat + ∂C_mat'
+
+            ∂ê_to_ŝ₃  = ∂ê_to_ŝ₃_ac .+ ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
+            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
+            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
+            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+
+            # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            c = 0
+            ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
+            ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
+
+            ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5
+            ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6
+
+            # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            c = 0
+            ∂eblk1 = ∂ê_to_y₃[:, c+1:c+nᵉ];          c += nᵉ
+            ∂eblk2 = ∂ê_to_y₃[:, c+1:c+nᵉ^2];        c += nᵉ^2
+            ∂eblk3 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ];     c += nˢ_i*nᵉ
+            ∂eblk4 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ];     c += nˢ_i*nᵉ
+            ∂eblk5 = ∂ê_to_y₃[:, c+1:c+nˢ_i^2*nᵉ];   c += nˢ_i^2*nᵉ
+            ∂eblk6 = ∂ê_to_y₃[:, c+1:c+nˢ_i*nᵉ^2];   c += nˢ_i*nᵉ^2
+            ∂eblk7 = ∂ê_to_y₃[:, c+1:end]
+
+            ∂𝐒₁_acc[d.obs_in_y, n₋+1:end]    .+= ∂eblk1
+            ∂S2f_acc[d.obs_in_y, kron_e_e]     .+= ∂eblk2 ./ 2
+            ∂S2f_acc[d.obs_in_y, d.kron_s_e]   .+= ∂eblk3 .+ ∂eblk4
+            ∂S3f_acc[d.obs_in_y, d.kron_e_v_v] .+= ∂eblk1 ./ 2
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_e] .+= ∂eblk5 ./ 2
+            ∂S3f_acc[d.obs_in_y, d.kron_s_e_e] .+= ∂eblk6 ./ 2
+            ∂S3f_acc[d.obs_in_y, d.kron_e_e_e] .+= ∂eblk7 ./ 6
+
+            # ════════════════════════════════════════════════════════════════════
+            # Stage 2+3: Disaggregate block matrices → slice & data cotangents
+            # ════════════════════════════════════════════════════════════════════
+            Ine = Matrix{T}(ℒ.I(ne))
+
+            # Dense copies of frequently used slices
+            s₁  = Matrix{T}(d.s_to_s₁)
+            e₁  = Matrix{T}(d.e_to_s₁)
+            s₁² = Matrix{T}(d.s_to_s₁_by_s_to_s₁)
+            e₁² = Matrix{T}(d.e_to_s₁_by_e_to_s₁)
+            s₁e₁ = Matrix{T}(d.s_to_s₁_by_e_to_s₁)
+            ss₂  = Matrix{T}(d.s_s_to_s₂)
+            ee₂  = Matrix{T}(d.e_e_to_s₂)
+            se₂  = Matrix{T}(d.s_e_to_s₂)
+            vv₂  = Matrix{T}(d.v_v_to_s₂)
+
+            # Local slice cotangent accumulators
+            ∂s₁_l  = ∂s₁_ac    # start with autocorrelation contribution
+            ∂e₁_l  = zeros(T, n, ne)
+            ∂ss₂_l = zeros(T, n, n^2)
+            ∂ee₂_l = zeros(T, n, ne^2)
+            ∂se₂_l = zeros(T, n, n * ne)
+            ∂vv₂_l = zeros(T, size(vv₂))
+            ∂Σ̂ᶻ₁  = ∂Σ̂ᶻ₁_ac    # start with autocorrelation contribution
+            ∂Σ̂ᶻ₂  = ∂Σ̂ᶻ₂_ac    # start with autocorrelation contribution
+            ∂Δ̂μˢ₂_l = ∂Δ̂μˢ₂_ac  # start with autocorrelation contribution
+
+            # Block boundary arrays
+            sb = cumsum([0, n, n, n^2, n, n^2, n^3])
+            eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
+            gb = eb
+
+            vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
+
+            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
+            ∂ŝ₃ = ∂ŝ_to_ŝ₃
+
+            # Direct s₁ blocks: (1,1), (2,2), (4,4)
+            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
+                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
+                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
+            # (2,3) ss₂/2
+            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
+            # (4,5) ss₂
+            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
+            # (4,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
+            # (4,6) sss₃/6
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
+            # (3,3) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+            # (5,1) kron(s₁, vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
+            ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            # (5,5) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+            # (5,6) kron(s₁, ss₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
+            ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
+            # (6,6) kron(s₁, kron(s₁,s₁))
+            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
+            ∂s₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
+            ∂s₁_l .+= tmpL .+ tmpR
+
+            # ── 2b: ê_to_ŝ₃ disaggregation ──
+            ∂ê₃ = Matrix{T}(∂ê_to_ŝ₃)
+            ss_s1e1 = Matrix(d.s_s) * s₁e₁
+
+            # Row 1: (1,1) e₁
+            ∂e₁_l .+= ∂ê₃[sb[1]+1:sb[2], eb[1]+1:eb[2]]
+            # Row 2: (2,2) ee₂/2; (2,3) se₂
+            ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
+            ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
+            # Row 3: (3,2) kron(e₁,e₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            ∂e₁_l .+= tmpL .+ tmpR
+            # (3,3) I_plus_s_s * kron(s₁,e₁)
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
+            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # Row 4: direct S₃ slices
+            ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂ê₃[sb[4]+1:sb[5], eb[1]+1:eb[2]] ./ 2
+            ∂se₂_l .+= ∂ê₃[sb[4]+1:sb[5], eb[4]+1:eb[5]]
+            ∂S3f_acc[d.iˢ, d.kron_s_s_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[5]+1:eb[6]] ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
+            # Row 5: (5,1) kron(e₁,vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
+            ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            # (5,4) s_s * kron(s₁,e₁)
+            ∂k54 = Matrix(d.s_s') * Matrix(∂ê₃[sb[5]+1:sb[6], eb[4]+1:eb[5]])
+            tmpA, tmpB = _kron_vjp(∂k54, s₁, e₁)
+            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # (5,5) kron(s₁,se₂) + s_s * kron(ss₂/2, e₁)
+            ∂b55 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[5]+1:eb[6]])
+            tmpA, tmpB = _kron_vjp(∂b55, s₁, se₂)
+            ∂s₁_l .+= tmpA;  ∂se₂_l .+= tmpB
+            ∂k55b = Matrix(d.s_s') * ∂b55
+            tmpA, tmpB = _kron_vjp(∂k55b, ssh, e₁)
+            ∂ss₂_l .+= tmpA ./ 2;  ∂e₁_l .+= tmpB
+            # (5,6) kron(s₁,ee₂/2) + s_s * kron(se₂, e₁)
+            ∂b56 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[6]+1:eb[7]])
+            tmpA, tmpB = _kron_vjp(∂b56, s₁, eeh)
+            ∂s₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            ∂k56b = Matrix(d.s_s') * ∂b56
+            tmpA, tmpB = _kron_vjp(∂k56b, se₂, e₁)
+            ∂se₂_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # (5,7) kron(e₁, ee₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
+            ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
+            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)
+            ∂e₁_l .+= tmpB
+            tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            tmpA, tmpB = _kron_vjp(∂b65, s₁, ss_s1e1)
+            ∂s₁_l .+= tmpA
+            tmpC = Matrix(d.s_s') * tmpB
+            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂k65c = ∂b65 * Matrix(d.e_ss')
+            tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
+            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)
+            ∂e₁_l .+= tmpB
+            tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂pre = ∂b66 * Matrix(d.e_es')
+            tmpA, tmpB = _kron_vjp(∂pre, e₁, s₁e₁)
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpA, tmpB = _kron_vjp(∂pre, e₁, ss_s1e1)
+            ∂e₁_l .+= tmpA
+            tmpC = Matrix(d.s_s') * tmpB
+            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            # (6,7) kron(e₁, e₁²)
+            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            ∂e₁_l .+= tmpA
+            tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
+
+            # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
+            ∂Γ = Matrix{T}(∂Γ₃_iter)
+            vΣ = vec(d.Σ̂ᶻ₁)
+
+            # Row 1: (1,4) kron(Δ̂μˢ₂',Ine)
+            ∂tmp14 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
+            ∂Δ̂μˢ₂_l .+= vec(∂tmp14')
+            # (1,5) kron(vec(Σ̂ᶻ₁)',Ine)
+            ∂tmp15 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
+            ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp15'), n, n)
+            # Row 3: (3,3) kron(Σ̂ᶻ₁,Ine)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
+            # Row 4: (4,1) kron(Δ̂μˢ₂,Ine)
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            # (4,4) kron(Σ̂ᶻ₂_22 + Δ*Δ', Ine)
+            M44 = d.Σ̂ᶻ₂[n+1:2n, n+1:2n] + d.Δ̂μˢ₂ * d.Δ̂μˢ₂'
+            ∂M44 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
+            ∂Σ̂ᶻ₂[n+1:2n, n+1:2n] .+= ∂M44
+            ∂Δ̂μˢ₂_l .+= (∂M44 + ∂M44') * d.Δ̂μˢ₂
+            # (4,5) kron(Σ̂ᶻ₂_23 + Δ*vΣ', Ine)
+            M45 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
+            ∂M45 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
+            ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂M45
+            ∂Δ̂μˢ₂_l .+= ∂M45 * vΣ
+            ∂Σ̂ᶻ₁ .+= reshape(∂M45' * d.Δ̂μˢ₂, n, n)
+            # (4,7) kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
+            # Row 5: (5,1) kron(vΣ, Ine)
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
+            # (5,4) kron(Σ̂ᶻ₂_32 + vΣ*Δ', Ine)
+            M54 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
+            ∂M54 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
+            ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂M54
+            ∂Σ̂ᶻ₁ .+= reshape(∂M54 * d.Δ̂μˢ₂, n, n)
+            ∂Δ̂μˢ₂_l .+= ∂M54' * vΣ
+            # (5,5) kron(Σ̂ᶻ₂_33 + vΣ*vΣ', Ine)
+            M55 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            ∂M55 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂M55
+            ∂Σ̂ᶻ₁ .+= reshape((∂M55 + ∂M55') * vΣ, n, n)
+            # (5,7) kron(vΣ, e4_nᵉ_nᵉ³)
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
+            # Row 6: (6,6) kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
+            # Row 7: (7,4) kron(Δ̂μˢ₂', e4')
+            ∂tmp74 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂Δ̂μˢ₂_l .+= vec(∂tmp74')
+            # (7,5) kron(vΣ', e4')
+            ∂tmp75 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp75'), n, n)
+
+            # ── 3b: Eᴸᶻ disaggregation ──
+            ∂EL = Matrix{T}(∂Eᴸᶻ_iter)
+            # Only row block 6 is data-dependent
+            ∂EL6 = ∂EL[gb[6]+1:gb[7], :]
+            # Col 1: kron(Σ̂ᶻ₁, vec_Ie)
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            # Col 4: kron(μˢ₃δμˢ₁', vec_Ie)
+            ∂μ_T = _kron_vjp(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
+            ∂μˢ₃δμˢ₁ = ∂μˢ₃δμˢ₁_ac .+ Matrix(∂μ_T')
+            # Col 5: kron(C₄, vec_Ie)
+            inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
+            C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
+            ∂C4 = _kron_vjp(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
+            ∂iC4 = reshape(ss_s_M' * vec(∂C4), n, n^2)
+            ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
+            ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
+            ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
+            # Col 6: kron(C₅, vec_Ie)
+            inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            C5m = reshape(Matrix(inner_C5), n, n^3)
+            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            ∂iC5 = reshape(∂C5, n^2, n^2)
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
+            ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
+
+            # ── 3c: μˢ₃δμˢ₁ adjoint ──
+            ∂x_μ = vec(∂μˢ₃δμˢ₁)
+            I_m_s₁² = Matrix{T}(ℒ.I(n^2)) - s₁²
+            ∂b_μ = I_m_s₁²' \ ∂x_μ
+            ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
+            tmpL, tmpR = _kron_vjp(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+
+            ∂RHS = reshape(∂b_μ, n, n)
+
+            inner_M1 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
+            M1 = reshape(ss_s_M * vec(inner_M1), n^2, n)
+            inner_M2 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
+            M2 = reshape(Matrix(inner_M2), n^3, n)
+            M3 = ℒ.kron(Matrix(d.Σ̂ᶻ₁), vec_Ie_col)
+
+            L₁ = ss₂ * M1 + Matrix(d.s_s_s_to_s₃) * M2 / 6 +
+                 Matrix(d.s_e_e_to_s₃) * M3 / 2 + Matrix(d.s_v_v_to_s₃) * Matrix(d.Σ̂ᶻ₁) / 2
+
+            M4 = ℒ.kron(reshape(d.Δ̂μˢ₂, :, 1), Ine)
+            M5 = Matrix(e4_nᵉ_nᵉ³')
+            M6 = ℒ.kron(reshape(vΣ, :, 1), Ine)
+
+            L₂ = se₂ * M4 + Matrix(d.e_e_e_to_s₃) * M5 / 6 +
+                 Matrix(d.s_s_e_to_s₃) * M6 / 2 + Matrix(d.e_v_v_to_s₃) * Ine / 2
+
+            ∂L₁ = ∂RHS * s₁;    ∂s₁_l .+= ∂RHS' * L₁
+            ∂L₂ = ∂RHS * e₁;    ∂e₁_l .+= ∂RHS' * L₂
+
+            # Decompose ∂L₁
+            ∂ss₂_l .+= ∂L₁ * M1'
+            ∂M1_raw = ss₂' * ∂L₁
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂L₁ * M2' ./ 6
+            ∂M2_raw = Matrix(d.s_s_s_to_s₃)' * ∂L₁ ./ 6
+            ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂L₁ * M3' ./ 2
+            ∂M3_raw = Matrix(d.s_e_e_to_s₃)' * ∂L₁ ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂L₁ * Matrix(d.Σ̂ᶻ₁)' ./ 2
+            ∂Σ̂ᶻ₁ .+= Matrix(d.s_v_v_to_s₃)' * ∂L₁ ./ 2
+
+            # Decompose ∂L₂
+            ∂se₂_l .+= ∂L₂ * M4'
+            ∂M4_raw = se₂' * ∂L₂
+            ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂L₂ * M5' ./ 6
+            ∂S3f_acc[d.iˢ, d.kron_s_s_e] .+= ∂L₂ * M6' ./ 2
+            ∂M6_raw = Matrix(d.s_s_e_to_s₃)' * ∂L₂ ./ 2
+            ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂L₂ ./ 2
+
+            # Decompose ∂M1 → ∂Σ̂ᶻ₂, ∂Σ̂ᶻ₁, ∂Δ̂μˢ₂
+            ∂iM1 = reshape(ss_s_M' * vec(∂M1_raw), n^2, n)
+            ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂iM1
+            ∂Σ̂ᶻ₁ .+= reshape(∂iM1 * d.Δ̂μˢ₂, n, n)
+            ∂Δ̂μˢ₂_l .+= ∂iM1' * vΣ
+            # Decompose ∂M2 → ∂Σ̂ᶻ₂, ∂Σ̂ᶻ₁
+            ∂iM2 = reshape(∂M2_raw, n^2, n^2)
+            ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iM2
+            ∂Σ̂ᶻ₁ .+= reshape((∂iM2 + ∂iM2') * vΣ, n, n)
+            # Decompose ∂M3 → ∂Σ̂ᶻ₁
+            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            # Decompose ∂M4 → ∂Δ̂μˢ₂
+            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            # Decompose ∂M6 → ∂Σ̂ᶻ₁
+            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
+
+            # ── 4: Scatter local cotangents to global accumulators ──
+            ∂𝐒₁_acc[d.iˢ, d.dependencies_in_states_idx] .+= ∂s₁_l
+            ∂𝐒₁_acc[d.iˢ, n₋+1:size(∂𝐒₁_acc, 2)] .+= ∂e₁_l
+            ∂S2f_acc[d.iˢ, d.kron_s_s]  .+= ∂ss₂_l
+            ∂S2f_acc[d.iˢ, kron_e_e]    .+= ∂ee₂_l
+            ∂S2f_acc[d.iˢ, d.kron_s_e]  .+= ∂se₂_l
+            ∂S2f_acc[d.iˢ, kron_v_v]    .+= ∂vv₂_l
+            ∂Σʸ₁_acc[d.iˢ, d.iˢ]       .+= ∂Σ̂ᶻ₁
+            ∂Σᶻ₂_acc[d.dependencies_extended_idx, d.dependencies_extended_idx] .+= ∂Σ̂ᶻ₂
+            ∂Δμˢ₂_acc[d.dependencies_in_states_idx] .+= ∂Δ̂μˢ₂_l
+        end
+
+        # ── Sub-rrule pullback chain ──
+
+        # S₃_full = S₃ * 𝐔₃  →  ∂S₃ = ∂S₃_full * 𝐔₃'
+        ∂𝐒₃_compressed = ∂S3f_acc * 𝐔₃'
+
+        # Third-order solution pullback
+        so3_grad = so3_pb((∂𝐒₃_compressed, NoTangent()))
+        if !(so3_grad[2] isa AbstractZero); ∂∇₁_acc .+= so3_grad[2]; end
+        if !(so3_grad[3] isa AbstractZero); ∂∇₂_acc .+= so3_grad[3]; end
+        if !(so3_grad[4] isa AbstractZero); ∂∇₃_acc .+= so3_grad[4]; end
+        if !(so3_grad[5] isa AbstractZero); ∂𝐒₁_acc .+= so3_grad[5]; end
+        if !(so3_grad[6] isa AbstractZero); ∂S2f_acc .+= so3_grad[6]; end
+
+        # Third-order derivatives pullback
+        ∇₃_grad = ∇₃_pb(∂∇₃_acc)
+        ∂params_∇₃  = ∇₃_grad[2] isa AbstractZero ? zeros(T, np) : ∇₃_grad[2]
+        if !(∇₃_grad[3] isa AbstractZero); ∂SS_acc .+= ∇₃_grad[3]; end
+
+        # Second-order moments pullback
+        ∂som2 = (
+            NoTangent(),             # ∂Σʸ₂
+            ∂Σᶻ₂_acc,               # ∂Σᶻ₂
+            ∂μʸ₂_in isa AbstractZero ? NoTangent() : ∂μʸ₂_in,  # ∂μʸ₂
+            ∂Δμˢ₂_acc,              # ∂Δμˢ₂
+            NoTangent(),             # ∂autocorr (not used)
+            NoTangent(),             # ∂ŝ_to_ŝ₂ (not used)
+            NoTangent(),             # ∂ŝ_to_y₂ (not used)
+            ∂Σʸ₁_acc,               # ∂Σʸ₁
+            NoTangent(),             # ∂Σᶻ₁
+            ∂SS_acc,                 # ∂SS_and_pars
+            ∂𝐒₁_acc,                # ∂𝐒₁
+            ∂∇₁_acc,                # ∂∇₁
+            ∂S2f_acc,                # ∂𝐒₂
+            ∂∇₂_acc,                # ∂∇₂
+            NoTangent(),             # ∂slvd
+        )
+
+        som2_grad = som2_pb(∂som2)
+        ∂params_som2 = som2_grad[2] isa AbstractZero ? zeros(T, np) : som2_grad[2]
+
+        ∂parameters_total = ∂params_som2 .+ ∂params_∇₃
+
+        return NoTangent(), ∂parameters_total, NoTangent(), NoTangent()
+    end
+
+    return result, calculate_third_order_moments_with_autocorrelation_pullback
+end
 
 
 function rrule(::typeof(calculate_first_order_solution), 
@@ -6447,4 +8492,980 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     return llh, calculate_loglikelihood_pullback
+end
+
+
+function _get_statistics_cotangent(Δret, key::Symbol)
+    Δ = unthunk(Δret)
+    if Δ isa Union{NoTangent, AbstractZero}
+        return NoTangent()
+    end
+
+    if Δ isa AbstractDict
+        return get(Δ, key, NoTangent())
+    end
+
+    if Δ isa NamedTuple
+        return get(Δ, key, NoTangent())
+    end
+
+    if hasproperty(Δ, key)
+        return getproperty(Δ, key)
+    end
+
+    if hasmethod(haskey, Tuple{typeof(Δ), Symbol}) && haskey(Δ, key)
+        return Δ[key]
+    end
+
+    if hasmethod(pairs, Tuple{typeof(Δ)})
+        for (k, v) in pairs(Δ)
+            if k == key
+                return v
+            end
+        end
+    end
+
+    if hasproperty(Δ, :pairs)
+        pairs_obj = getproperty(Δ, :pairs)
+        if pairs_obj isa AbstractDict
+            return get(pairs_obj, key, NoTangent())
+        elseif pairs_obj isa NamedTuple
+            return get(pairs_obj, key, NoTangent())
+        elseif hasmethod(pairs, Tuple{typeof(pairs_obj)})
+            for (k, v) in pairs(pairs_obj)
+                if k == key
+                    return v
+                end
+            end
+        end
+    end
+
+    return NoTangent()
+end
+
+
+function rrule(::typeof(get_statistics),
+                𝓂::ℳ,
+                parameter_values::Vector{T};
+                parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
+                steady_state_function::SteadyStateFunctionType = missing,
+                non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
+                mean::Union{Symbol_input,String_input} = Symbol[],
+                standard_deviation::Union{Symbol_input,String_input} = Symbol[],
+                variance::Union{Symbol_input,String_input} = Symbol[],
+                covariance::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
+                autocorrelation::Union{Symbol_input,String_input} = Symbol[],
+                autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = Tolerances()) where T
+
+    opts = merge_calculation_options(tol = tol,
+                                    verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    lyapunov_algorithm = lyapunov_algorithm)
+
+    @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
+
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+
+    SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
+    mean_var_idx = parse_variables_input_to_index(mean, 𝓂)
+    std_var_idx = parse_variables_input_to_index(standard_deviation, 𝓂)
+    var_var_idx = parse_variables_input_to_index(variance, 𝓂)
+    covar_var_idx = parse_variables_input_to_index(covariance, 𝓂)
+    covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
+    autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
+
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
+
+    all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
+    n_other = length(other_parameter_values)
+    inv_sort = invperm(sort_idx)
+
+    run_algorithm = algorithm
+    if run_algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+        run_algorithm = :pruned_second_order
+    end
+
+        solve!(𝓂,
+            algorithm = run_algorithm,
+            steady_state_function = steady_state_function,
+            opts = opts)
+
+    nVars = length(𝓂.constants.post_model_macro.var)
+
+    nsss_only = !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+
+    nsss_pb = nothing
+    cov_pb = nothing
+    som_pb = nothing
+    somc_pb = nothing
+    tom_pb = nothing
+    toma_pb = nothing
+
+    solved = true
+    SS_and_pars = zeros(T, 0)
+    SS = zeros(T, 0)
+    state_μ = zeros(T, 0)
+
+    covar_dcmp = zeros(T, 0, 0)
+    sol = zeros(T, 0, 0)
+
+    Σᶻ₂ = zeros(T, 0, 0)
+    Δμˢ₂ = zeros(T, 0)
+    autocorr_tmp = zeros(T, 0, 0)
+    ŝ_to_ŝ₂ = zeros(T, 0, 0)
+    ŝ_to_y₂ = zeros(T, 0, 0)
+
+    autocorr = zeros(T, 0, 0)
+    first_order_A = zeros(T, 0, 0)
+    first_order_P = zeros(T, 0, 0)
+    first_order_R_seq = Matrix{T}[]
+    first_order_d = zeros(T, 0)
+    first_order_mask = BitVector()
+
+    second_order_P_seq = Matrix{T}[]
+    second_order_M_seq = Matrix{T}[]
+    second_order_d = zeros(T, 0)
+    second_order_mask = BitVector()
+
+    st_dev = zeros(T, 0)
+    varrs = zeros(T, 0)
+    diag_covar = zeros(T, 0)
+    diag_gate = falses(0)
+
+    covar_dcmp_sp = zeros(T, 0, 0)
+    covar_group_pairs = NTuple{4,Int}[]
+
+    if nsss_only
+        prev_Δnsss = Ref{Any}(nothing)
+
+        nsss_out, nsss_pb_local = rrule(get_NSSS_and_parameters, 𝓂, all_parameters; opts = opts)
+        nsss_pb = nsss_pb_local
+
+        SS_and_pars = nsss_out[1]
+        solution_error = nsss_out[2][1]
+        SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
+
+        ret = Dict{Symbol,AbstractArray{T}}()
+        ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+
+        function nsss_only_pullback(Δret)
+            Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
+            if Δnsss isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
+            end
+
+            ∂SS = zeros(T, length(SS))
+            ∂SS[SS_var_idx] .+= unthunk(Δnsss)
+
+            ∂SS_and_pars = zeros(T, length(SS_and_pars))
+            ∂SS_and_pars[1:length(SS)] .+= ∂SS
+
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂all_parameters = nsss_grads[3] isa AbstractZero ? zeros(T, length(all_parameters)) : nsss_grads[3]
+
+            ∂concat = ∂all_parameters[inv_sort]
+            ∂parameter_values = ∂concat[(n_other + 1):end]
+
+            return NoTangent(), NoTangent(), ∂parameter_values
+        end
+
+        return ret, nsss_only_pullback
+    end
+
+    if run_algorithm == :pruned_third_order
+        if !(autocorrelation == Symbol[])
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
+            toma_out, toma_pb_local = rrule(calculate_third_order_moments_with_autocorrelation,
+                                            all_parameters,
+                                            𝓂.constants.post_model_macro.var[second_mom_third_order],
+                                            𝓂;
+                                            covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                            opts = opts,
+                                            autocorrelation_periods = autocorrelation_periods)
+            toma_pb = toma_pb_local
+
+            covar_dcmp = toma_out[1]
+            state_μ = toma_out[2]
+            autocorr = toma_out[3]
+            SS_and_pars = toma_out[4]
+            solved = toma_out[5]
+        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+            tom_out, tom_pb_local = rrule(calculate_third_order_moments,
+                                        all_parameters,
+                                        𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx)],
+                                        𝓂;
+                                        covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                        opts = opts)
+            tom_pb = tom_pb_local
+
+            covar_dcmp = tom_out[1]
+            state_μ = tom_out[2]
+            SS_and_pars = tom_out[3]
+            solved = tom_out[4]
+        end
+    elseif run_algorithm == :pruned_second_order
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+            somc_out, somc_pb_local = rrule(calculate_second_order_moments_with_covariance, all_parameters, 𝓂; opts = opts)
+            somc_pb = somc_pb_local
+
+            covar_dcmp = somc_out[1]
+            Σᶻ₂ = somc_out[2]
+            state_μ = somc_out[3]
+            Δμˢ₂ = somc_out[4]
+            autocorr_tmp = somc_out[5]
+            ŝ_to_ŝ₂ = somc_out[6]
+            ŝ_to_y₂ = somc_out[7]
+            SS_and_pars = somc_out[10]
+            solved = somc_out[15]
+        else
+            som_out, som_pb_local = rrule(calculate_second_order_moments, all_parameters, 𝓂; opts = opts)
+            som_pb = som_pb_local
+
+            state_μ = som_out[1]
+            Δμˢ₂ = som_out[2]
+            SS_and_pars = som_out[5]
+            solved = som_out[10]
+        end
+    else
+        cov_out, cov_pb_local = rrule(calculate_covariance, all_parameters, 𝓂; opts = opts)
+        cov_pb = cov_pb_local
+
+        covar_dcmp = cov_out[1]
+        sol = cov_out[2]
+        SS_and_pars = cov_out[4]
+        solved = cov_out[5]
+    end
+
+    SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
+
+    if !(variance == Symbol[]) || !(standard_deviation == Symbol[])
+        diag_covar = convert(Vector{T}, ℒ.diag(covar_dcmp))
+        diag_max = max.(diag_covar, eps(Float64))
+        diag_gate = diag_covar .> eps(Float64)
+        if !(variance == Symbol[])
+            varrs = convert(Vector{T}, diag_max)
+        end
+        if !(standard_deviation == Symbol[])
+            st_dev = sqrt.(abs.(convert(Vector{T}, diag_max)))
+        end
+    end
+
+    if !(autocorrelation == Symbol[])
+        if run_algorithm == :pruned_second_order
+            P_i = Matrix{T}(ℒ.I(size(ŝ_to_ŝ₂, 1)))
+            autocorr = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+            second_order_P_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+            second_order_M_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+            second_order_d = max.(convert(Vector{T}, ℒ.diag(covar_dcmp)), eps(Float64))
+
+            for i in autocorrelation_periods
+                second_order_P_seq[i] = copy(P_i)
+                M_i = ŝ_to_y₂ * P_i * autocorr_tmp
+                second_order_M_seq[i] = M_i
+                autocorr[:, i] .= ℒ.diag(M_i) ./ second_order_d
+                P_i = P_i * ŝ_to_ŝ₂
+            end
+
+            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            autocorr[second_order_mask, :] .= 0
+        elseif !(run_algorithm == :pruned_third_order)
+            first_order_P = ℒ.diagm(ones(T, 𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, :]
+            first_order_A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * first_order_P
+            first_order_d = max.(convert(Vector{T}, ℒ.diag(covar_dcmp)), eps(Float64))
+            d_inv = 1 ./ first_order_d
+
+            autocorr = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+            first_order_R_seq = [zeros(T, 0, 0) for _ in 1:maximum(autocorrelation_periods)]
+
+            R = Matrix(covar_dcmp)
+            for i in 1:maximum(autocorrelation_periods)
+                R = first_order_A * R
+                first_order_R_seq[i] = copy(R)
+            end
+
+            for i in autocorrelation_periods
+                autocorr[:, i] .= ℒ.diag(first_order_R_seq[i]) .* d_inv
+            end
+
+            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            autocorr[first_order_mask, :] .= 0
+        end
+    end
+
+    if !(covariance == Symbol[])
+        covar_dcmp_sp = ℒ.triu(covar_dcmp)
+
+        if !isnothing(covar_groups)
+            for group in covar_groups
+                for i in group
+                    i_pos = findfirst(==(i), covar_var_idx)
+                    isnothing(i_pos) && continue
+                    for j in group
+                        j_pos = findfirst(==(j), covar_var_idx)
+                        isnothing(j_pos) && continue
+                        push!(covar_group_pairs, (i_pos, j_pos, i, j))
+                    end
+                end
+            end
+        end
+    end
+
+    ret = Dict{Symbol,AbstractArray{T}}()
+
+    if !(non_stochastic_steady_state == Symbol[])
+        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+    end
+    if !(mean == Symbol[])
+        if run_algorithm ∉ [:pruned_second_order,:pruned_third_order]
+            ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
+        else
+            ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
+        end
+    end
+    if !(standard_deviation == Symbol[])
+        ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(std_var_idx) ? 0 : length(std_var_idx))
+    end
+    if !(variance == Symbol[])
+        ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(var_var_idx) ? 0 : length(var_var_idx))
+    end
+    if !(covariance == Symbol[])
+        if !isnothing(covar_groups)
+            if solved
+                covar_result = zeros(T, length(covar_var_idx), length(covar_var_idx))
+                for (i_pos, j_pos, i, j) in covar_group_pairs
+                    covar_result[i_pos, j_pos] = covar_dcmp_sp[i, j]
+                end
+                ret[:covariance] = covar_result
+            else
+                ret[:covariance] = fill(Inf * sum(abs2,parameter_values), length(covar_var_idx), length(covar_var_idx))
+            end
+        else
+            ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx, covar_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
+    end
+    if !(autocorrelation == Symbol[])
+        ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx, :] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
+    end
+
+    prev_Δnsss = Ref{Any}(nothing)
+    prev_Δmean = Ref{Any}(nothing)
+    prev_Δstd = Ref{Any}(nothing)
+    prev_Δvar = Ref{Any}(nothing)
+    prev_Δcov = Ref{Any}(nothing)
+    prev_Δautocorr = Ref{Any}(nothing)
+
+    function get_statistics_pullback(Δret)
+        if !solved
+            return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
+        end
+
+        Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
+        Δmean = _incremental_cotangent!(_get_statistics_cotangent(Δret, :mean), prev_Δmean)
+        Δstd = _incremental_cotangent!(_get_statistics_cotangent(Δret, :standard_deviation), prev_Δstd)
+        Δvar = _incremental_cotangent!(_get_statistics_cotangent(Δret, :variance), prev_Δvar)
+        Δcov = _incremental_cotangent!(_get_statistics_cotangent(Δret, :covariance), prev_Δcov)
+        Δautocorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :autocorrelation), prev_Δautocorr)
+
+        ∂SS_and_pars = zeros(T, length(SS_and_pars))
+        ∂state_μ = length(state_μ) == 0 ? zeros(T, 0) : zeros(T, length(state_μ))
+        ∂covar_dcmp = size(covar_dcmp, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(covar_dcmp))
+        ∂sol = size(sol, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(sol))
+        ∂autocorr_tmp = size(autocorr_tmp, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(autocorr_tmp))
+        ∂ŝ_to_ŝ₂ = size(ŝ_to_ŝ₂, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(ŝ_to_ŝ₂))
+        ∂ŝ_to_y₂ = size(ŝ_to_y₂, 1) == 0 ? zeros(T, 0, 0) : zeros(T, size(ŝ_to_y₂))
+
+        if !(Δnsss isa Union{NoTangent, AbstractZero})
+            ∂SS_and_pars[SS_var_idx] .+= Δnsss
+        end
+
+        if !(Δmean isa Union{NoTangent, AbstractZero})
+            if run_algorithm ∉ [:pruned_second_order,:pruned_third_order]
+                ∂SS_and_pars[mean_var_idx] .+= Δmean
+            else
+                ∂state_μ[mean_var_idx] .+= Δmean
+            end
+        end
+
+        if !(Δvar isa Union{NoTangent, AbstractZero})
+            ∂var_full = zeros(T, length(diag_covar))
+            ∂var_full[var_var_idx] .+= Δvar
+            @inbounds for i in eachindex(diag_covar)
+                if diag_gate[i]
+                    ∂covar_dcmp[i, i] += ∂var_full[i]
+                end
+            end
+        end
+
+        if !(Δstd isa Union{NoTangent, AbstractZero})
+            ∂std_full = zeros(T, length(diag_covar))
+            ∂std_full[std_var_idx] .+= Δstd
+            @inbounds for i in eachindex(diag_covar)
+                if diag_gate[i]
+                    ∂covar_dcmp[i, i] += ∂std_full[i] / (2 * st_dev[i])
+                end
+            end
+        end
+
+        if !(Δcov isa Union{NoTangent, AbstractZero})
+            ∂covar_dcmp_sp = zeros(T, size(covar_dcmp))
+
+            if !isnothing(covar_groups)
+                for (i_pos, j_pos, i, j) in covar_group_pairs
+                    ∂covar_dcmp_sp[i, j] += Δcov[i_pos, j_pos]
+                end
+            else
+                ∂covar_dcmp_sp[covar_var_idx, covar_var_idx] .+= Δcov
+            end
+
+            ∂covar_dcmp .+= ℒ.triu(∂covar_dcmp_sp)
+        end
+
+        if !(Δautocorr isa Union{NoTangent, AbstractZero}) && !(autocorrelation == Symbol[])
+            if run_algorithm == :pruned_second_order
+                ∂autocorr_full = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+                ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                ∂autocorr_full[second_order_mask, :] .= 0
+
+                ∂d = zeros(T, length(second_order_d))
+                ∂P = [zeros(T, size(second_order_P_seq[i])) for i in 1:length(second_order_P_seq)]
+
+                for i in reverse(collect(autocorrelation_periods))
+                    g = view(∂autocorr_full, :, i)
+                    M_i = second_order_M_seq[i]
+                    P_i = second_order_P_seq[i]
+
+                    ∂M_i = zeros(T, size(M_i))
+                    @inbounds for j in 1:size(M_i, 1)
+                        ∂M_i[j, j] += g[j] / second_order_d[j]
+                        ∂d[j] -= g[j] * M_i[j, j] / (second_order_d[j]^2)
+                    end
+
+                    P_aut = P_i * autocorr_tmp
+                    ∂ŝ_to_y₂ .+= ∂M_i * P_aut'
+
+                    ∂Paut = ŝ_to_y₂' * ∂M_i
+                    ∂P[i] .+= ∂Paut * autocorr_tmp'
+                    ∂autocorr_tmp .+= P_i' * ∂Paut
+                end
+
+                if length(second_order_P_seq) >= 2
+                    for i in reverse(1:(length(second_order_P_seq) - 1))
+                        ∂ŝ_to_ŝ₂ .+= second_order_P_seq[i]' * ∂P[i + 1]
+                        ∂P[i] .+= ∂P[i + 1] * ŝ_to_ŝ₂'
+                    end
+                end
+
+                diag_raw = convert(Vector{T}, ℒ.diag(covar_dcmp))
+                @inbounds for i in eachindex(∂d)
+                    if diag_raw[i] > eps(Float64)
+                        ∂covar_dcmp[i, i] += ∂d[i]
+                    end
+                end
+
+                ∂state_μ .+= zero(∂state_μ)
+            elseif run_algorithm != :pruned_third_order
+                ∂autocorr_full = zeros(T, size(covar_dcmp, 1), length(autocorrelation_periods))
+                ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                ∂autocorr_full[first_order_mask, :] .= 0
+
+                d_inv = 1 ./ first_order_d
+                ∂d = zeros(T, length(first_order_d))
+                max_p = maximum(autocorrelation_periods)
+                ∂R = [zeros(T, size(covar_dcmp)) for _ in 1:max_p]
+                ∂A = zeros(T, size(first_order_A))
+
+                for i in reverse(collect(autocorrelation_periods))
+                    g = view(∂autocorr_full, :, i)
+                    Ri = first_order_R_seq[i]
+                    @inbounds for j in 1:length(g)
+                        ∂R[i][j, j] += g[j] * d_inv[j]
+                        ∂d[j] -= g[j] * Ri[j, j] / (first_order_d[j]^2)
+                    end
+                end
+
+                for i in reverse(1:max_p)
+                    if i < max_p
+                        ∂R[i] .+= first_order_A' * ∂R[i + 1]
+                    end
+                    R_prev = (i == 1) ? Matrix(covar_dcmp) : first_order_R_seq[i - 1]
+                    ∂A .+= ∂R[i] * R_prev'
+                end
+
+                if max_p >= 1
+                    ∂covar_dcmp .+= first_order_A' * ∂R[1]
+                end
+
+                diag_raw = convert(Vector{T}, ℒ.diag(covar_dcmp))
+                @inbounds for i in eachindex(∂d)
+                    if diag_raw[i] > eps(Float64)
+                        ∂covar_dcmp[i, i] += ∂d[i]
+                    end
+                end
+
+                ∂sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] .+= ∂A * first_order_P'
+            end
+        end
+
+        ∂all_parameters = zeros(T, length(all_parameters))
+
+        if nsss_only
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂all_parameters .+= (nsss_grads[3] isa AbstractZero ? zeros(T, length(all_parameters)) : nsss_grads[3])
+        elseif run_algorithm == :first_order
+            cov_grads = cov_pb((∂covar_dcmp, ∂sol, NoTangent(), ∂SS_and_pars, NoTangent()))
+            ∂all_parameters .+= (cov_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : cov_grads[2])
+        elseif run_algorithm == :pruned_second_order
+            if som_pb !== nothing
+                som_grads = som_pb((∂state_μ, NoTangent(), NoTangent(), NoTangent(), ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()))
+                ∂all_parameters .+= (som_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : som_grads[2])
+            else
+                somc_grads = somc_pb((∂covar_dcmp,
+                                    NoTangent(),
+                                    ∂state_μ,
+                                    NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂autocorr_tmp : NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂ŝ_to_ŝ₂ : NoTangent(),
+                                    run_algorithm == :pruned_second_order && !(autocorrelation == Symbol[]) ? ∂ŝ_to_y₂ : NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    ∂SS_and_pars,
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent(),
+                                    NoTangent()))
+                ∂all_parameters .+= (somc_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : somc_grads[2])
+            end
+        elseif run_algorithm == :pruned_third_order
+            if toma_pb !== nothing
+                ∂autocorr_full = zeros(T, size(autocorr))
+                if !(Δautocorr isa Union{NoTangent, AbstractZero})
+                    ∂autocorr_full[autocorr_var_idx, :] .= Δautocorr
+                end
+                toma_grads = toma_pb((∂covar_dcmp, ∂state_μ, ∂autocorr_full, ∂SS_and_pars, NoTangent()))
+                ∂all_parameters .+= (toma_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : toma_grads[2])
+            elseif tom_pb !== nothing
+                tom_grads = tom_pb((∂covar_dcmp, ∂state_μ, ∂SS_and_pars, NoTangent()))
+                ∂all_parameters .+= (tom_grads[2] isa AbstractZero ? zeros(T, length(all_parameters)) : tom_grads[2])
+            end
+        end
+
+        ∂concat = ∂all_parameters[inv_sort]
+        ∂parameter_values = ∂concat[(n_other + 1):end]
+
+        return NoTangent(), NoTangent(), ∂parameter_values
+    end
+
+    return ret, get_statistics_pullback
+end
+
+
+# ── get_solution rrule ──────────────────────────────────────────────────────────
+# Custom rrule for get_solution(𝓂, parameters; ...) that chains existing
+# sub-rrules without using AD inside the pullback.
+# Supports first_order, second_order/pruned_second_order,
+# and third_order/pruned_third_order algorithms.
+
+function rrule(::typeof(get_solution),
+                𝓂::ℳ,
+                parameters::Vector{S};
+                steady_state_function::SteadyStateFunctionType = missing,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = Tolerances(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂)) where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
+
+    estimation = true
+
+    constants_obj = initialise_constants!(𝓂)
+
+    solve!(𝓂,
+           opts = opts,
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
+
+    nVar = length(𝓂.constants.post_model_macro.var)
+
+    zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+
+    # ── Check parameter bounds ──
+    if length(𝓂.constants.post_parameters_macro.bounds) > 0
+        for (k, v) in 𝓂.constants.post_parameters_macro.bounds
+            if k ∈ 𝓂.constants.post_complete_parameters.parameters
+                idx = indexin([k], 𝓂.constants.post_complete_parameters.parameters)[1]
+                if min(max(parameters[idx], v[1]), v[2]) != parameters[idx]
+                    return -Inf, zero_pullback
+                end
+            end
+        end
+    end
+
+    # ── Step 1: NSSS ──
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters,
+                              𝓂,
+                              parameters;
+                              opts = opts,
+                              estimation = estimation)
+
+    SS_and_pars = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
+        if algorithm in [:second_order, :pruned_second_order]
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
+        elseif algorithm in [:third_order, :pruned_third_order]
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), spzeros(nVar, 2), false)
+        else
+            result = (SS_and_pars[1:nVar], zeros(nVar, 2), false)
+        end
+        return result, zero_pullback
+    end
+
+    # ── Step 2: Jacobian ──
+    ∇₁, jac_pb = rrule(calculate_jacobian,
+                        parameters,
+                        SS_and_pars,
+                        𝓂.caches,
+                        𝓂.functions.jacobian)
+
+    # ── Step 3: First-order solution ──
+    first_out, first_pb = rrule(calculate_first_order_solution,
+                                ∇₁,
+                                constants_obj,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                opts = opts,
+                                initial_guess = 𝓂.caches.qme_solution)
+
+    𝐒₁ = first_out[1]
+    solved = first_out[3]
+
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        if algorithm in [:second_order, :pruned_second_order]
+            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), false)
+        elseif algorithm in [:third_order, :pruned_third_order]
+            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), spzeros(nVar, 2), false)
+        else
+            result = (SS_and_pars[1:nVar], 𝐒₁, false)
+        end
+        return result, zero_pullback
+    end
+
+    # ── Branch by algorithm ──
+    if algorithm in [:second_order, :pruned_second_order]
+        # ── Step 4: Hessian ──
+        ∇₂, hess_pb = rrule(calculate_hessian,
+                             parameters,
+                             SS_and_pars,
+                             𝓂.caches,
+                             𝓂.functions.hessian)
+
+        # ── Step 5: Second-order solution ──
+        second_out, second_pb = rrule(calculate_second_order_solution,
+                                      ∇₁, ∇₂, 𝐒₁,
+                                      𝓂.constants,
+                                      𝓂.workspaces,
+                                      𝓂.caches;
+                                      initial_guess = 𝓂.caches.second_order_solution,
+                                      opts = opts)
+
+        𝐒₂_raw = second_out[1]
+        solved2 = second_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
+        𝐔₂ = 𝓂.constants.second_order.𝐔₂
+        𝐒₂ = 𝐒₂_raw * 𝐔₂
+
+        𝐒₂ = sparse(𝐒₂)
+
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, true)
+
+        pullback_2nd = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            ∂𝐒₂_ext = Δ[3]
+            # Δ[4] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            ∂parameters = zeros(S, length(parameters))
+
+            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
+            if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₂_raw = zeros(S, size(𝐒₂_raw))
+            else
+                ∂𝐒₂_raw = Matrix{S}(∂𝐒₂_ext) * 𝐔₂'
+            end
+
+            # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
+            second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
+            ∂∇₁_from_2nd  = second_grads[2]
+            ∂∇₂_from_2nd  = second_grads[3]
+            ∂𝑺₁_from_2nd  = second_grads[4]
+
+            # ── hess_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            hess_grads = hess_pb(∂∇₂_from_2nd)
+            ∂parameters  .+= hess_grads[2]
+            ∂SS_and_pars .+= hess_grads[3]
+
+            # ── Accumulate ∂𝐒₁ ──
+            ∂𝐒₁_total = if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                ∂𝑺₁_from_2nd
+            else
+                ∂𝐒₁_ext + ∂𝑺₁_from_2nd
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            ∂∇₁_total = ∂∇₁_from_2nd + first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁_total)
+            ∂parameters  .+= jac_grads[2]
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_2nd
+
+    elseif algorithm in [:third_order, :pruned_third_order]
+        # ── Step 4: Hessian ──
+        ∇₂, hess_pb = rrule(calculate_hessian,
+                             parameters,
+                             SS_and_pars,
+                             𝓂.caches,
+                             𝓂.functions.hessian)
+
+        # ── Step 5: Second-order solution ──
+        second_out, second_pb = rrule(calculate_second_order_solution,
+                                      ∇₁, ∇₂, 𝐒₁,
+                                      𝓂.constants,
+                                      𝓂.workspaces,
+                                      𝓂.caches;
+                                      initial_guess = 𝓂.caches.second_order_solution,
+                                      opts = opts)
+
+        𝐒₂_raw = second_out[1]
+        solved2 = second_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+
+        𝐔₂ = 𝓂.constants.second_order.𝐔₂
+        𝐒₂ = 𝐒₂_raw * 𝐔₂
+
+        𝐒₂ = sparse(𝐒₂)
+
+        # ── Step 6: Third-order derivatives ──
+        ∇₃, third_deriv_pb = rrule(calculate_third_order_derivatives,
+                                    parameters,
+                                    SS_and_pars,
+                                    𝓂.caches,
+                                    𝓂.functions.third_order_derivatives)
+
+        # ── Step 7: Third-order solution ──
+        # calculate_third_order_solution receives 𝐒₂ after 𝐔₂ multiplication
+        third_out, third_pb = rrule(calculate_third_order_solution,
+                                    ∇₁, ∇₂, ∇₃,
+                                    𝐒₁, 𝐒₂,
+                                    𝓂.constants,
+                                    𝓂.workspaces,
+                                    𝓂.caches;
+                                    initial_guess = 𝓂.caches.third_order_solution,
+                                    opts = opts)
+
+        𝐒₃_raw = third_out[1]
+        solved3 = third_out[2]
+
+        update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+
+        𝐔₃ = 𝓂.constants.third_order.𝐔₃
+        𝐒₃ = 𝐒₃_raw * 𝐔₃
+
+        𝐒₃ = sparse(𝐒₃)
+
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, 𝐒₃, true)
+
+        pullback_3rd = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            ∂𝐒₂_ext = Δ[3]
+            ∂𝐒₃_ext = Δ[4]
+            # Δ[5] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            ∂parameters = zeros(S, length(parameters))
+
+            # ── Adjoint of 𝐒₃ = 𝐒₃_raw * 𝐔₃ ──
+            if ∂𝐒₃_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₃_raw = zeros(S, size(𝐒₃_raw))
+            else
+                ∂𝐒₃_raw = Matrix{S}(∂𝐒₃_ext) * 𝐔₃'
+            end
+
+            # ── third_pb: (∂𝐒₃_raw, ∂solved3) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NT, NT, NT)
+            third_grads = third_pb((∂𝐒₃_raw, NoTangent()))
+            ∂∇₁_from_3rd  = third_grads[2]
+            ∂∇₂_from_3rd  = third_grads[3]
+            ∂∇₃_from_3rd  = third_grads[4]
+            ∂𝑺₁_from_3rd  = third_grads[5]
+            ∂𝐒₂_from_3rd  = third_grads[6]  # w.r.t. post-𝐔₂ version
+
+            # ── third_deriv_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            third_deriv_grads = third_deriv_pb(∂∇₃_from_3rd)
+            ∂parameters  .+= third_deriv_grads[2]
+            ∂SS_and_pars .+= third_deriv_grads[3]
+
+            # ── Accumulate ∂𝐒₂ (post-𝐔₂) from external + third-order ──
+            ∂𝐒₂_post = if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Matrix{S}(∂𝐒₂_from_3rd)
+            else
+                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? Matrix{S}(∂𝐒₂_ext) : Matrix{S}(∂𝐒₂_ext) + Matrix{S}(∂𝐒₂_from_3rd)
+            end
+
+            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
+            ∂𝐒₂_raw = ∂𝐒₂_post * 𝐔₂'
+
+            # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
+            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
+            second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
+            ∂∇₁_from_2nd  = second_grads[2]
+            ∂∇₂_from_2nd  = second_grads[3]
+            ∂𝑺₁_from_2nd  = second_grads[4]
+
+            # ── hess_pb (accumulate ∂∇₂ from 2nd and 3rd order) ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            ∂∇₂_total = ∂∇₂_from_3rd + ∂∇₂_from_2nd
+            hess_grads = hess_pb(∂∇₂_total)
+            ∂parameters  .+= hess_grads[2]
+            ∂SS_and_pars .+= hess_grads[3]
+
+            # ── Accumulate ∂𝐒₁ from external + 2nd + 3rd order ──
+            ∂𝐒₁_total = if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                ∂𝑺₁_from_2nd + ∂𝑺₁_from_3rd
+            else
+                ∂𝐒₁_ext + ∂𝑺₁_from_2nd + ∂𝑺₁_from_3rd
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            ∂∇₁_total = ∂∇₁_from_3rd + ∂∇₁_from_2nd + first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁_total)
+            ∂parameters  .+= jac_grads[2]
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_3rd
+
+    else
+        # ── First order ──
+        result = (SS_and_pars[1:nVar], 𝐒₁, true)
+
+        pullback_1st = function (∂result_bar)
+            Δ = unthunk(∂result_bar)
+
+            if Δ isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂NSSS    = Δ[1]
+            ∂𝐒₁_ext = Δ[2]
+            # Δ[3] is ∂solved — not differentiable
+
+            # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
+            ∂SS_and_pars = zeros(S, length(SS_and_pars))
+            if !(∂NSSS isa Union{NoTangent, AbstractZero})
+                ∂SS_and_pars[1:nVar] .+= ∂NSSS
+            end
+
+            # Short-circuit when solution matrix cotangent is absent
+            if ∂𝐒₁_ext isa Union{NoTangent, AbstractZero}
+                nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+                return NoTangent(), NoTangent(), nsss_grads[3]
+            end
+
+            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
+            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            first_grads = first_pb((∂𝐒₁_ext, NoTangent(), NoTangent()))
+            ∂∇₁ = first_grads[2]
+
+            # ── jac_pb ──
+            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            jac_grads = jac_pb(∂∇₁)
+            ∂parameters  = copy(jac_grads[2])
+            ∂SS_and_pars .+= jac_grads[3]
+
+            # ── nsss_pb ──
+            # Returns (NT, NT, ∂parameter_values, NT)
+            nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+            ∂parameters .+= nsss_grads[3]
+
+            return NoTangent(), NoTangent(), ∂parameters
+        end
+
+        return result, pullback_1st
+    end
 end

@@ -23,7 +23,7 @@ function calculate_covariance(parameters::Vector{R},
                                                             initial_guess = 𝓂.caches.qme_solution,
                                                             opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
     # Direct constants access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * idx_constants.diag_nVars[T.past_not_future_and_mixed_idx,:]
@@ -97,9 +97,7 @@ function calculate_mean(parameters::Vector{R},
             else
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-                if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                    𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-                end
+                𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
                 nᵉ = T.nExo
                 nˢ = T.nPast_not_future_and_mixed
@@ -192,9 +190,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         if solved2
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-            if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-            end
+            𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -314,9 +310,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         if solved2
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-            if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-            end
+            𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -473,9 +467,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
-    if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
-    end
+    𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
@@ -728,9 +720,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
-    if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
-    end
+    𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 

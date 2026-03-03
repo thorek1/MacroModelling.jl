@@ -60,7 +60,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
+import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -1011,6 +1011,7 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     end
 
     𝓂.caches.first_order_solution_matrix = zeros(0,0)
+    𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
     𝓂.caches.qme_solution = zeros(0,0)
     𝓂.caches.second_order_solution = spzeros(0,0)
     𝓂.caches.third_order_solution = spzeros(0,0)
@@ -2533,8 +2534,8 @@ end
 
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
-                                    𝐒₂::AbstractMatrix{<: Real},
-                                    𝐒₃::AbstractMatrix{<: Real},
+                                    𝐒₂::AbstractSparseMatrix{<: Real},
+                                    𝐒₃::AbstractSparseMatrix{<: Real},
                                     constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
@@ -2565,68 +2566,68 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     # Precompute state indices and matrix slices
     state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
     𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
-    𝐒₂_states = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-    𝐒₃_states = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+    has_S₂ = nnz(𝐒₂) > 0
+    has_S₃ = nnz(𝐒₃) > 0
+    𝐒₂_states = has_S₂ ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+    𝐒₃_states = has_S₃ ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
 
-    for obs in observables
-        obs_in_var_idx = indexin([obs],T.var) .|> Int
-        
+    function compute_dependencies(obs_in_var_idx::Vector{Int})
         # First order dependencies
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
-        
+
         # Second order dependencies from quadratic terms (s ⊗ s)
-        if nnz(𝐒₂) > 0
+        if has_S₂
             s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-            # Vectorized approach: reshape and check row/column sums
             s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
             dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
         end
-        
+
         # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-        if nnz(𝐒₃) > 0
+        if has_S₃
             s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-            # Vectorized approach: reshape to 3D and check along dimensions
             s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
-                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
+            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .|
+                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .|
                                                              vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
         end
 
         # Propagate dependencies through the system (iterative closure)
-        # considering first, second, and third order propagation
         while true
             prev_dependencies = dependencies_in_states
-            
+
             # First order propagation
             new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
-            
+
             # Second order propagation
             if !isnothing(𝐒₂_states)
-                # Generate selector vector for columns where both states are dependencies
                 selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
                 if any(selector)
                     affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
                     new_deps = new_deps .| affected
                 end
             end
-            
+
             # Third order propagation
             if !isnothing(𝐒₃_states)
-                # Generate selector vector for columns where all three states are dependencies
                 selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
                 if any(selector)
                     affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
                     new_deps = new_deps .| affected
                 end
             end
-            
+
             if new_deps == dependencies_in_states
                 break
             end
             dependencies_in_states = new_deps
         end
 
-        dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+        return T.past_not_future_and_mixed[dependencies_in_states]
+    end
+
+    for obs in observables
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
+        dependencies = compute_dependencies(obs_in_var_idx)
 
         push!(orders,[obs] => sort(dependencies))
     end
@@ -2641,67 +2642,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # Check if this variable's dependencies are already computed
             if isnothing(findfirst(x -> covar_var in x.first, orders))
                 obs_in_var_idx = indexin([covar_var], T.var) .|> Int
-                
-                # First order dependencies
-                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
-                
-                # Second order dependencies from quadratic terms (s ⊗ s)
-                if nnz(𝐒₂) > 0
-                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-                    # Vectorized approach: reshape to nˢ×nˢ and check column/row sums
-                    s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
-                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
-                end
-                
-                # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-                if nnz(𝐒₃) > 0
-                    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-                    # Vectorized approach: reshape to 3D and check along dimensions
-                    s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
-                                                                     vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
-                                                                     vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
-                end
-
-                # Propagate dependencies through the system
-                # Precompute matrix slices
-                𝐒₁_states_local = 𝐒₁[state_idx_in_var, 1:nˢ]
-                𝐒₂_states_local = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-                𝐒₃_states_local = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
-                
-                while true
-                    prev_dependencies = dependencies_in_states
-                    
-                    # First order propagation
-                    new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states_local) .> tol)
-                    
-                    # Second order propagation
-                    if !isnothing(𝐒₂_states_local)
-                        # Generate selector vector for columns where both states are dependencies
-                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
-                        if any(selector)
-                            affected = vec(sum(abs, 𝐒₂_states_local[:, selector], dims=2) .> tol)
-                            new_deps = new_deps .| affected
-                        end
-                    end
-                    
-                    # Third order propagation
-                    if !isnothing(𝐒₃_states_local)
-                        # Generate selector vector for columns where all three states are dependencies
-                        selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
-                        if any(selector)
-                            affected = vec(sum(abs, 𝐒₃_states_local[:, selector], dims=2) .> tol)
-                            new_deps = new_deps .| affected
-                        end
-                    end
-                    
-                    if new_deps == dependencies_in_states
-                        break
-                    end
-                    dependencies_in_states = new_deps
-                end
-
-                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                dependencies = compute_dependencies(obs_in_var_idx)
                 push!(orders,[covar_var] => sort(dependencies))
             end
         end
@@ -3003,7 +2944,7 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    ms = @ignore_derivatives ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
@@ -4046,7 +3987,7 @@ end
 
 
 function reverse_diff_friendly_push!(x,y)
-    @ignore_derivatives push!(x,y)
+    push!(x,y)
 end
 
 function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::Tolerances = Tolerances())::Float64
@@ -4568,7 +4509,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
     end
 
-    ms = @ignore_derivatives ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
@@ -4580,7 +4521,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                          opts = opts,
                                                          initial_guess = 𝓂.caches.qme_solution)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         if opts.verbose println("1st order solution not found") end
@@ -4602,7 +4543,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                   initial_guess = 𝓂.caches.second_order_solution,
                                                   opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+    update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
     𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !solved2
@@ -4623,7 +4564,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)])
     tmp = (T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
-    tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
+    tmp̄ = ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         if opts.verbose println("SSS not found") end
@@ -4666,7 +4607,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     end
 
     so = 𝓂.constants.second_order
-    kron_s⁺_s⁺ = @ignore_derivatives so.kron_s⁺_s⁺
+    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
     B̂ = 𝐒₂[:,kron_s⁺_s⁺]
 
@@ -4792,7 +4733,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                                  initial_guess = 𝓂.caches.third_order_solution,
                                                  opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -4851,7 +4792,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                                  initial_guess = 𝓂.caches.third_order_solution,
                                                  opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
+    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
@@ -5073,7 +5014,7 @@ function solve!(𝓂::ℳ;
         third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0
         pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
 
-        obc_not_solved = isnothing(𝓂.functions.first_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
+        obc_not_solved = isempty(𝓂.caches.first_order_obc_solution_matrix)
 
         if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
@@ -5110,12 +5051,6 @@ function solve!(𝓂::ℳ;
 
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                            shock]
-                return S₁ * aug_state # return statement needed for forwarddiff to work
-            end
-            
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
@@ -5132,166 +5067,61 @@ function solve!(𝓂::ℳ;
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
-                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                                shock]
-                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
-                end
+                𝓂.caches.first_order_obc_solution_matrix = Ŝ₁
             else
-                state_update₁̂ = (x,y)->nothing
+                𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
             end
             
             𝓂.caches.first_order_solution_matrix = S₁
             𝓂.caches.non_stochastic_steady_state = SS_and_pars
-            𝓂.functions.first_order_state_update = state_update₁
-            𝓂.functions.first_order_state_update_obc = state_update₁̂
         end
 
-        obc_not_solved = isnothing(𝓂.functions.second_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:second_order  == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:third_order  == algorithm) && (third_order_needs_recalc || (obc && obc_not_solved)))
+        if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
+            ((:third_order  == algorithm) && third_order_needs_recalc)
             
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
             
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            state_update₂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-            end
-
-            if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₂̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                                1
-                                shock]
-                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-                end
-            else
-                state_update₂̂ = (x,y)->nothing
-            end
-
             𝓂.caches.second_order_stochastic_steady_state = stochastic_steady_state
-            𝓂.functions.second_order_state_update = state_update₂
-            𝓂.functions.second_order_state_update_obc = state_update₂̂
 
             𝓂.caches.valid_for.second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
         
-        obc_not_solved = isnothing(𝓂.functions.pruned_second_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:pruned_second_order  == algorithm) && (pruned_second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && (pruned_third_order_needs_recalc || (obc && obc_not_solved)))
+        if  ((:pruned_second_order  == algorithm) && pruned_second_order_needs_recalc) ||
+            ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            state_update₂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-            end
-
-            if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₂̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                    
-                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-                end
-            else
-                state_update₂̂ = (x,y)->nothing
-            end
-
             𝓂.caches.pruned_second_order_stochastic_steady_state = stochastic_steady_state
-            𝓂.functions.pruned_second_order_state_update = state_update₂
-            𝓂.functions.pruned_second_order_state_update_obc = state_update₂̂
 
             𝓂.caches.valid_for.pruned_second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
         
-        obc_not_solved = isnothing(𝓂.functions.third_order_state_update_obc(zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nExo)))
-        if  ((:third_order  == algorithm) && (third_order_needs_recalc || (obc && obc_not_solved)))
+        if  ((:third_order  == algorithm) && third_order_needs_recalc)
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            state_update₃ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                                1
-                                shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-            end
-
-            if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₃̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                    aug_state = [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]
-                                    1
-                                    shock]
-                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-                end
-            else
-                state_update₃̂ = (x,y)->nothing
-            end
-
             𝓂.caches.third_order_stochastic_steady_state = stochastic_steady_state
-            𝓂.functions.third_order_state_update = state_update₃
-            𝓂.functions.third_order_state_update_obc = state_update₃̂
 
             𝓂.caches.valid_for.third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
 
-        obc_not_solved = isnothing(𝓂.functions.pruned_third_order_state_update_obc([zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], zeros(𝓂.constants.post_model_macro.nExo)))
-        if ((:pruned_third_order  == algorithm) && (pruned_third_order_needs_recalc || (obc && obc_not_solved)))
+        if ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-            state_update₃ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-            end
-
-            if obc
-                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) Ŝ₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
-            
-                state_update₃̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                    aug_state₁ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 1; shock]
-                    aug_state₁̂ = [pruned_states[1][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; shock]
-                    aug_state₂ = [pruned_states[2][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                    aug_state₃ = [pruned_states[3][𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                    
-                    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                    
-                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
-                end
-            else
-                state_update₃̂ = (x,y)->nothing
-            end
-
             𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
-            𝓂.functions.pruned_third_order_state_update = state_update₃
-            𝓂.functions.pruned_third_order_state_update_obc = state_update₃̂
 
             𝓂.caches.valid_for.pruned_third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
+
     end
     
     return nothing
@@ -7817,34 +7647,111 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     state_update::Function = noop_state_update
     pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
 
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    nVars = 𝓂.constants.post_model_macro.nVars
+
     if occasionally_binding_constraints
+        Ŝ₁ = 𝓂.caches.first_order_obc_solution_matrix
+
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update_obc::Function
-        elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update_obc::Function
-        elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update_obc::Function
-        elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update_obc::Function
-        elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update_obc::Function
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_idx]; shock]
+                return Ŝ₁ * aug_state
+            end
+        elseif algorithm ∈ [:second_order, :third_order]
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
+
+            if algorithm == :second_order
+                state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[past_idx]; 1; shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end
+            else  # :third_order
+                𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+                state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[past_idx]; 1; shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end
+            end
+        elseif algorithm == :pruned_second_order
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
+
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+            end
+        elseif algorithm == :pruned_third_order
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+            Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
+
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
+                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+            end
         end
     else
         if algorithm == :first_order
-            state_update = 𝓂.functions.first_order_state_update::Function
-        elseif :second_order == algorithm
-            state_update = 𝓂.functions.second_order_state_update::Function
-        elseif :pruned_second_order == algorithm
-            state_update = 𝓂.functions.pruned_second_order_state_update::Function
-        elseif :third_order == algorithm
-            state_update = 𝓂.functions.third_order_state_update::Function
-        elseif :pruned_third_order == algorithm
-            state_update = 𝓂.functions.pruned_third_order_state_update::Function
+            S₁ = 𝓂.caches.first_order_solution_matrix
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[past_idx]; shock]
+                return S₁ * aug_state
+            end
+        elseif algorithm ∈ [:second_order, :third_order]
+            S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+
+            if algorithm == :second_order
+                state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[past_idx]; 1; shock]
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end
+            else  # :third_order
+                𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+                state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[past_idx]; 1; shock]
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end
+            end
+        elseif algorithm == :pruned_second_order
+            S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+            end
+        elseif algorithm == :pruned_third_order
+            S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
+            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
+                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+            end
         end
     end
 
     return (state_update, pruning)
 end
+
 
 @stable default_mode = "disable" begin
 
@@ -8034,7 +7941,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
         fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
@@ -8193,7 +8100,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         initial_guess = 𝓂.caches.qme_solution)
 
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         # println("NSSS not found")
@@ -8286,6 +8193,6 @@ include("./custom_autodiff_rules/forwarddiff.jl")
 
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions
-include("./custom_autodiff_rules/zygote.jl")
+include("./custom_autodiff_rules/rrules.jl")
 
 end

@@ -250,7 +250,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
         fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
