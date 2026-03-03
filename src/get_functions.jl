@@ -1977,9 +1977,7 @@ function get_solution(𝓂::ℳ,
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-        end
+        𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm in [:third_order, :pruned_third_order]
@@ -1993,9 +1991,7 @@ function get_solution(𝓂::ℳ,
 
         𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-        end
+        𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
                 
@@ -2011,9 +2007,7 @@ function get_solution(𝓂::ℳ,
 
         𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
-        if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
-        end
+        𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
