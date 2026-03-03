@@ -891,7 +891,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     state = A * SSSstates_final + B̂ * ℒ.kron(vcat(SSSstates_final,1), vcat(SSSstates_final,1)) / 2
-    sss = all_SS + vec(state)
+    sss = all_SS + Vector{Float64}(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -993,7 +993,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + vec(state)
+    sss = all_SS + Vector{Float64}(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -1146,7 +1146,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug3 = ℒ.kron(aug_sss, kron_aug)
 
     state = A * SSSstates_final + B̂ * kron_aug / 2 + Ĉ * kron_aug3 / 6
-    sss = all_SS + vec(state)
+    sss = all_SS + Vector{Float64}(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
@@ -1316,7 +1316,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + vec(state)
+    sss = all_SS + Vector{Float64}(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
@@ -8505,13 +8505,6 @@ function _get_statistics_cotangent(Δret, key::Symbol)
         return NoTangent()
     end
 
-    if hasmethod(getindex, Tuple{typeof(Δ), Symbol})
-        try
-            return Δ[key]
-        catch
-        end
-    end
-
     if Δ isa AbstractDict
         return get(Δ, key, NoTangent())
     end
@@ -8524,13 +8517,16 @@ function _get_statistics_cotangent(Δret, key::Symbol)
         return getproperty(Δ, key)
     end
 
-    try
+    if hasmethod(haskey, Tuple{typeof(Δ), Symbol}) && haskey(Δ, key)
+        return Δ[key]
+    end
+
+    if hasmethod(pairs, Tuple{typeof(Δ)})
         for (k, v) in pairs(Δ)
             if k == key
                 return v
             end
         end
-    catch
     end
 
     if hasproperty(Δ, :pairs)
@@ -8539,14 +8535,11 @@ function _get_statistics_cotangent(Δret, key::Symbol)
             return get(pairs_obj, key, NoTangent())
         elseif pairs_obj isa NamedTuple
             return get(pairs_obj, key, NoTangent())
-        else
-            try
-                for (k, v) in pairs(pairs_obj)
-                    if k == key
-                        return v
-                    end
+        elseif hasmethod(pairs, Tuple{typeof(pairs_obj)})
+            for (k, v) in pairs(pairs_obj)
+                if k == key
+                    return v
                 end
-            catch
             end
         end
     end

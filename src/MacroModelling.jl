@@ -2565,70 +2565,68 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     # Precompute state indices and matrix slices
     state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
     𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
-    has_S₂ = SparseArrays.issparse(𝐒₂) ? nnz(𝐒₂) > 0 : any(!iszero, 𝐒₂)
-    has_S₃ = SparseArrays.issparse(𝐒₃) ? nnz(𝐒₃) > 0 : any(!iszero, 𝐒₃)
+    has_S₂ = nnz(𝐒₂) > 0
+    has_S₃ = nnz(𝐒₃) > 0
     𝐒₂_states = has_S₂ ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
     𝐒₃_states = has_S₃ ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
 
-    for obs in observables
-        obs_in_var_idx = indexin([obs],T.var) .|> Int
-        
+    function compute_dependencies(obs_in_var_idx::Vector{Int})
         # First order dependencies
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
-        
+
         # Second order dependencies from quadratic terms (s ⊗ s)
         if has_S₂
             s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-            # Vectorized approach: reshape and check row/column sums
             s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
             dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
         end
-        
+
         # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
         if has_S₃
             s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-            # Vectorized approach: reshape to 3D and check along dimensions
             s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
-                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
+            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .|
+                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .|
                                                              vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
         end
 
         # Propagate dependencies through the system (iterative closure)
-        # considering first, second, and third order propagation
         while true
             prev_dependencies = dependencies_in_states
-            
+
             # First order propagation
             new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
-            
+
             # Second order propagation
             if !isnothing(𝐒₂_states)
-                # Generate selector vector for columns where both states are dependencies
                 selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
                 if any(selector)
                     affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
                     new_deps = new_deps .| affected
                 end
             end
-            
+
             # Third order propagation
             if !isnothing(𝐒₃_states)
-                # Generate selector vector for columns where all three states are dependencies
                 selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
                 if any(selector)
                     affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
                     new_deps = new_deps .| affected
                 end
             end
-            
+
             if new_deps == dependencies_in_states
                 break
             end
             dependencies_in_states = new_deps
         end
 
-        dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+        return T.past_not_future_and_mixed[dependencies_in_states]
+    end
+
+    for obs in observables
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
+        dependencies = compute_dependencies(obs_in_var_idx)
 
         push!(orders,[obs] => sort(dependencies))
     end
@@ -2643,67 +2641,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # Check if this variable's dependencies are already computed
             if isnothing(findfirst(x -> covar_var in x.first, orders))
                 obs_in_var_idx = indexin([covar_var], T.var) .|> Int
-                
-                # First order dependencies
-                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
-                
-                # Second order dependencies from quadratic terms (s ⊗ s)
-                if nnz(𝐒₂) > 0
-                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-                    # Vectorized approach: reshape to nˢ×nˢ and check column/row sums
-                    s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
-                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
-                end
-                
-                # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-                if nnz(𝐒₃) > 0
-                    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-                    # Vectorized approach: reshape to 3D and check along dimensions
-                    s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
-                                                                     vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
-                                                                     vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
-                end
-
-                # Propagate dependencies through the system
-                # Precompute matrix slices
-                𝐒₁_states_local = 𝐒₁[state_idx_in_var, 1:nˢ]
-                𝐒₂_states_local = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-                𝐒₃_states_local = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
-                
-                while true
-                    prev_dependencies = dependencies_in_states
-                    
-                    # First order propagation
-                    new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states_local) .> tol)
-                    
-                    # Second order propagation
-                    if !isnothing(𝐒₂_states_local)
-                        # Generate selector vector for columns where both states are dependencies
-                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
-                        if any(selector)
-                            affected = vec(sum(abs, 𝐒₂_states_local[:, selector], dims=2) .> tol)
-                            new_deps = new_deps .| affected
-                        end
-                    end
-                    
-                    # Third order propagation
-                    if !isnothing(𝐒₃_states_local)
-                        # Generate selector vector for columns where all three states are dependencies
-                        selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
-                        if any(selector)
-                            affected = vec(sum(abs, 𝐒₃_states_local[:, selector], dims=2) .> tol)
-                            new_deps = new_deps .| affected
-                        end
-                    end
-                    
-                    if new_deps == dependencies_in_states
-                        break
-                    end
-                    dependencies_in_states = new_deps
-                end
-
-                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                dependencies = compute_dependencies(obs_in_var_idx)
                 push!(orders,[covar_var] => sort(dependencies))
             end
         end
