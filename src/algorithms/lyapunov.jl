@@ -341,7 +341,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     #     println("Lyapunov: doubling $reached_tol")
     # end
 
-    return copy(𝐂), iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -393,7 +393,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: bicgstab $reached_tol")
     # end
 
-    return copy(𝐗), workspace.bicgstab_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.bicgstab_workspace.stats.niter, reached_tol
 end
 
 
@@ -445,7 +445,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: gmres $reached_tol")
     # end
 
-    return copy(𝐗), workspace.gmres_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.gmres_workspace.stats.niter, reached_tol
 end
 
 

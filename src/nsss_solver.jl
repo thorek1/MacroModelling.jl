@@ -1890,6 +1890,7 @@ function solve_nsss_steps(
         end
     end
     
+    # TODO: tackle allocation below by writing to the cache, if succesful
     # Build SS_and_pars from solution vector using output indices
     SS_and_pars = sol_vec[nsss_output_indices]
     
@@ -1987,6 +1988,7 @@ function solve_nsss_wrapper(
     scale = 1.0
     SS_and_pars = Float64[]
     
+    # TODO: use a separate temporary CircularBuffer attached to the struct
     # Local intermediate cache for warm starts at intermediate scales
     continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
     push!(continuation_cache, closest_solution_init)

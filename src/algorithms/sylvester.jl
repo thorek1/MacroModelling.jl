@@ -21,7 +21,7 @@ function solve_sylvester_equation(A::M,
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
-
+    # TODO: instead of using the collect statements here, assign the values to the matrices in the workspace and pass that on to the specific solver
     if sylvester_algorithm == :bartels_stewart
         b = collect(B)
     else
@@ -313,7 +313,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
+    #TODO: use workspace for C
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
@@ -401,7 +401,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
+    #TODO: use workspace for dense matrices A and C
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
@@ -509,7 +509,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
     𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
+    # TODO: use workspace for B and C as they are dense
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -589,6 +589,7 @@ function solve_sylvester_equation(  A::Matrix{T},
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
+    # TODO: since A and B are dense you can use the workspace here
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
     𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
@@ -670,6 +671,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
     𝐀  = copy(A)    
     # 𝐀¹ = copy(A)
+    # TODO: since B is dense you can use the workspace here
     𝐁  = copy(B)
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
@@ -749,7 +751,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
+    # TODO: since A is dense you can use the workspace here
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
@@ -886,6 +888,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         # droptol!(𝐁, eps())
 
         if i % 2 == 0
+            # TODO: eliminate the allocations due to 𝐂¹ - 𝐂. go through the whole sylvester script and see where else you can eliminate allocations
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -922,7 +925,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     #     println("Sylvester: doubling $reached_tol")
     # end
 
-    return copy(𝐂), iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 

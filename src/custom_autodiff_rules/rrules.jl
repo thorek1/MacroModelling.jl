@@ -490,18 +490,19 @@ function rrule(::typeof(get_NSSS_and_parameters),
     𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
-
+    # TODO: use fastlapack lu here
     ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # TODO: use leftdiv fastlapack here
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
 
     jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
-    
-    for (i,v) in enumerate(SS_and_pars_names)
+    # TODO: see that you can replace this with custom_ss_expand_matrix or any other already calculated object inside the constants structs. and then replace the unknowns constructions throughout the module. and then also handle allocations for what will then be JVP *custom_expand_matrix and jvp' * ∂SS_and_pars[1]
+    @inbounds for (i,v) in enumerate(SS_and_pars_names)
         if v in unknowns
             jvp[i,:] = JVP[indexin([v], unknowns),:]
         end
@@ -4992,8 +4993,9 @@ function rrule(::typeof(calculate_first_order_solution),
         # t_ms = M' * ∂𝐒ᵗ  (nVars × nPast) → reuse Wp (view of 𝐂¹, same dims)
         ℒ.mul!(Wp, M', ∂𝐒ᵗ)
         ℒ.mul!(tmp1, Wp, expand_past)
+        ℒ.lmul!(-1, tmp1)
 
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylv_ws,
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
