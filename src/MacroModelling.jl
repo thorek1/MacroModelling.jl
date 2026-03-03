@@ -2565,8 +2565,10 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     # Precompute state indices and matrix slices
     state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
     𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
-    𝐒₂_states = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-    𝐒₃_states = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+    has_S₂ = SparseArrays.issparse(𝐒₂) ? nnz(𝐒₂) > 0 : any(!iszero, 𝐒₂)
+    has_S₃ = SparseArrays.issparse(𝐒₃) ? nnz(𝐒₃) > 0 : any(!iszero, 𝐒₃)
+    𝐒₂_states = has_S₂ ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+    𝐒₃_states = has_S₃ ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
 
     for obs in observables
         obs_in_var_idx = indexin([obs],T.var) .|> Int
@@ -2575,7 +2577,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
         
         # Second order dependencies from quadratic terms (s ⊗ s)
-        if nnz(𝐒₂) > 0
+        if has_S₂
             s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
             # Vectorized approach: reshape and check row/column sums
             s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
@@ -2583,7 +2585,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         end
         
         # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-        if nnz(𝐒₃) > 0
+        if has_S₃
             s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
             # Vectorized approach: reshape to 3D and check along dimensions
             s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)

@@ -1639,22 +1639,22 @@ sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true
 """
 See [`get_steady_state`](@ref)
 """
-SS = get_steady_state
+SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-steady_state = get_steady_state
+steady_state(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_SS = get_steady_state
+get_SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_ss = get_steady_state
+get_ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
@@ -2594,13 +2594,13 @@ end
 """
 See [`get_autocorrelation`](@ref)
 """
-get_autocorr = get_autocorrelation
+get_autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 """
 See [`get_autocorrelation`](@ref)
 """
-autocorr = get_autocorrelation
+autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 
@@ -3272,7 +3272,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
 ```
 """
-function get_statistics(𝓂,
+function get_statistics(𝓂::ℳ,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
