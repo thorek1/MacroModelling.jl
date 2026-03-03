@@ -879,6 +879,7 @@ macro model(𝓂,ex...)
                             zeros(0,0), # third_order_derivatives_parameters
                             zeros(0,0), # third_order_derivatives_SS_and_pars
                             zeros(0,0), # first_order_solution_matrix
+                            zeros(0,0), # first_order_obc_solution_matrix
                             zeros(0,0), # qme_solution
                             Float64[],  # second_order_stochastic_steady_state
                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # second_order_solution
@@ -917,16 +918,6 @@ macro model(𝓂,ex...)
                             jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
                             hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
                             third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
-                            (x,y)->nothing, # first_order_state_update
-                            (x,y)->nothing, # first_order_state_update_obc
-                            (x,y)->nothing, # second_order_state_update
-                            (x,y)->nothing, # second_order_state_update_obc
-                            (x,y)->nothing, # pruned_second_order_state_update
-                            (x,y)->nothing, # pruned_second_order_state_update_obc
-                            (x,y)->nothing, # third_order_state_update
-                            (x,y)->nothing, # third_order_state_update_obc
-                            (x,y)->nothing, # pruned_third_order_state_update
-                            (x,y)->nothing, # pruned_third_order_state_update_obc
                             x->x, # obc_violation
                             false # functions_written
                         ),
