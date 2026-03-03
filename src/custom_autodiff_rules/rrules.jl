@@ -3015,9 +3015,7 @@ function rrule(::typeof(calculate_third_order_moments),
     𝐔₃ = 𝓂.constants.third_order.𝐔₃
     𝐒₃_full = 𝐒₃ * 𝐔₃
 
-    if !(typeof(𝐒₃_full) <: AbstractSparseMatrix)
-        𝐒₃_full = sparse(𝐒₃_full)
-    end
+    𝐒₃_full = sparse(𝐒₃_full)
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
@@ -3770,9 +3768,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     𝐔₃ = 𝓂.constants.third_order.𝐔₃
     𝐒₃_full = 𝐒₃ * 𝐔₃
 
-    if !(typeof(𝐒₃_full) <: AbstractSparseMatrix)
-        𝐒₃_full = sparse(𝐒₃_full)
-    end
+    𝐒₃_full = sparse(𝐒₃_full)
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
@@ -9200,9 +9196,7 @@ function rrule(::typeof(get_solution),
         𝐔₂ = 𝓂.constants.second_order.𝐔₂
         𝐒₂ = 𝐒₂_raw * 𝐔₂
 
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂)
-        end
+        𝐒₂ = sparse(𝐒₂)
 
         result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, true)
 
@@ -9299,9 +9293,7 @@ function rrule(::typeof(get_solution),
         𝐔₂ = 𝓂.constants.second_order.𝐔₂
         𝐒₂ = 𝐒₂_raw * 𝐔₂
 
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂)
-        end
+        𝐒₂ = sparse(𝐒₂)
 
         # ── Step 6: Third-order derivatives ──
         ∇₃, third_deriv_pb = rrule(calculate_third_order_derivatives,
@@ -9329,9 +9321,7 @@ function rrule(::typeof(get_solution),
         𝐔₃ = 𝓂.constants.third_order.𝐔₃
         𝐒₃ = 𝐒₃_raw * 𝐔₃
 
-        if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃)
-        end
+        𝐒₃ = sparse(𝐒₃)
 
         result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, 𝐒₃, true)
 
