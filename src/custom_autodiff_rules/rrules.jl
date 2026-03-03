@@ -891,7 +891,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     state = A * SSSstates_final + B̂ * ℒ.kron(vcat(SSSstates_final,1), vcat(SSSstates_final,1)) / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -993,7 +993,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
@@ -1146,7 +1146,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug3 = ℒ.kron(aug_sss, kron_aug)
 
     state = A * SSSstates_final + B̂ * kron_aug / 2 + Ĉ * kron_aug3 / 6
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
@@ -1316,7 +1316,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
     state = 𝐒₁[:,1:nPast] * SSSstates + 𝐒₂ * kron_aug1 / 2
-    sss = all_SS + Vector{Float64}(state)
+    sss = all_SS + vec(state)
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)

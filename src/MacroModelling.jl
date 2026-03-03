@@ -2533,8 +2533,8 @@ end
 
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real},
-                                    𝐒₂::AbstractMatrix{<: Real},
-                                    𝐒₃::AbstractMatrix{<: Real},
+                                    𝐒₂::AbstractSparseMatrix{<: Real},
+                                    𝐒₃::AbstractSparseMatrix{<: Real},
                                     constants::constants,
                                     variables::Union{Symbol_input,String_input};
                                     covariance::Union{Symbol_input,String_input} = Symbol[],
