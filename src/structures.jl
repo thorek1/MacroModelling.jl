@@ -278,6 +278,8 @@ mutable struct second_order_indices
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order
     𝐔₂::SparseMatrixCSC{Int}             # Unique elements selector for 2nd order
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
+    𝐔₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
+    𝛔𝐂₂_nonempty_row_as_kron_colmask::Vector{Int}    # Non-empty rows of σc₂, mapped to colmask in compressed_kron²
 
     # =========================================================================
     # COMPUTATIONAL CONSTANTS (for efficient sparse operations)

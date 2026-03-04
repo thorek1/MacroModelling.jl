@@ -5113,7 +5113,7 @@ function rrule(::typeof(calculate_second_order_solution),
     T = constants.post_model_macro
 
     # Expand compressed hessian to full space for internal computation
-    ∇₂ = ∇₂ * M₂.𝐔∇₂
+    ∇₂_full = ∇₂ * M₂.𝐔∇₂
 
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
@@ -5170,8 +5170,20 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "C" begin
 
-    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔𝐂₂)
+    kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        sparse_preallocation = ℂ.tmp_sparse_prealloc2)
+
+    term1 = ∇₂ * kron_compressed
+
+    kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
+                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
+                                            sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+
+    term2 = (∇₂ * kron_sigma_compressed) * M₂.𝛔c₂
+
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = term1 + term2
     
     C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
@@ -5181,7 +5193,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = compressed_kron²(𝐒₁₋╱𝟏ₑ) + M₂.𝛔c₂
+    B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
 
     # end # timeit_debug    
     # end # timeit_debug
@@ -5216,13 +5228,13 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
 
-    ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
+    ∇₂t = choose_matrix_format(∇₂_full', density_threshold = 1.0)
 
     # end # timeit_debug
 
     # Ensure pullback workspaces are properly sized
-    if size(ℂ.∂∇₂) != size(∇₂)
-        ℂ.∂∇₂ = zeros(S, size(∇₂))
+    if size(ℂ.∂∇₂) != size(∇₂_full)
+        ℂ.∂∇₂ = zeros(S, size(∇₂_full))
     end
     if size(ℂ.∂∇₁) != size(∇₁)
         ℂ.∂∇₁ = zeros(S, size(∇₁))
@@ -5308,7 +5320,7 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
 
         # C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
-        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = spinv' * ∂C * 𝐂₂t
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = spinv' * ∂C
         
         ∂spinv += ∂C * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹'
 
@@ -5316,40 +5328,35 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # @timeit_debug timer "Matmul3" begin
 
-        # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂  + ∇₂ * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂
-        # kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = choose_matrix_format(ℒ.kron(sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t), density_threshold = 1.0)
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹, density_threshold = 1.0)
 
-        # 𝛔kron𝐒₁₊╱𝟎 = choose_matrix_format(𝛔t * ℒ.kron(sp𝐒₁₊╱𝟎t, sp𝐒₁₊╱𝟎t), density_threshold = 1.0)
+        ∂term2 = ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝛔c₂'
 
-        # ℒ.mul!(∂∇₂, ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, 𝛔kron𝐒₁₊╱𝟎, 1, 1)
-        
-        # ℒ.mul!(∂∇₂, ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 1, 1)
-
-        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, density_threshold = 1.0)
-
-        ∂∇₂ += mat_mult_kron(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ * 𝛔t, 𝐒₁₊╱𝟎', 𝐒₁₊╱𝟎')
-        
-        ∂∇₂ += mat_mult_kron(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋', ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
+        ∂∇₂ += ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * kron_compressed'
+        ∂∇₂ += ∂term2 * kron_sigma_compressed'
         
         # end # timeit_debug
 
         # @timeit_debug timer "Matmul4" begin
 
-        ∂kron𝐒₁₊╱𝟎 = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ * 𝛔t
+        ∂kron𝐒₁₊╱𝟎 = ∇₂t * ∂term2
 
         # end # timeit_debug
 
         # @timeit_debug timer "Kron adjoint 2" begin
 
-        fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+        compressed_kron²_pullback!(∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎,
+                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                        colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask)
         
         # end # timeit_debug
 
-        ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂
+        ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
         # @timeit_debug timer "Kron adjoint 3" begin
 
-        fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) # filling dense is much faster
+        compressed_kron²_pullback!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask)
 
         # end # timeit_debug
 
@@ -5409,6 +5416,74 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂_stable, solved), second_order_solution_pullback
+end
+
+
+# Helper: adjoint of compressed_kron²(X; rowmask, colmask) w.r.t. X.
+# Forward value at (row(i1,j1), col(i2,j2)): (X[i1,i2]*X[j1,j2] + X[i1,j2]*X[j1,i2]) / divisor,
+# where divisor = 2 if i1 == j1 else 1, and only masked rows/cols are materialized.
+function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
+                                    ∂Y::AbstractMatrix{T},
+                                    X::AbstractMatrix{T};
+                                    rowmask::Vector{Int} = Int[],
+                                    colmask::Vector{Int} = Int[]) where T <: Real
+    Xd = X isa DenseMatrix ? X : collect(X)
+    n_rows, n_cols = size(Xd)
+
+    m2_rows = n_rows * (n_rows + 1) ÷ 2
+    m2_cols = n_cols * (n_cols + 1) ÷ 2
+
+    if rowmask == Int[0] || colmask == Int[0]
+        return
+    end
+
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+    rowmask_lookup = norowmask ? BitVector() : falses(m2_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(m2_cols)
+
+    if !norowmask
+        @inbounds for r in rowmask
+            if 1 <= r <= m2_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+
+    if !nocolmask
+        @inbounds for c in colmask
+            if 1 <= c <= m2_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
+
+    for i1 in 1:n_rows, j1 in 1:n_rows
+        j1 ≤ i1 || continue
+        row = (i1 - 1) * i1 ÷ 2 + j1
+        (norowmask || rowmask_lookup[row]) || continue
+        divisor = i1 == j1 ? 2 : 1
+
+        for i2 in 1:n_cols, j2 in 1:n_cols
+            j2 ≤ i2 || continue
+            col = (i2 - 1) * i2 ÷ 2 + j2
+            (nocolmask || colmask_lookup[col]) || continue
+
+            g = ∂Y[row, col]
+            iszero(g) && continue
+            g_d = g / divisor
+
+            @inbounds aii = Xd[i1, i2]
+            @inbounds aij = Xd[i1, j2]
+            @inbounds aji = Xd[j1, i2]
+            @inbounds ajj = Xd[j1, j2]
+
+            ∂X[i1, i2] += g_d * ajj
+            ∂X[j1, j2] += g_d * aii
+            ∂X[i1, j2] += g_d * aji
+            ∂X[j1, i2] += g_d * aij
+        end
+    end
 end
 
 
