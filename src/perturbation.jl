@@ -223,9 +223,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     T = constants.post_model_macro
     # @timeit_debug timer "Calculate second order solution" begin
 
-    # Expand compressed hessian to full space (mirrors ∇₃ * M₃.𝐔∇₃ in third-order)
-    ∇₂ = ∇₂ * M₂.𝐔∇₂
-
     # inspired by Levintal
 
     # Indices and number of variables
@@ -293,9 +290,25 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # @timeit_debug timer "C" begin
 
-    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    # TODO: the kronecker product happen in uncompressed space and then they are compressed using the compression matrices. have the kronecker products happen in compressed space directly
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔𝐂₂)
+    # Build first forcing term directly in compressed Hessian space:
+    #   ∇₂ * compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+    # This skips explicit right-compression by M₂.𝐂₂ for this term.
+    kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        sparse_preallocation = ℂ.tmp_sparse_prealloc2)
+
+    term1 = ∇₂ * kron_compressed
+
+    # Build second forcing term in compressed Hessian space with extra pruning.
+    # We only keep compressed-kron columns that can survive right multiplication by σc₂.
+    kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
+                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
+                                            sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+
+    term2 = (∇₂ * kron_sigma_compressed) * M₂.𝛔c₂
+
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = term1 + term2
     
     C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
@@ -304,7 +317,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = compressed_kron²(𝐒₁₋╱𝟏ₑ) + M₂.𝛔c₂
+    B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
 
     # end # timeit_debug
     # end # timeit_debug

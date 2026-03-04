@@ -1537,14 +1537,51 @@ end
 function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
-                        D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
+                        D::AbstractMatrix{S};
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    X = zeros(T, size(A,1), size(D,2))
+    estimated_nnz = 0
+    I = Vector{Int}()
+    J = Vector{Int}()
+    V = Vector{T}()
+    X = zeros(T, 0, 0)
+
+    if sparse
+        nnzA = nnz(A)
+        nnzB = sum(abs.(B) .> eps())
+        nnzC = sum(abs.(C) .> eps())
+        nnzD = sum(abs.(D) .> eps())
+
+        p = nnzA * nnzB * nnzC * nnzD / (length(A) * length(B) * length(C) * length(D))
+
+        if length(sparse_preallocation[1]) == 0
+            estimated_nnz = Int(ceil((1 - (1 - p)^size(A,1)) * size(A,1) * size(D,2)))
+
+            resize!(sparse_preallocation[1], estimated_nnz)
+            resize!(sparse_preallocation[2], estimated_nnz)
+            resize!(sparse_preallocation[3], estimated_nnz)
+
+            I = sparse_preallocation[1]
+            J = sparse_preallocation[2]
+            V = sparse_preallocation[3]
+        else
+            estimated_nnz = length(sparse_preallocation[3])
+
+            resize!(sparse_preallocation[1], estimated_nnz)
+
+            I = sparse_preallocation[1]
+            J = sparse_preallocation[2]
+            V = sparse_preallocation[3]
+        end
+    else
+        X = zeros(T, size(A,1), size(D,2))
+    end
 
     # vals = T[]
     # rows = Int[]
@@ -1554,36 +1591,70 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     ĀB = zeros(T, n_rowC, n_colB)
     CĀB = zeros(T, n_colC, n_colB)
     vCĀB = zeros(T, n_colB * n_colC)
-    # vCĀBD = zeros(size(D,2))
+    vCĀBD = zeros(T, size(D,2))
 
-    rv = unique(A isa SparseMatrixCSC ? A.rowval : A.A.rowval)
+    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+    rowmask = falses(size(A,1))
+    @inbounds for r in rv
+        rowmask[r] = true
+    end
 
-    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    @inbounds for row in rv
+    α = .7
+    k = 0
+
+    @inbounds for row in eachindex(rowmask)
+        rowmask[row] || continue
         @views copyto!(Ā, A[row, :])
         ℒ.mul!(ĀB, Ā, B)
         ℒ.mul!(CĀB, C', ĀB)
         copyto!(vCĀB, CĀB)
-        @views ℒ.mul!(X[row,:], D', vCĀB)
+        ℒ.mul!(vCĀBD, D', vCĀB)
+
+        if sparse
+            for (i,v) in enumerate(vCĀBD)
+                if abs(v) > eps()
+                    k += 1
+
+                    if k > estimated_nnz
+                        increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * size(A,1) * size(D,2))))
+                        estimated_nnz += min(size(A,1) * size(D,2), increment)
+
+                        resize!(I, estimated_nnz)
+                        resize!(J, estimated_nnz)
+                        resize!(V, estimated_nnz)
+                    end
+
+                    I[k] = row
+                    J[k] = i
+                    V[k] = v
+                end
+            end
+        else
+            @views copyto!(X[row,:], vCĀBD)
+        end
     end
 
-    return choose_matrix_format(X)
-    #     ℒ.mul!(vCĀBD, D', vCĀB)
+    if sparse
+        resize!(I, k)
+        resize!(J, k)
+        resize!(V, k)
 
-    #     for (i,v) in enumerate(vCĀBD)
-    #         if abs(v) > eps()
-    #             push!(rows, row)
-    #             push!(cols, i)
-    #             push!(vals, v)
-    #         end
-    #     end
-    # end
+        klasttouch = sparse_preallocation[4]
+        csrrowptr  = sparse_preallocation[5]
+        csrcolval  = sparse_preallocation[6]
+        csrnzval   = sparse_preallocation[7]
 
-    # if VERSION >= v"1.10"
-    #     return sparse!(rows, cols, vals, size(A,1), size(D,2))   
-    # else
-    #     return sparse(rows, cols, vals, size(A,1), size(D,2))   
-    # end
+        resize!(klasttouch, size(D,2))
+        resize!(csrrowptr, size(A, 1) + 1)
+        resize!(csrcolval, length(I))
+        resize!(csrnzval, length(I))
+
+        out = sparse!(I, J, V, size(A, 1), size(D,2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    else
+        out = choose_matrix_format(X)
+    end
+
+    return out
 end
 
 
@@ -1947,6 +2018,23 @@ function compressed_kron³(a::AbstractMatrix{T};
     # Threads.@threads for i1 in ui
     norowmask = length(rowmask) == 0
     nocolmask = length(colmask) == 0
+    rowmask_lookup = norowmask ? BitVector() : falses(m3_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(m3_cols)
+
+    if !norowmask && rowmask != Int[0]
+        @inbounds for r in rowmask
+            if 1 <= r <= m3_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask && colmask != Int[0]
+        @inbounds for c in colmask
+            if 1 <= c <= m3_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
 
     for i1 in ui
         for j1 in ui
@@ -1956,7 +2044,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                         row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
 
-                        if norowmask || row in rowmask
+                        if norowmask || rowmask_lookup[row]
                             for i2 in uj
                                 for j2 in uj
                                     if j2 ≤ i2
@@ -1965,7 +2053,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                                                 col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
-                                                if nocolmask || col in colmask
+                                                if nocolmask || colmask_lookup[col]
                                                     # @timeit_debug timer "Multiplication" begin
                                                     @inbounds aii = â[i1, i2]
                                                     @inbounds aij = â[i1, j2]
@@ -2173,6 +2261,23 @@ function compressed_kron²(a::AbstractMatrix{T};
 
     norowmask = length(rowmask) == 0
     nocolmask = length(colmask) == 0
+    rowmask_lookup = norowmask ? BitVector() : falses(m2_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(m2_cols)
+
+    if !norowmask && rowmask != Int[0]
+        @inbounds for r in rowmask
+            if 1 <= r <= m2_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask && colmask != Int[0]
+        @inbounds for c in colmask
+            if 1 <= c <= m2_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
 
     for i1 in ui
         for j1 in ui
@@ -2180,14 +2285,14 @@ function compressed_kron²(a::AbstractMatrix{T};
 
                 row = (i1 - 1) * i1 ÷ 2 + j1
 
-                if norowmask || row in rowmask
+                if norowmask || rowmask_lookup[row]
                     for i2 in uj
                         for j2 in uj
                             if j2 ≤ i2
 
                                 col = (i2 - 1) * i2 ÷ 2 + j2
 
-                                if nocolmask || col in colmask
+                                if nocolmask || colmask_lookup[col]
                                     @inbounds aii = â[i1, i2]
                                     @inbounds aij = â[i1, j2]
                                     @inbounds aji = â[j1, i2]
@@ -5336,6 +5441,12 @@ function create_second_order_auxiliary_matrices(constants::constants)
     so.𝐂₂ = 𝐂₂
     so.𝐔₂ = 𝐔₂
     so.𝐔∇₂ = 𝐔∇₂
+    so.𝐔₂_nonempty_col_as_kron_rowmask = Int[]
+    sigma_row_lookup = falses(size(so.𝛔c₂, 1))
+    @inbounds for r in so.𝛔c₂.rowval
+        sigma_row_lookup[r] = true
+    end
+    so.𝛔𝐂₂_nonempty_row_as_kron_colmask = findall(sigma_row_lookup)
     return so
 end
 
@@ -6131,9 +6242,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = true)
 
         if 𝓂.constants.second_order.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
-
             ∇₂_dyn = derivatives[2][1]
+
+            𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
+            𝓂.constants.second_order.𝐔₂_nonempty_col_as_kron_rowmask = findall(@view(∇₂_dyn.colptr[1:end-1]) .< @view(∇₂_dyn.colptr[2:end]))
 
             lennz = nnz(∇₂_dyn)
 
