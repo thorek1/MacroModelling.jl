@@ -324,17 +324,47 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
+        if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
+            ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
 
-        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-            if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-            solution_error = S(10.0)
+            if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+                if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
+                solution_error = S(10.0)
+            else
+                JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
+                jvp_no_exo = custom_ss_expand_matrix * JVP
+                for i in 1:N
+                    parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
+                    @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials
+                end
+            end
         else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
-            jvp_no_exo = custom_ss_expand_matrix * JVP
-            for i in 1:N
-                parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
-                @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials
+            qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
+                                                                                                     qme_ws.fast_lu_ws_nsss,
+                                                                                                     qme_ws.fast_lu_dims_nsss)
+
+            if !solved_nsss
+                if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
+                solution_error = S(10.0)
+            else
+                rhs_dense = ∂SS_equations_∂parameters isa Matrix ? ∂SS_equations_∂parameters : Matrix(∂SS_equations_∂parameters)
+
+                if size(qme_ws.nsss_jvp_rhs) != size(rhs_dense)
+                    qme_ws.nsss_jvp_rhs = zeros(eltype(rhs_dense), size(rhs_dense))
+                end
+                copyto!(qme_ws.nsss_jvp_rhs, rhs_dense)
+
+                solve_lu_left!(∂SS_equations_∂SS_and_pars,
+                               qme_ws.nsss_jvp_rhs,
+                               qme_ws.fast_lu_ws_nsss,
+                               nsss_lu)
+
+                ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
+                jvp_no_exo = custom_ss_expand_matrix * qme_ws.nsss_jvp_rhs
+                for i in 1:N
+                    parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
+                    @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials
+                end
             end
         end
     end
