@@ -694,6 +694,12 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
     P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
+    if size(workspace.P_cache) != size(P̂)
+        workspace.P_cache = zeros(eltype(P̂), size(P̂)...)
+    end
+    copyto!(workspace.P_cache, P̂)
+    P̂_stable = workspace.P_cache
+
     # Allocate or reuse workspaces for temporary copies (from lyapunov_workspace)
     if size(workspace.Ã_fd) != size(Â)
         workspace.Ã_fd = copy(Â)
@@ -722,7 +728,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         Ã .= ℱ.partials.(A, i)
         C̃ .= ℱ.partials.(C, i)
 
-        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
+        X = Ã * P̂_stable * Â' + Â * P̂_stable * Ã' + C̃
 
         if ℒ.norm(X) < eps() continue end
 
@@ -733,9 +739,9 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         P̃[:,i] = vec(P)
     end
     
-    return reshape(map(P̂, eachrow(P̃)) do v, p
+    return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
+    end, size(P̂_stable)), solved
 end
 
 

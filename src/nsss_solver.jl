@@ -219,11 +219,15 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         zeros(Float64, max(b.max_error_buffer, 1)),
         zeros(Float64, max(𝓂.constants.nsss_solver.n_ext_params, 1)),
         Float64[],
+        Float64[],
         zeros(Float64, max(b.max_guess_buffer, 1)),
         [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
         zeros(Float64, max(b.max_main_buffer, 1)),
         zeros(Float64, max(b.max_guess_buffer, 1)),
         zeros(Float64, max(b.max_guess_buffer, 1)),
+        Float64[],
+        CircularBuffer{Vector{Vector{Float64}}}(1),
+        1,
     )
     return nothing
 end
@@ -1890,21 +1894,24 @@ function solve_nsss_steps(
         end
     end
     
-    # TODO: tackle allocation below by writing to the cache, if succesful
-    # Build SS_and_pars from solution vector using output indices
-    SS_and_pars = sol_vec[nsss_output_indices]
-    
-    # If failed to converge, return zeros
+    # Build SS_and_pars from solution vector into reusable output buffer
+    SS_and_pars = nsss_ws.output_buffer
+    n_output = length(nsss_output_indices)
+    if length(SS_and_pars) != n_output
+        resize!(SS_and_pars, n_output)
+    end
+
     if solution_error >= tol.NSSS_acceptance_tol
         fill!(SS_and_pars, 0.0)
+    else
+        @inbounds for i in 1:n_output
+            SS_and_pars[i] = sol_vec[nsss_output_indices[i]]
+        end
     end
     
-    # Append parameters to cache 
-    if isempty(nsss_solver_cache_tmp)
-        nsss_solver_cache_tmp = [parameters]
-    else
-        push!(nsss_solver_cache_tmp, parameters)
-    end
+    # Append parameters to cache
+    parameters_copy = copy(parameters)
+    push!(nsss_solver_cache_tmp, parameters_copy)
     
     return SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp
 end
@@ -1988,11 +1995,20 @@ function solve_nsss_wrapper(
     scale = 1.0
     SS_and_pars = Float64[]
     
-    # TODO: use a separate temporary CircularBuffer attached to the struct
-    # Local intermediate cache for warm starts at intermediate scales
-    continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
+    nsss_ws = 𝓂.workspaces.nsss_solver
+    if nsss_ws.continuation_cache_capacity != continuation_cache_capacity
+        nsss_ws.continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
+        nsss_ws.continuation_cache_capacity = continuation_cache_capacity
+    else
+        empty!(nsss_ws.continuation_cache)
+    end
+
+    continuation_cache = nsss_ws.continuation_cache
     push!(continuation_cache, closest_solution_init)
-    scaled_parameters = similar(initial_parameters)
+    scaled_parameters = nsss_ws.scaled_parameters_buffer
+    if length(scaled_parameters) != length(initial_parameters)
+        resize!(scaled_parameters, length(initial_parameters))
+    end
     
     # Continuation method: iterate with scaling to gradually approach target
     max_iters = cold_start ? 1 : continuation_max_iters
@@ -2041,7 +2057,7 @@ function solve_nsss_wrapper(
             
             if scale == 1
                 if current_best > cache_push_distance_tol
-                    reverse_diff_friendly_push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
+                    push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
                 end
                 return SS_and_pars, (solution_error, iters)
             end
@@ -2063,6 +2079,11 @@ function solve_nsss_wrapper(
     
     # Failed to converge - return zeros with matching output length
     n_output = length(𝓂.constants.post_complete_parameters.nsss_output_indices)
-    
-    return zeros(n_output), (1.0, 0)
+    SS_and_pars = nsss_ws.output_buffer
+    if length(SS_and_pars) != n_output
+        resize!(SS_and_pars, n_output)
+    end
+    fill!(SS_and_pars, 0.0)
+
+    return SS_and_pars, (1.0, 0)
 end
