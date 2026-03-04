@@ -944,7 +944,7 @@ function get_conditional_forecast(𝓂::ℳ,
         if length(cond_var_idx) == 1
             @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
         elseif length(free_shock_idx) == length(cond_var_idx)
-            CC = RF.lu(CC, check = false)
+            CC = ℒ.lu(CC, check = false)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
         end
@@ -973,7 +973,7 @@ function get_conditional_forecast(𝓂::ℳ,
                 @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
             elseif length(free_shock_idx) == length(cond_var_idx)
     
-            CC = RF.lu(CC, check = false)
+            CC = ℒ.lu(CC, check = false)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
             end

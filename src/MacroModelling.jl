@@ -61,7 +61,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using AxisKeys
 
 import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
-import RecursiveFactorization as RF
+# import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
