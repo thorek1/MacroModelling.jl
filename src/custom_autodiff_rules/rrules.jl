@@ -456,36 +456,48 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = parameter_values
     C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-    if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-        if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
-            jac_buffer.nzval .= 0
+    if eltype(𝓂.caches.NSSS_∂equations_∂parameters) != eltype(parameter_values)
+        if 𝓂.caches.NSSS_∂equations_∂parameters isa SparseMatrixCSC
+            jac_cache = similar(𝓂.caches.NSSS_∂equations_∂parameters, eltype(parameter_values))
+            jac_cache.nzval .= 0
         else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
+            jac_cache = zeros(eltype(parameter_values), size(𝓂.caches.NSSS_∂equations_∂parameters))
         end
     else
-        jac_buffer = 𝓂.caches.∂equations_∂parameters
+        jac_cache = 𝓂.caches.NSSS_∂equations_∂parameters
     end
 
-    𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
+    if jac_cache isa SparseMatrixCSC
+        jac_cache.nzval .= 0
+    else
+        fill!(jac_cache, zero(eltype(jac_cache)))
+    end
 
-    ∂SS_equations_∂parameters = jac_buffer
+    𝓂.functions.NSSS_∂equations_∂parameters(jac_cache, ∂, C)
+
+    ∂SS_equations_∂parameters = jac_cache
 
     
-    if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
-        if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
-            jac_buffer.nzval .= 0
+    if eltype(𝓂.caches.NSSS_∂equations_∂SS_and_pars) != eltype(SS_and_pars)
+        if 𝓂.caches.NSSS_∂equations_∂SS_and_pars isa SparseMatrixCSC
+            jac_cache = similar(𝓂.caches.NSSS_∂equations_∂SS_and_pars, eltype(SS_and_pars))
+            jac_cache.nzval .= 0
         else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
+            jac_cache = zeros(eltype(SS_and_pars), size(𝓂.caches.NSSS_∂equations_∂SS_and_pars))
         end
     else
-        jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
+        jac_cache = 𝓂.caches.NSSS_∂equations_∂SS_and_pars
     end
 
-    𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
+    if jac_cache isa SparseMatrixCSC
+        jac_cache.nzval .= 0
+    else
+        fill!(jac_cache, zero(eltype(jac_cache)))
+    end
 
-    ∂SS_equations_∂SS_and_pars = jac_buffer
+    𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_cache, ∂, C)
+
+    ∂SS_equations_∂SS_and_pars = jac_cache
     qme_ws = 𝓂.workspaces.first_order
     if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
         ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
@@ -4833,8 +4845,8 @@ function rrule(::typeof(calculate_first_order_solution),
 
     qme_ws = workspaces.first_order
     sylv_ws = workspaces.sylvester_1st_order
-    ensure_sylvester_krylov_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
-    ensure_sylvester_doubling_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
+    ensure_sylvester_krylov_buffers!(qme_ws.sylvester, T.nVars, T.nVars)
+    ensure_sylvester_doubling_buffers!(qme_ws.sylvester, T.nVars, T.nVars)
 
     ensure_first_order_workspace_buffers!(qme_ws, T, length(dynIndex), length(comb))
     
@@ -4966,10 +4978,10 @@ function rrule(::typeof(calculate_first_order_solution),
         end
     end
     
-    𝐒̂ᵗ = qme_ws.sylvester_ws.tmp
+    𝐒̂ᵗ = qme_ws.sylvester.tmp
     ℒ.mul!(𝐒̂ᵗ, 𝐒ᵗ, expand_past)
 
-    ∇₊ = qme_ws.sylvester_ws.𝐀
+    ∇₊ = qme_ws.sylvester.𝐀
     ℒ.mul!(∇₊, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
 
     ℒ.mul!(∇₀, ∇₊, 𝐒̂ᵗ, 1, 1)
@@ -4990,7 +5002,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     
-    M = qme_ws.sylvester_ws.𝐀¹
+    M = qme_ws.sylvester.𝐀¹
     fill!(M, zero(R))
     @inbounds for i in axes(M, 1)
         M[i, i] = one(R)
@@ -4998,7 +5010,7 @@ function rrule(::typeof(calculate_first_order_solution),
     solve_lu_left!(∇₀, M, qme_ws.fast_lu_ws_nabla0, C;
                    use_fastlapack_lu = use_fastlapack_lu)
 
-    tmp2 = qme_ws.sylvester_ws.𝐁
+    tmp2 = qme_ws.sylvester.𝐁
     ℒ.mul!(tmp2, M', ∇₊')
     ℒ.rmul!(tmp2, -1)
 
@@ -5026,29 +5038,29 @@ function rrule(::typeof(calculate_first_order_solution),
         @views ∂∇₁[:,idx_constants.nabla_e_start:end] .= .-t1
 
         # t2 = t1 * ∇ₑ'  (nVars × nVars) → store in 𝐗 workspace
-        t2 = qme_ws.sylvester_ws.𝐗
+        t2 = qme_ws.sylvester.𝐗
         ℒ.mul!(t2, t1, ∇ₑ')
 
         # W = t2 * M'  (nVars × nVars) → store in 𝐂_dbl workspace
-        W = qme_ws.sylvester_ws.𝐂_dbl
+        W = qme_ws.sylvester.𝐂_dbl
         ℒ.mul!(W, t2, M')
 
         @views ∂∇₁[:,idx_constants.nabla_zero_cols] .= W
 
         # Wp = W * expand_past'  (nVars × nPast) → store in view of 𝐂¹ workspace (nVars×nVars)
-        Wp = @view qme_ws.sylvester_ws.𝐂¹[:, 1:T.nPast_not_future_and_mixed]
+        Wp = @view qme_ws.sylvester.𝐂¹[:, 1:T.nPast_not_future_and_mixed]
         ℒ.mul!(Wp, W, expand_past')
 
         # ∂∇₁[:,1:nFuture] = (Wp * 𝐒ᵗ')[:,future_idx]
         # WpSt = Wp * 𝐒ᵗ'  (nVars × nVars) → store in 𝐂B workspace
-        WpSt = qme_ws.sylvester_ws.𝐂B
+        WpSt = qme_ws.sylvester.𝐂B
         ℒ.mul!(WpSt, Wp, 𝐒ᵗ')
         @views ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= WpSt[:,T.future_not_past_and_mixed_idx]
 
         # ∂𝐒ᵗ += ∇₊' * Wp  (nVars × nPast, ∇₊ is nVars×nVars, Wp is nVars×nPast)
         ℒ.mul!(∂𝐒ᵗ, ∇₊', Wp, 1, 1)
 
-        tmp1 = qme_ws.sylvester_ws.𝐂
+        tmp1 = qme_ws.sylvester.𝐂
         # tmp1 = M' * ∂𝐒ᵗ * expand_past  (nVars × nVars)
         # t_ms = M' * ∂𝐒ᵗ  (nVars × nPast) → reuse Wp (view of 𝐂¹, same dims)
         ℒ.mul!(Wp, M', ∂𝐒ᵗ)
@@ -5226,15 +5238,13 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = 1.0)
 
-    𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
-
-    ∇₂t = choose_matrix_format(∇₂_full', density_threshold = 1.0)
+    ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
     # end # timeit_debug
 
     # Ensure pullback workspaces are properly sized
-    if size(ℂ.∂∇₂) != size(∇₂_full)
-        ℂ.∂∇₂ = zeros(S, size(∇₂_full))
+    if size(ℂ.∂∇₂) != size(∇₂)
+        ℂ.∂∇₂ = zeros(S, size(∇₂))
     end
     if size(ℂ.∂∇₁) != size(∇₁)
         ℂ.∂∇₁ = zeros(S, size(∇₁))
@@ -5271,8 +5281,14 @@ function rrule(::typeof(calculate_second_order_solution),
         # end # timeit_debug
 
         ∂𝐒₂ = ∂𝐒₂_solved[1]
-        
-        # ∂𝐒₂ *= 𝐔₂t
+
+        if size(∂𝐒₂, 2) == size(𝐒₂_stable, 2)
+            nothing
+        elseif size(∂𝐒₂, 2) == size(M₂.𝐔₂, 2)
+            ∂𝐒₂ = ∂𝐒₂ * 𝐔₂t
+        else
+            throw(DimensionMismatch("second_order_solution_pullback: expected ∂𝐒₂ to have $(size(𝐒₂_stable, 2)) (compressed) or $(size(M₂.𝐔₂, 2)) (full) columns, got $(size(∂𝐒₂, 2))."))
+        end
 
         # @timeit_debug timer "Sylvester" begin
         if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
@@ -5393,9 +5409,6 @@ function rrule(::typeof(calculate_second_order_solution),
         # end # timeit_debug
 
         # end # timeit_debug
-
-        # Map ∂∇₂ back to compressed space (adjoint of ∇₂_full = ∇₂_compressed * 𝐔∇₂)
-        ∂∇₂ = ∂∇₂ * 𝐔∇₂t
 
         return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
@@ -5997,11 +6010,11 @@ function rrule(::typeof(solve_sylvester_equation),
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
-    if size(𝕊ℂ.P_cache) != size(P)
-        𝕊ℂ.P_cache = zeros(eltype(P), size(P)...)
+    if size(𝕊ℂ.P) != size(P)
+        𝕊ℂ.P = zeros(eltype(P), size(P)...)
     end
-    copyto!(𝕊ℂ.P_cache, P)
-    P_cached = 𝕊ℂ.P_cache
+    copyto!(𝕊ℂ.P, P)
+    P_cached = 𝕊ℂ.P
 
     ensure_sylvester_doubling_buffers!(𝕊ℂ, size(A, 1), size(B, 1))
 
@@ -6042,11 +6055,11 @@ function rrule(::typeof(solve_lyapunov_equation),
                 verbose::Bool = false)
 
     P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-    if size(workspace.P_cache) != size(P)
-        workspace.P_cache = zeros(eltype(P), size(P)...)
+    if size(workspace.P) != size(P)
+        workspace.P = zeros(eltype(P), size(P)...)
     end
-    copyto!(workspace.P_cache, P)
-    P_cached = workspace.P_cache
+    copyto!(workspace.P, P)
+    P_cached = workspace.P
     ensure_lyapunov_doubling_buffers!(workspace)
 
     # pullback 

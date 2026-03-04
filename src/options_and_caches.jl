@@ -155,7 +155,7 @@ function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
         zeros(S,0,0),           # 𝐂¹ (doubling)
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
-        zeros(S,0,0),           # P_cache (stable primal cache)
+        zeros(S,0,0),           # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T,0,0),           # P̃
         zeros(T,0,0),           # Ã_fd
@@ -231,7 +231,7 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
     first_order_workspace(
-                    Sylvester_workspace(S = T, T = S),  # sylvester_ws
+                    Sylvester_workspace(S = T, T = S),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
@@ -296,7 +296,7 @@ function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
-                    Sylvester_workspace(S = T, T = S),  # sylvester_ws
+                    Sylvester_workspace(S = T, T = S),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃
                     # FastLapackInterface LU workspaces
@@ -377,9 +377,9 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0, 0),         # tmp̄ (Krylov)
         zeros(T, 0, 0),         # 𝐗 (Krylov)
         zeros(T, 0),            # b (Krylov)
-        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
-        zeros(T, 0, 0),         # P_cache (stable primal cache)
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
+        zeros(T, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
@@ -445,12 +445,12 @@ function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Sy
     end
 
     if algorithm == :bicgstab
-        if length(ws.bicgstab_workspace.x) != n * n
-            ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+        if length(ws.bicgstab.x) != n * n
+            ws.bicgstab = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
         end
     elseif algorithm == :gmres
-        if length(ws.gmres_workspace.x) != n * n
-            ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+        if length(ws.gmres.x) != n * n
+            ws.gmres = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
         end
     else
         error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")

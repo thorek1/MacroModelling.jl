@@ -1006,8 +1006,8 @@ end
 
 
 function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    while length(𝓂.caches.solver_cache) > 1
-        pop!(𝓂.caches.solver_cache)
+    while length(𝓂.caches.solver) > 1
+        pop!(𝓂.caches.solver)
     end
 
     𝓂.caches.first_order_solution_matrix = zeros(0,0)
@@ -4212,7 +4212,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.caches.∂equations_∂parameters = buffer
+    𝓂.caches.NSSS_∂equations_∂parameters = buffer
     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
@@ -4244,7 +4244,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.caches.∂equations_∂SS_and_pars = buffer
+    𝓂.caches.NSSS_∂equations_∂SS_and_pars = buffer
     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
 
     return nothing
@@ -4352,8 +4352,8 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.caches.solver_cache) > 1
-        pop!(𝓂.caches.solver_cache)
+    while length(𝓂.caches.solver) > 1
+        pop!(𝓂.caches.solver)
     end
 
     runtime = @elapsed outmodel = try solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
@@ -4438,7 +4438,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
 
     solved = false
 
-    solved_NSSS = 𝓂.caches.solver_cache[end]
+    solved_NSSS = 𝓂.caches.solver[end]
 
     for (i_param, p) in enumerate(DEFAULT_SOLVER_PARAMETERS)
         times = Vector{Float64}(undef, n_samples)
@@ -4447,8 +4447,8 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         for i in 1:n_samples
             start_time = time()
 
-            while length(𝓂.caches.solver_cache) > 1
-                pop!(𝓂.caches.solver_cache)
+            while length(𝓂.caches.solver) > 1
+                pop!(𝓂.caches.solver)
             end
 
             SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [p])
@@ -4476,11 +4476,11 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         end
     end
 
-    while length(𝓂.caches.solver_cache) > 1
-        pop!(𝓂.caches.solver_cache)
+    while length(𝓂.caches.solver) > 1
+        pop!(𝓂.caches.solver)
     end
 
-    push!(𝓂.caches.solver_cache, solved_NSSS)
+    push!(𝓂.caches.solver, solved_NSSS)
 
     if solved
         𝓂.constants.post_complete_parameters = update_post_complete_parameters(
@@ -6290,7 +6290,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.caches.∂equations_∂parameters = buffer
     #     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
@@ -6322,7 +6321,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    #     𝓂.caches.∂equations_∂SS_and_pars = buffer
     #     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
     # end
         
@@ -6646,8 +6644,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         
         # Clear NSSS solver cache because parameter order/count changed.
         # It will be rebuilt during the next NSSS setup.
-        while length(𝓂.caches.solver_cache) > 0
-            pop!(𝓂.caches.solver_cache)
+        while length(𝓂.caches.solver) > 0
+            pop!(𝓂.caches.solver)
         end
     end
     
@@ -8132,12 +8130,12 @@ end
 
 @stable default_mode = "disable" begin
 
-function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
-    buffer = 𝓂.workspaces.custom_steady_state_buffer
+function get_custom_steady_state_workspace!(𝓂::ℳ, expected_length::Int)
+    buffer = 𝓂.workspaces.custom_steady_state
 
     if length(buffer) != expected_length
         buffer = Vector{Float64}(undef, expected_length)
-        𝓂.workspaces.custom_steady_state_buffer = buffer
+        𝓂.workspaces.custom_steady_state = buffer
     end
 
     return buffer
@@ -8154,7 +8152,7 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     has_inplace = hasmethod(𝓂.functions.NSSS_custom, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
-        get_custom_steady_state_buffer!(𝓂, expected_length)
+        get_custom_steady_state_workspace!(𝓂, expected_length)
         
         output = Vector{S}(undef, expected_length)
         try 

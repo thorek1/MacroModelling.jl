@@ -283,46 +283,46 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂ = parameter_values
         C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
-        if eltype(𝓂.caches.∂equations_∂parameters) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂parameters isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂parameters, eltype(parameter_values))
-                jac_buffer.nzval .= 0
+        if eltype(𝓂.caches.NSSS_∂equations_∂parameters) != eltype(parameter_values)
+            if 𝓂.caches.NSSS_∂equations_∂parameters isa SparseMatrixCSC
+                jac_cache = similar(𝓂.caches.NSSS_∂equations_∂parameters, eltype(parameter_values))
+                jac_cache.nzval .= 0
             else
-                jac_buffer = zeros(eltype(parameter_values), size(𝓂.caches.∂equations_∂parameters))
+                jac_cache = zeros(eltype(parameter_values), size(𝓂.caches.NSSS_∂equations_∂parameters))
             end
         else
-            jac_buffer = 𝓂.caches.∂equations_∂parameters
-            if jac_buffer isa SparseMatrixCSC
-                jac_buffer.nzval .= 0
+            jac_cache = 𝓂.caches.NSSS_∂equations_∂parameters
+            if jac_cache isa SparseMatrixCSC
+                jac_cache.nzval .= 0
             else
-                fill!(jac_buffer, zero(eltype(jac_buffer)))
+                fill!(jac_cache, zero(eltype(jac_cache)))
             end
         end
 
-        𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
+        𝓂.functions.NSSS_∂equations_∂parameters(jac_cache, ∂, C)
 
-        ∂SS_equations_∂parameters = jac_buffer
+        ∂SS_equations_∂parameters = jac_cache
 
         
-        if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(parameter_values)
-            if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.caches.∂equations_∂SS_and_pars, eltype(SS_and_pars))
-                jac_buffer.nzval .= 0
+        if eltype(𝓂.caches.NSSS_∂equations_∂SS_and_pars) != eltype(parameter_values)
+            if 𝓂.caches.NSSS_∂equations_∂SS_and_pars isa SparseMatrixCSC
+                jac_cache = similar(𝓂.caches.NSSS_∂equations_∂SS_and_pars, eltype(SS_and_pars))
+                jac_cache.nzval .= 0
             else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.caches.∂equations_∂SS_and_pars))
+                jac_cache = zeros(eltype(SS_and_pars), size(𝓂.caches.NSSS_∂equations_∂SS_and_pars))
             end
         else
-            jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
-            if jac_buffer isa SparseMatrixCSC
-                jac_buffer.nzval .= 0
+            jac_cache = 𝓂.caches.NSSS_∂equations_∂SS_and_pars
+            if jac_cache isa SparseMatrixCSC
+                jac_cache.nzval .= 0
             else
-                fill!(jac_buffer, zero(eltype(jac_buffer)))
+                fill!(jac_cache, zero(eltype(jac_cache)))
             end
         end
 
-        𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
+        𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_cache, ∂, C)
 
-        ∂SS_equations_∂SS_and_pars = jac_buffer
+        ∂SS_equations_∂SS_and_pars = jac_cache
 
         if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
             ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
@@ -386,8 +386,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     qme_ws = workspaces.first_order
     sylv_ws = workspaces.sylvester_1st_order
     ensure_first_order_workspace_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
-    ensure_sylvester_krylov_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
-    ensure_sylvester_doubling_buffers!(qme_ws.sylvester_ws, T.nVars, T.nVars)
+    ensure_sylvester_krylov_buffers!(qme_ws.sylvester, T.nVars, T.nVars)
+    ensure_sylvester_doubling_buffers!(qme_ws.sylvester, T.nVars, T.nVars)
 
     if size(qme_ws.p_tmp) != size(∇₁)
         qme_ws.p_tmp = zeros(S, size(∇₁, 1), size(∇₁, 2))
@@ -402,16 +402,16 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
     A = qme_ws.𝐀₀
     B = qme_ws.∇₀
-    X = qme_ws.sylvester_ws.tmp
-    AXB = qme_ws.sylvester_ws.𝐗
-    AA = qme_ws.sylvester_ws.𝐂
-    X² = qme_ws.sylvester_ws.𝐀
-    dA = qme_ws.sylvester_ws.𝐀¹
-    dB = qme_ws.sylvester_ws.𝐁
-    dC = qme_ws.sylvester_ws.𝐁¹
-    CC = qme_ws.sylvester_ws.𝐂_dbl
-    tmp = qme_ws.sylvester_ws.𝐂¹
-    B_sylv = qme_ws.sylvester_ws.𝐂B
+    X = qme_ws.sylvester.tmp
+    AXB = qme_ws.sylvester.𝐗
+    AA = qme_ws.sylvester.𝐂
+    X² = qme_ws.sylvester.𝐀
+    dA = qme_ws.sylvester.𝐀¹
+    dB = qme_ws.sylvester.𝐁
+    dC = qme_ws.sylvester.𝐁¹
+    CC = qme_ws.sylvester.𝐂_dbl
+    tmp = qme_ws.sylvester.𝐂¹
+    B_sylv = qme_ws.sylvester.𝐂B
 
     # Legacy readable path (before workspace reuse):
     #   ∇̂₁ = value.(∇₁)
@@ -617,7 +617,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester_ws, sylvester_algorithm = :doubling)
+        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester, sylvester_algorithm = :doubling)
 
         solved = Bool(solved) && Bool(slvd)
 
@@ -657,11 +657,11 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         verbose = verbose, 
                                         initial_guess = initial_guess_value)
 
-    if size(𝕊ℂ.P_cache) != size(P̂)
-        𝕊ℂ.P_cache = zeros(eltype(P̂), size(P̂)...)
+    if size(𝕊ℂ.P) != size(P̂)
+        𝕊ℂ.P = zeros(eltype(P̂), size(P̂)...)
     end
-    copyto!(𝕊ℂ.P_cache, P̂)
-    P̂_stable = 𝕊ℂ.P_cache
+    copyto!(𝕊ℂ.P, P̂)
+    P̂_stable = 𝕊ℂ.P
 
     # Allocate or reuse workspaces for temporary copies
     if size(𝕊ℂ.Ã_fd) != size(Â)
@@ -730,11 +730,11 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
     P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
-    if size(workspace.P_cache) != size(P̂)
-        workspace.P_cache = zeros(eltype(P̂), size(P̂)...)
+    if size(workspace.P) != size(P̂)
+        workspace.P = zeros(eltype(P̂), size(P̂)...)
     end
-    copyto!(workspace.P_cache, P̂)
-    P̂_stable = workspace.P_cache
+    copyto!(workspace.P, P̂)
+    P̂_stable = workspace.P
 
     # Allocate or reuse workspaces for temporary copies (from lyapunov_workspace)
     if size(workspace.Ã_fd) != size(Â)

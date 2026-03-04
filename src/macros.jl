@@ -888,9 +888,9 @@ macro model(𝓂,ex...)
                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
                             Float64[],  # pruned_third_order_stochastic_steady_state
                             Float64[],  # non_stochastic_steady_state
-                            $nsss_solver_cache,  # solver_cache
-                            $NSSS_∂equations_∂parameters,  # ∂equations_∂parameters
-                            $NSSS_∂equations_∂SS_and_pars,  # ∂equations_∂SS_and_pars
+                            $nsss_solver_cache,  # solver
+                            $NSSS_∂equations_∂parameters,  # NSSS_∂equations_∂parameters
+                            $NSSS_∂equations_∂SS_and_pars,  # NSSS_∂equations_∂SS_and_pars
                         ),
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian

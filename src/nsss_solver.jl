@@ -1516,7 +1516,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     end
 
     push!(nsss_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
-    push!(𝓂.caches.solver_cache, nsss_solver_cache_init_tmp)
+    push!(𝓂.caches.solver, nsss_solver_cache_init_tmp)
 
     parameters_only_in_par_defs = Set()
     if length(𝓂.equations.calibration_no_var) > 0
@@ -1986,7 +1986,7 @@ function solve_nsss_wrapper(
     
     # Find closest cached solution as starting point
     expected_cache_length = 2 * n_numerical_steps + 1
-    _, closest_solution_init = find_closest_solution(𝓂.caches.solver_cache, initial_parameters, expected_cache_length)
+    _, closest_solution_init = find_closest_solution(𝓂.caches.solver, initial_parameters, expected_cache_length)
     
     # Initialize continuation method variables
     range_iters = 0
@@ -1996,14 +1996,14 @@ function solve_nsss_wrapper(
     SS_and_pars = Float64[]
     
     nsss_ws = 𝓂.workspaces.nsss_solver
-    if nsss_ws.continuation_cache_capacity != continuation_cache_capacity
-        nsss_ws.continuation_cache = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
-        nsss_ws.continuation_cache_capacity = continuation_cache_capacity
+    if nsss_ws.continuation_capacity != continuation_cache_capacity
+        nsss_ws.continuation = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
+        nsss_ws.continuation_capacity = continuation_cache_capacity
     else
-        empty!(nsss_ws.continuation_cache)
+        empty!(nsss_ws.continuation)
     end
 
-    continuation_cache = nsss_ws.continuation_cache
+    continuation_cache = nsss_ws.continuation
     push!(continuation_cache, closest_solution_init)
     scaled_parameters = nsss_ws.scaled_parameters_buffer
     if length(scaled_parameters) != length(initial_parameters)
@@ -2057,7 +2057,7 @@ function solve_nsss_wrapper(
             
             if scale == 1
                 if current_best > cache_push_distance_tol
-                    push!(𝓂.caches.solver_cache, nsss_solver_cache_tmp)
+                    push!(𝓂.caches.solver, nsss_solver_cache_tmp)
                 end
                 return SS_and_pars, (solution_error, iters)
             end
