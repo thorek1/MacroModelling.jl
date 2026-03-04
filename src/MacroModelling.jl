@@ -34,6 +34,7 @@ import LoopVectorization: @turbo
 # import Polyester
 import NLopt
 # import Zygote
+import SparseArrays
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
@@ -1655,7 +1656,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         if length(I) >= size(D,2) + 1
             out = sparse!(I, J, V, size(A, 1), size(D,2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
         else
-            out = sparse(I, J, V, size(A, 1), size(D,2))
+            out = SparseArrays.sparse(I, J, V, size(A, 1), size(D,2))
         end
         if reused_sparse_buffers
             out = copy(out)
@@ -1830,7 +1831,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         if length(I) >= n_colB * n_colC + 1
             out = sparse!(I, J, V, size(A, 1), n_colB * n_colC, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
         else
-            out = sparse(I, J, V, size(A, 1), n_colB * n_colC)
+            out = SparseArrays.sparse(I, J, V, size(A, 1), n_colB * n_colC)
         end
         if reused_sparse_buffers
             out = copy(out)
