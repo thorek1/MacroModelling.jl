@@ -732,9 +732,6 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-    𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
-
     if !solved2
         common = (false,
                   all_SS,
@@ -751,6 +748,9 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         end
         return common, pullback
     end
+
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     𝐒₁ = [𝐒₁_raw[:, 1:nPast] zeros(nVars) 𝐒₁_raw[:, nPast+1:end]]
     aug_state₁ = sparse([zeros(nPast); 1; zeros(nExo)])
@@ -873,10 +873,6 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     estimation = estimation)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
-    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
-    𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
-
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0))
@@ -895,6 +891,10 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         end
         return result, pullback
     end
+
+    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     so = 𝓂.constants.second_order
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -1005,10 +1005,6 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     estimation = estimation)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
-    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
-    𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
-
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0))
@@ -1027,6 +1023,10 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         end
         return result, pullback
     end
+
+    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     T = 𝓂.constants.post_model_macro
     nPast = T.nPast_not_future_and_mixed
@@ -1100,9 +1100,6 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     estimation = estimation)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
-    𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
-
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
@@ -1121,6 +1118,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         end
         return result, pullback
     end
+
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
         rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
@@ -1306,9 +1306,6 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     estimation = estimation)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
-    𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
-
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
@@ -1327,6 +1324,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         end
         return result, pullback
     end
+
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
         rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
