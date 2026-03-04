@@ -5170,12 +5170,13 @@ function rrule(::typeof(calculate_second_order_solution),
                                             tol = opts.tol.sylvester_tol,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose)
+    𝐒₂_stable = copy(𝐒₂)
 
     # end # timeit_debug
     # @timeit_debug timer "Post-process" begin
 
     if !solved
-        return (𝐒₂, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (𝐒₂_stable, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -5259,9 +5260,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C = choose_matrix_format(∂C) # Dense
 
-        ∂A = ∂C * B' * 𝐒₂' # Dense
+        ∂A = ∂C * B' * 𝐒₂_stable' # Dense
 
-        ∂B = 𝐒₂' * A' * ∂C # Dense
+        ∂B = 𝐒₂_stable' * A' * ∂C # Dense
 
         # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
         ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
@@ -5384,7 +5385,7 @@ function rrule(::typeof(calculate_second_order_solution),
     end
 
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
-    return (𝐒₂, solved), second_order_solution_pullback
+    return (𝐒₂_stable, solved), second_order_solution_pullback
 end
 
 
@@ -5582,21 +5583,22 @@ function rrule(::typeof(calculate_third_order_solution),
                                             verbose = opts.verbose)
 
     𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.droptol)
+    𝐒₃_stable = copy(𝐒₃)
 
     if !solved
-        return (𝐒₃, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (𝐒₃_stable, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # cache update (same as primal)
-    if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
-        copyto!(cache.third_order_solution, 𝐒₃)
-    elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
-           size(cache.third_order_solution) == size(𝐒₃) &&
-           cache.third_order_solution.colptr == 𝐒₃.colptr &&
-           cache.third_order_solution.rowval == 𝐒₃.rowval
-        copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
+    if 𝐒₃_stable isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃_stable)
+        copyto!(cache.third_order_solution, 𝐒₃_stable)
+    elseif 𝐒₃_stable isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
+           size(cache.third_order_solution) == size(𝐒₃_stable) &&
+           cache.third_order_solution.colptr == 𝐒₃_stable.colptr &&
+           cache.third_order_solution.rowval == 𝐒₃_stable.rowval
+        copyto!(cache.third_order_solution.nzval, 𝐒₃_stable.nzval)
     else
-        cache.third_order_solution = 𝐒₃
+        cache.third_order_solution = 𝐒₃_stable
     end
 
     # --- precompute transposed constants for pullback -----------------------------
@@ -5633,8 +5635,8 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂C_adj = choose_matrix_format(∂C_adj)
 
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
-        ∂A = ∂C_adj * B' * 𝐒₃'
-        ∂B_from_sylv = 𝐒₃' * A' * ∂C_adj
+        ∂A = ∂C_adj * B' * 𝐒₃_stable'
+        ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj
 
         # C = spinv * 𝐗₃
         ∂𝐗₃   = spinv' * ∂C_adj
@@ -5868,7 +5870,7 @@ function rrule(::typeof(calculate_third_order_solution),
         return (NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent())
     end
 
-    return (𝐒₃, solved), third_order_solution_pullback
+    return (𝐒₃_stable, solved), third_order_solution_pullback
 end
 
 
@@ -5890,6 +5892,12 @@ function rrule(::typeof(solve_sylvester_equation),
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
+    if size(𝕊ℂ.P_cache) != size(P)
+        𝕊ℂ.P_cache = zeros(eltype(P), size(P)...)
+    end
+    copyto!(𝕊ℂ.P_cache, P)
+    P_cached = 𝕊ℂ.P_cache
+
     ensure_sylvester_doubling_buffers!(𝕊ℂ, size(A, 1), size(B, 1))
 
     # pullback
@@ -5907,15 +5915,15 @@ function rrule(::typeof(solve_sylvester_equation),
         tmp_m = 𝕊ℂ.𝐁
 
         ℒ.mul!(tmp_n, ∂C, B')
-        ∂A = tmp_n * P'
+        ∂A = tmp_n * P_cached'
 
-        ℒ.mul!(tmp_m, P', A')
+        ℒ.mul!(tmp_m, P_cached', A')
         ∂B = tmp_m * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
 
-    return (P, solved), solve_sylvester_equation_pullback
+    return (P_cached, solved), solve_sylvester_equation_pullback
 end
 
 function rrule(::typeof(solve_lyapunov_equation),

@@ -153,6 +153,7 @@ function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
         zeros(S,0,0),           # 𝐂¹ (doubling)
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
+        zeros(S,0,0),           # P_cache (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T,0,0),           # P̃
         zeros(T,0,0),           # Ã_fd

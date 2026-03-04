@@ -627,6 +627,12 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         verbose = verbose, 
                                         initial_guess = initial_guess_value)
 
+    if size(𝕊ℂ.P_cache) != size(P̂)
+        𝕊ℂ.P_cache = zeros(eltype(P̂), size(P̂)...)
+    end
+    copyto!(𝕊ℂ.P_cache, P̂)
+    P̂_stable = 𝕊ℂ.P_cache
+
     # Allocate or reuse workspaces for temporary copies
     if size(𝕊ℂ.Ã_fd) != size(Â)
         𝕊ℂ.Ã_fd = copy(Â)
@@ -662,7 +668,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         B̃ .= ℱ.partials.(B, i)
         C̃ .= ℱ.partials.(C, i)
 
-        X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
+        X = Ã * P̂_stable * B̂ + Â * P̂_stable * B̃ + C̃
         
         if ℒ.norm(X) < eps() continue end
 
@@ -676,9 +682,9 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         P̃[:,i] = vec(P)
     end
     
-    return reshape(map(P̂, eachrow(P̃)) do v, p
+    return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
+    end, size(P̂_stable)), solved
 end
 
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},

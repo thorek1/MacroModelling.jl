@@ -477,6 +477,9 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     
     # Krylov solver state (lazily allocated)
     krylov_workspace::krylov_workspace{G}
+
+    # Stable primal solution cache for AD/rrule pullbacks
+    P_cache::Matrix{G}
     
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
