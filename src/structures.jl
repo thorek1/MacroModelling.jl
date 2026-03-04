@@ -668,6 +668,7 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
     
     # ForwardDiff partials buffers (for forward-mode AD)
+    P_cache::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
     P̃::Matrix{R}       # For lyapunov equation partials
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C

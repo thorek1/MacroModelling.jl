@@ -370,6 +370,7 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
         Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
+        zeros(T, 0, 0),         # P_cache (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
