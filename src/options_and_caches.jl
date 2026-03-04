@@ -12,7 +12,9 @@ function Second_order_indices()
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_indices(
-        # Auxiliary matrices (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
+        # Auxiliary matrices (𝛔, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂)
+        empty_sparse_int,
+        empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
