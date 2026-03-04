@@ -164,7 +164,7 @@ third_order_solution = sparse(third_order_solution * RBC_CME.constants.third_ord
     -0.0226
     0.0021014511165327685
     -0.0021014511165327685],7,225)
-    @test isapprox(∇₂,hessian2,rtol = eps(Float32))
+    @test isapprox(∇₂ * RBC_CME.constants.third_order.𝐔∇₂, hessian2,rtol = eps(Float32))
 
 
     third_order_derivatives2 = sparse(vec([ 2  2  2  2  3  3  3  3  3  3  3  3  2  2  3  3  3  2  3  2  3  3  2  3  3  2  2  2  1  5  4  3  3  3  3  2  3  2  2  2  2  2  2  2  2  1  5  1  5  1  5]),
