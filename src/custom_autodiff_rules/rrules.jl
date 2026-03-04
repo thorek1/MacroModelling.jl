@@ -471,8 +471,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     ∂SS_equations_∂parameters = jac_buffer
 
-    ∂SS_equations_∂parameters_dense = Matrix(∂SS_equations_∂parameters)
-
     
     if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
         if 𝓂.caches.∂equations_∂SS_and_pars isa SparseMatrixCSC
@@ -488,14 +486,39 @@ function rrule(::typeof(get_NSSS_and_parameters),
     𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
-    # TODO: use fastlapack lu here
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
+    qme_ws = 𝓂.workspaces.first_order
+    if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
+        ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
 
-    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+            return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
+    else
+        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
+                                                                                                 qme_ws.fast_lu_ws_nsss,
+                                                                                                 qme_ws.fast_lu_dims_nsss)
+
+        if !solved_nsss
+            return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        rhs_dense = ∂SS_equations_∂parameters isa Matrix ? ∂SS_equations_∂parameters : Matrix(∂SS_equations_∂parameters)
+
+        if size(qme_ws.nsss_jvp_rhs) != size(rhs_dense)
+            qme_ws.nsss_jvp_rhs = zeros(eltype(rhs_dense), size(rhs_dense))
+        end
+        copyto!(qme_ws.nsss_jvp_rhs, rhs_dense)
+
+        solve_lu_left!(∂SS_equations_∂SS_and_pars,
+                       qme_ws.nsss_jvp_rhs,
+                       qme_ws.fast_lu_ws_nsss,
+                       nsss_lu)
+
+        ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
+        JVP = qme_ws.nsss_jvp_rhs
     end
-
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
 
     jvp_no_exo = custom_ss_expand_matrix * JVP
 

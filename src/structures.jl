@@ -536,6 +536,11 @@ mutable struct first_order_workspace{T <: Real, R <: Real}
     fast_lu_dims_a0u::NTuple{2, Int}
     fast_lu_ws_nabla0::FastLapackInterface.LUWs
     fast_lu_dims_nabla0::NTuple{2, Int}
+
+    # Dedicated FastLapackInterface LU workspace for NSSS implicit derivatives
+    fast_lu_ws_nsss::FastLapackInterface.LUWs
+    fast_lu_dims_nsss::NTuple{2, Int}
+    nsss_jvp_rhs::Matrix{T}
 end
 
 

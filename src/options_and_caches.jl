@@ -263,7 +263,11 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                     empty_lu_ws,
                     (0, 0),
                     empty_lu_ws,
-                    (0, 0))
+                    (0, 0),
+                    # Dedicated FastLapackInterface LU workspace for NSSS implicit derivatives
+                    empty_lu_ws,
+                    (0, 0),
+                    zeros(T, 0, 0))
 end
 
 """
