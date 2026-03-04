@@ -2215,97 +2215,155 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
-function compressed_mixed_kron³(S::AbstractMatrix{TS},
-                                σ::AbstractMatrix{Tσ},
-                                U₃::AbstractSparseMatrix,
-                                C₃::AbstractSparseMatrix,
-                                P₁ₗ::AbstractSparseMatrix,
-                                P₁ᵣ::AbstractSparseMatrix,
-                                P₂ₗ::AbstractSparseMatrix,
-                                P₂ᵣ::AbstractSparseMatrix;
-                                rowmask::Vector{Int} = Int[],
-                                colmask::Vector{Int} = Int[],
-                                tol::AbstractFloat = eps(),
-                                sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TS <: Real, Tσ <: Real}
+function compressed_permuted_mixed_kron3(S::AbstractMatrix{TS},
+                                         σ::AbstractMatrix{Tσ},
+                                         L₀::AbstractSparseMatrix,
+                                         R₀::AbstractSparseMatrix,
+                                         L₁::AbstractSparseMatrix,
+                                         R₁::AbstractSparseMatrix,
+                                         L₂::AbstractSparseMatrix,
+                                         R₂::AbstractSparseMatrix;
+                                         tol::AbstractFloat = eps(),
+                                         sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TS <: Real, Tσ <: Real}
 
     T = promote_type(TS, Tσ)
 
     Ŝ = TS == T ? S : T.(S)
     σ̂ = Tσ == T ? σ : T.(σ)
 
-    n_rows = size(U₃, 1)
-    n_cols = size(C₃, 2)
+    n_rows = size(L₀, 1)
+    n_cols = size(R₀, 2)
 
-    if rowmask == Int[0] || colmask == Int[0]
-        return spzeros(T, n_rows, n_cols)
+    if size(L₁, 1) != n_rows || size(L₂, 1) != n_rows ||
+       size(R₁, 2) != n_cols || size(R₂, 2) != n_cols
+        throw(DimensionMismatch("All Lᵢ must have equal row count and all Rᵢ must have equal column count"))
     end
 
+    reused_sparse_buffers = sparse_preallocation !== nothing && length(sparse_preallocation[1]) > 0
     spalloc = if sparse_preallocation === nothing
         (Int[], Int[], T[], Int[], Int[], Int[], T[])
     else
         sparse_preallocation
     end
 
-    L₀ = U₃
-    L₁ = U₃ * P₁ₗ
-    L₂ = U₃ * P₂ₗ
+    nnzS = sum(abs.(Ŝ) .> eps())
+    nnzσ = sum(abs.(σ̂) .> eps())
+    nnzL = nnz(L₀) + nnz(L₁) + nnz(L₂)
+    nnzR = nnz(R₀) + nnz(R₁) + nnz(R₂)
 
-    R₀ = C₃
-    R₁ = P₁ᵣ * C₃
-    R₂ = P₂ᵣ * C₃
+    p = nnzL * nnzS * nnzσ * nnzR / (max(length(L₀), 1) * length(Ŝ) * length(σ̂) * max(length(R₀), 1) * 9)
+    estimated_nnz = max(Int(ceil((1 - (1 - p)^n_rows) * n_rows * n_cols)), 10000)
 
-    out = copy(mat_mult_kron(L₀, Ŝ, σ̂, R₀, sparse = true, sparse_preallocation = spalloc))
-    out += copy(mat_mult_kron(L₁, Ŝ, σ̂, R₁, sparse = true, sparse_preallocation = spalloc))
-    out += copy(mat_mult_kron(L₂, Ŝ, σ̂, R₂, sparse = true, sparse_preallocation = spalloc))
+    resize!(spalloc[1], estimated_nnz)
+    resize!(spalloc[2], estimated_nnz)
+    resize!(spalloc[3], estimated_nnz)
 
-    if length(rowmask) == 0 && length(colmask) == 0
-        if tol > 0
-            droptol!(out, tol)
-        end
-        return out
+    I = spalloc[1]
+    J = spalloc[2]
+    V = spalloc[3]
+
+    n_rowB = size(Ŝ, 1)
+    n_colB = size(Ŝ, 2)
+    n_rowC = size(σ̂, 1)
+    n_colC = size(σ̂, 2)
+
+    Ā = zeros(T, n_rowC, n_rowB)
+    ĀB = zeros(T, n_rowC, n_colB)
+    CĀB = zeros(T, n_colC, n_colB)
+    vCĀB = zeros(T, n_colB * n_colC)
+    vCĀBD = zeros(T, n_cols)
+    row_accum = zeros(T, n_cols)
+
+    rowmask = falses(n_rows)
+    rowmask₀ = falses(n_rows)
+    rowmask₁ = falses(n_rows)
+    rowmask₂ = falses(n_rows)
+
+    rv₀ = L₀ isa SparseMatrixCSC ? L₀.rowval : L₀.A.rowval
+    rv₁ = L₁ isa SparseMatrixCSC ? L₁.rowval : L₁.A.rowval
+    rv₂ = L₂ isa SparseMatrixCSC ? L₂.rowval : L₂.A.rowval
+
+    @inbounds for r in rv₀
+        rowmask[r] = true
+        rowmask₀[r] = true
+    end
+    @inbounds for r in rv₁
+        rowmask[r] = true
+        rowmask₁[r] = true
+    end
+    @inbounds for r in rv₂
+        rowmask[r] = true
+        rowmask₂[r] = true
     end
 
-    norowmask = length(rowmask) == 0
-    nocolmask = length(colmask) == 0
+    α = .7
+    k = 0
 
-    rowmask_lookup = norowmask ? BitVector() : falses(n_rows)
-    colmask_lookup = nocolmask ? BitVector() : falses(n_cols)
+    @inline function accumulate_term!(L::AbstractSparseMatrix, R::AbstractSparseMatrix, row::Int)
+        @views copyto!(Ā, L[row, :])
+        ℒ.mul!(ĀB, Ā, Ŝ)
+        ℒ.mul!(CĀB, σ̂', ĀB)
+        copyto!(vCĀB, CĀB)
+        ℒ.mul!(vCĀBD, R', vCĀB)
+        @. row_accum = row_accum + vCĀBD
+        return nothing
+    end
 
-    if !norowmask
-        @inbounds for r in rowmask
-            if 1 <= r <= n_rows
-                rowmask_lookup[r] = true
+    @inbounds for row in eachindex(rowmask)
+        rowmask[row] || continue
+
+        fill!(row_accum, zero(T))
+
+        rowmask₀[row] && accumulate_term!(L₀, R₀, row)
+        rowmask₁[row] && accumulate_term!(L₁, R₁, row)
+        rowmask₂[row] && accumulate_term!(L₂, R₂, row)
+
+        for (j, v) in enumerate(row_accum)
+            if abs(v) > eps(T)
+                k += 1
+                if k > estimated_nnz
+                    increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * n_rows * n_cols)))
+                    estimated_nnz += min(n_rows * n_cols, increment)
+                    resize!(I, estimated_nnz)
+                    resize!(J, estimated_nnz)
+                    resize!(V, estimated_nnz)
+                end
+                I[k] = row
+                J[k] = j
+                V[k] = v
             end
         end
     end
-    if !nocolmask
-        @inbounds for c in colmask
-            if 1 <= c <= n_cols
-                colmask_lookup[c] = true
-            end
-        end
+
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    klasttouch = spalloc[4]
+    csrrowptr  = spalloc[5]
+    csrcolval  = spalloc[6]
+    csrnzval   = spalloc[7]
+
+    resize!(klasttouch, n_cols)
+    resize!(csrrowptr, n_rows + 1)
+    resize!(csrcolval, length(I))
+    resize!(csrnzval, length(I))
+
+    out = if length(I) >= n_cols + 1
+        sparse!(I, J, V, n_rows, n_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    else
+        SparseArrays.sparse(I, J, V, n_rows, n_cols)
     end
 
-    I_out = Int[]
-    J_out = Int[]
-    V_out = T[]
-
-    I, J, V = findnz(out)
-    @inbounds for k in eachindex(V)
-        i = I[k]
-        j = J[k]
-        v = V[k]
-
-        if abs(v) > tol &&
-           (norowmask || rowmask_lookup[i]) &&
-           (nocolmask || colmask_lookup[j])
-            push!(I_out, i)
-            push!(J_out, j)
-            push!(V_out, v)
-        end
+    if reused_sparse_buffers
+        out = copy(out)
     end
 
-    return sparse(I_out, J_out, V_out, n_rows, n_cols)
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
 end
 
 

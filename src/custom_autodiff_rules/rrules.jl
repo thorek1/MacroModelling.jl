@@ -5625,20 +5625,12 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- B matrix -----------------------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    B = compressed_mixed_kron³(𝐒₁₋╱𝟏ₑ,
-                                M₂.𝛔,
-                                M₃.𝐔₃,
-                                M₃.𝐂₃,
-                                M₃.𝐏₁ₗ̄,
-                                M₃.𝐏₁ᵣ̃,
-                                M₃.𝐏₂ₗ̄,
-                                M₃.𝐏₂ᵣ̃;
-                                tol = opts.tol.droptol,
-                                sparse_preallocation = ℂ.tmp_sparse_prealloc1)
-    B = choose_matrix_format(B, tol = opts.tol.droptol, multithreaded = false)
+    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    B *= M₃.𝐂₃
+    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
-    ck3_𝐒₁₋╱𝟏ₑ = compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
-    B += ck3_𝐒₁₋╱𝟏ₑ
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]

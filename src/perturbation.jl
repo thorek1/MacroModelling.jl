@@ -458,17 +458,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Add tmpkron" begin
 
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-    B = compressed_mixed_kron³(𝐒₁₋╱𝟏ₑ,
-                                M₂.𝛔,
-                                M₃.𝐔₃,
-                                M₃.𝐂₃,
-                                M₃.𝐏₁ₗ̄,
-                                M₃.𝐏₁ᵣ̃,
-                                M₃.𝐏₂ₗ̄,
-                                M₃.𝐏₂ᵣ̃;
-                                tol = opts.tol.droptol,
-                                sparse_preallocation = ℂ.tmp_sparse_prealloc1)
-    B = choose_matrix_format(B, tol = opts.tol.droptol, multithreaded = false)
+    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    B *= M₃.𝐂₃
+    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
