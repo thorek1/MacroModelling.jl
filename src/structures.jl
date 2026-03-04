@@ -761,11 +761,15 @@ mutable struct NSSSSolverWorkspace
     error_buffer::Vector{Float64}     # for error_func! / aux_error_func! output
     params_vec_buffer::Vector{Float64} # extended parameter vector (bounded + calibration_no_var)
     sol_vec_buffer::Vector{Float64}   # solution vector across NSSS steps
+    output_buffer::Vector{Float64}    # returned NSSS output (subset view materialized into reusable buffer)
     guess_buffer::Vector{Float64}     # for initial_guess in numerical steps
     inits::Vector{Vector{Float64}}    # 2-element container: [clamped_guess, cached_params]
     params_and_solved_vars_buffer::Vector{Float64}  # gathered block inputs (params + solved vars)
     lbs_buffer::Vector{Float64}       # numerical lower bounds for current block
     ubs_buffer::Vector{Float64}       # numerical upper bounds for current block
+    scaled_parameters_buffer::Vector{Float64} # continuation interpolation scratch
+    continuation_cache::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
+    continuation_cache_capacity::Int
 end
 
 
@@ -793,9 +797,10 @@ NSSSSolverConstants() = NSSSSolverConstants(
 
 """Construct an empty `NSSSSolverWorkspace` with no buffers."""
 NSSSSolverWorkspace() = NSSSSolverWorkspace(
-    Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+    Float64[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
     [Float64[], Float64[Inf]],
     Float64[], Float64[], Float64[],
+    Float64[], CircularBuffer{Vector{Vector{Float64}}}(1), 1,
 )
 
 mutable struct valid_for_caches

@@ -3951,7 +3951,11 @@ function solve_steady_state!(𝓂::ℳ,
         @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
     end
     
-    𝓂.caches.non_stochastic_steady_state = SS_and_pars
+    cache_ss = 𝓂.caches.non_stochastic_steady_state
+    if length(cache_ss) != length(SS_and_pars)
+        resize!(cache_ss, length(SS_and_pars))
+    end
+    copyto!(cache_ss, SS_and_pars)
     
     if found_solution
         𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
@@ -3985,10 +3989,6 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
     return nothing
 end
 
-
-function reverse_diff_friendly_push!(x,y)
-    push!(x,y)
-end
 
 function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::Tolerances = Tolerances())::Float64
     log_lik = 0.0
@@ -5073,7 +5073,11 @@ function solve!(𝓂::ℳ;
             end
             
             𝓂.caches.first_order_solution_matrix = S₁
-            𝓂.caches.non_stochastic_steady_state = SS_and_pars
+            cache_ss = 𝓂.caches.non_stochastic_steady_state
+            if length(cache_ss) != length(SS_and_pars)
+                resize!(cache_ss, length(SS_and_pars))
+            end
+            copyto!(cache_ss, SS_and_pars)
         end
 
         if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
