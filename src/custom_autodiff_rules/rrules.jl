@@ -5872,6 +5872,11 @@ function rrule(::typeof(solve_lyapunov_equation),
                 verbose::Bool = false)
 
     P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    if size(workspace.P_cache) != size(P)
+        workspace.P_cache = zeros(eltype(P), size(P)...)
+    end
+    copyto!(workspace.P_cache, P)
+    P_cached = workspace.P_cache
     ensure_lyapunov_doubling_buffers!(workspace)
 
     # pullback 
@@ -5888,15 +5893,15 @@ function rrule(::typeof(solve_lyapunov_equation),
         ∂A = zero(A)
 
         ℒ.mul!(tmp_n1, ∂C, A)
-        ℒ.mul!(∂A, tmp_n1, P')
+        ℒ.mul!(∂A, tmp_n1, P_cached')
 
         ℒ.mul!(tmp_n2, ∂C', A)
-        ℒ.mul!(∂A, tmp_n2, P, 1, 1)
+        ℒ.mul!(∂A, tmp_n2, P_cached, 1, 1)
 
         return NoTangent(), ∂A, ∂C, NoTangent()
     end
     
-    return (P, solved), solve_lyapunov_equation_pullback
+    return (P_cached, solved), solve_lyapunov_equation_pullback
 end
 
 function rrule(::typeof(find_shocks),
