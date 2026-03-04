@@ -2187,6 +2187,95 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
+function compressed_mixed_kron³(S::AbstractMatrix{T},
+                                σ::AbstractMatrix{T},
+                                U₃::AbstractSparseMatrix,
+                                C₃::AbstractSparseMatrix,
+                                P₁ₗ::AbstractSparseMatrix,
+                                P₁ᵣ::AbstractSparseMatrix,
+                                P₂ₗ::AbstractSparseMatrix,
+                                P₂ᵣ::AbstractSparseMatrix;
+                                rowmask::Vector{Int} = Int[],
+                                colmask::Vector{Int} = Int[],
+                                tol::AbstractFloat = eps(),
+                                sparse_preallocation::Union{Nothing, Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}}} = nothing) where T <: Real
+
+    n_rows = size(U₃, 1)
+    n_cols = size(C₃, 2)
+
+    if rowmask == Int[0] || colmask == Int[0]
+        return spzeros(T, n_rows, n_cols)
+    end
+
+    spalloc = if sparse_preallocation === nothing
+        (Int[], Int[], T[], Int[], Int[], Int[], T[])
+    else
+        sparse_preallocation
+    end
+
+    L₀ = U₃
+    L₁ = U₃ * P₁ₗ
+    L₂ = U₃ * P₂ₗ
+
+    R₀ = C₃
+    R₁ = P₁ᵣ * C₃
+    R₂ = P₂ᵣ * C₃
+
+    out = copy(mat_mult_kron(L₀, S, σ, R₀, sparse = true, sparse_preallocation = spalloc))
+    out += copy(mat_mult_kron(L₁, S, σ, R₁, sparse = true, sparse_preallocation = spalloc))
+    out += copy(mat_mult_kron(L₂, S, σ, R₂, sparse = true, sparse_preallocation = spalloc))
+
+    if length(rowmask) == 0 && length(colmask) == 0
+        if tol > 0
+            droptol!(out, tol)
+        end
+        return out
+    end
+
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+
+    rowmask_lookup = norowmask ? BitVector() : falses(n_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(n_cols)
+
+    if !norowmask
+        @inbounds for r in rowmask
+            if 1 <= r <= n_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask
+        @inbounds for c in colmask
+            if 1 <= c <= n_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
+
+    I_out = Int[]
+    J_out = Int[]
+    V_out = T[]
+
+    I, J, V = findnz(out)
+    @inbounds for k in eachindex(V)
+        i = I[k]
+        j = J[k]
+        v = V[k]
+
+        if abs(v) > tol &&
+           (norowmask || rowmask_lookup[i]) &&
+           (nocolmask || colmask_lookup[j])
+            push!(I_out, i)
+            push!(J_out, j)
+            push!(V_out, v)
+        end
+    end
+
+    return sparse(I_out, J_out, V_out, n_rows, n_cols)
+end
+
+
 function compressed_kron²(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
