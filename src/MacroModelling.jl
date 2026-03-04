@@ -1551,6 +1551,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     J = Vector{Int}()
     V = Vector{T}()
     X = zeros(T, 0, 0)
+    reused_sparse_buffers = sparse && length(sparse_preallocation[1]) > 0
 
     if sparse
         nnzA = nnz(A)
@@ -1574,6 +1575,8 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
             estimated_nnz = length(sparse_preallocation[3])
 
             resize!(sparse_preallocation[1], estimated_nnz)
+            resize!(sparse_preallocation[2], estimated_nnz)
+            resize!(sparse_preallocation[3], estimated_nnz)
 
             I = sparse_preallocation[1]
             J = sparse_preallocation[2]
@@ -1649,7 +1652,14 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         resize!(csrcolval, length(I))
         resize!(csrnzval, length(I))
 
-        out = sparse!(I, J, V, size(A, 1), size(D,2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        if length(I) >= size(D,2) + 1
+            out = sparse!(I, J, V, size(A, 1), size(D,2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        else
+            out = sparse(I, J, V, size(A, 1), size(D,2))
+        end
+        if reused_sparse_buffers
+            out = copy(out)
+        end
     else
         out = choose_matrix_format(X)
     end
@@ -1730,6 +1740,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     J = Vector{Int}()
     V = Vector{T}()
     X = zeros(T, 0, 0)
+    reused_sparse_buffers = sparse && length(sparse_preallocation[1]) > 0
 
     if sparse
         nnzA = nnz(A)
@@ -1752,6 +1763,8 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
             estimated_nnz = length(sparse_preallocation[3])
 
             resize!(sparse_preallocation[1], estimated_nnz)
+            resize!(sparse_preallocation[2], estimated_nnz)
+            resize!(sparse_preallocation[3], estimated_nnz)
 
             I = sparse_preallocation[1]
             J = sparse_preallocation[2]
@@ -1814,7 +1827,14 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         resize!(csrcolval, length(I))
         resize!(csrnzval, length(I))
 
-        out = sparse!(I, J, V, size(A, 1), n_colB * n_colC, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        if length(I) >= n_colB * n_colC + 1
+            out = sparse!(I, J, V, size(A, 1), n_colB * n_colC, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        else
+            out = sparse(I, J, V, size(A, 1), n_colB * n_colC)
+        end
+        if reused_sparse_buffers
+            out = copy(out)
+        end
         # out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
     else
         out = choose_matrix_format(X)
@@ -1938,6 +1958,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     # @timeit_debug timer "Preallocation" begin
     
     a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
+    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
     
     if a_is_adjoint
         â = copy(a')
@@ -1989,6 +2010,8 @@ function compressed_kron³(a::AbstractMatrix{T};
         estimated_nnz = length(sparse_preallocation[3])
 
         resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
 
         I = sparse_preallocation[1]
         J = sparse_preallocation[2]
@@ -2183,12 +2206,16 @@ function compressed_kron³(a::AbstractMatrix{T};
         # out = sparse!(I, J, V, m3_rows, m3_cols)
     end
 
+    if reused_sparse_buffers
+        out = copy(out)
+    end
+
     return out
 end
 
 
-function compressed_mixed_kron³(S::AbstractMatrix{T},
-                                σ::AbstractMatrix{T},
+function compressed_mixed_kron³(S::AbstractMatrix{TS},
+                                σ::AbstractMatrix{Tσ},
                                 U₃::AbstractSparseMatrix,
                                 C₃::AbstractSparseMatrix,
                                 P₁ₗ::AbstractSparseMatrix,
@@ -2198,7 +2225,12 @@ function compressed_mixed_kron³(S::AbstractMatrix{T},
                                 rowmask::Vector{Int} = Int[],
                                 colmask::Vector{Int} = Int[],
                                 tol::AbstractFloat = eps(),
-                                sparse_preallocation::Union{Nothing, Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}}} = nothing) where T <: Real
+                                sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TS <: Real, Tσ <: Real}
+
+    T = promote_type(TS, Tσ)
+
+    Ŝ = TS == T ? S : T.(S)
+    σ̂ = Tσ == T ? σ : T.(σ)
 
     n_rows = size(U₃, 1)
     n_cols = size(C₃, 2)
@@ -2221,9 +2253,9 @@ function compressed_mixed_kron³(S::AbstractMatrix{T},
     R₁ = P₁ᵣ * C₃
     R₂ = P₂ᵣ * C₃
 
-    out = copy(mat_mult_kron(L₀, S, σ, R₀, sparse = true, sparse_preallocation = spalloc))
-    out += copy(mat_mult_kron(L₁, S, σ, R₁, sparse = true, sparse_preallocation = spalloc))
-    out += copy(mat_mult_kron(L₂, S, σ, R₂, sparse = true, sparse_preallocation = spalloc))
+    out = copy(mat_mult_kron(L₀, Ŝ, σ̂, R₀, sparse = true, sparse_preallocation = spalloc))
+    out += copy(mat_mult_kron(L₁, Ŝ, σ̂, R₁, sparse = true, sparse_preallocation = spalloc))
+    out += copy(mat_mult_kron(L₂, Ŝ, σ̂, R₂, sparse = true, sparse_preallocation = spalloc))
 
     if length(rowmask) == 0 && length(colmask) == 0
         if tol > 0
@@ -2283,6 +2315,7 @@ function compressed_kron²(a::AbstractMatrix{T};
                     sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
 
     a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
+    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
 
     if a_is_adjoint
         â = copy(a')
@@ -2335,6 +2368,8 @@ function compressed_kron²(a::AbstractMatrix{T};
         estimated_nnz = length(sparse_preallocation[3])
 
         resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
 
         I = sparse_preallocation[1]
         J = sparse_preallocation[2]
@@ -2445,6 +2480,10 @@ function compressed_kron²(a::AbstractMatrix{T};
         resize!(csrnzval, length(I))
 
         out = sparse!(I, J, V, m2_rows, m2_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    end
+
+    if reused_sparse_buffers
+        out = copy(out)
     end
 
     return out
