@@ -1118,14 +1118,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.bicgstab.m == 0
-        𝕊ℂ.krylov_workspace.bicgstab =  BicgstabWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.bicgstab.m == 0
+        𝕊ℂ.krylov.bicgstab =  BicgstabWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.bicgstab(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.bicgstab!(   𝕊ℂ.krylov_workspace.bicgstab,
+        Krylov.bicgstab!(   𝕊ℂ.krylov.bicgstab,
                             sylvester, [vec(𝐂¹);], 
                             # [vec(initial_guess);], 
                             itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1140,7 +1140,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.bicgstab.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.bicgstab.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1171,7 +1171,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.bicgstab.stats.niter
+    iter = 𝕊ℂ.krylov.bicgstab.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol
@@ -1270,14 +1270,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.dqgmres.m == 0
-        𝕊ℂ.krylov_workspace.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.dqgmres.m == 0
+        𝕊ℂ.krylov.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "DQGMRES solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.dqgmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.dqgmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.dqgmres!(𝕊ℂ.krylov_workspace.dqgmres,
+        Krylov.dqgmres!(𝕊ℂ.krylov.dqgmres,
                         sylvester, [vec(𝐂¹);], 
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1292,7 +1292,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.dqgmres.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.dqgmres.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1323,7 +1323,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.dqgmres.stats.niter
+    iter = 𝕊ℂ.krylov.dqgmres.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol
@@ -1422,14 +1422,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.gmres.m == 0
-        𝕊ℂ.krylov_workspace.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.gmres.m == 0
+        𝕊ℂ.krylov.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.gmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.gmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.gmres!(𝕊ℂ.krylov_workspace.gmres,
+        Krylov.gmres!(𝕊ℂ.krylov.gmres,
                         sylvester, [vec(𝐂¹);], 
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1444,7 +1444,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.gmres.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.gmres.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1475,7 +1475,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.gmres.stats.niter
+    iter = 𝕊ℂ.krylov.gmres.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol

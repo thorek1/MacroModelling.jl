@@ -363,7 +363,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                cache.second_order_solution.rowval == 𝐒₂.rowval
             copyto!(cache.second_order_solution.nzval, 𝐒₂.nzval)
         else
-            cache.second_order_solution = 𝐒₂
+            cache.second_order_solution = copy(𝐒₂)
         end
     end
 
@@ -628,7 +628,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                cache.third_order_solution.rowval == 𝐒₃.rowval
             copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
         else
-            cache.third_order_solution = 𝐒₃
+            cache.third_order_solution = copy(𝐒₃)
         end
     end
 

@@ -478,10 +478,10 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     𝐂B::Matrix{G}     # n×m temporary for C*B multiplication
     
     # Krylov solver state (lazily allocated)
-    krylov_workspace::krylov_workspace{G}
+    krylov::krylov_workspace{G}
 
     # Stable primal solution cache for AD/rrule pullbacks
-    P_cache::Matrix{G}
+    P::Matrix{G}
     
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
@@ -499,7 +499,7 @@ Contains temporary matrices and factorization workspaces reused by
 """
 mutable struct first_order_workspace{T <: Real, R <: Real}
     # Sylvester workspace for ForwardDiff path
-    sylvester_ws::sylvester_workspace{T, R}
+    sylvester::sylvester_workspace{T, R}
 
     # ForwardDiff partials buffers (for forward-mode AD)
     X̃_first_order::Matrix{R}   # For first order solution partials
@@ -573,7 +573,7 @@ mutable struct qme_doubling_workspace{T <: Real, R <: Real}
     AXX::Matrix{T}
 
     # Sylvester workspace for ForwardDiff path
-    sylvester_ws::sylvester_workspace{T, R}
+    sylvester::sylvester_workspace{T, R}
 
     # ForwardDiff partials buffers (for forward-mode AD)
     X̃::Matrix{R}               # For QME solution partials
@@ -676,11 +676,11 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     b::Vector{T}
     
     # Krylov solver state (lazily allocated, can be reused across calls)
-    bicgstab_workspace::Krylov.BicgstabWorkspace{T, T, Vector{T}}
-    gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
+    bicgstab::Krylov.BicgstabWorkspace{T, T, Vector{T}}
+    gmres::Krylov.GmresWorkspace{T, T, Vector{T}}
     
     # ForwardDiff partials buffers (for forward-mode AD)
-    P_cache::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
+    P::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
     P̃::Matrix{R}       # For lyapunov equation partials
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
@@ -781,8 +781,8 @@ mutable struct NSSSSolverWorkspace
     lbs_buffer::Vector{Float64}       # numerical lower bounds for current block
     ubs_buffer::Vector{Float64}       # numerical upper bounds for current block
     scaled_parameters_buffer::Vector{Float64} # continuation interpolation scratch
-    continuation_cache::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
-    continuation_cache_capacity::Int
+    continuation::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
+    continuation_capacity::Int
 end
 
 
@@ -851,7 +851,7 @@ Fields:
 - Perturbation solutions (`first_order_solution_matrix`, `second_order_solution`, etc.):
   Policy function coefficient matrices
 - `non_stochastic_steady_state`: NSSS solution values
-- `solver_cache`: Recent solver guesses for warm-starting
+- `solver`: Recent solver guesses for warm-starting
 
 Relationship to other structs:
 - Caches are computed using `constants` (for dimensions/structure) and `workspaces` (for temporary buffers)
@@ -893,9 +893,9 @@ mutable struct caches
     # STEADY STATE CACHES
     # =========================================================================
     non_stochastic_steady_state::Vector{<: Real}           # NSSS values
-    solver_cache::CircularBuffer{Vector{Vector{Float64}}}  # Recent solver guesses
-    ∂equations_∂parameters::AbstractMatrix{<: Real}        # SS sensitivity to params
-    ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}       # SS Jacobian
+    solver::CircularBuffer{Vector{Vector{Float64}}}  # Recent solver guesses
+    NSSS_∂equations_∂parameters::AbstractMatrix{<: Real}  # Dedicated NSSS SS sensitivity
+    NSSS_∂equations_∂SS_and_pars::AbstractMatrix{<: Real} # Dedicated NSSS SS Jacobian
 end
 
 # Structs for perturbation derivative functions (used for AD)
@@ -1085,7 +1085,7 @@ Purpose: Speed up computation by eliminating allocation overhead in hot loops.
 
 Fields:
 - `second_order/third_order`: Higher-order perturbation solution workspaces
-- `custom_steady_state_buffer`: Buffer for custom steady state evaluation
+- `custom_steady_state`: Buffer for custom steady state evaluation
 - `first_order`: First-order perturbation solver workspace
 - `qme_doubling`: Quadratic matrix equation doubling solver workspace
 - `lyapunov_*`: Lyapunov equation solver workspaces (1st, 2nd, 3rd order)
@@ -1104,7 +1104,7 @@ mutable struct workspaces
     second_order::higher_order_workspace        # Kronecker products, sparse preallocs
     third_order::higher_order_workspace         # Separate workspace for 3rd order
     # Steady state buffer
-    custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
+    custom_steady_state::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
     first_order::first_order_workspace{Float64, Float64} # First-order perturbation solver
     qme_doubling::qme_doubling_workspace{Float64, Float64} # QME doubling solver
