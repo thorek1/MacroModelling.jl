@@ -164,7 +164,7 @@ third_order_solution = sparse(third_order_solution * RBC_CME.constants.third_ord
     -0.0226
     0.0021014511165327685
     -0.0021014511165327685],7,225)
-    @test isapprox(∇₂ * RBC_CME.constants.third_order.𝐔∇₂, hessian2,rtol = eps(Float32))
+    @test isapprox(∇₂ * RBC_CME.constants.second_order.𝐔∇₂, hessian2,rtol = eps(Float32))
 
 
     third_order_derivatives2 = sparse(vec([ 2  2  2  2  3  3  3  3  3  3  3  3  2  2  3  3  3  2  3  2  3  3  2  3  3  2  2  2  1  5  4  3  3  3  3  2  3  2  2  2  2  2  2  2  2  1  5  1  5  1  5]),
@@ -564,7 +564,7 @@ end
     [0,0.95,0,0], [1,1,1,2], [.16, .999,.022,1], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.constants.post_complete_parameters.parameters[1:4], mean = RBC_CME.constants.post_model_macro.var[[4,6]], standard_deviation = RBC_CME.constants.post_model_macro.var[4:5], autocorrelation = RBC_CME.constants.post_model_macro.var[[3,5]], autocorrelation_periods = 1:1, algorithm = :pruned_third_order)
+    out = get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.constants.post_complete_parameters.parameters[1:4], mean = RBC_CME.constants.post_model_macro.var[[4,6]], standard_deviation = RBC_CME.constants.post_model_macro.var[4:5], autocorrelation = RBC_CME.constants.post_model_macro.var[[3,5]], autocorrelation_periods = 1:1, algorithm = :pruned_third_order)
 
     @test isapprox([out[:mean], out[:standard_deviation], out[:autocorrelation], sol.minimizer[3]],
     [[1.2,1.4],[.013,.2],[.955,.997][:,:],.0215],
