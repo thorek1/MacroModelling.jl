@@ -77,10 +77,8 @@ first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, R
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces, RBC_CME.caches)
 
-
-# second_order_solution *= RBC_CME.constants.second_order_auxiliary_matrices.𝐔₂
-
-second_order_solution = sparse(second_order_solution * RBC_CME.constants.second_order.𝐔₂)
+# second_order_solution is now compressed (b₂ columns); pass compressed to third-order
+# (both functions expand internally)
 
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
                                                             ∇₂, 
@@ -90,6 +88,9 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             RBC_CME.constants, 
                                                             RBC_CME.workspaces,
                                                             RBC_CME.caches)
+
+# Expand second_order_solution to full space for comparison
+second_order_solution = sparse(second_order_solution * RBC_CME.constants.second_order.𝐔₂)
 
 # third_order_solution *= RBC_CME.constants.third_order_auxiliary_matrices.𝐔₃
 

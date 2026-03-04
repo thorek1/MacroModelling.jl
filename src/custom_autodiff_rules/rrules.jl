@@ -451,11 +451,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
-    SS_and_pars_names = ms.SS_and_pars_names
-    SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
-
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
+    custom_ss_expand_matrix = ms.custom_ss_expand_matrix
 
     ∂ = parameter_values
     C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
@@ -474,6 +470,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
     𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
 
     ∂SS_equations_∂parameters = jac_buffer
+
+    ∂SS_equations_∂parameters_dense = Matrix(∂SS_equations_∂parameters)
 
     
     if eltype(𝓂.caches.∂equations_∂SS_and_pars) != eltype(SS_and_pars)
@@ -497,23 +495,20 @@ function rrule(::typeof(get_NSSS_and_parameters),
         return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    # TODO: use leftdiv fastlapack here
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
 
-    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
-    # TODO: see that you can replace this with custom_ss_expand_matrix or any other already calculated object inside the constants structs. and then replace the unknowns constructions throughout the module. and then also handle allocations for what will then be JVP *custom_expand_matrix and jvp' * ∂SS_and_pars[1]
-    @inbounds for (i,v) in enumerate(SS_and_pars_names)
-        if v in unknowns
-            jvp[i,:] = JVP[indexin([v], unknowns),:]
-        end
-    end
+    jvp_no_exo = custom_ss_expand_matrix * JVP
 
     # end # timeit_debug
     # end # timeit_debug
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
+        ∂SS = ∂SS_and_pars[1]
+        if ∂SS isa Union{NoTangent, AbstractZero}
+            return NoTangent(), NoTangent(), zeros(S, size(jvp_no_exo, 2)), NoTangent()
+        end
+        return NoTangent(), NoTangent(), jvp_no_exo' * ∂SS, NoTangent()
     end
 
 
@@ -755,7 +750,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
               ∇₁,
               ∇₂,
               𝐒₁,
-              𝐒₂,
+              𝐒₂_raw,
               SSSstates,
               constants)
 
@@ -765,7 +760,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         ∂∇₁_direct = zeros(Float64, size(∇₁))
         ∂∇₂_direct = zeros(Float64, size(∇₂))
         ∂𝐒₁_aug = zeros(Float64, size(𝐒₁))
-        ∂𝐒₂_total = spzeros(Float64, size(𝐒₂)...)
+        ∂𝐒₂_raw_total = zeros(Float64, size(𝐒₂_raw))
         ∂SSSstates = zeros(Float64, length(SSSstates))
 
         if !(Δcommon isa Union{NoTangent, AbstractZero})
@@ -781,7 +776,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
             ∂∇₁_direct = v5 isa Union{NoTangent, AbstractZero} ? ∂∇₁_direct : v5
             ∂∇₂_direct = v6 isa Union{NoTangent, AbstractZero} ? ∂∇₂_direct : v6
             ∂𝐒₁_aug = v7 isa Union{NoTangent, AbstractZero} ? ∂𝐒₁_aug : v7
-            ∂𝐒₂_total = v8 isa Union{NoTangent, AbstractZero} ? ∂𝐒₂_total : v8
+            ∂𝐒₂_raw_total = v8 isa Union{NoTangent, AbstractZero} ? ∂𝐒₂_raw_total : v8
             ∂SSSstates = v9 isa Union{NoTangent, AbstractZero} ? ∂SSSstates : v9
         end
 
@@ -791,16 +786,15 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
             ∂𝐒₁_aug[past_idx, 1:nPast] .-= ∂tmp
             ∂𝐒₂_from_rhs = spzeros(Float64, size(𝐒₂)...)
             ∂𝐒₂_from_rhs[past_idx, :] += ∂rhs * kron_aug1' / 2
-            ∂𝐒₂_total += ∂𝐒₂_from_rhs
+            ∂𝐒₂_raw_total += ∂𝐒₂_from_rhs * 𝐔₂'
         end
 
         X = ms.steady_state_expand_matrix
         ∂SS_and_pars_from_allSS = X' * ∂all_SS
 
         ∂𝐒₁_raw = hcat(∂𝐒₁_aug[:, 1:nPast], ∂𝐒₁_aug[:, nPast+2:end])
-        ∂𝐒₂_raw = ∂𝐒₂_total * 𝐔₂'
 
-        so2_tangents = second_order_pullback((∂𝐒₂_raw, NoTangent()))
+        so2_tangents = second_order_pullback((∂𝐒₂_raw_total, NoTangent()))
         ∂∇₁_from_so2 = so2_tangents[2]
         ∂∇₂_from_so2 = so2_tangents[3]
         ∂𝐒₁_raw_from_so2 = so2_tangents[4]
@@ -842,7 +836,11 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     𝓂;
                                     opts = opts,
                                     estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -939,6 +937,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂𝐒₁_newton = newton_tangents[3]
         ∂𝐒₂_newton = newton_tangents[4]
 
+        # Convert full-space ∂𝐒₂ to compressed for common_pullback
+        ∂𝐒₂_raw_total = (∂𝐒₂_from_state + ∂𝐒₂_newton + Δ𝐒₂) * 𝐔₂'
+
         common_tangents = common_pullback((NoTangent(),
                                            Δsss,
                                            ΔSS_and_pars,
@@ -946,7 +947,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                            Δ∇₁,
                                            Δ∇₂,
                                            ∂𝐒₁_from_state + ∂𝐒₁_newton + Δ𝐒₁,
-                                           ∂𝐒₂_from_state + ∂𝐒₂_newton + Δ𝐒₂,
+                                           ∂𝐒₂_raw_total,
                                            NoTangent(),
                                            NoTangent()))
 
@@ -967,7 +968,11 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     𝓂;
                                     opts = opts,
                                     estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full for stochastic SS computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1027,6 +1032,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂𝐒₂_from_state += ∂state_vec * kron_aug1' / 2
         ∂SSSstates = 𝐒₁[:,1:nPast]' * ∂state_vec
 
+        # Convert full-space ∂𝐒₂ to compressed for common_pullback
+        ∂𝐒₂_raw_total = (∂𝐒₂_from_state + Δ𝐒₂) * 𝐔₂'
+
         common_tangents = common_pullback((NoTangent(),
                                            Δsss,
                                            ΔSS_and_pars,
@@ -1034,7 +1042,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                            Δ∇₁,
                                            Δ∇₂,
                                            ∂𝐒₁_from_state + Δ𝐒₁,
-                                           ∂𝐒₂_from_state + Δ𝐒₂,
+                                           ∂𝐒₂_raw_total,
                                            ∂SSSstates,
                                            NoTangent()))
 
@@ -1055,7 +1063,10 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     𝓂;
                                     opts = opts,
                                     estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1082,7 +1093,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
     (𝐒₃, solved3), third_order_solution_pullback =
-        rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
+        rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂_raw,
               𝓂.constants,
               𝓂.workspaces,
               𝓂.caches;
@@ -1215,7 +1226,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂∇₂_from_so3 = so3_tangents[3] isa Union{NoTangent, AbstractZero} ? zero(∇₂) : so3_tangents[3]
         ∂∇₃_from_so3 = so3_tangents[4] isa Union{NoTangent, AbstractZero} ? zero(∇₃) : so3_tangents[4]
         ∂𝐒₁_raw_from_so3 = so3_tangents[5] isa Union{NoTangent, AbstractZero} ? zero(𝐒₁_raw) : so3_tangents[5]
-        ∂𝐒₂_from_so3 = so3_tangents[6] isa Union{NoTangent, AbstractZero} ? zero(𝐒₂) : so3_tangents[6]
+        ∂𝐒₂_raw_from_so3 = so3_tangents[6] isa Union{NoTangent, AbstractZero} ? zero(𝐒₂_raw) : so3_tangents[6]
 
         ∂𝐒₁_from_so3 = zeros(Float64, size(𝐒₁))
         ∂𝐒₁_from_so3[:, 1:nPast] = ∂𝐒₁_raw_from_so3[:, 1:nPast]
@@ -1226,6 +1237,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂params_from_∇₃ = third_derivatives_tangents[2]
         ∂SS_and_pars_from_∇₃ = third_derivatives_tangents[3]
 
+        # Convert full-space ∂𝐒₂ terms to compressed, then accumulate with compressed ∂𝐒₂_raw_from_so3
+        ∂𝐒₂_raw_for_common = ∂𝐒₂_raw_from_so3 + (∂𝐒₂_from_state + ∂𝐒₂_newton + Δ𝐒₂) * 𝐔₂'
+
         common_tangents = common_pullback((NoTangent(),
                                            Δsss,
                                            ΔSS_and_pars + ∂SS_and_pars_from_∇₃,
@@ -1233,7 +1247,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                            Δ∇₁ + ∂∇₁_from_so3,
                                            Δ∇₂ + ∂∇₂_from_so3,
                                            ∂𝐒₁_from_state + ∂𝐒₁_newton + Δ𝐒₁ + ∂𝐒₁_from_so3,
-                                           ∂𝐒₂_from_state + ∂𝐒₂_newton + Δ𝐒₂ + ∂𝐒₂_from_so3,
+                                           ∂𝐒₂_raw_for_common,
                                            NoTangent(),
                                            NoTangent()))
 
@@ -1255,7 +1269,10 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                     𝓂;
                                     opts = opts,
                                     estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     if !ok
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1282,7 +1299,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
     (𝐒₃, solved3), third_order_solution_pullback =
-        rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
+        rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂_raw,
               𝓂.constants,
               𝓂.workspaces,
               𝓂.caches;
@@ -1362,7 +1379,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂∇₂_from_so3 = so3_tangents[3] isa Union{NoTangent, AbstractZero} ? zero(∇₂) : so3_tangents[3]
         ∂∇₃_from_so3 = so3_tangents[4] isa Union{NoTangent, AbstractZero} ? zero(∇₃) : so3_tangents[4]
         ∂𝐒₁_raw_from_so3 = so3_tangents[5] isa Union{NoTangent, AbstractZero} ? zero(𝐒₁_raw) : so3_tangents[5]
-        ∂𝐒₂_from_so3 = so3_tangents[6] isa Union{NoTangent, AbstractZero} ? zero(𝐒₂) : so3_tangents[6]
+        ∂𝐒₂_raw_from_so3 = so3_tangents[6] isa Union{NoTangent, AbstractZero} ? zero(𝐒₂_raw) : so3_tangents[6]
 
         ∂𝐒₁_from_so3 = zeros(Float64, size(𝐒₁))
         ∂𝐒₁_from_so3[:, 1:nPast] = ∂𝐒₁_raw_from_so3[:, 1:nPast]
@@ -1373,6 +1390,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         ∂params_from_∇₃ = third_derivatives_tangents[2]
         ∂SS_and_pars_from_∇₃ = third_derivatives_tangents[3]
 
+        # Convert full-space ∂𝐒₂ terms to compressed, then accumulate with compressed ∂𝐒₂_raw_from_so3
+        ∂𝐒₂_raw_for_common = ∂𝐒₂_raw_from_so3 + (∂𝐒₂_from_state + Δ𝐒₂) * 𝐔₂'
+
         common_tangents = common_pullback((NoTangent(),
                                            Δsss,
                                            ΔSS_and_pars + ∂SS_and_pars_from_∇₃,
@@ -1380,7 +1400,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                                            Δ∇₁ + ∂∇₁_from_so3,
                                            Δ∇₂ + ∂∇₂_from_so3,
                                            ∂𝐒₁_from_state + Δ𝐒₁ + ∂𝐒₁_from_so3,
-                                           ∂𝐒₂_from_state + Δ𝐒₂ + ∂𝐒₂_from_so3,
+                                           ∂𝐒₂_raw_for_common,
                                            ∂SSSstates,
                                            NoTangent()))
 
@@ -2776,9 +2796,8 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
 
     slvd = solved && solved2 && info
-    𝐒₂_sp = sparse(𝐒₂_full)
 
-    result = (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_sp, ∇₂, slvd)
+    result = (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd)
 
     # ── Pullback ──
     function calculate_second_order_moments_with_covariance_pullback(∂out)
@@ -2819,7 +2838,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
         # Pass-through cotangents
         if !(∂𝐒₁_pass  isa AbstractZero); ∂𝐒₁_acc .+= ∂𝐒₁_pass;  end
         if !(∂SS_pass   isa AbstractZero); ∂SS_acc  .+= ∂SS_pass;   end
-        if !(∂𝐒₂_pass   isa AbstractZero); ∂S2f     .+= ∂𝐒₂_pass;   end
+        # ∂𝐒₂_pass is now compressed — accumulate after ∂S2f * 𝐔₂' conversion below
         if !(∂∇₁_pass   isa AbstractZero); ∂∇₁_acc  .+= ∂∇₁_pass;   end
         if !(∂Σᶻ₁_pass  isa AbstractZero); ∂Σᶻ₁_acc .+= ∂Σᶻ₁_pass;  end
         if !(∂Σᶻ₂_pass  isa AbstractZero); ∂Σᶻ₂_acc .+= ∂Σᶻ₂_pass;  end
@@ -2943,8 +2962,10 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
         ∂Σʸ₁[iˢ, iˢ] .= ∂Σᶻ₁_acc
         if !(∂Σʸ₁_pass isa AbstractZero); ∂Σʸ₁ .+= ∂Σʸ₁_pass; end
 
-        # ── S₂_full → S₂_raw ──
+        # ── S₂_full → S₂_raw (compressed) ──
         ∂S2_raw = ∂S2f * 𝐔₂'
+        # Add compressed pass-through from callers (position 13 now holds compressed 𝐒₂_raw)
+        if !(∂𝐒₂_pass isa AbstractZero); ∂S2_raw .+= ∂𝐒₂_pass; end
 
         # ── Chain through sub-rrule pullbacks ──
         so2_grad = so2_pb((∂S2_raw, NoTangent()))
@@ -2994,15 +3015,19 @@ function rrule(::typeof(calculate_third_order_moments),
 
     # ── Step 1: Second-order moments with covariance ──
     som2_out, som2_pb = rrule(calculate_second_order_moments_with_covariance, parameters, 𝓂; opts = opts)
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = som2_out
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = som2_out
 
     if !solved; return zero_4(), zero_pb; end
+
+    # Expand compressed 𝐒₂_raw to full for moments computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
     ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
 
-    # ── Step 3: Third-order solution ──
-    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+    # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
+    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
                             opts = opts)
@@ -3686,12 +3711,16 @@ function rrule(::typeof(calculate_third_order_moments),
         if !(so3_grad[3] isa AbstractZero); ∂∇₂_acc .+= so3_grad[3]; end
         if !(so3_grad[4] isa AbstractZero); ∂∇₃_acc .+= so3_grad[4]; end
         if !(so3_grad[5] isa AbstractZero); ∂𝐒₁_acc .+= so3_grad[5]; end
-        if !(so3_grad[6] isa AbstractZero); ∂S2f_acc .+= so3_grad[6]; end
+        # so3_grad[6] is now compressed ∂𝐒₂_raw — kept separate
 
         # Third-order derivatives pullback: returns (NoTangent, ∂params, ∂SS, NT, NT)
         ∇₃_grad = ∇₃_pb(∂∇₃_acc)
         ∂params_∇₃  = ∇₃_grad[2] isa AbstractZero ? zeros(T, np) : ∇₃_grad[2]
         if !(∇₃_grad[3] isa AbstractZero); ∂SS_acc .+= ∇₃_grad[3]; end
+
+        # Convert full-space ∂S2f_acc to compressed and add compressed so3 gradient
+        ∂S2_raw_acc = ∂S2f_acc * 𝐔₂'
+        if !(so3_grad[6] isa AbstractZero); ∂S2_raw_acc .+= so3_grad[6]; end
 
         # Second-order moments pullback: cotangent tuple for 15-element output
         # (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr, ŝŝ₂, ŝy₂, Σʸ₁, Σᶻ₁, SS, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd)
@@ -3708,7 +3737,7 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂SS_acc,                 # ∂SS_and_pars
             ∂𝐒₁_acc,                # ∂𝐒₁
             ∂∇₁_acc,                # ∂∇₁
-            ∂S2f_acc,                # ∂𝐒₂
+            ∂S2_raw_acc,             # ∂𝐒₂ (compressed)
             ∂∇₂_acc,                # ∂∇₂
             NoTangent(),             # ∂slvd
         )
@@ -3747,15 +3776,19 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
     # ── Step 1: Second-order moments with covariance ──
     som2_out, som2_pb = rrule(calculate_second_order_moments_with_covariance, parameters, 𝓂; opts = opts)
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = som2_out
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp_2, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = som2_out
 
     if !solved; return zero_5(), zero_pb; end
+
+    # Expand compressed 𝐒₂_raw to full for moments computation
+    𝐔₂ = 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
     ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
 
-    # ── Step 3: Third-order solution ──
-    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+    # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
+    so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
                             opts = opts)
@@ -4709,12 +4742,16 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         if !(so3_grad[3] isa AbstractZero); ∂∇₂_acc .+= so3_grad[3]; end
         if !(so3_grad[4] isa AbstractZero); ∂∇₃_acc .+= so3_grad[4]; end
         if !(so3_grad[5] isa AbstractZero); ∂𝐒₁_acc .+= so3_grad[5]; end
-        if !(so3_grad[6] isa AbstractZero); ∂S2f_acc .+= so3_grad[6]; end
+        # so3_grad[6] is now compressed ∂𝐒₂_raw — kept separate
 
         # Third-order derivatives pullback
         ∇₃_grad = ∇₃_pb(∂∇₃_acc)
         ∂params_∇₃  = ∇₃_grad[2] isa AbstractZero ? zeros(T, np) : ∇₃_grad[2]
         if !(∇₃_grad[3] isa AbstractZero); ∂SS_acc .+= ∇₃_grad[3]; end
+
+        # Convert full-space ∂S2f_acc to compressed and add compressed so3 gradient
+        ∂S2_raw_acc = ∂S2f_acc * 𝐔₂'
+        if !(so3_grad[6] isa AbstractZero); ∂S2_raw_acc .+= so3_grad[6]; end
 
         # Second-order moments pullback
         ∂som2 = (
@@ -4730,7 +4767,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂SS_acc,                 # ∂SS_and_pars
             ∂𝐒₁_acc,                # ∂𝐒₁
             ∂∇₁_acc,                # ∂∇₁
-            ∂S2f_acc,                # ∂𝐒₂
+            ∂S2_raw_acc,             # ∂𝐒₂ (compressed)
             ∂∇₂_acc,                # ∂∇₂
             NoTangent(),             # ∂slvd
         )
@@ -5051,6 +5088,10 @@ function rrule(::typeof(calculate_second_order_solution),
     ℂ = workspaces.second_order
     M₂ = constants.second_order
     T = constants.post_model_macro
+
+    # Expand compressed hessian to full space for internal computation
+    ∇₂ = ∇₂ * M₂.𝐔∇₂
+
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -5148,6 +5189,8 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
 
     𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = 1.0)
+
+    𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
@@ -5320,6 +5363,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # end # timeit_debug
 
+        # Map ∂∇₂ back to compressed space (adjoint of ∇₂_full = ∇₂_compressed * 𝐔∇₂)
+        ∂∇₂ = ∂∇₂ * 𝐔∇₂t
+
         return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
@@ -5398,7 +5444,7 @@ function rrule(::typeof(calculate_third_order_solution),
                     ∇₂::SparseMatrixCSC{S},
                     ∇₃::SparseMatrixCSC{S},
                     𝑺₁::AbstractMatrix{S},
-                    𝐒₂::SparseMatrixCSC{S},
+                    𝐒₂::AbstractMatrix{S},
                     constants::constants,
                     workspaces::workspaces,
                     cache::caches;
@@ -5413,6 +5459,10 @@ function rrule(::typeof(calculate_third_order_solution),
     M₂ = constants.second_order
     M₃ = constants.third_order
     T = constants.post_model_macro
+
+    # Expand compressed inputs to full space for internal computation
+    ∇₂ = ∇₂ * M₂.𝐔∇₂
+    𝐒₂ = sparse(𝐒₂ * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
 
     i₊ = T.future_not_past_and_mixed_idx
     i₋ = T.past_not_future_and_mixed_idx
@@ -5555,6 +5605,8 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐏t  = choose_matrix_format(M₃.𝐏',  density_threshold = 1.0)
     𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
     𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
+    𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
+    𝐔₂t  = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
 
     # ck3_aux_mat already computed above (without rowmask) — reuse for pullback
 
@@ -5568,7 +5620,7 @@ function rrule(::typeof(calculate_third_order_solution),
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂C_adj = ∂𝐒₃ --------------------
+        # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
         ∂C_adj, slvd = solve_sylvester_equation(A', B', Matrix{Float64}(∂𝐒₃), ℂ.sylvester_workspace,
                                                   sylvester_algorithm = opts.sylvester_algorithm³,
                                                   tol = opts.tol.sylvester_tol,
@@ -5807,6 +5859,11 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # === 𝐒₁ = [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] → ∂𝑺₁ ===
         ∂𝑺₁ = [∂𝐒₁₃[:,1:n₋] ∂𝐒₁₃[:,n₋+2:end]]
+
+        # Map ∂∇₂ and ∂𝐒₂ back to compressed space
+        # (adjoint of ∇₂_full = ∇₂_compressed * 𝐔∇₂ and 𝐒₂_full = 𝐒₂_compressed * 𝐔₂)
+        ∂∇₂ = ∂∇₂ * 𝐔∇₂t
+        ∂𝐒₂ = ∂𝐒₂ * 𝐔₂t
 
         return (NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent())
     end
@@ -9195,12 +9252,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        𝐔₂ = 𝓂.constants.second_order.𝐔₂
-        𝐒₂ = 𝐒₂_raw * 𝐔₂
-
-        𝐒₂ = sparse(𝐒₂)
-
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, true)
+        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, solved)
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, true)
 
         pullback_2nd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -9222,23 +9275,24 @@ function rrule(::typeof(get_solution),
 
             ∂parameters = zeros(S, length(parameters))
 
-            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
-            if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
-                ∂𝐒₂_raw = zeros(S, size(𝐒₂_raw))
+            # ── 𝐒₂ is already in compressed space — no 𝐔₂ adjoint needed ──
+            ∂𝐒₂_raw = if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                zeros(S, size(𝐒₂_raw))
             else
-                ∂𝐒₂_raw = Matrix{S}(∂𝐒₂_ext) * 𝐔₂'
+                Matrix{S}(∂𝐒₂_ext)
             end
 
             # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
-            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
             second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
             ∂∇₁_from_2nd  = second_grads[2]
             ∂∇₂_from_2nd  = second_grads[3]
             ∂𝑺₁_from_2nd  = second_grads[4]
 
+            # ── ∇₂ is internal-only; gradient comes from second-order solution path ──
+            ∂∇₂_total = ∂∇₂_from_2nd
+
             # ── hess_pb ──
-            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
-            hess_grads = hess_pb(∂∇₂_from_2nd)
+            hess_grads = hess_pb(∂∇₂_total)
             ∂parameters  .+= hess_grads[2]
             ∂SS_and_pars .+= hess_grads[3]
 
@@ -9249,19 +9303,16 @@ function rrule(::typeof(get_solution),
                 ∂𝐒₁_ext + ∂𝑺₁_from_2nd
             end
 
-            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
-            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            # ── first_pb ──
             first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
             ∂∇₁_total = ∂∇₁_from_2nd + first_grads[2]
 
             # ── jac_pb ──
-            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
             jac_grads = jac_pb(∂∇₁_total)
             ∂parameters  .+= jac_grads[2]
             ∂SS_and_pars .+= jac_grads[3]
 
             # ── nsss_pb ──
-            # Returns (NT, NT, ∂parameter_values, NT)
             nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
             ∂parameters .+= nsss_grads[3]
 
@@ -9292,11 +9343,6 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        𝐔₂ = 𝓂.constants.second_order.𝐔₂
-        𝐒₂ = 𝐒₂_raw * 𝐔₂
-
-        𝐒₂ = sparse(𝐒₂)
-
         # ── Step 6: Third-order derivatives ──
         ∇₃, third_deriv_pb = rrule(calculate_third_order_derivatives,
                                     parameters,
@@ -9305,10 +9351,10 @@ function rrule(::typeof(get_solution),
                                     𝓂.functions.third_order_derivatives)
 
         # ── Step 7: Third-order solution ──
-        # calculate_third_order_solution receives 𝐒₂ after 𝐔₂ multiplication
+        # calculate_third_order_solution now receives compressed 𝐒₂ and compressed ∇₂
         third_out, third_pb = rrule(calculate_third_order_solution,
                                     ∇₁, ∇₂, ∇₃,
-                                    𝐒₁, 𝐒₂,
+                                    𝐒₁, 𝐒₂_raw,
                                     𝓂.constants,
                                     𝓂.workspaces,
                                     𝓂.caches;
@@ -9320,12 +9366,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
-        𝐔₃ = 𝓂.constants.third_order.𝐔₃
-        𝐒₃ = 𝐒₃_raw * 𝐔₃
-
-        𝐒₃ = sparse(𝐒₃)
-
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂, 𝐒₃, true)
+        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, 𝐒₃, solved)
+        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, 𝐒₃_raw, true)
 
         pullback_3rd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -9348,11 +9390,11 @@ function rrule(::typeof(get_solution),
 
             ∂parameters = zeros(S, length(parameters))
 
-            # ── Adjoint of 𝐒₃ = 𝐒₃_raw * 𝐔₃ ──
-            if ∂𝐒₃_ext isa Union{NoTangent, AbstractZero}
-                ∂𝐒₃_raw = zeros(S, size(𝐒₃_raw))
+            # ── 𝐒₃ is already in compressed space — no 𝐔₃ adjoint needed ──
+            ∂𝐒₃_raw = if ∂𝐒₃_ext isa Union{NoTangent, AbstractZero}
+                zeros(S, size(𝐒₃_raw))
             else
-                ∂𝐒₃_raw = Matrix{S}(∂𝐒₃_ext) * 𝐔₃'
+                Matrix{S}(∂𝐒₃_ext)
             end
 
             # ── third_pb: (∂𝐒₃_raw, ∂solved3) ──
@@ -9362,33 +9404,28 @@ function rrule(::typeof(get_solution),
             ∂∇₂_from_3rd  = third_grads[3]
             ∂∇₃_from_3rd  = third_grads[4]
             ∂𝑺₁_from_3rd  = third_grads[5]
-            ∂𝐒₂_from_3rd  = third_grads[6]  # w.r.t. post-𝐔₂ version
+            ∂𝐒₂_from_3rd  = third_grads[6]  # w.r.t. compressed 𝐒₂
 
-            # ── third_deriv_pb ──
-            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
-            third_deriv_grads = third_deriv_pb(∂∇₃_from_3rd)
+            # ── ∇₃ is internal-only; gradient comes from third-order solution path ──
+            ∂∇₃_total = ∂∇₃_from_3rd
+            third_deriv_grads = third_deriv_pb(∂∇₃_total)
             ∂parameters  .+= third_deriv_grads[2]
             ∂SS_and_pars .+= third_deriv_grads[3]
 
-            # ── Accumulate ∂𝐒₂ (post-𝐔₂) from external + third-order ──
-            ∂𝐒₂_post = if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
-                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂)) : Matrix{S}(∂𝐒₂_from_3rd)
+            # ── Accumulate ∂𝐒₂ (compressed) from external + third-order ──
+            ∂𝐒₂_total = if ∂𝐒₂_ext isa Union{NoTangent, AbstractZero}
+                ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? zeros(S, size(𝐒₂_raw)) : Matrix{S}(∂𝐒₂_from_3rd)
             else
                 ∂𝐒₂_from_3rd isa Union{NoTangent, AbstractZero} ? Matrix{S}(∂𝐒₂_ext) : Matrix{S}(∂𝐒₂_ext) + Matrix{S}(∂𝐒₂_from_3rd)
             end
 
-            # ── Adjoint of 𝐒₂ = 𝐒₂_raw * 𝐔₂ ──
-            ∂𝐒₂_raw = ∂𝐒₂_post * 𝐔₂'
-
             # ── second_pb: (∂𝐒₂_raw, ∂solved2) ──
-            # Returns (NT, ∂∇₁, ∂∇₂, ∂𝑺₁, NT, NT, NT, NT, NT, NT)
-            second_grads = second_pb((∂𝐒₂_raw, NoTangent()))
+            second_grads = second_pb((∂𝐒₂_total, NoTangent()))
             ∂∇₁_from_2nd  = second_grads[2]
             ∂∇₂_from_2nd  = second_grads[3]
             ∂𝑺₁_from_2nd  = second_grads[4]
 
-            # ── hess_pb (accumulate ∂∇₂ from 2nd and 3rd order) ──
-            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
+            # ── hess_pb (accumulate ∂∇₂ from 2nd and 3rd order paths) ──
             ∂∇₂_total = ∂∇₂_from_3rd + ∂∇₂_from_2nd
             hess_grads = hess_pb(∂∇₂_total)
             ∂parameters  .+= hess_grads[2]
@@ -9401,19 +9438,16 @@ function rrule(::typeof(get_solution),
                 ∂𝐒₁_ext + ∂𝑺₁_from_2nd + ∂𝑺₁_from_3rd
             end
 
-            # ── first_pb: (∂𝐒₁, ∂qme_sol, ∂solved) ──
-            # Returns (NT, ∂∇₁, NT, NT, NT, NT)
+            # ── first_pb ──
             first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
             ∂∇₁_total = ∂∇₁_from_3rd + ∂∇₁_from_2nd + first_grads[2]
 
             # ── jac_pb ──
-            # Returns (NT, ∂parameters, ∂SS_and_pars, NT, NT)
             jac_grads = jac_pb(∂∇₁_total)
             ∂parameters  .+= jac_grads[2]
             ∂SS_and_pars .+= jac_grads[3]
 
             # ── nsss_pb ──
-            # Returns (NT, NT, ∂parameter_values, NT)
             nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
             ∂parameters .+= nsss_grads[3]
 

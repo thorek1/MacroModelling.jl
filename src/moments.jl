@@ -277,7 +277,7 @@ end
 
 
 function calculate_second_order_moments_with_covariance(parameters::Vector{R}, 𝓂::ℳ;
-                                                        opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R,Int}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
+                                                        opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractMatrix{R}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
@@ -302,15 +302,13 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
 
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+        𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                 opts = opts)
 
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
         if solved2
-            𝐒₂ *= 𝓂.constants.second_order.𝐔₂
-
-            𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
+            𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -420,12 +418,12 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         # SS_and_pars = zeros(R,0)
         # 𝐒₁ = zeros(R,0,0)
         # ∇₁ = zeros(R,0,0)
-        𝐒₂ = spzeros(R,0,0)
+        𝐒₂_raw = zeros(R,0,0)
         ∇₂ = spzeros(R,0,0)
         slvd = solved
     end
 
-    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd
+    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd
 end
 
 
@@ -440,11 +438,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = second_order_moments
 
     if !solved
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
+
+    # Expand compressed 𝐒₂_raw to full for moments computation
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -452,7 +453,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
-	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
 	                                                𝓂.constants,
                                                     𝓂.workspaces,
                                                     𝓂.caches;
@@ -693,11 +694,14 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Vector{T}, Bool} where T <: Real
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = second_order_moments
 
     if !solved
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
+
+    # Expand compressed 𝐒₂_raw to full for moments computation
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -705,7 +709,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
                                                 𝓂.constants,
                                                 𝓂.workspaces,
                                                 𝓂.caches;

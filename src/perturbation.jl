@@ -223,6 +223,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     T = constants.post_model_macro
     # @timeit_debug timer "Calculate second order solution" begin
 
+    # Expand compressed hessian to full space (mirrors ∇₃ * M₃.𝐔∇₃ in third-order)
+    ∇₂ = ∇₂ * M₂.𝐔∇₂
+
     # inspired by Levintal
 
     # Indices and number of variables
@@ -359,7 +362,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
-                                            𝐒₂::SparseMatrixCSC{S}, #second order solution
+                                            𝐒₂::AbstractMatrix{S}, #second order solution (compressed)
                                             constants::constants,
                                             workspaces::workspaces,
                                             cache::caches;
@@ -373,6 +376,13 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     M₃ = constants.third_order
     T = constants.post_model_macro
     # @timeit_debug timer "Calculate third order solution" begin
+
+    # Expand compressed hessian to full space
+    ∇₂ = ∇₂ * M₂.𝐔∇₂
+
+    # Expand compressed second-order solution to full space
+    𝐒₂ = sparse(𝐒₂ * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
+
     # inspired by Levintal
 
     # Indices and number of variables

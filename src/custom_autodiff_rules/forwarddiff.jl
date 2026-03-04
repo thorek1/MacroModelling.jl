@@ -277,11 +277,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # Update success counter
         update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
-        SS_and_pars_names = ms.SS_and_pars_names
-        SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
-
-        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.calibration_equations_parameters)
-        unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.equations.steady_state_aux)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.equations.calibration_parameters))
+        custom_ss_expand_matrix = ms.custom_ss_expand_matrix
         
 
         ∂ = parameter_values
@@ -296,6 +292,11 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             end
         else
             jac_buffer = 𝓂.caches.∂equations_∂parameters
+            if jac_buffer isa SparseMatrixCSC
+                jac_buffer.nzval .= 0
+            else
+                fill!(jac_buffer, zero(eltype(jac_buffer)))
+            end
         end
 
         𝓂.functions.NSSS_∂equations_∂parameters(jac_buffer, ∂, C)
@@ -312,6 +313,11 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             end
         else
             jac_buffer = 𝓂.caches.∂equations_∂SS_and_pars
+            if jac_buffer isa SparseMatrixCSC
+                jac_buffer.nzval .= 0
+            else
+                fill!(jac_buffer, zero(eltype(jac_buffer)))
+            end
         end
 
         𝓂.functions.NSSS_∂equations_∂SS_and_pars(jac_buffer, ∂, C)
@@ -322,23 +328,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
             if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-            
             solution_error = S(10.0)
         else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-            jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.constants.post_complete_parameters.parameters))
-            
-            for (i,v) in enumerate(SS_and_pars_names)
-                if v in unknowns
-                    jvp[i,:] = JVP[indexin([v], unknowns),:]
-                end
-            end
-
+            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
+            jvp_no_exo = custom_ss_expand_matrix * JVP
             for i in 1:N
                 parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
-
-                ∂SS_and_pars[:,i] = jvp * parameter_values_partials
+                @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials
             end
         end
     end

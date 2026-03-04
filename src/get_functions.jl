@@ -1967,21 +1967,17 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm in [:second_order, :pruned_second_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
                                 opts = opts)
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
-
-        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
-
-        𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm in [:third_order, :pruned_third_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -1989,25 +1985,17 @@ function get_solution(𝓂::ℳ,
     
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
-
-        𝐒₂ = sparse(𝐒₂) # ensure stable sparse type
-
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
                 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-                            𝐒₁, 𝐒₂,
-                            𝓂.constants,
-                            𝓂.workspaces,
-                            𝓂.caches;
-                            initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
+                                𝐒₁, 𝐒₂,
+                                𝓂.constants,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                initial_guess = 𝓂.caches.third_order_solution,
+                                opts = opts)
 
-    update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
-
-        𝐒₃ *= 𝓂.constants.third_order.𝐔₃
-
-        𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
+        update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else

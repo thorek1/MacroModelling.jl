@@ -4697,12 +4697,12 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+    𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
                                                   opts = opts)
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
-    𝐒₂ = sparse(𝐒₂ * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
@@ -4747,7 +4747,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             ∇₁,
             ∇₂,
             𝐒₁,
-            𝐒₂,
+            𝐒₂_raw,
             SSSstates,
             constants)
 end
@@ -4758,7 +4758,10 @@ function calculate_stochastic_steady_state(::Val{:second_order},
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M
     common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !ok
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
@@ -4786,7 +4789,10 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M
     common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !ok
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
@@ -4874,7 +4880,10 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M <: Real
     common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !ok
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
@@ -4884,7 +4893,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂_raw,
                                                  𝓂.constants,
                                                  𝓂.workspaces,
                                                  𝓂.caches;
@@ -4933,7 +4942,10 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false) where M <: Real
     common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
-    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂, SSSstates, _ = common
+    ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
+
+    # Expand compressed 𝐒₂_raw to full
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     if !ok
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
@@ -4943,7 +4955,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂,
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁_raw, 𝐒₂_raw,
                                                  𝓂.constants,
                                                  𝓂.workspaces,
                                                  𝓂.caches;
@@ -6112,7 +6124,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         
     if max_perturbation_order >= 2
     # second order
-        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = true)
 
         if 𝓂.constants.second_order.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
