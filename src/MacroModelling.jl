@@ -2549,6 +2549,296 @@ function compressed_kron²(a::AbstractMatrix{T};
 end
 
 
+"""
+    compressed_mixed_kron(A, B; tol, rowmask, colmask, sparse_preallocation)
+
+Compute `𝐔₃ * kron(A, B) * 𝐂₃` directly in compressed third-order space,
+where one input is `n × n` and the other is `n² × n²`.  The function
+auto-detects which argument lives in second-order space by comparing
+dimensions: the matrix whose side length equals the square of the other's
+side length is treated as the "big" (second-order-space) matrix.
+
+Returns a sparse matrix of size `m₃ × m₃` where `m₃ = n(n+1)(n+2)/6`.
+
+The algorithm iterates over non-empty columns of the big (n²×n²) matrix,
+and for each column determines the canonical (sorted) column triple in the
+compressed space.  Only columns whose pair index `(d₁, d₂)` satisfies
+`d₁ ≥ d₂` contribute canonical triples.  The free index from the small
+matrix completes the sorted triple.  Row triples are sorted and accumulated
+via the `+` combiner in the sparse assembly, which naturally performs the
+𝐔₃ row-summation over all permutations mapping to the same sorted triple.
+"""
+function compressed_mixed_kron(A::AbstractMatrix{TA},
+                               B::AbstractMatrix{TB};
+                               tol::AbstractFloat = eps(),
+                               rowmask::Vector{Int} = Int[],
+                               colmask::Vector{Int} = Int[],
+                               sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, TB <: Real}
+
+    T = promote_type(TA, TB)
+
+    nA = size(A, 1)
+    nB = size(B, 1)
+
+    # Both inputs must be square
+    size(A, 2) == nA || throw(DimensionMismatch("A must be square, got size $(size(A))"))
+    size(B, 2) == nB || throw(DimensionMismatch("B must be square, got size $(size(B))"))
+
+    # Detect which is the small (n×n) and which is the big (n²×n²) matrix
+    # Invariant: kron(first_arg, second_arg) is preserved
+    if nA * nA == nB
+        # A is small (n×n), B is big (n²×n²)  → kron(A, B)
+        n = nA
+        small = A
+        big_mat = B
+        kron_order = :small_first   # kron(small, big)
+    elseif nB * nB == nA
+        # B is small (n×n), A is big (n²×n²)  → kron(A, B)
+        n = nB
+        small = B
+        big_mat = A
+        kron_order = :big_first     # kron(big, small)
+    else
+        throw(DimensionMismatch(
+            "One matrix must be n×n and the other n²×n², got sizes $(size(A)) and $(size(B))"))
+    end
+
+    m3 = n * (n + 1) * (n + 2) ÷ 6
+
+    # Convert to working formats
+    small_dense = small isa Matrix{T} ? small : Matrix{T}(small)
+    big_sparse  = big_mat isa SparseMatrixCSC ? (eltype(big_mat) == T ? big_mat : SparseMatrixCSC{T}(big_mat)) : SparseMatrixCSC{T}(sparse(big_mat))
+
+    # Setup sparse preallocation buffers
+    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
+
+    spI, spJ, spV_untyped = sparse_preallocation[1], sparse_preallocation[2], sparse_preallocation[3]
+    # Ensure value buffer has correct element type
+    spV = if eltype(spV_untyped) == T
+        spV_untyped
+    else
+        T[]
+    end
+
+    nnz_big = nnz(big_sparse)
+    nnz_small = count(x -> abs(x) > tol, small_dense)
+    estimated_nnz = max(nnz_big * nnz_small, 10000)
+
+    if length(spI) == 0
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    else
+        estimated_nnz = length(spV)
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    end
+
+    # Masks
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+
+    if rowmask == Int[0] || colmask == Int[0]
+        return spzeros(T, m3, m3)
+    end
+
+    rowmask_lookup = norowmask ? BitVector() : falses(m3)
+    colmask_lookup = nocolmask ? BitVector() : falses(m3)
+
+    if !norowmask
+        @inbounds for r in rowmask
+            if 1 <= r <= m3
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask
+        @inbounds for c in colmask
+            if 1 <= c <= m3
+                colmask_lookup[c] = true
+            end
+        end
+    end
+
+    # Precompute colptr references
+    big_colptr = big_sparse.colptr
+    big_rowval = big_sparse.rowval
+    big_nzval  = big_sparse.nzval
+    n² = n * n
+
+    k = 0  # COO entry counter
+
+    # Helper: compressed index for sorted triple (i ≥ j ≥ kk) → 1-based
+    @inline function comp_idx(i, j, kk)
+        return (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + kk
+    end
+
+    # Helper: sort 3 values descending → (max, mid, min)
+    @inline function sort3_desc(a, b, c)
+        a, b = a >= b ? (a, b) : (b, a)
+        a, c = a >= c ? (a, c) : (c, a)
+        b, c = b >= c ? (b, c) : (c, b)
+        return a, b, c
+    end
+
+    # ---------------------------------------------------------------------------
+    # Core iteration: iterate over non-empty columns of big_sparse and determine
+    # canonical (sorted) column triples for the compressed output.
+    #
+    # The canonical flat column in n³ space for sorted triple (i₂ ≥ k₂ ≥ l₂) is
+    #   f_col = n²*(i₂-1) + n*(k₂-1) + l₂
+    #
+    # For kron(small, big):  f_col = (γ-1)*n² + col_big  ⟹  γ = i₂,
+    #   col_big = n*(k₂-1) + l₂.  The pair (k₂, l₂) = decompose(col_big) must
+    #   satisfy k₂ ≥ l₂.  The free index γ = i₂ ranges over k₂:n (so i₂ ≥ k₂).
+    #
+    # For kron(big, small):  f_col = (col_big-1)*n + γ  ⟹  γ = l₂,
+    #   col_big = n*(i₂-1) + k₂.  The pair (i₂, k₂) = decompose(col_big) must
+    #   satisfy i₂ ≥ k₂.  The free index γ = l₂ ranges over 1:k₂ (so k₂ ≥ l₂).
+    # ---------------------------------------------------------------------------
+
+    for col_big in 1:n²
+        @inbounds nz_start = big_colptr[col_big]
+        @inbounds nz_end   = big_colptr[col_big + 1] - 1
+        nz_start > nz_end && continue
+
+        # Decompose big column: flat = (d₁-1)*n + d₂,  d₁ = ⌈col_big/n⌉, d₂ = rem
+        d₁ = (col_big - 1) ÷ n + 1
+        d₂ = (col_big - 1) % n + 1
+
+        if kron_order === :small_first
+            # big supplies pair (k₂, l₂) = (d₁, d₂); need k₂ ≥ l₂
+            d₁ < d₂ && continue
+            k₂ = d₁
+            l₂ = d₂
+
+            # free index i₂ = γ (column of small), ranges k₂:n
+            for i₂ in k₂:n
+                comp_c = comp_idx(i₂, k₂, l₂)
+                if nocolmask || colmask_lookup[comp_c]
+                    small_col = i₂
+
+                    for idx in nz_start:nz_end
+                        @inbounds row_big = big_rowval[idx]
+                        @inbounds val_big = big_nzval[idx]
+
+                        r₁ = (row_big - 1) ÷ n + 1
+                        r₂ = (row_big - 1) % n + 1
+
+                        for α in 1:n
+                            @inbounds val_small = small_dense[α, small_col]
+                            v = T(val_small) * T(val_big)
+                            abs(v) <= tol && continue
+
+                            # Row triple for kron(small, big): (α, r₁, r₂)
+                            ri, rj, rk = sort3_desc(α, r₁, r₂)
+                            comp_r = comp_idx(ri, rj, rk)
+
+                            if norowmask || rowmask_lookup[comp_r]
+                                k += 1
+                                if k > estimated_nnz
+                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                    estimated_nnz = min(m3 * m3, estimated_nnz)
+                                    resize!(spI, estimated_nnz)
+                                    resize!(spJ, estimated_nnz)
+                                    resize!(spV, estimated_nnz)
+                                end
+                                @inbounds spI[k] = comp_r
+                                @inbounds spJ[k] = comp_c
+                                @inbounds spV[k] = v
+                            end
+                        end
+                    end
+                end
+            end
+
+        else  # kron_order === :big_first
+            # big supplies pair (i₂, k₂) = (d₁, d₂); need i₂ ≥ k₂
+            d₁ < d₂ && continue
+            i₂ = d₁
+            k₂ = d₂
+
+            # free index l₂ = γ (column of small), ranges 1:k₂
+            for l₂ in 1:k₂
+                comp_c = comp_idx(i₂, k₂, l₂)
+                if nocolmask || colmask_lookup[comp_c]
+                    small_col = l₂
+
+                    for idx in nz_start:nz_end
+                        @inbounds row_big = big_rowval[idx]
+                        @inbounds val_big = big_nzval[idx]
+
+                        r₁ = (row_big - 1) ÷ n + 1
+                        r₂ = (row_big - 1) % n + 1
+
+                        for α in 1:n
+                            @inbounds val_small = small_dense[α, small_col]
+                            v = T(val_big) * T(val_small)
+                            abs(v) <= tol && continue
+
+                            # Row triple for kron(big, small): (r₁, r₂, α)
+                            ri, rj, rk = sort3_desc(r₁, r₂, α)
+                            comp_r = comp_idx(ri, rj, rk)
+
+                            if norowmask || rowmask_lookup[comp_r]
+                                k += 1
+                                if k > estimated_nnz
+                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                    estimated_nnz = min(m3 * m3, estimated_nnz)
+                                    resize!(spI, estimated_nnz)
+                                    resize!(spJ, estimated_nnz)
+                                    resize!(spV, estimated_nnz)
+                                end
+                                @inbounds spI[k] = comp_r
+                                @inbounds spJ[k] = comp_c
+                                @inbounds spV[k] = v
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(spI, k)
+    resize!(spJ, k)
+    resize!(spV, k)
+
+    # Assemble sparse matrix
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval_untyped = sparse_preallocation[7]
+    csrnzval = if eltype(csrnzval_untyped) == T
+        csrnzval_untyped
+    else
+        T[]
+    end
+
+    resize!(klasttouch, m3)
+    resize!(csrrowptr, m3 + 1)
+    resize!(csrcolval, length(spI))
+    resize!(csrnzval, length(spI))
+
+    out = if length(spI) >= m3 + 1
+        sparse!(spI, spJ, spV, m3, m3, +, klasttouch, csrrowptr, csrcolval, csrnzval, spI, spJ, spV)
+    else
+        SparseArrays.sparse(spI, spJ, spV, m3, m3)
+    end
+
+    if reused_sparse_buffers
+        out = copy(out)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+
 # function kron³(A::AbstractSparseMatrix{T}, M₃::third_order) where T <: Real
 #     rows, cols, vals = findnz(A)
 
