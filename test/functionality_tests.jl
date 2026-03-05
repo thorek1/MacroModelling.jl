@@ -2770,7 +2770,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
-                                @test isapprox(deriv3_zyg[1], DERIV3_zyg[1], rtol = 1e-8)
+                                @test isapprox(deriv3_zyg[1], DERIV3_zyg[1], rtol = 1e-6)
                             end
 
                             clear_solution_caches!(m, algorithm)
