@@ -325,14 +325,46 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂SS_equations_∂SS_and_pars = jac_cache
 
         if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
-            ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
+            rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)
+            rhs_n_cols = size(∂SS_equations_∂parameters, 2)
 
-            if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+            if length(qme_ws.nsss_sparse_rhs) != rhs_n_rows
+                qme_ws.nsss_sparse_rhs = zeros(eltype(SS_and_pars), rhs_n_rows)
+            end
+
+            if size(qme_ws.nsss_jvp_rhs) != (rhs_n_rows, rhs_n_cols)
+                qme_ws.nsss_jvp_rhs = zeros(eltype(SS_and_pars), rhs_n_rows, rhs_n_cols)
+            end
+
+            if size(qme_ws.nsss_sparse_lu_buffer.A) != (rhs_n_rows, rhs_n_rows)
+                sparse_prob = 𝒮.LinearProblem(∂SS_equations_∂SS_and_pars, qme_ws.nsss_sparse_rhs)
+                qme_ws.nsss_sparse_lu_buffer = 𝒮.init(sparse_prob,
+                                                      𝒮.LUFactorization(),
+                                                      verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+            else
+                qme_ws.nsss_sparse_lu_buffer.A = ∂SS_equations_∂SS_and_pars
+            end
+
+            sparse_solved = true
+            for j in 1:rhs_n_cols
+                @views copyto!(qme_ws.nsss_sparse_rhs, ∂SS_equations_∂parameters[:, j])
+                qme_ws.nsss_sparse_lu_buffer.b = qme_ws.nsss_sparse_rhs
+                sparse_sol = 𝒮.solve!(qme_ws.nsss_sparse_lu_buffer)
+
+                if sparse_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sparse_sol.retcode)
+                    sparse_solved = false
+                    break
+                end
+
+                @views copyto!(qme_ws.nsss_jvp_rhs[:, j], qme_ws.nsss_sparse_lu_buffer.u)
+            end
+
+            if !sparse_solved
                 if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
                 solution_error = S(10.0)
             else
-                JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
-                jvp_no_exo = custom_ss_expand_matrix * JVP
+                ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
+                jvp_no_exo = custom_ss_expand_matrix * qme_ws.nsss_jvp_rhs
                 for i in 1:N
                     parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
                     @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials

@@ -500,13 +500,40 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂SS_and_pars = jac_cache
     qme_ws = 𝓂.workspaces.first_order
     if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
-        ∂SS_equations_∂SS_and_pars_lu = ℒ.lu(∂SS_equations_∂SS_and_pars, check = false)
+        rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)
+        rhs_n_cols = size(∂SS_equations_∂parameters, 2)
 
-        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-            return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        if length(qme_ws.nsss_sparse_rhs) != rhs_n_rows
+            qme_ws.nsss_sparse_rhs = zeros(eltype(SS_and_pars), rhs_n_rows)
         end
 
-        JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
+        if size(qme_ws.nsss_jvp_rhs) != (rhs_n_rows, rhs_n_cols)
+            qme_ws.nsss_jvp_rhs = zeros(eltype(SS_and_pars), rhs_n_rows, rhs_n_cols)
+        end
+
+        if size(qme_ws.nsss_sparse_lu_buffer.A) != (rhs_n_rows, rhs_n_rows)
+            sparse_prob = 𝒮.LinearProblem(∂SS_equations_∂SS_and_pars, qme_ws.nsss_sparse_rhs)
+            qme_ws.nsss_sparse_lu_buffer = 𝒮.init(sparse_prob,
+                                                  𝒮.LUFactorization(),
+                                                  verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+        else
+            qme_ws.nsss_sparse_lu_buffer.A = ∂SS_equations_∂SS_and_pars
+        end
+
+        for j in 1:rhs_n_cols
+            @views copyto!(qme_ws.nsss_sparse_rhs, ∂SS_equations_∂parameters[:, j])
+            qme_ws.nsss_sparse_lu_buffer.b = qme_ws.nsss_sparse_rhs
+            sparse_sol = 𝒮.solve!(qme_ws.nsss_sparse_lu_buffer)
+
+            if sparse_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sparse_sol.retcode)
+                return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+
+            @views copyto!(qme_ws.nsss_jvp_rhs[:, j], qme_ws.nsss_sparse_lu_buffer.u)
+        end
+
+        ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
+        JVP = qme_ws.nsss_jvp_rhs
     else
         qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
                                                                                                  qme_ws.fast_lu_ws_nsss,

@@ -229,6 +229,12 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
     empty_qr_orm_ws = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
     empty_lu_factors = zeros(T, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+    empty_sparse = spzeros(T, 0, 0)
+    empty_sparse_rhs = zeros(T, 0)
+    empty_sparse_prob = 𝒮.LinearProblem(empty_sparse, empty_sparse_rhs)
+    empty_sparse_lu = 𝒮.init(empty_sparse_prob,
+                             𝒮.LUFactorization(),
+                             verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
                     Sylvester_workspace(S = T, T = S),  # sylvester
@@ -269,6 +275,8 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                     # Dedicated FastLapackInterface LU workspace for NSSS implicit derivatives
                     empty_lu_ws,
                     (0, 0),
+                    empty_sparse_lu,
+                    zeros(T, 0),
                     zeros(T, 0, 0))
 end
 
