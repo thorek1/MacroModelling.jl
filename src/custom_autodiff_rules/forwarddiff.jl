@@ -349,7 +349,8 @@ end
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         constants::constants,
                                         qme_ws::qme_workspace,
-                                        sylv_ws::sylvester_workspace;
+                                        sylv_ws::sylvester_workspace,
+                                        first_order_ws::first_order_workspace;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
@@ -362,7 +363,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_constants.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws; opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, qme_ws, sylv_ws, first_order_ws; opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -654,14 +655,14 @@ end
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S}, 
-                                C::Matrix{Float64}, 
+                                C::Matrix{T}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
+                                verbose::Bool = false)::S where {S <: ℱ.Dual, T <: Real,U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     # ForwardDiff requires fresh allocations - workspace not used here
     u = zeros(S, size(C,2))

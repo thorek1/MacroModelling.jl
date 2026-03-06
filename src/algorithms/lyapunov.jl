@@ -35,7 +35,9 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     end
 
     # C = choose_matrix_format(C, density_threshold = 0.0)
-    C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
+    if !(C isa DenseMatrix{T} || C isa ℒ.Adjoint{T, Matrix{T}})
+        C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
+    end
  
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
@@ -314,7 +316,9 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         copyto!(𝐀, 𝐀²)
         
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂A, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂A)
+            normdiff = ℒ.norm(𝐂A)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -335,13 +339,17 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    reached_tol = ℒ.norm(𝐂¹) / ℒ.norm(𝐂)
 
     # if reached_tol > tol
     #     println("Lyapunov: doubling $reached_tol")
     # end
 
-    return copy(𝐂), iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -393,7 +401,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: bicgstab $reached_tol")
     # end
 
-    return copy(𝐗), workspace.bicgstab_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.bicgstab_workspace.stats.niter, reached_tol
 end
 
 
@@ -445,7 +453,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: gmres $reached_tol")
     # end
 
-    return copy(𝐗), workspace.gmres_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.gmres_workspace.stats.niter, reached_tol
 end
 
 

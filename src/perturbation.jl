@@ -3,7 +3,8 @@
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
                                         qme_ws::qme_workspace{R,S},
-                                        sylv_ws::sylvester_workspace{R,S};
+                                        sylv_ws::sylvester_workspace{R,S},
+                                        first_order_ws::first_order_workspace{R};
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat, S <: Real}
     # @timeit_debug timer "Calculate 1st order solution" begin
@@ -19,9 +20,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
     Ir = idx_constants.Ir
     
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = ∇₁[:,idx_constants.nabla_zero_cols]
-    ∇₋ = ∇₁[:,idx_constants.nabla_minus_cols]
+    ∇₋ = @view ∇₁[:,idx_constants.nabla_minus_cols]
     ∇ₑ = ∇₁[:,idx_constants.nabla_e_start:end]
     
     # end # timeit_debug
@@ -29,16 +30,21 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-    A₊ = Q.Q' * ∇₊
-    A₀ = Q.Q' * ∇₀
-    A₋ = Q.Q' * ∇₋
+    # Use preallocated workspace matrices for Q.Q' * ∇
+    A₊ = first_order_ws.A₊
+    A₀ = first_order_ws.A₀
+    A₋ = first_order_ws.A₋
+    ℒ.mul!(A₊, Q.Q', ∇₊)
+    ℒ.mul!(A₀, Q.Q', ∇₀)
+    ℒ.mul!(A₋, Q.Q', ∇₋)
     
     # end # timeit_debug
     # @timeit_debug timer "Sort matrices" begin
 
-    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
-    Ã₀ = A₀[dynIndex, comb]
-    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    # Use direct (allocating) construction for sorted matrices to preserve correctness
+    Ã₊ = @view(A₊[dynIndex,:]) * Ir[future_not_past_and_mixed_in_comb,:]
+    Ã₀ = @view(A₀[dynIndex, comb])
+    Ã₋ = @view(A₋[dynIndex,:]) * Ir[past_not_future_and_mixed_in_comb,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -59,16 +65,16 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Postprocessing" begin
     # @timeit_debug timer "Setup matrices" begin
 
-    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+    sol_compact = @view sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
 
-    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+    D = @view sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
 
-    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+    L = @view sol[T.past_not_future_and_mixed_in_present_but_not_only_idx, past_not_future_and_mixed_in_comb]
 
-    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
@@ -81,23 +87,34 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    # Use preallocated workspace for nₚ₋ = A₊ᵤ * D
+    nₚ₋ = first_order_ws.nₚ₋
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
-        nₚ₋ =  A₊ᵤ * D
-        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-        ℒ.rmul!(A₋ᵤ, -1)
+        ℒ.mul!(@view(A₋[1:T.nPresent_only,:]), Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
+        ℒ.mul!(nₚ₋, A₊ᵤ, D)
+        ℒ.mul!(@view(A₋[1:T.nPresent_only,:]), nₚ₋, L, 1, 1)
+        ℒ.ldiv!(Ā̂₀ᵤ, @view(A₋[1:T.nPresent_only,:]))
+        ℒ.rmul!(@view(A₋[1:T.nPresent_only,:]), -1)
     end
     
-    A    = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
+    # Use preallocated workspace for vcat: A = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
+    A_vcat = first_order_ws.A_vcat
+    A_vcat[1:T.nPresent_only, :] .= A₋ᵤ
+    A_vcat[T.nPresent_only+1:end, :] .= sol_compact
+    # Apply reorder in-place to result
+    result = first_order_ws.result
+    @views result[:, 1:T.nPast_not_future_and_mixed] .= A_vcat[T.reorder, :]
 
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "Exogenous part solution" begin
 
-    M = A[T.future_not_past_and_mixed_idx,:] * idx_constants.expand_past
+    # M = A[T.future_not_past_and_mixed_idx,:] * expand_past
+    # Use preallocated M
+    M = first_order_ws.M
+    ℒ.mul!(M, @view(result[T.future_not_past_and_mixed_idx, 1:T.nPast_not_future_and_mixed]), idx_constants.expand_past)
 
-    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
 
     C = ℒ.lu!(∇₀, check = false)
     
@@ -112,7 +129,10 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # end # timeit_debug
 
-    return hcat(A, ∇ₑ), sol, true
+    # Use preallocated result for hcat
+    result[:, T.nPast_not_future_and_mixed+1:end] .= ∇ₑ
+
+    return result, sol, true
 end
 
 

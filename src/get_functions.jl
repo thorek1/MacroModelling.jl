@@ -1096,11 +1096,13 @@ function get_irf(𝓂::ℳ,
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             qme_ws,
-                                                            sylv_ws;
+                                                            sylv_ws,
+                                                            first_order_ws;
                                                             opts = opts,
                                                             initial_guess = 𝓂.caches.qme_solution)
     
@@ -1965,11 +1967,13 @@ function get_solution(𝓂::ℳ,
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2164,11 +2168,13 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
@@ -2333,11 +2339,13 @@ function get_variance_decomposition(𝓂::ℳ;
     # Ensure QME workspace
     qme_ws = ensure_qme_workspace!(𝓂)
     sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    first_order_ws = ensure_first_order_solution_workspace!(𝓂)
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         qme_ws,
-                                                        sylv_ws;
+                                                        sylv_ws,
+                                                        first_order_ws;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
 
@@ -2856,10 +2864,14 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
+                covar_snapshot = copy(covar_dcmp)
+
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
                 dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
+
+                covar_snapshot = copy(covar_dcmp)
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
                 dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
@@ -2868,11 +2880,13 @@ function get_moments(𝓂::ℳ;
 
                 @assert solved "Could not find covariance matrix."
 
+                covar_snapshot = copy(covar_dcmp)
+
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
                 dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
-            vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            vari = convert(Vector{Real},max.(ℒ.diag(covar_snapshot),eps(Float64)))
 
             # dvariance = 𝒜.jacobian(𝒷(), x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
             
@@ -2887,7 +2901,7 @@ function get_moments(𝓂::ℳ;
                     axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
                 end
     
-                standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+                standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_snapshot),eps(Float64))))
 
                 if algorithm == :pruned_second_order
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
@@ -2915,10 +2929,14 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
+                covar_snapshot = copy(covar_dcmp)
+
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
                 dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
+
+                covar_snapshot = copy(covar_dcmp)
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
                 dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
@@ -2927,11 +2945,12 @@ function get_moments(𝓂::ℳ;
                 
                 @assert solved "Could not find covariance matrix."
 
+                covar_snapshot = copy(covar_dcmp)
+
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
                 dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             end
-
-            standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+            standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_snapshot),eps(Float64))))
 
             st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
@@ -3629,9 +3648,9 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
+    # NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
 
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
+    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.NSSS_labels))
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
