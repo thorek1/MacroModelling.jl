@@ -55,7 +55,7 @@ function get_initial_covariance(::Val{:theoretical},
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                     verbose = opts.verbose) # timer = timer, 
 
-    return P
+    return copy(P)
 end
 
 
