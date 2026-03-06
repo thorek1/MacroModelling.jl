@@ -868,7 +868,15 @@ macro model(𝓂,ex...)
 
                         non_stochastic_steady_state(
                             $NSSS_solve_blocks_in_place,
-                            $NSSS_dependencies
+                            $NSSS_dependencies,
+                            NSSSSolveStep[],   # solve_steps (populated later by write_steady_state_solver_function!)
+                            nothing,           # param_prep!
+                            0,                 # n_sol
+                            Int[],             # output_indices
+                            0,                 # n_ext_params
+                            Symbol[],          # sol_names
+                            Int[],             # exo_zero_indices
+                            Symbol[],          # param_names_ext
                         ),
 
                         equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
