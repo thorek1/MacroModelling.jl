@@ -9036,6 +9036,7 @@ end # dispatch_doctor
     get_correlation(RBC_precompile_workload)
     get_autocorrelation(RBC_precompile_workload)
     get_variance_decomposition(RBC_precompile_workload)
+    get_irf(RBC_precompile_workload)
 end
 
 # Include ForwardDiff Dual specializations for forward-mode AD

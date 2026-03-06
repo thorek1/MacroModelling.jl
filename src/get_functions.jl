@@ -90,7 +90,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
-    # @nospecialize # reduce compile time
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -219,7 +219,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
-    # @nospecialize # reduce compile time
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -343,7 +343,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
-    # @nospecialize # reduce compile time                         
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -573,7 +573,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     tol::Tolerances = Tolerances(),
                                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
-    # @nospecialize # reduce compile time                                               
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -733,7 +733,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                 conditional_forecast_solver::Symbol = :LagrangeNewton)
-    # @nospecialize # reduce compile time                        
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1231,7 +1231,7 @@ function get_irf(𝓂::ℳ;
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray where R <: Real
-    # @nospecialize # reduce compile time            
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1449,7 +1449,7 @@ function get_steady_state(𝓂::ℳ;
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
-    # @nospecialize # reduce compile time
+    @nospecialize # reduce compile time
                             
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1725,7 +1725,7 @@ function get_solution(𝓂::ℳ;
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
-    # @nospecialize # reduce compile time      
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2097,7 +2097,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
-    # @nospecialize # reduce compile time                                            
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2262,7 +2262,7 @@ function get_variance_decomposition(𝓂::ℳ;
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
-    # @nospecialize # reduce compile time
+    @nospecialize # reduce compile time
                                     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2397,7 +2397,7 @@ function get_correlation(𝓂::ℳ;
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances())
-    # @nospecialize # reduce compile time                    
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2515,7 +2515,7 @@ function get_autocorrelation(𝓂::ℳ;
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                             verbose::Bool = DEFAULT_VERBOSE,
                             tol::Tolerances = Tolerances())
-    # @nospecialize # reduce compile time
+    @nospecialize # reduce compile time
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2683,7 +2683,7 @@ function get_moments(𝓂::ℳ;
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances())#limit output by selecting pars and vars like for plots and irfs!?
-    # @nospecialize # reduce compile time          
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3686,7 +3686,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     tol::Tolerances = Tolerances(),
                                                     verbose::Bool = DEFAULT_VERBOSE)
-    # @nospecialize # reduce compile time                                             
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
