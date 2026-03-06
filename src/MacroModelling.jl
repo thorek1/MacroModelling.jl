@@ -6175,10 +6175,15 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
 
-            ∇̂ = ℒ.lu(∇, check = false)
+            # Use LinearSolve for better performance and fewer allocations
+            lu_cache = SS_solve_block.ss_problem.workspace.lu_buffer
+            lu_cache.A = ∇
+            lu_cache.b = res
             
-            if ℒ.issuccess(∇̂)
-                guess_update = ∇̂ \ res
+            sol = 𝒮.solve!(lu_cache)
+            
+            if 𝒮.SciMLBase.successful_retcode(sol)
+                guess_update = sol.u
 
                 new_guess = guess - guess_update
 
