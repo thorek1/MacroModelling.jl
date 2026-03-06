@@ -6534,11 +6534,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     lennz = nnz(∇₁_dyn)
 
     jacobian_dense_by_heuristic = (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
-    # NOTE: Keep Jacobian generation and cache buffer dense for allocation/perf profiling consistency.
     # Re-enable `jacobian_dense_by_heuristic` directly to restore sparse Jacobian path switching.
-    force_dense_jacobian = true
-
-    if force_dense_jacobian || jacobian_dense_by_heuristic
+    if jacobian_dense_by_heuristic
         derivatives_mat = convert(Matrix, ∇₁_dyn)
         buffer = zeros(Float64, size(∇₁_dyn))
     else

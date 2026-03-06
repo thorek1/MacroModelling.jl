@@ -18,6 +18,11 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 acceptance_tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
+    # Ownership: low-level methods below are mixed. Bartels-Stewart and sparse
+    # doubling paths return owned matrices, while dense doubling and Krylov
+    # paths can return workspace-backed buffers such as workspace.𝐂/workspace.𝐗.
+    # This dispatcher currently returns X directly, so callers must not retain
+    # the result across workspace reuse unless they make their own copy.
     # Update workspace dimension if needed (for cases like Kalman filter where dimension differs from initial setup)
     n = size(A, 1)
     if workspace.n != n
@@ -93,6 +98,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense matrix from MatrixEquations.lyapd.
     # Note: workspace is unused by bartels_stewart but accepted for API consistency
     𝐂 = try 
         MatrixEquations.lyapd(A, C)::Matrix{T}
@@ -123,6 +129,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned sparse storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -172,6 +179,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned sparse storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -224,6 +232,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -288,6 +297,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense buffer workspace.𝐂.
     # Ensure doubling buffers are allocated
     ensure_lyapunov_doubling_buffers!(workspace)
     
@@ -353,6 +363,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     # Ensure Krylov buffers and bicgstab solver are allocated
     ensure_lyapunov_krylov_solver!(workspace, :bicgstab)
     
@@ -403,6 +414,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     # Ensure Krylov buffers and gmres solver are allocated
     ensure_lyapunov_krylov_solver!(workspace, :gmres)
     

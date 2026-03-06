@@ -20,6 +20,10 @@ function solve_sylvester_equation(A::M,
                                     tol::AbstractFloat = 1e-14,
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
+    # Ownership: low-level methods below are mixed. Some return freshly allocated
+    # matrices, while dense doubling and Krylov paths can return workspace-backed
+    # buffers (for example 𝕊ℂ.𝐂_dbl or 𝕊ℂ.𝐗). This dispatcher therefore returns
+    # an owned copy so callers do not accidentally retain aliased workspace state.
     # @timeit_debug timer "Choose matrix formats" begin
     # Ensure doubling buffers are allocated unconditionally so they are available
     # for both the primary path and fallback retry paths below.
@@ -279,6 +283,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns owned sparse storage created locally in this method.
     # guess_provided = true
     
     if length(initial_guess) == 0
@@ -346,6 +351,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012    
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -431,6 +437,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # @timeit_debug timer "Doubling solve" begin
     # @timeit_debug timer "Setup buffers" begin
 
@@ -782,6 +789,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns owned dense storage created locally in this method.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -863,6 +871,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # @timeit_debug timer "Setup buffers" begin
     
     # guess_provided = true
@@ -974,6 +983,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense matrix from MatrixEquations.sylvd.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -1035,6 +1045,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1187,6 +1198,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1339,6 +1351,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
