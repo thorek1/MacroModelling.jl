@@ -90,6 +90,21 @@ println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeF
     @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
+@testset "Zygote vs FiniteDifferences gradient (1st order Kalman)" begin
+    back_grad = Zygote.gradient(x -> get_loglikelihood(FS2000, data, x), FS2000.parameter_values)
+    @test !isnothing(back_grad[1])
+    @test all(isfinite, back_grad[1])
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
 plot_model_estimates(FS2000, data, parameters = sample_nuts)
 plot_shock_decomposition(FS2000, data)
 

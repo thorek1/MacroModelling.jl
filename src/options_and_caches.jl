@@ -12,11 +12,15 @@ function Second_order_indices()
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_indices(
-        # Auxiliary matrices (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
+        # Auxiliary matrices (𝛔, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂)
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        Int[],               # 𝐔₂_nonempty_col_as_kron_rowmask
+        Int[],               # 𝛔𝐂₂_nonempty_row_as_kron_colmask
         # Computational index caches (BitVectors)
         BitVector(),         # s_in_s⁺
         BitVector(),         # s_in_s
@@ -151,6 +155,7 @@ function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
         zeros(S,0,0),           # 𝐂¹ (doubling)
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
+        zeros(S,0,0),           # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T,0,0),           # P̃
         zeros(T,0,0),           # Ã_fd
@@ -201,19 +206,92 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂∇₁_3rd
                         zeros(T,0,0),  # ∂𝐒₁_3rd
                         zeros(T,0,0),  # ∂spinv_3rd
+                        zeros(T,0,0),  # ∂∇₂_3rd
+                        zeros(T,0,0),  # ∂∇₃_3rd
+                        zeros(T,0,0),  # ∂𝐒₂_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_3rd
+                        zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order
 end
 
 """
-    Qme_workspace(n::Int; T::Type = Float64)
+    First_order_workspace(; T::Type = Float64, S::Type = Float64)
+
+Create a pre-allocated workspace for first-order perturbation and related AD paths.
+"""
+function First_order_workspace(; T::Type = Float64, S::Type = Float64)
+    empty_qr_factors = zeros(T, 0, 0)
+    empty_qr_ws = FastLapackInterface.QRWs(empty_qr_factors)
+    empty_qr_rhs = zeros(T, 0, 0)
+    empty_qr_orm_ws = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
+    empty_lu_factors = zeros(T, 0, 0)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+    empty_sparse = spzeros(T, 0, 0)
+    empty_sparse_rhs = zeros(T, 0)
+    empty_sparse_prob = 𝒮.LinearProblem(empty_sparse, empty_sparse_rhs)
+    empty_sparse_lu = 𝒮.init(empty_sparse_prob,
+                             𝒮.LUFactorization(),
+                             verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+
+    first_order_workspace(
+                    Sylvester_workspace(S = T, T = S),  # sylvester
+                    # ForwardDiff partials buffers
+                    zeros(S, 0, 0),  # X̃_first_order
+                    zeros(S, 0, 0),  # p_tmp
+                    zeros(S, 0, 0),  # ∂SS_and_pars
+                    # First-order perturbation workspaces (primal)
+                    zeros(T, 0, 0),  # 𝐧ₚ₋
+                    zeros(T, 0, 0),  # 𝐌
+                    zeros(T, 0, 0),  # 𝐀₊
+                    zeros(T, 0, 0),  # 𝐀₀
+                    zeros(T, 0, 0),  # 𝐀₋
+                    zeros(T, 0, 0),  # 𝐀̃₊
+                    zeros(T, 0, 0),  # 𝐀̃₀
+                    zeros(T, 0, 0),  # 𝐀̃₋
+                    zeros(T, 0, 0),  # 𝐀̄₀ᵤ
+                    zeros(T, 0, 0),  # 𝐀₊ᵤ
+                    zeros(T, 0, 0),  # 𝐀̃₀ᵤ
+                    zeros(T, 0, 0),  # 𝐀₋ᵤ
+                    zeros(T, 0, 0),  # 𝐀
+                    zeros(T, 0, 0),  # ∇₀
+                    zeros(T, 0, 0),  # ∇ₑ
+                    # FastLapackInterface QR workspaces
+                    empty_qr_factors,
+                    empty_qr_ws,
+                    empty_qr_orm_ws,
+                    (0, 0, 0),
+                    empty_qr_orm_ws,
+                    (0, 0, 0),
+                    empty_qr_orm_ws,
+                    (0, 0, 0),
+                    # FastLapackInterface LU workspaces
+                    empty_lu_ws,
+                    (0, 0),
+                    empty_lu_ws,
+                    (0, 0),
+                    # Dedicated FastLapackInterface LU workspace for NSSS implicit derivatives
+                    empty_lu_ws,
+                    (0, 0),
+                    empty_sparse_lu,
+                    zeros(T, 0),
+                    zeros(T, 0, 0))
+end
+
+"""
+    Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
 
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int = 0)
-    qme_workspace(  zeros(T, n, n),  # E
+function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
+    empty_lu_factors = zeros(T, 0, 0)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+
+    qme_doubling_workspace(
+                    zeros(T, n, n),  # E
                     zeros(T, n, n),  # F
                     zeros(T, n, n),  # X
                     zeros(T, n, n),  # Y
@@ -226,15 +304,67 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
-                    Sylvester_workspace(S = T),  # sylvester_ws
+                    Sylvester_workspace(S = T, T = S),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃
-                    zeros(S, 0, 0),  # X̃_first_order
-                    zeros(S, 0, 0),  # p_tmp
-                    zeros(S, 0, 0),  # ∂SS_and_pars
-                    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing)
-                    ℒ.I(n),             # I_n
-                    ℒ.I(nPast))         # I_nPast
+                    # FastLapackInterface LU workspaces
+                    empty_lu_ws,
+                    (0, 0),
+                    empty_lu_ws,
+                    (0, 0))
+end
+
+function ensure_first_order_fast_qr_workspace!(ws::first_order_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
+    if size(ws.fast_qr_factors) != size(qr_mat)
+        ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
+        ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
+    end
+    copyto!(ws.fast_qr_factors, qr_mat)
+
+    return ws.fast_qr_factors, ws.fast_qr_ws
+end
+
+"""
+    Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+
+Create a pre-allocated workspace for the schur-based quadratic matrix equation solver.
+Dimensions:
+- `n` = nVars - nPresent_only (dynamic variables)
+- `nMixed` = number of mixed timing variables
+- `nPfm` = nPast_not_future_and_mixed
+- `nFnpm` = nFuture_not_past_and_mixed
+"""
+function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+    companion_size = n + nMixed
+    nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
+    qz_seed_size = max(companion_size, 1)
+    qz_seed = zeros(T, qz_seed_size, qz_seed_size)
+    qz_ws = FastLapackInterface.GeneralizedSchurWs(qz_seed)
+    lu_seed_size = max(nPfm, 1)
+    lu_seed = zeros(T, lu_seed_size, lu_seed_size)
+    empty_lu_ws = FastLapackInterface.LUWs(lu_seed)
+    schur_workspace(
+        zeros(T, companion_size, companion_size),  # D
+        zeros(T, companion_size, companion_size),  # E
+        zeros(T, n, nPfm),                         # Ã₋
+        zeros(T, n, nFnpm),                        # Ã₀₊
+        zeros(T, n, nPfm),                         # Ã₀₋
+        zeros(T, nPfm, nPfm),                      # Z₁₁
+        zeros(T, nFnpm, nPfm),                     # Z₂₁
+        zeros(T, nPfm, nPfm),                      # S₁₁
+        zeros(T, nPfm, nPfm),                      # T₁₁
+        zeros(T, n, nPfm),                         # sol
+        zeros(T, n, n),                            # temp_X2
+        zeros(T, n, n),                            # AXX
+        Vector{Bool}(undef, companion_size),       # eigenselect
+        qz_ws,
+        (0, 0),
+        empty_lu_ws,
+        (0, 0),
+        empty_lu_ws,
+        (0, 0),
+        zeros(T, nPfm, nFnpm),                     # fast_lu_rhs_t_z21
+        zeros(T, nPfm, nPfm))                      # fast_lu_rhs_t_s11
 end
 
 """
@@ -255,8 +385,9 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0, 0),         # tmp̄ (Krylov)
         zeros(T, 0, 0),         # 𝐗 (Krylov)
         zeros(T, 0),            # b (Krylov)
-        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_workspace
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_workspace
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
+        zeros(T, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
@@ -309,30 +440,30 @@ function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
 end
 
 """
-    ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+    ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
 
-Ensure the bicgstab solver workspace is allocated.
+Ensure Krylov method buffers and the requested solver workspace are allocated.
+Supported algorithms are `:bicgstab` and `:gmres`.
 """
-function ensure_lyapunov_bicgstab_solver!(ws::lyapunov_workspace{T}) where T
+function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
     ensure_lyapunov_krylov_buffers!(ws)
     n = ws.n
-    if length(ws.bicgstab_workspace.x) != n * n && n > 0
-        ws.bicgstab_workspace = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+    if n == 0
+        return ws
     end
-    return ws
-end
 
-"""
-    ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
-
-Ensure the gmres solver workspace is allocated.
-"""
-function ensure_lyapunov_gmres_solver!(ws::lyapunov_workspace{T}) where T
-    ensure_lyapunov_krylov_buffers!(ws)
-    n = ws.n
-    if length(ws.gmres_workspace.x) != n * n && n > 0
-        ws.gmres_workspace = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+    if algorithm == :bicgstab
+        if length(ws.bicgstab.x) != n * n
+            ws.bicgstab = Krylov.BicgstabWorkspace(n * n, n * n, Vector{T})
+        end
+    elseif algorithm == :gmres
+        if length(ws.gmres.x) != n * n
+            ws.gmres = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
+        end
+    else
+        error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")
     end
+
     return ws
 end
 
@@ -550,9 +681,12 @@ end
     Kalman_workspace(;T::Type = Float64)
 
 Create a workspace for Kalman filter computations with lazy buffer allocation.
-All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_buffers!.
+All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_workspaces!.
 """
 function Kalman_workspace(;T::Type = Float64)
+    empty_lu_factors = zeros(T, 1, 1)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
+
     kalman_workspace{T}(
         0, 0,                   # n_obs, n_states dimensions
         zeros(T, 0),            # u (n_states)
@@ -560,19 +694,26 @@ function Kalman_workspace(;T::Type = Float64)
         zeros(T, 0),            # ztmp (n_obs)
         zeros(T, 0),            # utmp (n_states)
         zeros(T, 0, 0),         # Ctmp (n_obs × n_states)
+        zeros(T, 0, 0),         # 𝐁 (n_states × n_states)
         zeros(T, 0, 0),         # F (n_obs × n_obs)
         zeros(T, 0, 0),         # K (n_states × n_obs)
         zeros(T, 0, 0),         # tmp (n_states × n_states)
-        zeros(T, 0, 0))         # Ptmp (n_states × n_states)
+        zeros(T, 0, 0),         # Ptmp (n_states × n_states)
+        empty_lu_ws,
+        (0, 0),
+        zeros(T, 0, 0))         # fast_lu_rhs_t_k (n_obs × n_states)
 end
 
 
 """
-    ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+    ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
 
-Ensure the Kalman workspaces are allocated for the given dimensions.
+Ensure the Kalman workspace inside `workspaces` is allocated for the given dimensions and return it.
 """
-function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int) where T
+function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
+    ws = workspaces.kalman
+    T = eltype(ws.u)
+
     # Check if dimensions changed
     if ws.n_obs == n_obs && ws.n_states == n_states
         return ws
@@ -599,6 +740,9 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
     if size(ws.Ctmp, 1) != n_obs || size(ws.Ctmp, 2) != n_states
         ws.Ctmp = zeros(T, n_obs, n_states)
     end
+    if size(ws.𝐁, 1) != n_states || size(ws.𝐁, 2) != n_states
+        ws.𝐁 = zeros(T, n_states, n_states)
+    end
     if size(ws.F, 1) != n_obs || size(ws.F, 2) != n_obs
         ws.F = zeros(T, n_obs, n_obs)
     end
@@ -611,6 +755,9 @@ function ensure_kalman_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::I
     if size(ws.Ptmp, 1) != n_states || size(ws.Ptmp, 2) != n_states
         ws.Ptmp = zeros(T, n_states, n_states)
     end
+    if size(ws.fast_lu_rhs_t_k, 1) != n_obs || size(ws.fast_lu_rhs_t_k, 2) != n_states
+        ws.fast_lu_rhs_t_k = zeros(T, n_obs, n_states)
+    end
     
     return ws
 end
@@ -620,14 +767,17 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
-                Qme_workspace(0, T = T),  # Initialize with size 0, will be resized when needed
+                First_order_workspace(T = T, S = S),  # Initialize with size 0, will be resized when needed
+                Qme_doubling_workspace(0, T = T, S = S),  # Initialize with size 0, will be resized when needed
+                Schur_workspace(0, 0, 0, 0, T = T),  # Initialize with size 0, will be resized when needed
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T))  # Kalman filter - will be resized
+                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -635,7 +785,9 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             post_parameters_macro(
                 Symbol[],
                 false,
-                true,
+                :single_equation,
+                :ESCH,
+                120.0,
                 Dict{Symbol, Float64}(),
                 Set{Symbol}[],
                 Set{Symbol}[],
@@ -668,6 +820,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 spzeros(Float64, 0, 0),
                 Symbol[],
                 Symbol[],
+                Int[],
+                Int[],
                 Symbol[],
                 # Symbol[],
                 Int[],
@@ -680,13 +834,31 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Int[],
                 ℒ.I(0),
+                ℒ.I(0),
                 1:0,
                 1:0,
                 1,
                 zeros(Bool, 0, 0),
-                zeros(Bool, 0, 0)),
+                zeros(Bool, 0, 0),
+                Int[],
+                Int[],                      # indices_past_not_future_in_comb
+                zeros(Bool, 0, 0),          # I_nPast_not_mixed
+                zeros(Bool, 0, 0),          # Ir_past_selector
+                zeros(Bool, 0, 0),          # schur_Z₊
+                zeros(Bool, 0, 0),          # schur_I₊
+                zeros(Bool, 0, 0),          # schur_Z₋
+                zeros(Bool, 0, 0),          # schur_I₋
+                nothing,
+                0,
+                Int[],
+                0,
+                Symbol[],
+                Int[],
+                Symbol[],
+                1),
             Second_order_indices(),
-            Third_order_indices())
+            Third_order_indices(),
+            NSSSSolverConstants())
 end
 
 function _axis_has_string(axis)
@@ -752,6 +924,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :custom_ss_expand_matrix, p.custom_ss_expand_matrix),
         get(kwargs, :vars_in_ss_equations, p.vars_in_ss_equations),
         get(kwargs, :vars_in_ss_equations_with_aux, p.vars_in_ss_equations_with_aux),
+        get(kwargs, :ss_var_idx_in_var_and_calib, p.ss_var_idx_in_var_and_calib),
+        get(kwargs, :calib_idx_in_var_and_calib, p.calib_idx_in_var_and_calib),
         get(kwargs, :SS_and_pars_names_lead_lag, p.SS_and_pars_names_lead_lag),
         # get(kwargs, :SS_and_pars_names_no_exo, p.SS_and_pars_names_no_exo),
         get(kwargs, :SS_and_pars_no_exo_idx, p.SS_and_pars_no_exo_idx),
@@ -764,20 +938,38 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :future_not_past_and_mixed_in_comb, p.future_not_past_and_mixed_in_comb),
         get(kwargs, :past_not_future_and_mixed_in_comb, p.past_not_future_and_mixed_in_comb),
         get(kwargs, :Ir, p.Ir),
+        get(kwargs, :I_n, hasfield(typeof(p), :I_n) ? p.I_n : ℒ.I(0)),
         get(kwargs, :nabla_zero_cols, p.nabla_zero_cols),
         get(kwargs, :nabla_minus_cols, p.nabla_minus_cols),
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :past_not_future_and_mixed_in_present_but_not_only,
+            hasfield(typeof(p), :past_not_future_and_mixed_in_present_but_not_only) ? p.past_not_future_and_mixed_in_present_but_not_only : Int[]),
+        get(kwargs, :indices_past_not_future_in_comb, hasfield(typeof(p), :indices_past_not_future_in_comb) ? p.indices_past_not_future_in_comb : Int[]),
+        get(kwargs, :I_nPast_not_mixed, hasfield(typeof(p), :I_nPast_not_mixed) ? p.I_nPast_not_mixed : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :Ir_past_selector, hasfield(typeof(p), :Ir_past_selector) ? p.Ir_past_selector : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_Z₊, hasfield(typeof(p), :schur_Z₊) ? p.schur_Z₊ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_I₊, hasfield(typeof(p), :schur_I₊) ? p.schur_I₊ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_Z₋, hasfield(typeof(p), :schur_Z₋) ? p.schur_Z₋ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :schur_I₋, hasfield(typeof(p), :schur_I₋) ? p.schur_I₋ : Matrix{Bool}(undef, 0, 0)),
+        get(kwargs, :nsss_dependencies, p.nsss_dependencies),
+        get(kwargs, :nsss_n_sol, p.nsss_n_sol),
+        get(kwargs, :nsss_output_indices, p.nsss_output_indices),
+        get(kwargs, :nsss_n_ext_params, p.nsss_n_ext_params),
+        get(kwargs, :nsss_sol_names, p.nsss_sol_names),
+        get(kwargs, :nsss_exo_zero_indices, p.nsss_exo_zero_indices),
+        get(kwargs, :nsss_param_names_ext, p.nsss_param_names_ext),
+        get(kwargs, :nsss_fastest_solver_parameter_idx, p.nsss_fastest_solver_parameter_idx),
     )
 end
 
 # Initialize all commonly used constants at once (call at entry points)
 # This reduces repeated ensure_*! calls throughout the codebase
 function initialise_constants!(𝓂)
-    ensure_computational_constants!(𝓂)
+    ensure_computational_constants!(𝓂.constants)
     ensure_name_display_constants!(𝓂)
-    ensure_first_order_constants!(𝓂)
+    ensure_first_order_constants!(𝓂.constants)
     return 𝓂.constants
 end
 
@@ -862,61 +1054,6 @@ function set_up_name_display_cache(T::post_model_macro, calibration_equations_pa
 end
 
 
-function ensure_computational_constants!(𝓂)
-    constants = 𝓂.constants
-    so = constants.second_order
-    if isempty(so.s_in_s⁺)
-        # Use timings from constants if available, otherwise from model
-        T = constants.post_model_macro
-        nᵉ = T.nExo
-        nˢ = T.nPast_not_future_and_mixed
-
-        s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
-        s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-        kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-
-        kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-        kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-
-        e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-        v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-        kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
-
-        # Compute sparse index patterns for filter operations
-        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
-        shock_idxs = sparse(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)).nzind
-        shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
-        shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
-        var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-
-        so.s_in_s⁺ = s_in_s⁺
-        so.s_in_s = s_in_s
-        so.kron_s⁺_s⁺ = kron_s⁺_s⁺
-        so.kron_s⁺_s = kron_s⁺_s
-        so.kron_s⁺_s⁺_s⁺ = kron_s⁺_s⁺_s⁺
-        so.kron_s_s⁺_s⁺ = kron_s_s⁺_s⁺
-        so.e_in_s⁺ = e_in_s⁺
-        so.v_in_s⁺ = v_in_s⁺
-        so.kron_s_s = kron_s_s
-        so.kron_e_e = kron_e_e
-        so.kron_v_v = kron_v_v
-        so.kron_e_s = kron_e_s
-        so.shockvar_idxs = shockvar_idxs
-        so.shock_idxs = shock_idxs
-        so.shock_idxs2 = shock_idxs2
-        so.shock²_idxs = shock²_idxs
-        so.var_vol²_idxs = var_vol²_idxs
-    end
-
-    return constants.second_order
-end
-
 function ensure_computational_constants!(constants::constants)
     so = constants.second_order
     if isempty(so.s_in_s⁺)
@@ -969,56 +1106,6 @@ function ensure_computational_constants!(constants::constants)
     end
 
     return constants.second_order
-end
-
-function ensure_conditional_forecast_constants!(𝓂; third_order::Bool = false)
-    constants = 𝓂.constants
-    so = ensure_computational_constants!(𝓂)
-
-    if isempty(so.var²_idxs)
-        s_in_s⁺ = so.s_in_s
-        e_in_s⁺ = so.e_in_s⁺
-
-        shock_idxs = so.shock_idxs
-        shock²_idxs = so.shock²_idxs
-        shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-        var_vol²_idxs = so.var_vol²_idxs
-        var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-        so.var²_idxs = var²_idxs
-        so.shockvar²_idxs = shockvar²_idxs
-        so.var_vol²_idxs = var_vol²_idxs
-    end
-
-    if third_order
-        to = constants.third_order
-        if isempty(to.var_vol³_idxs)
-            sv_in_s⁺ = so.s_in_s⁺
-            e_in_s⁺ = so.e_in_s⁺
-            ones_e = zero(e_in_s⁺) .+ 1
-
-            var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
-            shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
-            shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
-            shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-            shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
-            shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
-            shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
-            shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-            shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
-
-            to.var_vol³_idxs = var_vol³_idxs
-            to.shock_idxs2 = shock_idxs2
-            to.shock_idxs3 = shock_idxs3
-            to.shock³_idxs = shock³_idxs
-            to.shockvar1_idxs = shockvar1_idxs
-            to.shockvar2_idxs = shockvar2_idxs
-            to.shockvar3_idxs = shockvar3_idxs
-            to.shockvar³2_idxs = shockvar³2_idxs
-            to.shockvar³_idxs = shockvar³_idxs
-        end
-    end
-
-    return so
 end
 
 function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
@@ -1109,6 +1196,33 @@ function build_first_order_index_cache(T, I_nVars)
     expand_future = I_nVars[T.future_not_past_and_mixed_idx,:]
     expand_past = I_nVars[T.past_not_future_and_mixed_idx,:]
 
+    past_not_future_and_mixed_in_present_but_not_only_tmp = indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx)
+    if any(isnothing.(past_not_future_and_mixed_in_present_but_not_only_tmp))
+        past_not_future_and_mixed_in_present_but_not_only = Int[]
+    else
+        past_not_future_and_mixed_in_present_but_not_only = Int.(past_not_future_and_mixed_in_present_but_not_only_tmp)
+    end
+
+    # Schur QME cached indices and constant matrices
+    indices_past_not_future_in_comb_tmp = indexin(T.past_not_future_idx, comb)
+    if any(isnothing.(indices_past_not_future_in_comb_tmp))
+        indices_past_not_future_in_comb = Int[]
+    else
+        indices_past_not_future_in_comb = Int.(indices_past_not_future_in_comb_tmp)
+    end
+
+    I_nPast = ℒ.I(T.nPast_not_future_and_mixed)
+    I_nPast_not_mixed = Matrix{Bool}(I_nPast[T.not_mixed_in_past_idx, :])
+    Ir_past_selector = Matrix{Bool}(Ir[past_not_future_and_mixed_in_comb, :])
+    I_n = ℒ.I(T.nVars - T.nPresent_only)
+    
+    schur_Z₊ = zeros(Bool, T.nMixed, T.nFuture_not_past_and_mixed)
+    I_nFuture = ℒ.I(T.nFuture_not_past_and_mixed)
+    schur_I₊ = Matrix{Bool}(I_nFuture[T.mixed_in_future_idx, :])
+    
+    schur_Z₋ = zeros(Bool, T.nMixed, T.nPast_not_future_and_mixed)
+    schur_I₋ = Matrix{Bool}(I_nPast[T.mixed_in_past_idx, :])
+
     return (
         initialized = true,
         dyn_index = dyn_index,
@@ -1117,42 +1231,21 @@ function build_first_order_index_cache(T, I_nVars)
         future_not_past_and_mixed_in_comb = future_not_past_and_mixed_in_comb,
         past_not_future_and_mixed_in_comb = past_not_future_and_mixed_in_comb,
         Ir = Ir,
+        I_n = I_n,
         nabla_zero_cols = nabla_zero_cols,
         nabla_minus_cols = nabla_minus_cols,
         nabla_e_start = nabla_e_start,
         expand_future = expand_future,
         expand_past = expand_past,
+        past_not_future_and_mixed_in_present_but_not_only = past_not_future_and_mixed_in_present_but_not_only,
+        indices_past_not_future_in_comb = indices_past_not_future_in_comb,
+        I_nPast_not_mixed = I_nPast_not_mixed,
+        Ir_past_selector = Ir_past_selector,
+        schur_Z₊ = schur_Z₊,
+        schur_I₊ = schur_I₊,
+        schur_Z₋ = schur_Z₋,
+        schur_I₋ = schur_I₋,
     )
-end
-
-function ensure_first_order_constants!(𝓂)
-    constants = 𝓂.constants
-    if !constants.post_complete_parameters.initialized
-        # Use timings from constants if available, otherwise from model
-        T = constants.post_model_macro
-        diag_nVars = constants.post_complete_parameters.diag_nVars
-        if size(diag_nVars, 1) == 0
-            diag_nVars = ℒ.I(T.nVars)
-        end
-        cache = build_first_order_index_cache(T, diag_nVars)
-        constants.post_complete_parameters = update_post_complete_parameters(
-            constants.post_complete_parameters;
-            diag_nVars = diag_nVars,
-            initialized = cache.initialized,
-            dyn_index = cache.dyn_index,
-            reverse_dynamic_order = cache.reverse_dynamic_order,
-            comb = cache.comb,
-            future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
-            past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
-            Ir = cache.Ir,
-            nabla_zero_cols = cache.nabla_zero_cols,
-            nabla_minus_cols = cache.nabla_minus_cols,
-            nabla_e_start = cache.nabla_e_start,
-            expand_future = cache.expand_future,
-            expand_past = cache.expand_past,
-        )
-    end
-    return constants.post_complete_parameters
 end
 
 function ensure_first_order_constants!(constants::constants)
@@ -1174,11 +1267,20 @@ function ensure_first_order_constants!(constants::constants)
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
             Ir = cache.Ir,
+            I_n = cache.I_n,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
             nabla_e_start = cache.nabla_e_start,
             expand_future = cache.expand_future,
             expand_past = cache.expand_past,
+            past_not_future_and_mixed_in_present_but_not_only = cache.past_not_future_and_mixed_in_present_but_not_only,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            I_nPast_not_mixed = cache.I_nPast_not_mixed,
+            Ir_past_selector = cache.Ir_past_selector,
+            schur_Z₊ = cache.schur_Z₊,
+            schur_I₊ = cache.schur_I₊,
+            schur_Z₋ = cache.schur_Z₋,
+            schur_I₋ = cache.schur_I₋,
         )
     end
     return constants.post_complete_parameters
@@ -1186,44 +1288,82 @@ end
 
 
 """
-    ensure_qme_workspace!(𝓂)
-    ensure_qme_workspace!(workspaces, n)
+    ensure_qme_doubling_workspace!(workspaces, n)
 
-Ensure the QME (quadratic matrix equation) workspace is properly sized for the model.
-The workspace dimension is `n = nVars - nPresent_only` (the size of the QME matrices).
+Ensure the QME doubling workspace has dimension `n`.
+If the workspace is the wrong size, it is reallocated.
+"""
+function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
+    ws = workspaces.qme_doubling
+    if size(ws.E, 1) != n
+        workspaces.qme_doubling = Qme_doubling_workspace(n)
+    end
+    return workspaces.qme_doubling
+end
+
+"""
+    ensure_first_order_workspace_buffers!(ws, T, n_dyn, n_comb)
+
+Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
+the correct dimensions.
+"""
+function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
+    n = T.nVars
+    n₊ = T.nFuture_not_past_and_mixed
+    n₋ = T.nPast_not_future_and_mixed
+    nₑ = T.nExo
+    nᵤ = T.nPresent_only
+    n₀ᵤ = length(T.present_but_not_only_idx)
+
+    size(ws.𝐀₊) == (n, n₊) || (ws.𝐀₊ = zeros(R, n, n₊))
+    size(ws.𝐀₀) == (n, n) || (ws.𝐀₀ = zeros(R, n, n))
+    size(ws.𝐀₋) == (n, n₋) || (ws.𝐀₋ = zeros(R, n, n₋))
+
+    size(ws.𝐀̃₊) == (n_dyn, n_comb) || (ws.𝐀̃₊ = zeros(R, n_dyn, n_comb))
+    size(ws.𝐀̃₀) == (n_dyn, n_comb) || (ws.𝐀̃₀ = zeros(R, n_dyn, n_comb))
+    size(ws.𝐀̃₋) == (n_dyn, n_comb) || (ws.𝐀̃₋ = zeros(R, n_dyn, n_comb))
+
+    size(ws.𝐀̄₀ᵤ) == (nᵤ, nᵤ) || (ws.𝐀̄₀ᵤ = zeros(R, nᵤ, nᵤ))
+    size(ws.𝐀₊ᵤ) == (nᵤ, n₊) || (ws.𝐀₊ᵤ = zeros(R, nᵤ, n₊))
+    size(ws.𝐀̃₀ᵤ) == (nᵤ, n₀ᵤ) || (ws.𝐀̃₀ᵤ = zeros(R, nᵤ, n₀ᵤ))
+    size(ws.𝐀₋ᵤ) == (nᵤ, n₋) || (ws.𝐀₋ᵤ = zeros(R, nᵤ, n₋))
+
+    size(ws.𝐧ₚ₋) == (nᵤ, n₋) || (ws.𝐧ₚ₋ = zeros(R, nᵤ, n₋))
+    size(ws.𝐌) == (n₊, n) || (ws.𝐌 = zeros(R, n₊, n))
+    size(ws.𝐀) == (n, n₋) || (ws.𝐀 = zeros(R, n, n₋))
+    size(ws.∇₀) == (n, n) || (ws.∇₀ = zeros(R, n, n))
+    size(ws.∇ₑ) == (n, nₑ) || (ws.∇ₑ = zeros(R, n, nₑ))
+
+    return ws
+end
+
+"""
+    ensure_schur_workspace!(workspaces, n, nMixed, nPfm, nFnpm)
+
+Ensure the schur workspace is properly sized for the model.
+Dimensions are:
+- `n = nVars - nPresent_only` (dynamic variables)
+- `nMixed` (mixed timing variables)
+- `nPfm = nPast_not_future_and_mixed`
+- `nFnpm = nFuture_not_past_and_mixed`
+
 If the workspace is the wrong size, it will be reallocated.
 """
-function ensure_qme_workspace!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    n = T.nVars - T.nPresent_only
-    nPast = T.nPast_not_future_and_mixed
-    return ensure_qme_workspace!(𝓂.workspaces, n, nPast)
+function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
+    workspaces.schur = ensure_schur_workspace!(workspaces.schur, n, nMixed, nPfm, nFnpm)
+    return workspaces.schur
 end
 
-function ensure_qme_workspace!(workspaces::workspaces, n::Int, nPast::Int = 0)
-    ws = workspaces.qme
-    # Check if workspace needs to be resized (either n or nPast changed)
-    if size(ws.E, 1) != n || size(ws.I_nPast, 1) != nPast
-        workspaces.qme = Qme_workspace(n, nPast = nPast)
+function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int) where T
+    companion_size = n + nMixed
+    if size(ws.D, 1) != companion_size ||
+       size(ws.sol) != (n, nPfm) ||
+       size(ws.Z₁₁) != (nPfm, nPfm) ||
+       size(ws.Z₂₁) != (nFnpm, nPfm)
+        return Schur_workspace(n, nMixed, nPfm, nFnpm, T = T)
     end
-    return workspaces.qme
+    return ws
 end
-
-"""
-    ensure_sylvester_1st_order_workspace!(𝓂)
-    ensure_sylvester_1st_order_workspace!(workspaces)
-
-Return the first-order sylvester workspace from the model or workspaces.
-The workspace is lazily sized by the sylvester solver when needed.
-"""
-function ensure_sylvester_1st_order_workspace!(𝓂)
-    return 𝓂.workspaces.sylvester_1st_order
-end
-
-function ensure_sylvester_1st_order_workspace!(workspaces::workspaces)
-    return workspaces.sylvester_1st_order
-end
-
 
 """
     ensure_lyapunov_workspace!(workspaces, n, order::Symbol)
@@ -1257,45 +1397,6 @@ function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbo
         error("Invalid order: $order. Must be :first_order, :second_order, or :third_order")
     end
 end
-
-"""
-    ensure_lyapunov_workspace_1st_order!(𝓂)
-
-Ensure the first-order Lyapunov workspace is properly sized for the model.
-The dimension is `nVars` (size of the covariance matrix).
-"""
-function ensure_lyapunov_workspace_1st_order!(𝓂)
-    T = 𝓂.constants.post_model_macro
-    n = T.nVars
-    return ensure_lyapunov_workspace!(𝓂.workspaces, n, :first_order)
-end
-
-
-"""
-    ensure_inversion_workspace!(𝓂; third_order::Bool = false)
-
-Ensure the inversion filter workspace is properly sized for the model.
-Dimensions are based on nExo (number of shocks) and nPast_not_future_and_mixed.
-"""
-function ensure_inversion_workspace!(𝓂; third_order::Bool = false)
-    T = 𝓂.constants.post_model_macro
-    n_exo = T.nExo
-    n_past = T.nPast_not_future_and_mixed
-    ensure_inversion_buffers!(𝓂.workspaces.inversion, n_exo, n_past; third_order = third_order)
-    return 𝓂.workspaces.inversion
-end
-
-
-"""
-    ensure_kalman_workspace!(𝓂)
-
-Ensure the Kalman filter workspace is available. Returns the workspace for use.
-Actual buffer resizing happens lazily in ensure_kalman_buffers! when dimensions are known.
-"""
-function ensure_kalman_workspace!(𝓂)
-    return 𝓂.workspaces.kalman
-end
-
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     selector = spzeros(Float64, length(target), length(source))
@@ -1337,6 +1438,9 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
 
         vars_in_ss_equations = T.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = T.vars_in_ss_equations
+        vars_and_calib = vcat(T.var, calibration_parameters)
+        ss_var_idx_in_var_and_calib = Int.(indexin(vars_in_ss_equations, vars_and_calib))
+        calib_idx_in_var_and_calib = Int.(indexin(calibration_parameters, vars_and_calib))
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))
 
@@ -1360,6 +1464,8 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
             custom_ss_expand_matrix = custom_ss_expand_matrix,
             vars_in_ss_equations = vars_in_ss_equations,
             vars_in_ss_equations_with_aux = vars_in_ss_equations_with_aux,
+            ss_var_idx_in_var_and_calib = ss_var_idx_in_var_and_calib,
+            calib_idx_in_var_and_calib = calib_idx_in_var_and_calib,
             SS_and_pars_names_lead_lag = SS_and_pars_names_lead_lag,
             # SS_and_pars_names_no_exo = SS_and_pars_names_no_exo,
             SS_and_pars_no_exo_idx = SS_and_pars_no_exo_idx,
@@ -1469,7 +1575,7 @@ function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symb
     to = constants.third_order
     key = Tuple(dependencies)
     if !haskey(to.dependency_kron_indices, key)
-        so = ensure_computational_constants!(𝓂)
+        so = ensure_computational_constants!(constants)
         to.dependency_kron_indices[key] = moments_dependency_kron_indices(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, so.e_in_s⁺),
@@ -1481,23 +1587,23 @@ end
 
 
 struct Tolerances
-    NSSS_acceptance_tol::AbstractFloat
-    NSSS_xtol::AbstractFloat
-    NSSS_ftol::AbstractFloat
-    NSSS_rel_xtol::AbstractFloat
+    NSSS_acceptance_tol::Float64
+    NSSS_xtol::Float64
+    NSSS_ftol::Float64
+    NSSS_rel_xtol::Float64
 
-    qme_tol::AbstractFloat
-    qme_acceptance_tol::AbstractFloat
+    qme_tol::Float64
+    qme_acceptance_tol::Float64
 
-    sylvester_tol::AbstractFloat
-    sylvester_acceptance_tol::AbstractFloat
+    sylvester_tol::Float64
+    sylvester_acceptance_tol::Float64
 
-    lyapunov_tol::AbstractFloat
-    lyapunov_acceptance_tol::AbstractFloat
+    lyapunov_tol::Float64
+    lyapunov_acceptance_tol::Float64
 
-    droptol::AbstractFloat
+    droptol::Float64
 
-    dependencies_tol::AbstractFloat
+    dependencies_tol::Float64
 end
 
 struct CalculationOptions
@@ -1518,41 +1624,41 @@ $(SIGNATURES)
 Function to manually define tolerances for the solvers of various problems: non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme).
 
 # Keyword Arguments
-- `NSSS_acceptance_tol` [Default: `1e-12`, Type: `AbstractFloat`]: Acceptance tolerance for non-stochastic steady state solver.
-- `NSSS_xtol` [Default: `1e-12`, Type: `AbstractFloat`]: Absolute tolerance for solver steps for non-stochastic steady state solver.
-- `NSSS_ftol` [Default: `1e-14`, Type: `AbstractFloat`]: Absolute tolerance for solver function values for non-stochastic steady state solver.
-- `NSSS_rel_xtol` [Default: `eps()`, Type: `AbstractFloat`]: Relative tolerance for solver steps for non-stochastic steady state solver.
+- `NSSS_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for non-stochastic steady state solver.
+- `NSSS_xtol` [Default: `1e-12`, Type: `Float64`]: Absolute tolerance for solver steps for non-stochastic steady state solver.
+- `NSSS_ftol` [Default: `1e-14`, Type: `Float64`]: Absolute tolerance for solver function values for non-stochastic steady state solver.
+- `NSSS_rel_xtol` [Default: `eps()`, Type: `Float64`]: Relative tolerance for solver steps for non-stochastic steady state solver.
 
-- `qme_tol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance for quadratic matrix equation solver.
-- `qme_acceptance_tol` [Default: `1e-8`, Type: `AbstractFloat`]: Acceptance tolerance for quadratic matrix equation solver.
+- `qme_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for quadratic matrix equation solver.
+- `qme_acceptance_tol` [Default: `1e-8`, Type: `Float64`]: Acceptance tolerance for quadratic matrix equation solver.
 
-- `sylvester_tol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance for Sylvester equation solver.
-- `sylvester_acceptance_tol` [Default: `1e-10`, Type: `AbstractFloat`]: Acceptance tolerance for Sylvester equation solver.
+- `sylvester_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Sylvester equation solver.
+- `sylvester_acceptance_tol` [Default: `1e-10`, Type: `Float64`]: Acceptance tolerance for Sylvester equation solver.
 
-- `lyapunov_tol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance for Lyapunov equation solver.
-- `lyapunov_acceptance_tol` [Default: `1e-12`, Type: `AbstractFloat`]: Acceptance tolerance for Lyapunov equation solver.
+- `lyapunov_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Lyapunov equation solver.
+- `lyapunov_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for Lyapunov equation solver.
 
-- `droptol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance below which matrix entries are considered 0.
+- `droptol` [Default: `1e-14`, Type: `Float64`]: Tolerance below which matrix entries are considered 0.
 
-- `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
+- `dependencies_tol` [Default: `1e-12`, Type: `Float64`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
 """
-function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
-                    NSSS_xtol::AbstractFloat = 1e-12,
-                    NSSS_ftol::AbstractFloat = 1e-14,
-                    NSSS_rel_xtol::AbstractFloat = eps(),
+function Tolerances(;NSSS_acceptance_tol::Float64 = 1e-12,
+                    NSSS_xtol::Float64 = 1e-12,
+                    NSSS_ftol::Float64 = 1e-14,
+                    NSSS_rel_xtol::Float64 = eps(),
                     
-                    qme_tol::AbstractFloat = 1e-14,
-                    qme_acceptance_tol::AbstractFloat = 1e-8,
+                    qme_tol::Float64 = 1e-14,
+                    qme_acceptance_tol::Float64 = 1e-8,
 
-                    sylvester_tol::AbstractFloat = 1e-14,
-                    sylvester_acceptance_tol::AbstractFloat = 1e-10,
+                    sylvester_tol::Float64 = 1e-14,
+                    sylvester_acceptance_tol::Float64 = 1e-10,
 
-                    lyapunov_tol::AbstractFloat = 1e-14,
-                    lyapunov_acceptance_tol::AbstractFloat = 1e-12,
+                    lyapunov_tol::Float64 = 1e-14,
+                    lyapunov_acceptance_tol::Float64 = 1e-12,
 
-                    droptol::AbstractFloat = 1e-14,
+                    droptol::Float64 = 1e-14,
 
-                    dependencies_tol::AbstractFloat = 1e-12)
+                    dependencies_tol::Float64 = 1e-12)
     
     return Tolerances(NSSS_acceptance_tol,
                         NSSS_xtol,
@@ -1569,7 +1675,7 @@ function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
 end
 
 
-function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
+function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,

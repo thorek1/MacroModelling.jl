@@ -61,6 +61,20 @@ modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
+@testset "Zygote vs FiniteDifferences gradient (1st order inversion)" begin
+    back_grad = Zygote.gradient(x -> get_loglikelihood(FS2000, data, x, filter = :inversion), FS2000.parameter_values)
+    @test !isnothing(back_grad[1])
+    @test all(isfinite, back_grad[1])
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x, filter = :inversion), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
 
 
 # # estimate highly nonlinear model

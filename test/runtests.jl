@@ -16,7 +16,6 @@ using Aqua
 import LinearAlgebra as ℒ
 using CSV, DataFrames
 using Dates
-using RuntimeGeneratedFunctions
 
 function quarterly_dates(start_date::Date, len::Int)
     dates = Vector{Date}(undef, len)
@@ -796,16 +795,6 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    @testset verbose = true "Test equation filtering" begin
-        include("test_filter_equations.jl")
-    end
-    GC.gc()
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
-    end
-    GC.gc()
-
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
@@ -926,6 +915,16 @@ if test_set == "basic"
         @test isapprox(irf_nopre, irf_pre)
     end
 
+    @testset verbose = true "Test equation filtering" begin
+        include("test_filter_equations.jl")
+    end
+    GC.gc()
+
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
+
     @testset "Custom steady state assignment" begin
         @model RBC_switch begin
             1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
@@ -966,7 +965,7 @@ if test_set == "basic"
         @test inplace_calls[] > 0
         @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
         expected_cache_length = length(RBC_switch.constants.post_model_macro.vars_in_ss_equations_no_aux) + length(RBC_switch.equations.calibration_parameters)
-        @test length(RBC_switch.workspaces.custom_steady_state_buffer) == expected_cache_length
+        @test length(RBC_switch.workspaces.custom_steady_state) == expected_cache_length
 
         # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
         # @test bad_calls[] > 0
@@ -1005,16 +1004,18 @@ if test_set == "basic"
             beta = 0.95
         end
 
-        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+        @test RBC_macro_switch.functions.NSSS_custom isa Function
+        @test RBC_macro_switch.constants.nsss_solver.n_steps == 0
 
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] > 0
-        @test !(RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction)
+        @test RBC_macro_switch.functions.NSSS_custom isa Function
+        @test RBC_macro_switch.constants.nsss_solver.n_steps == 0
 
         MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.functions.NSSS_custom)
-        @test RBC_macro_switch.functions.NSSS_solve isa RuntimeGeneratedFunction
+        @test RBC_macro_switch.constants.nsss_solver.n_steps != 0
 
         calls_before = macro_calls[]
         _ = get_steady_state(RBC_macro_switch)
@@ -3341,7 +3342,7 @@ if test_set == "basic"
         end
 
 
-        @parameters RBC_CME symbolic = true verbose = true begin
+        @parameters RBC_CME ss_symbolic_mode = :full verbose = true begin
             # alpha | k[ss] / (4 * y[ss]) = cap_share
             # cap_share = 1.66
             alpha = .157
@@ -3482,7 +3483,7 @@ if test_set == "basic"
         end
 
 
-        @parameters RBC_CME symbolic = true verbose = true begin
+        @parameters RBC_CME ss_symbolic_mode = :full verbose = true begin
             alpha | k[ss] / (4 * y[ss]) = cap_share
             cap_share = 1.66
             # alpha = .157

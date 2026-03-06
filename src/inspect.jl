@@ -66,7 +66,7 @@ function replace_curly_braces_in_symbols(expr)
                     result = Expr(:curly, result, content)
                 end
                 
-                remaining = rest
+                remaining = something(rest, "")
             end
             
             return result === nothing ? expr : result
@@ -123,16 +123,21 @@ end
 Check if `expr` contains `sym` matching `pattern` (nothing = any timing).
 """
 function expr_contains(expr, sym::Symbol, pattern)
+    normalize_repr(x) = replace(string(x), "◖" => "{", "◗" => "}")
+    sym_str = normalize_repr(sym)
+    pattern_str = pattern === nothing ? "" : normalize_repr(pattern)
+
     found = Ref(false)
     postwalk(expr) do x
         if pattern === nothing
             # Match symbol anywhere (as ref base or standalone)
-            if x === sym || (x isa Expr && x.head == :ref && x.args[1] === sym)
+            if normalize_repr(x) == sym_str ||
+               (x isa Expr && x.head == :ref && normalize_repr(x.args[1]) == sym_str)
                 found[] = true
             end
         else
             # Match exact expression pattern
-            x == pattern && (found[] = true)
+            normalize_repr(x) == pattern_str && (found[] = true)
         end
         x
     end
@@ -348,7 +353,7 @@ function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing}
     # Parse filter term (uses user-friendly format with [-1], [0], etc.)
     sym, pattern = parse_filter_term(filter)
     
-    return [expr for (expr, orig) in zip(exprs, 𝓂.equations.dynamic) if expr_contains(orig, sym, pattern)]
+    return [expr for expr in exprs if expr_contains(expr, sym, pattern)]
 end
 
 

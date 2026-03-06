@@ -8,67 +8,38 @@ from the origin with gradient-based solvers (including the default LagrangeNewto
 returns the root whose basin contains the origin rather than guaranteeing the global
 minimum.
 """
-# Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, 
-                                algorithm, observables, 
-                                𝐒, 
-                                data_in_deviations, 
-                                constants_obj::constants, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                opts,
-                                on_failure_loglikelihood,
-                                lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace,
-                                kalman_ws::kalman_workspace) #; 
-                                # timer::TimerOutput = TimerOutput())
-    return calculate_inversion_filter_loglikelihood(Val(algorithm), 
-                                                    state, 
-                                                    𝐒, 
-                                                    data_in_deviations, 
-                                                    observables, 
-                                                    constants_obj, 
-                                                    inv_ws,
-                                                    warmup_iterations = warmup_iterations, 
-                                                    presample_periods = presample_periods, 
-                                                    filter_algorithm = filter_algorithm, 
-                                                    # timer = timer, 
-                                                    opts = opts,
-                                                    on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-
-function calculate_inversion_filter_loglikelihood(::Val{:first_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:first_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Matrix{R}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    state, 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     # @timeit_debug timer "Inversion filter" begin    
     # first order
-    state = copy(state[1])
+    state = convert(Vector{R}, state[1])
 
-    precision_factor = 1.0
+    precision_factor = one(R)
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
 
-    shocks² = 0.0
-    logabsdets = 0.0
-    jac = zeros(0,0)
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    jac = zeros(R, 0, 0)
 
     if warmup_iterations > 0
         if warmup_iterations >= 1
@@ -97,7 +68,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         end
 
         for i in 1:warmup_iterations
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
@@ -107,11 +78,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         shocks² += sum(abs2,x)
     end
 
-    y = zeros(length(cond_var_idx))
-    x = zeros(T.nExo)
+    y = zeros(R, length(cond_var_idx))
+    x = zeros(R, T.nExo)
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
-    if T.nExo == length(observables)
+    if T.nExo == length(observables_index)
         jacdecomp = ℒ.lu(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
@@ -162,41 +133,44 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     # end # timeit_debug
     # end # timeit_debug
 
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:pruned_second_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    state, 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
     
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
-    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺  = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺  = cc.e_in_s⁺
@@ -207,7 +181,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
     shock²_idxs = tmp.nzind
     
-    shockvar²_idxs = @ignore_derivatives setdiff(shock_idxs, shock²_idxs)
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
 
     tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
     var_vol²_idxs = tmp.nzind
@@ -378,7 +352,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -409,24 +383,27 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf and Fair and Taylor (1983)
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:second_order},
-                                                    state::Vector{R}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:second_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    state, 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -439,12 +416,12 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    # s_in_s⁺ = computational_constants.s_in_s
     cc = ensure_computational_constants!(constants)
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -615,7 +592,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1] # ./ precision_factor
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc)) # ./ precision_factor
@@ -647,40 +624,43 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
-                                                    state::Vector{Vector{R}}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:pruned_third_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64};
+                                                    state, 
+                                                    workspaces::workspaces;
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter" begin
 
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
-    @ignore_derivatives ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
 
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives ensure_computational_constants!(constants)
+    cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1027,7 +1007,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -1075,24 +1055,27 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
-function calculate_inversion_filter_loglikelihood(::Val{:third_order},
-                                                    state::Vector{R}, 
+function calculate_loglikelihood(::Val{:inversion},
+                                                    ::Val{:third_order},
+                                                    observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}},
                                                     constants::constants,
-                                                    ws::inversion_workspace{Float64}; 
+                                                    state, 
+                                                    workspaces::workspaces; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
+    ws = workspaces.inversion
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1105,7 +1088,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = observables_index
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -1378,7 +1361,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
-            if T.nExo == length(observables)
+            if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
@@ -1404,7 +1387,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 function filter_data_with_model(𝓂::ℳ,
@@ -1436,19 +1419,14 @@ function filter_data_with_model(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-    
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws;
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
                                                         initial_guess = 𝓂.caches.qme_solution,
                                                         opts = opts)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     if !solved 
         @error "No solution for these parameters."
@@ -1565,7 +1543,7 @@ function filter_data_with_model(𝓂::ℳ,
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find 2nd order stochastic steady state"
@@ -1585,9 +1563,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    # s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1786,7 +1765,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     observables = get_and_check_observables(T, data_in_deviations)
     
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find pruned 2nd order stochastic steady state"
@@ -1805,8 +1784,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
+    computational_constants = ensure_computational_constants!(𝓂.constants)
     s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    sv_in_s⁺ = computational_constants.s_in_s⁺
     e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
@@ -2056,7 +2036,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     observables = get_and_check_observables(T, data_in_deviations)
 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find 3rd order stochastic steady state"
@@ -2076,9 +2056,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -2370,7 +2351,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     observables = get_and_check_observables(T, data_in_deviations)
 
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer,
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find pruned 3rd order stochastic steady state"
@@ -2389,9 +2370,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    computational_constants = ensure_computational_constants!(𝓂.constants)
+    s_in_s⁺ = computational_constants.s_in_s
+    sv_in_s⁺ = computational_constants.s_in_s⁺
+    e_in_s⁺ = computational_constants.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind

@@ -21,7 +21,7 @@ const HAS_WORKSPACE_API = isdefined(MacroModelling, :Lyapunov_workspace)
 
 # Conditionally import workspace types only if they exist
 if HAS_WORKSPACE_API
-    import MacroModelling: Lyapunov_workspace, lyapunov_workspace, ensure_lyapunov_workspace!, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
+    import MacroModelling: Lyapunov_workspace, lyapunov_workspace, ensure_lyapunov_workspace!, ensure_qme_workspace!
 end
 
 # Version-aware wrapper for solve_lyapunov_equation benchmarking
@@ -49,7 +49,7 @@ end
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
     if HAS_WORKSPACE_API
         qme_ws = ensure_qme_workspace!(𝓂)
-        sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+        sylv_ws = 𝓂.workspaces.sylvester_1st_order
         out = calculate_first_order_solution(∇₁, 𝓂.constants, qme_ws, sylv_ws; opts = opts)
     else
         out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)

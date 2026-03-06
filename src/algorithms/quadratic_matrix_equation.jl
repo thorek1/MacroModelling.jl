@@ -12,40 +12,69 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R},
                                         C::AbstractMatrix{R},
                                         constants::constants,
-                                        workspace::qme_workspace{R,S};
+                                        workspaces::workspaces,
+                                        cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                        use_fastlapack_schur::Bool = true,
+                                        use_fastlapack_lu::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where {R <: Real, S <: Real}
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
     T = constants.post_model_macro
+    n = T.nVars - T.nPresent_only
+    nPfm = T.nPast_not_future_and_mixed
+
+    qme_ws = ensure_qme_doubling_workspace!(workspaces, n)
+    ensure_schur_workspace!(workspaces,
+                            n,
+                            T.nMixed,
+                            nPfm,
+                            T.nFuture_not_past_and_mixed)
     
 
     if length(initial_guess) > 0
         X = initial_guess
+        X² = qme_ws.temp3
 
-        AXX = A * X^2
-
-        AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+        # Compute residual: A*X² + B*X + C
+        # X² into temporary buffer
+        ℒ.mul!(X², X, X)
+        # A*X² into AXX buffer
+        ℒ.mul!(qme_ws.AXX, A, X²)
         
-        ℒ.mul!(AXX, B, X, 1, 1)
-
-        ℒ.axpy!(1, C, AXX)
+        AXXnorm = max(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
         
-        reached_tol = ℒ.norm(AXX) / AXXnorm
+        # AXX += B*X
+        ℒ.mul!(qme_ws.AXX, B, X, 1, 1)
+        # AXX += C
+        ℒ.axpy!(1, C, qme_ws.AXX)
+    
+        reached_tol = ℒ.norm(qme_ws.AXX) / AXXnorm
 
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
-            return initial_guess, true
+            _existing_sol = cache.qme_solution
+            if _existing_sol isa Matrix{R} && size(_existing_sol) == size(initial_guess)
+                copyto!(_existing_sol, initial_guess)
+                return _existing_sol, true
+            else
+                new_sol = Matrix{R}(initial_guess)
+                cache.qme_solution = new_sol
+                return new_sol, true
+            end
         end
     end
 
     sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_algorithm), 
                                                         constants,
-                                                        workspace; 
+                                                        workspaces,
+                                                        cache;
                                                         initial_guess = initial_guess,
+                                                        use_fastlapack_schur = use_fastlapack_schur,
+                                                        use_fastlapack_lu = use_fastlapack_lu,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
@@ -57,8 +86,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
                                                                 constants,
-                                                                workspace; 
+                                                                workspaces,
+                                                                cache;
                                                                 initial_guess = initial_guess,
+                                                                use_fastlapack_schur = use_fastlapack_schur,
+                                                                use_fastlapack_lu = use_fastlapack_lu,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -68,8 +100,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
                                                                 constants,
-                                                                workspace; 
+                                                                workspaces,
+                                                                cache;
                                                                 initial_guess = initial_guess,
+                                                                use_fastlapack_schur = use_fastlapack_schur,
+                                                                use_fastlapack_lu = use_fastlapack_lu,
                                                                 tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
@@ -88,131 +123,185 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:schur}, 
                                         constants::constants,
-                                        workspace::qme_workspace; 
+                                        workspaces::workspaces,
+                                        cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fastlapack_schur::Bool = true,
+                                        use_fastlapack_lu::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    # Use cached identity matrix from workspace (Diagonal{Bool} supports indexing)
+    
     T = constants.post_model_macro
-    # @timeit_debug timer "Prepare indice" begin
-    I_nPast = workspace.I_nPast
-
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-    indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
-
-    # end # timeit_debug
-    # @timeit_debug timer "Assemble matrices" begin
-
-    Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
+    idx_constants = constants.post_complete_parameters
     
-    Ã₋ =  C[:,past_not_future_and_mixed_in_comb]
+    # Ensure schur workspace is properly sized
+    n = T.nVars - T.nPresent_only
+    nMixed = T.nMixed
+    nPfm = T.nPast_not_future_and_mixed
+    nFnpm = T.nFuture_not_past_and_mixed
     
-    Ã₀₊ =  B[:,future_not_past_and_mixed_in_comb]
+    schur_ws_local = ensure_schur_workspace!(workspaces, n, nMixed, nPfm, nFnpm)
+    
+    # Use cached indices from constants instead of recomputing
+    future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    indices_past_not_future_in_comb = idx_constants.indices_past_not_future_in_comb
+    
+    # Use views for read-only slices
+    Ã₊_view = @view A[:, future_not_past_and_mixed_in_comb]
+    
+    # Copy C and B slices that need negation into workspace buffers
+    copyto!(schur_ws_local.Ã₋, @view C[:, past_not_future_and_mixed_in_comb])
+    copyto!(schur_ws_local.Ã₀₊, @view B[:, future_not_past_and_mixed_in_comb])
+    
+    # Compute Ã₀₋ = B[:,indices_past_not_future_in_comb] * I_nPast[not_mixed_in_past_idx,:]
+    # Use cached constant matrix for I_nPast_not_mixed
+    ℒ.mul!(schur_ws_local.Ã₀₋, @view(B[:, indices_past_not_future_in_comb]), idx_constants.I_nPast_not_mixed)
+    
+    # Use cached constant matrices for zeros and identity blocks
+    Z₊ = idx_constants.schur_Z₊
+    I₊ = idx_constants.schur_I₊
+    Z₋ = idx_constants.schur_Z₋
+    I₋ = idx_constants.schur_I₋
+    
+    # Assemble D matrix in-place: D = [[Ã₀₋ Ã₊], [I₋ Z₊]]
+    D = schur_ws_local.D
+    # Top-left block: Ã₀₋
+    copyto!(view(D, 1:n, 1:nPfm), schur_ws_local.Ã₀₋)
+    # Top-right block: Ã₊
+    copyto!(view(D, 1:n, nPfm+1:nPfm+nFnpm), Ã₊_view)
+    # Bottom-left block: I₋
+    copyto!(view(D, n+1:n+nMixed, 1:nPfm), I₋)
+    # Bottom-right block: Z₊
+    copyto!(view(D, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), Z₊)
+    
+    # Negate Ã₋ and Ã₀₊ for E matrix
+    ℒ.rmul!(schur_ws_local.Ã₋, -1)
+    ℒ.rmul!(schur_ws_local.Ã₀₊, -1)
+    
+    # Assemble E matrix in-place: E = [[Ã₋ Ã₀₊], [Z₋ I₊]]
+    E = schur_ws_local.E
+    # Top-left block: Ã₋ (already negated)
+    copyto!(view(E, 1:n, 1:nPfm), schur_ws_local.Ã₋)
+    # Top-right block: Ã₀₊ (already negated)
+    copyto!(view(E, 1:n, nPfm+1:nPfm+nFnpm), schur_ws_local.Ã₀₊)
+    # Bottom-left block: Z₋
+    copyto!(view(E, n+1:n+nMixed, 1:nPfm), Z₋)
+    # Bottom-right block: I₊
+    copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
+    
+    schur_ws_local.fast_qz_ws,
+    schur_ws_local.fast_qz_dims,
+    schdcmp,
+    schur_ok = factorize_generalized_schur!(D,
+                                            E,
+                                            schur_ws_local.fast_qz_ws,
+                                            schur_ws_local.fast_qz_dims,
+                                            schur_ws_local.eigenselect;
+                                            use_fastlapack_schur = use_fastlapack_schur)
 
-    Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
-
-    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
-    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
-    
-    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = I_nPast[T.mixed_in_past_idx,:]
-    
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-    
-    ℒ.rmul!(Ã₋,-1)
-    ℒ.rmul!(Ã₀₊,-1)
-    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
-    
-    # end # timeit_debug
-    # @timeit_debug timer "Schur decomposition" begin
-
-    # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    schdcmp = try
-        ℒ.schur!(D, E)
-    catch
+    if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
 
-    eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
+    # Extract blocks from reordered Schur form (need owned copies for lu!)
+    copyto!(schur_ws_local.Z₁₁, @view schdcmp.Z[1:nPfm, 1:nPfm])
+    copyto!(schur_ws_local.Z₂₁, @view schdcmp.Z[nPfm+1:end, 1:nPfm])
+    # Z₁₁ can be a view for matrix multiplication, but LU factorization needs an owned copy.
+    Z₁₁ = @view schdcmp.Z[1:nPfm, 1:nPfm]
+    
+    copyto!(schur_ws_local.S₁₁, @view schdcmp.S[1:nPfm, 1:nPfm])
+    copyto!(schur_ws_local.T₁₁, @view schdcmp.T[1:nPfm, 1:nPfm])
 
-    # end # timeit_debug
-    # @timeit_debug timer "Reorder Schur decomposition" begin
-
-    try
-        ℒ.ordschur!(schdcmp, eigenselect)
-    catch
+    schur_ws_local.fast_lu_ws_z11,
+    schur_ws_local.fast_lu_dims_z11,
+    solved_Z₁₁,
+    Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
+                        schur_ws_local.fast_lu_ws_z11,
+                        schur_ws_local.fast_lu_dims_z11;
+                        use_fastlapack_lu = use_fastlapack_lu)
+    
+    if !solved_Z₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
 
-    # end # timeit_debug
-    # @timeit_debug timer "Postprocess" begin
-
-    Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-    Z₁₁ = schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-    S₁₁    = schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-    T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-    # @timeit_debug timer "Matrix inversions" begin
-
-    Ẑ₁₁ = ℒ.lu(Z₁₁, check = false)
+    # LU factorization of S₁₁ (mutating - overwrites workspace buffer)
+    schur_ws_local.fast_lu_ws_s11,
+    schur_ws_local.fast_lu_dims_s11,
+    solved_S₁₁,
+    Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
+                        schur_ws_local.fast_lu_ws_s11,
+                        schur_ws_local.fast_lu_dims_s11;
+                        use_fastlapack_lu = use_fastlapack_lu)
     
-    if !ℒ.issuccess(Ẑ₁₁)
+    if !solved_S₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
     end
 
-    Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
+    # Compute D = Z₂₁ / Ẑ₁₁ (overwrites Z₂₁ buffer)
+    solve_lu_right!(schur_ws_local.Z₁₁,
+                    schur_ws_local.Z₂₁,
+                    schur_ws_local.fast_lu_ws_z11,
+                    Ẑ₁₁,
+                    schur_ws_local.fast_lu_rhs_t_z21;
+                    use_fastlapack_lu = use_fastlapack_lu)
     
-    if !ℒ.issuccess(Ŝ₁₁)
-        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
+    # Compute L = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    # First: T₁₁ ← Ŝ₁₁ \ T₁₁ (overwrites T₁₁ buffer)
+    solve_lu_left!(schur_ws_local.S₁₁,
+                   schur_ws_local.T₁₁,
+                   schur_ws_local.fast_lu_ws_s11,
+                   Ŝ₁₁;
+                   use_fastlapack_lu = use_fastlapack_lu)
+    # Then: S₁₁ ← Z₁₁ * T₁₁ (reuse S₁₁ buffer)
+    ℒ.mul!(schur_ws_local.S₁₁, Z₁₁, schur_ws_local.T₁₁)
+    # Finally: S₁₁ ← S₁₁ / Ẑ₁₁ (overwrites S₁₁ buffer)
+    solve_lu_right!(schur_ws_local.Z₁₁,
+                    schur_ws_local.S₁₁,
+                    schur_ws_local.fast_lu_ws_z11,
+                    Ẑ₁₁,
+                    schur_ws_local.fast_lu_rhs_t_s11;
+                    use_fastlapack_lu = use_fastlapack_lu)
+    
+    # Assemble sol = vcat(L[not_mixed_in_past_idx,:], D) in-place
+        sol = schur_ws_local.sol
+    copyto!(view(sol, 1:length(T.not_mixed_in_past_idx), :), 
+            @view schur_ws_local.S₁₁[T.not_mixed_in_past_idx, :])
+    copyto!(view(sol, length(T.not_mixed_in_past_idx)+1:size(sol,1), :), 
+            schur_ws_local.Z₂₁)
+    
+    # Final reordering: X = sol[dynamic_order,:] * Ir[past_not_future_and_mixed_in_comb,:]
+    # n == n_comb (= nFnpm + nPfm - nMixed) so the result is (n, n), same as doubling.
+    # Prefer cache-backed storage to avoid extra allocations.
+    _existing_sol = cache.qme_solution
+    X = if _existing_sol isa Matrix{R} && size(_existing_sol) == (n, n)
+        _existing_sol
+    else
+        cache.qme_solution = zeros(R, n, n)
     end
 
-    # end # timeit_debug
-    # @timeit_debug timer "Matrix divisions" begin
-
-    # D      = Z₂₁ / Ẑ₁₁
-    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-    D = Z₂₁
+    ℒ.mul!(X, @view(sol[T.dynamic_order, :]), idx_constants.Ir_past_selector)
     
-    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-    ℒ.ldiv!(Ŝ₁₁, T₁₁)
-    ℒ.mul!(S₁₁, Z₁₁, T₁₁)
-    ℒ.rdiv!(S₁₁, Ẑ₁₁)
-    L = S₁₁
-
-    sol = vcat(L[T.not_mixed_in_past_idx,:], D)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    X = sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
-
-    iter = 0
-
-    AXX = A * X^2
+    # Compute residual: A*X² + B*X + C
+    # X² into temp_X2 buffer
+    ℒ.mul!(schur_ws_local.temp_X2, X, X)
+    # A*X² into AXX buffer
+    ℒ.mul!(schur_ws_local.AXX, A, schur_ws_local.temp_X2)
     
-    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+    AXXnorm = max(ℒ.norm(schur_ws_local.AXX), ℒ.norm(C))
     
-    ℒ.mul!(AXX, B, X, 1, 1)
-
-    ℒ.axpy!(1, C, AXX)
+    # AXX += B*X
+    ℒ.mul!(schur_ws_local.AXX, B, X, 1, 1)
+    # AXX += C
+    ℒ.axpy!(1, C, schur_ws_local.AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    reached_tol = ℒ.norm(schur_ws_local.AXX) / AXXnorm
     
-    # if reached_tol > tol
-    #     println("QME: schur $reached_tol")
-    # end
-
-    return X, iter, reached_tol # schur can fail
+    return X, 0, reached_tol
 end
 
 
@@ -221,13 +310,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:doubling}, 
                                         constants::constants,
-                                        workspace::qme_workspace{R,S}; 
+                                        workspaces::workspaces,
+                                        cache::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        use_fastlapack_schur::Bool = true,
+                                        use_fastlapack_lu::Bool = true,
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat, S <: Real}
+                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
+    idx_constants = ensure_first_order_constants!(constants)
+    workspace = ensure_qme_doubling_workspace!(workspaces, size(A, 1))
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
@@ -263,15 +357,23 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
-    B̂ = ℒ.lu!(B̄, check = false)
+    workspace.fast_lu_ws_qme_a,
+    workspace.fast_lu_dims_qme_a,
+    solved_B,
+    B̂ = factorize_lu!(B̄,
+                       workspace.fast_lu_ws_qme_a,
+                       workspace.fast_lu_dims_qme_a;
+                       use_fastlapack_lu = use_fastlapack_lu)
 
-    if !ℒ.issuccess(B̂)
+    if !solved_B
         return A, 0, 1.0
     end
 
     # Compute initial values X, Y, E, F
-    ℒ.ldiv!(E, B̂, C)
-    ℒ.ldiv!(F, B̂, A)
+    solve_lu_left!(B̄, E, workspace.fast_lu_ws_qme_a, B̂;
+                   use_fastlapack_lu = use_fastlapack_lu)
+    solve_lu_left!(B̄, F, workspace.fast_lu_ws_qme_a, B̂;
+                   use_fastlapack_lu = use_fastlapack_lu)
 
     # X = -E - initial_guess (in-place)
     copy!(X, E)
@@ -283,7 +385,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Prellocate" begin
 
-    II = workspace.I_n  # Pre-computed identity matrix reference
+    II = idx_constants.I_n  # Pre-computed identity matrix reference
 
     Xtol = 1.0
     Ytol = 1.0
@@ -305,9 +407,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert EI" begin
 
-        fEI = ℒ.lu!(temp1, check = false)
+        workspace.fast_lu_ws_qme_a,
+        workspace.fast_lu_dims_qme_a,
+        solved_EI,
+        fEI = factorize_lu!(temp1,
+                            workspace.fast_lu_ws_qme_a,
+                            workspace.fast_lu_dims_qme_a;
+                            use_fastlapack_lu = use_fastlapack_lu)
 
-        if !ℒ.issuccess(fEI)
+        if !solved_EI
             return A, iter, 1.0
         end
 
@@ -315,7 +423,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # @timeit_debug timer "Compute E" begin
 
         # Compute E = E * EI * E
-        ℒ.ldiv!(temp3, fEI, E)
+        copyto!(temp3, E)
+        solve_lu_left!(temp1, temp3, workspace.fast_lu_ws_qme_a, fEI;
+                   use_fastlapack_lu = use_fastlapack_lu)
         ℒ.mul!(E_new, E, temp3)
         # E_new = E / fEI * E
 
@@ -332,9 +442,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert FI" begin
 
-        fFI = ℒ.lu!(temp2, check = false)
+        workspace.fast_lu_ws_qme_b,
+        workspace.fast_lu_dims_qme_b,
+        solved_FI,
+        fFI = factorize_lu!(temp2,
+                            workspace.fast_lu_ws_qme_b,
+                            workspace.fast_lu_dims_qme_b;
+                            use_fastlapack_lu = use_fastlapack_lu)
         
-        if !ℒ.issuccess(fFI)
+        if !solved_FI
             return A, iter, 1.0
         end
 
@@ -342,7 +458,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # @timeit_debug timer "Compute F" begin
         
         # Compute F = F * FI * F
-        ℒ.ldiv!(temp3, fFI, F)
+        copyto!(temp3, F)
+        solve_lu_left!(temp2, temp3, workspace.fast_lu_ws_qme_b, fFI;
+                   use_fastlapack_lu = use_fastlapack_lu)
         ℒ.mul!(F_new, F, temp3)
         # F_new = F / fFI * F
 
@@ -351,7 +469,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
         # Compute X_new = X + F * FI * X * E
         ℒ.mul!(temp3, X, E)
-        ℒ.ldiv!(fFI, temp3)
+        solve_lu_left!(temp2, temp3, workspace.fast_lu_ws_qme_b, fFI;
+                   use_fastlapack_lu = use_fastlapack_lu)
         ℒ.mul!(X_new, F, temp3)
         # X_new = F / fFI * X * E
         if i > 5 || guess_provided 
@@ -366,7 +485,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         # Compute Y_new = Y + E * EI * Y * F
         ℒ.mul!(X, Y, F) # use X as temporary storage
-        ℒ.ldiv!(fEI, X)
+        solve_lu_left!(temp1, X, workspace.fast_lu_ws_qme_a, fEI;
+                   use_fastlapack_lu = use_fastlapack_lu)
         ℒ.mul!(Y_new, E, X)
         # Y_new = E / fEI * Y * F
         if i > 5 || guess_provided 
@@ -416,8 +536,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: doubling $reached_tol")
     # end
 
-    # Return a copy of X_new (to avoid returning a reference to mutable workspace)
-    return copy(X_new), iter, reached_tol
+    _existing_sol = cache.qme_solution
+    X_cache = if _existing_sol isa Matrix{R} && size(_existing_sol) == size(X_new)
+        _existing_sol
+    else
+        cache.qme_solution = zeros(R, size(X_new, 1), size(X_new, 2))
+    end
+    copyto!(X_cache, X_new)
+
+    return X_cache, iter, reached_tol
 end
 
 

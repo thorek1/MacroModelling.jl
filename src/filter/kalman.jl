@@ -1,93 +1,38 @@
 @stable default_mode = "disable" begin
 
-# Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, 
-                                algorithm, 
-                                observables, 
-                                𝐒, 
-                                data_in_deviations, 
-                                constants_obj::constants, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                opts,
-                                on_failure_loglikelihood,
-                                lyap_ws::lyapunov_workspace,
-                                inv_ws::inversion_workspace,
-                                kalman_ws::kalman_workspace) #; 
-                                # timer::TimerOutput = TimerOutput())
-    return calculate_kalman_filter_loglikelihood(observables, 
-                                                𝐒, 
-                                                data_in_deviations, 
-                                                constants_obj,
-                                                lyap_ws,
-                                                kalman_ws,
-                                                presample_periods = presample_periods, 
-                                                initial_covariance = initial_covariance, 
-                                                # timer = timer, 
-                                                opts = opts,
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
+function calculate_loglikelihood(::Val{:kalman},
+                                ::Val,
+                                observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
+                                                state,
+                                                workspaces::workspaces; 
                                                 # timer::TimerOutput = TimerOutput(), 
-                                                on_failure_loglikelihood::U = -Inf,
-                                                presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
-
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
-end
-
-function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
-                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
-                                                data_in_deviations::Matrix{S},
-                                                constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
-                                                # timer::TimerOutput = TimerOutput(), 
-                                                presample_periods::Int = 0, 
-                                                on_failure_loglikelihood::U = -Inf,
-                                                initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
-    T = constants.post_model_macro
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
-
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, constants, lyap_ws, kalman_ws, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
-end
-
-function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
-                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
-                                                data_in_deviations::Matrix{S},
-                                                constants::constants,
-                                                lyap_ws::lyapunov_workspace,
-                                                kalman_ws::kalman_workspace; 
-                                                # timer::TimerOutput = TimerOutput(), 
+                                                warmup_iterations::Int = 0,
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
+                                                filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
+    idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
 
-    A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx,observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
+    A = @views 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    𝐁 = B * B'
+    C = @views I_nVars[observables_sorted, observables_and_states]
+
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
+
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
 
     # Gaussian Prior
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
@@ -121,28 +66,23 @@ function get_initial_covariance(::Val{:diagonal},
                                 lyap_ws::lyapunov_workspace; 
                                 opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-    P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
+    P = collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
 
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
-                                C::Matrix{Float64}, 
+                                C::AbstractMatrix{R}, 
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
+                                verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
-    # Ensure workspaces are properly sized
-    n_obs = size(C, 1)
-    n_states = size(C, 2)
-    @ignore_derivatives ensure_kalman_buffers!(ws, n_obs, n_states)
-    
     # Use workspaces
     u = ws.u
     z = ws.z
@@ -162,12 +102,12 @@ function run_kalman_iterations(A::Matrix{S},
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
-        if !all(isfinite.(z)) 
+        if any(!isfinite, z)
             if verbose println("KF not finite at step $t") end
             return on_failure_loglikelihood 
         end
 
-        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)
         # v = data_in_deviations[:, t] - z
 
         ℒ.mul!(Ctmp, C, P) # use Octavian.jl
@@ -175,18 +115,30 @@ function run_kalman_iterations(A::Matrix{S},
         # F = C * P * C'
 
         # @timeit_debug timer "LU factorisation" begin
-        luF = RF.lu!(F, check = false) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+                                                                           ws.fast_lu_ws_f,
+                                                                           ws.fast_lu_dims_f)
         # end # timeit_debug
 
-        if !ℒ.issuccess(luF)
+        if !solved_F
             if verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
         end
 
-        Fdet = ℒ.det(luF)
+        logabsdetF = zero(S)
+        signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, eachindex(ws.fast_lu_ws_f.ipiv))) ? -one(S) : one(S)
+        @inbounds for i in 1:size(F, 1)
+            di = F[i, i]
+            if di == 0
+                if verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood
+            end
+            logabsdetF += log(abs(di))
+            signF *= sign(di)
+        end
 
         # Early return if determinant is too small, indicating numerical instability.
-        if Fdet < eps(Float64)
+        if signF <= 0 || logabsdetF < log(eps(Float64))
             if verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
         end
@@ -195,8 +147,9 @@ function run_kalman_iterations(A::Matrix{S},
 
         # @timeit_debug timer "LU div" begin
         if t > presample_periods
-            ℒ.ldiv!(ztmp, luF, z)
-            loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
+            copyto!(ztmp, z)
+            solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)
+            loglik += logabsdetF + ℒ.dot(z', ztmp) ###
             # loglik += log(Fdet) + z' * invF * z###
             # loglik += log(Fdet) + v' * invF * v###
         end
@@ -204,7 +157,7 @@ function run_kalman_iterations(A::Matrix{S},
         # ℒ.mul!(Ktmp, P, C')
         # ℒ.mul!(K, Ktmp, invF)
         ℒ.mul!(K, P, C')
-        ℒ.rdiv!(K, luF)
+        solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
         # K = P * Ct / luF
         # K = P * C' * invF
 
@@ -286,18 +239,13 @@ function filter_and_smooth(𝓂::ℳ,
     
     @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not solve non-stochastic steady state." 
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-    
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
-                                                            qme_ws,
-                                                            sylv_ws; 
+                                                            𝓂.workspaces,
+                                                            𝓂.caches;
                                                             opts = opts)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -306,7 +254,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.exo_present)))),:]
+    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables, sort(union(T.aux, T.var, T.exo_present)))),:]
 
     𝐁 = B * B'
 

@@ -856,7 +856,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
         S₁ = 𝓂.caches.first_order_solution_matrix
-        S₁ = [S₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) S₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
+        Ŝ₁ = [S₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] zeros(𝓂.constants.post_model_macro.nVars) S₁[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]]
 
         S₂ = nothing
         if size(𝓂.caches.second_order_solution, 2) > 0
@@ -868,7 +868,7 @@ function get_conditional_forecast(𝓂::ℳ,
             S₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
         end
 
-        ensure_conditional_forecast_constants!(𝓂; third_order = !isnothing(S₃))
+        ensure_conditional_forecast_constants!(𝓂.constants; third_order = !isnothing(S₃))
 
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
@@ -878,7 +878,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       cond_var_idx,
                                                       free_shock_idx,
                                                       state_update,
-                                                      S₁,
+                                                      Ŝ₁,
                                                       S₂,
                                                       S₃,
                                                       𝓂.constants,
@@ -920,7 +920,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               cond_var_idx,
                                                               free_shock_idx,
                                                               state_update,
-                                                              S₁,
+                                                              Ŝ₁,
                                                               S₂,
                                                               S₃,
                                                               𝓂.constants,
@@ -944,7 +944,7 @@ function get_conditional_forecast(𝓂::ℳ,
         if length(cond_var_idx) == 1
             @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
         elseif length(free_shock_idx) == length(cond_var_idx)
-            CC = RF.lu(CC, check = false)
+            CC = ℒ.lu(CC, check = false)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
         end
@@ -973,7 +973,7 @@ function get_conditional_forecast(𝓂::ℳ,
                 @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
             elseif length(free_shock_idx) == length(cond_var_idx)
     
-            CC = RF.lu(CC, check = false)
+            CC = ℒ.lu(CC, check = false)
     
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
             end
@@ -1073,9 +1073,9 @@ function get_irf(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
-    @ignore_derivatives solve!(𝓂, 
-                                steady_state_function = steady_state_function,
-                                opts = opts)
+    solve!(𝓂, 
+           steady_state_function = steady_state_function,
+           opts = opts)
 
     shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
 
@@ -1091,24 +1091,18 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    # Ensure QME workspace
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            constants,
-                                                            qme_ws,
-                                                            sylv_ws;
-                                                            opts = opts,
-                                                            initial_guess = 𝓂.caches.qme_solution)
+                                                        constants,
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
+                                                        opts = opts,
+                                                        initial_guess = 𝓂.caches.qme_solution)
     
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
-    if solved 
-        𝓂.caches.qme_solution = qme_sol
-    else
+    if !solved
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
@@ -1525,9 +1519,10 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    var_idx = indexin([vars_in_ss_equations...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    var_idx = ms.ss_var_idx_in_var_and_calib
 
-    calib_idx = return_variables_only ? [] : indexin([𝓂.equations.calibration_parameters...], [𝓂.constants.post_model_macro.var...,𝓂.equations.calibration_parameters...])
+    calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
 
     if length_par * length(var_idx) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -1552,57 +1547,42 @@ function get_steady_state(𝓂::ℳ;
 
     if derivatives 
         if stochastic
-                if algorithm == :third_order
-
-                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                    #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts)
-                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    end, backend, 𝓂.parameter_values)[:,param_idx]
-
-                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
-
-                elseif algorithm == :pruned_third_order
-
-                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                    #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
-                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x-> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
-                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    end, backend, 𝓂.parameter_values)[:,param_idx]
-
-                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
-                
-                elseif algorithm == :pruned_second_order
-                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                    #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
-                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
-                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    end, backend, 𝓂.parameter_values)[:,param_idx]
-
-                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
-
-                else
-                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                    #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, opts = opts)
-                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                    end, backend, 𝓂.parameter_values)[:,param_idx]
-
-                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
-
+                n_tuple = algorithm ∈ (:third_order, :pruned_third_order) ? 10 : 8
+                SSS_result, SSS_pb = rrule(calculate_stochastic_steady_state, Val(algorithm), 𝓂.parameter_values, 𝓂, opts = opts)
+                n_sss = length(SSS_result[1])
+                n_ss = length(SSS_result[3])
+                nv = length(var_idx)
+                nc = length(calib_idx)
+                n_out = nv + nc
+                np = length(𝓂.parameter_values)
+                dSSS = zeros(n_out, np)
+                for j in 1:n_out
+                    if j ≤ nv
+                        ∂sss = zeros(n_sss); ∂sss[var_idx[j]] = 1.0
+                        seed = ntuple(k -> k == 1 ? ∂sss : NoTangent(), n_tuple)
+                    else
+                        ∂ss = zeros(n_ss); ∂ss[calib_idx[j - nv]] = 1.0
+                        seed = ntuple(k -> k == 3 ? ∂ss : NoTangent(), n_tuple)
+                    end
+                    ∂p = SSS_pb(seed)[3]
+                    if !(∂p isa AbstractZero); dSSS[j, :] .= ∂p; end
                 end
+                dSSS = dSSS[:, param_idx]
+
+                return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
-            # dSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
-            # dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
-            dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
+            (nsss_result, nsss_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
+            out_idx = [var_idx..., calib_idx...]
+            n_ss = length(nsss_result[1])
+            np = length(𝓂.parameter_values)
+            n_out = length(out_idx)
+            dSS = zeros(n_out, np)
+            for j in 1:n_out
+                ∂ss = zeros(n_ss); ∂ss[out_idx[j]] = 1.0
+                ∂p = nsss_pb((∂ss, NoTangent()))[3]
+                if !(∂p isa AbstractZero); dSS[j, :] .= ∂p; end
+            end
+            dSS = dSS[:, param_idx]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
             #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.constants.post_model_macro.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters))
@@ -1621,8 +1601,6 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.caches.outdated_NSSS ? 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂) : 𝓂.caches.non_stochastic_steady_state
-    # return 𝓂.functions.NSSS_solve(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
 
@@ -1661,22 +1639,22 @@ sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true
 """
 See [`get_steady_state`](@ref)
 """
-SS = get_steady_state
+SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-steady_state = get_steady_state
+steady_state(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_SS = get_steady_state
+get_SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_ss = get_steady_state
+get_ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
@@ -1836,7 +1814,14 @@ function get_solution(𝓂::ℳ;
             axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.constants.post_model_macro.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.post_model_macro.exo)]
         end
 
-        return KeyedArray([𝓂.caches.non_stochastic_steady_state[1:length(𝓂.constants.post_model_macro.var)] solution_matrix]';
+        n_vars = length(𝓂.constants.post_model_macro.var)
+        nsss = if length(𝓂.caches.non_stochastic_steady_state) >= n_vars
+            𝓂.caches.non_stochastic_steady_state[1:n_vars]
+        else
+            get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
+        end
+
+        return KeyedArray([nsss solution_matrix]';
                             Steady_state__States__Shocks = axis1,
                             Variables = axis2)
     end
@@ -1932,16 +1917,16 @@ function get_solution(𝓂::ℳ,
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
-    @ignore_derivatives solve!(𝓂, 
-                                opts = opts, 
-                                steady_state_function = steady_state_function,
-                                algorithm = algorithm)
+    solve!(𝓂, 
+           opts = opts, 
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
 
     
     if length(𝓂.constants.post_parameters_macro.bounds) > 0
         for (k,v) in 𝓂.constants.post_parameters_macro.bounds
             if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                if @ignore_derivatives min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
+                if min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
                     return -Inf
                 end
             end
@@ -1960,22 +1945,16 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
-
-    # Ensure QME workspace
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws;
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
         if algorithm in [:second_order, :pruned_second_order]
@@ -1988,58 +1967,35 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm in [:second_order, :pruned_second_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts)
+                                opts = opts)
 
-        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
-
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
-
-        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
-
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-        end
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm in [:third_order, :pruned_third_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                                    opts = opts)
+                                opts = opts)
     
-        @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
+        update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        if eltype(𝐒₂) == Float64 && solved2 𝓂.caches.second_order_solution = 𝐒₂ end
-
-        𝐒₂ *= 𝓂.constants.second_order.𝐔₂
-
-        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.constants.second_order.𝐔₂)
-        end
-
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
                 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-                            𝐒₁, 𝐒₂,
-                            𝓂.constants,
-                            𝓂.workspaces;
-                            initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
+                                𝐒₁, 𝐒₂,
+                                𝓂.constants,
+                                𝓂.workspaces,
+                                𝓂.caches;
+                                initial_guess = 𝓂.caches.third_order_solution,
+                                opts = opts)
 
-    @ignore_derivatives update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
-
-        if eltype(𝐒₃) == Float64 && solved3 𝓂.caches.third_order_solution = 𝐒₃ end
-        
-        𝐒₃ *= 𝓂.constants.third_order.𝐔₃
-
-        if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.constants.third_order.𝐔₃)
-        end
+        update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
@@ -2161,20 +2117,14 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    # Ensure QME workspace
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws;
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
-
-    if solved 𝓂.caches.qme_solution = qme_sol end
 
     A = @views 𝑺₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[indexin(𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nVars),:]
     
@@ -2196,7 +2146,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         end
         if Inf in periods
             # Ensure lyapunov workspace is properly sized and get it
-            lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+            lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
             covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
@@ -2330,21 +2280,15 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
 
-    # Ensure QME workspace
-    qme_ws = ensure_qme_workspace!(𝓂)
-    sylv_ws = ensure_sylvester_1st_order_workspace!(𝓂)
-
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
-                                                        qme_ws,
-                                                        sylv_ws;
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
                                                         opts = opts,
                                                         initial_guess = 𝓂.caches.qme_solution)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
     
-    if solved 𝓂.caches.qme_solution = qme_sol end
-
     variances_by_shock = zeros(𝓂.constants.post_model_macro.nVars, 𝓂.constants.post_model_macro.nExo)
 
     A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
@@ -2355,7 +2299,7 @@ function get_variance_decomposition(𝓂::ℳ;
         CC = C * C'
 
         # Ensure lyapunov workspace is properly sized and get it
-        lyap_ws = ensure_lyapunov_workspace_1st_order!(𝓂)
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
         covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
@@ -2632,13 +2576,13 @@ end
 """
 See [`get_autocorrelation`](@ref)
 """
-get_autocorr = get_autocorrelation
+get_autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 """
 See [`get_autocorrelation`](@ref)
 """
-autocorr = get_autocorrelation
+autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 
@@ -2785,7 +2729,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = 𝓂.caches.outdated.non_stochastic_steady_state ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.caches.non_stochastic_steady_state), (eps(), 0))
+    NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
 
@@ -2825,8 +2769,16 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            # dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
-            dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
+            (nsss_d_result, nsss_d_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
+            n_ss_full = length(nsss_d_result[1])
+            np = length(𝓂.parameter_values)
+            dNSSS = zeros(n_ss_full, np)
+            for j in 1:n_ss_full
+                ∂ss = zeros(n_ss_full); ∂ss[j] = 1.0
+                ∂p = nsss_d_pb((∂ss, NoTangent()))[3]
+                if !(∂p isa AbstractZero); dNSSS[j, :] .= ∂p; end
+            end
+            dNSSS = dNSSS[:, param_idx]
             
             if length(𝓂.equations.calibration_parameters) > 0
                 var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.equations.calibration_parameters)))
@@ -2834,7 +2786,6 @@ function get_moments(𝓂::ℳ;
                 var_idx_ext = var_idx
             end
 
-            # dNSSS = 𝒜.jacobian(𝒷(), x->𝓂.functions.NSSS_solve(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
@@ -2845,6 +2796,40 @@ function get_moments(𝓂::ℳ;
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
+        # Hoist covariance rrule call for shared use across variance/std_dev/covariance
+        if variance || standard_deviation || covariance
+            if algorithm == :pruned_second_order
+                _cov_result, _cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp = _cov_result[1]
+                _n_cov_tuple = 15
+            elseif algorithm == :pruned_third_order
+                _cov_obs = covariance ? :full_covar : variables
+                _cov_result, _cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, _cov_obs, 𝓂, opts = opts)
+                covar_dcmp = _cov_result[1]
+                _n_cov_tuple = 4
+            else
+                _cov_result, _cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp = _cov_result[1]
+                @assert _cov_result[5] "Could not find covariance matrix."
+                _n_cov_tuple = 5
+            end
+
+            # Compute variance Jacobian via VJP (shared by variance & std_dev)
+            if variance || standard_deviation
+                _np_cov = length(𝓂.parameter_values)
+                _nv_cov = size(covar_dcmp, 1)
+                _dvariance_full = zeros(_nv_cov, _np_cov)
+                for j in 1:_nv_cov
+                    if covar_dcmp[j,j] > eps(Float64)
+                        ∂Σ = zeros(_nv_cov, _nv_cov); ∂Σ[j,j] = 1.0
+                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
+                        ∂p = _cov_pb(seed)[2]
+                        if !(∂p isa AbstractZero); _dvariance_full[j,:] .= ∂p; end
+                    end
+                end
+            end
+        end
+
         if variance
             axis2 = vcat(:Variance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
@@ -2853,29 +2838,9 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
-            elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
-
-                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
-            else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-                @assert solved "Could not find covariance matrix."
-
-                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
-            end
+            dvariance = _dvariance_full[:, param_idx]
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
-
-            # dvariance = 𝒜.jacobian(𝒷(), x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            
             
             varrs =  KeyedArray(hcat(vari[var_idx],dvariance[var_idx,:]);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
 
@@ -2888,17 +2853,8 @@ function get_moments(𝓂::ℳ;
                 end
     
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
-
-                if algorithm == :pruned_second_order
-                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-                elseif algorithm == :pruned_third_order
-                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-                else
-                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-                end
+                # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
+                dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
             end
@@ -2912,26 +2868,9 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-            elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
-
-                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-            else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-                
-                @assert solved "Could not find covariance matrix."
-
-                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
-            end
-
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+            # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
+            dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
             st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
@@ -2945,24 +2884,19 @@ function get_moments(𝓂::ℳ;
                 axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
             end
 
-            if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-                # Compute covariance derivatives
-                dcovariance = 𝒟.jacobian(x -> vec(calculate_second_order_moments_with_covariance(x, 𝓂, opts = opts)[1]), backend, 𝓂.parameter_values)[:,param_idx]
-            elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
-
-                # Compute covariance derivatives
-                dcovariance = 𝒟.jacobian(x -> vec(calculate_third_order_moments(x, :full_covar, 𝓂, opts = opts)[1]), backend, 𝓂.parameter_values)[:,param_idx]
-            else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-                
-                @assert solved "Could not find covariance matrix."
-
-                # Compute covariance derivatives
-                dcovariance = 𝒟.jacobian(x -> vec(calculate_covariance(x, 𝓂, opts = opts)[1]), backend, 𝓂.parameter_values)[:,param_idx]
+            # Compute full covariance Jacobian via VJP from hoisted rrule
+            _np_cov2 = length(𝓂.parameter_values)
+            _nv_cov2 = size(covar_dcmp, 1)
+            dcovariance = zeros(_nv_cov2 * _nv_cov2, _np_cov2)
+            for j in 1:(_nv_cov2 * _nv_cov2)
+                r = mod1(j, _nv_cov2)
+                c = div(j - 1, _nv_cov2) + 1
+                ∂Σ = zeros(_nv_cov2, _nv_cov2); ∂Σ[r,c] = 1.0
+                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
+                ∂p = _cov_pb(seed)[2]
+                if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
+            dcovariance = dcovariance[:, param_idx]
         end
 
         if mean && algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -2973,12 +2907,20 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
+            (mean_result, mean_pb) = rrule(calculate_mean, 𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
+            state_μ = mean_result[1]
             
-            @assert solved "Mean not found."
+            @assert mean_result[2] "Mean not found."
 
-            # state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm), 𝓂.parameter_values[param_idx])[1]
-            state_μ_dev = 𝒟.jacobian(x -> calculate_mean(x, 𝓂, algorithm = algorithm, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
+            n_mean = length(state_μ)
+            np_mean = length(𝓂.parameter_values)
+            state_μ_dev = zeros(n_mean, np_mean)
+            for j in 1:n_mean
+                ∂mean = zeros(n_mean); ∂mean[j] = 1.0
+                ∂p = mean_pb((∂mean, NoTangent()))[2]
+                if !(∂p isa AbstractZero); state_μ_dev[j,:] .= ∂p; end
+            end
+            state_μ_dev = state_μ_dev[:, param_idx]
             
             var_means =  KeyedArray(hcat(state_μ[var_idx], state_μ_dev[var_idx, :]);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
         end
@@ -3312,7 +3254,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
 ```
 """
-function get_statistics(𝓂,
+function get_statistics(𝓂::ℳ,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
@@ -3342,25 +3284,25 @@ function get_statistics(𝓂,
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
+    SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
 
-    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂)
+    mean_var_idx = parse_variables_input_to_index(mean, 𝓂)
 
-    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂)
+    std_var_idx = parse_variables_input_to_index(standard_deviation, 𝓂)
 
-    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂)
+    var_var_idx = parse_variables_input_to_index(variance, 𝓂)
 
-    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂)
+    covar_var_idx = parse_variables_input_to_index(covariance, 𝓂)
     
     # Parse covariance groups if input is grouped format
-    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
+    covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
 
-    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
+    autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
 
 
-    other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
 
-    sort_idx = @ignore_derivatives sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters), indexin(parameters, 𝓂.constants.post_complete_parameters.parameters)))
 
     all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
@@ -3370,10 +3312,10 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
-    @ignore_derivatives solve!(𝓂, 
-                                algorithm = algorithm, 
-                                steady_state_function = steady_state_function,
-                                opts = opts)
+    solve!(𝓂, 
+           algorithm = algorithm, 
+           steady_state_function = steady_state_function,
+           opts = opts)
 
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
@@ -3612,26 +3554,26 @@ function get_loglikelihood(𝓂::ℳ,
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    filter, _, algorithm, _, _, warmup_iterations = @ignore_derivatives normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
-    observables = @ignore_derivatives get_and_check_observables(𝓂.constants.post_model_macro, data)
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
-    @ignore_derivatives solve!(𝓂, 
-                                opts = opts,
-                                steady_state_function = steady_state_function,
-                                # timer = timer, 
-                                algorithm = algorithm)
+    solve!(𝓂, 
+           opts = opts,
+           steady_state_function = steady_state_function,
+           # timer = timer, 
+           algorithm = algorithm)
 
-    bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
+    bounds_violated = check_bounds(parameter_values, 𝓂)
 
     if bounds_violated 
         # println("Bounds violated")
         return on_failure_loglikelihood
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.constants.post_model_macro.exo_present, 𝓂.constants.post_model_macro.var))..., 𝓂.equations.calibration_parameters...]
+    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
 
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
+    obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
@@ -3646,27 +3588,30 @@ function get_loglikelihood(𝓂::ℳ,
     end
  
     if collect(axiskeys(data,1)) isa Vector{String}
-        data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
     end
 
-    dt = @ignore_derivatives collect(data(observables))
+    dt = collect(data(observables))
 
     # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 
-    # Ensure lyapunov workspace for Kalman filter initial covariance
-    lyap_ws = @ignore_derivatives ensure_lyapunov_workspace_1st_order!(𝓂)
-    
-    # Ensure inversion workspace if using inversion filter
-    third_order = algorithm in (:pruned_third_order, :third_order)
-    inv_ws = @ignore_derivatives ensure_inversion_workspace!(𝓂; third_order = third_order)
-    
-    # Ensure kalman workspace for Kalman filter iterations
-    kalman_ws = @ignore_derivatives ensure_kalman_workspace!(𝓂)
-
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, constants_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood, lyap_ws, inv_ws, kalman_ws) # timer = timer
+    llh = calculate_loglikelihood(Val(filter),
+                                Val(algorithm),
+                                obs_indices,
+                                𝐒,
+                                data_in_deviations,
+                                constants_obj,
+                                state,
+                                𝓂.workspaces,
+                                warmup_iterations = warmup_iterations,
+                                presample_periods = presample_periods,
+                                initial_covariance = initial_covariance,
+                                filter_algorithm = filter_algorithm,
+                                opts = opts,
+                                on_failure_loglikelihood = on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
 

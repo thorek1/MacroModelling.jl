@@ -1,24 +1,18 @@
-// See https://github.com/julia-vscode/julia-devcontainer/blob/master/Dockerfile for image contents
 {
-	"name": "Julia (Community)",
-	"image": "ghcr.io/julia-vscode/julia-devcontainer:latest",
-	// "image": "tkockerols/julia-development:latest",
-
-	// Configure tool-specific properties.
-	"customizations": {
-		// Configure properties specific to VS Code.
-		"vscode": {
-			// Add the IDs of extensions you want installed when the container is created.
-			"extensions": [
-				"julialang.language-julia",
-				"rid9.datetime",
-				"mutantdino.resourcemonitor",
-				"bungcip.better-toml"
-			]
-		}
-	},
-	"onCreateCommand": "julia -e 'import Pkg; Pkg.add(\"SymPy\"); using SymPy'",
-	"postCreateCommand": "/julia-devcontainer-scripts/postcreate.jl",
-
-	"remoteUser": "vscode"
+    "name": "MacroModelling.jl",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "julialang.language-julia"
+            ],
+            "settings": {
+                "julia.executablePath": "/usr/local/julia/bin/julia"
+            }
+        }
+    },
+    "onCreateCommand": "julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'",
+    "remoteUser": "vscode"
 }

@@ -21,35 +21,62 @@ function solve_sylvester_equation(A::M,
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
-
-    if sylvester_algorithm == :bartels_stewart
-        b = collect(B)
-    else
-        b = choose_matrix_format(B)# |> collect
-    end
+    # Ensure doubling buffers are allocated unconditionally so they are available
+    # for both the primary path and fallback retry paths below.
+    # Doubling buffers (𝐀, 𝐁, 𝐂_dbl, 𝐂¹, 𝐂B) are reused in fallback Krylov/bartels_stewart
+    # retry paths to avoid allocating via collect(). They are NOT used by those solvers
+    # (they only use krylov_workspace buffers: tmp, 𝐗, 𝐂), so there is no aliasing.
+    #
+    # For dqgmres refinement fallbacks (initial_guess = x), we use 𝐂¹ instead of 𝐂_dbl
+    # for cc, because x may alias 𝕊ℂ.𝐂_dbl from a prior doubling solve.
+    #
+    # The doubling retry path still uses collect() because the doubling method modifies
+    # its workspace copies of A/B internally (squaring) and reads the original A/B/C
+    # arguments for the final residual—passing workspace aliases would corrupt those reads.
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
 
     if sylvester_algorithm ∈ [:bicgstab, :gmres, :dqgmres, :bartels_stewart]
-        a = collect(A)
+        a = 𝕊ℂ.𝐀
+        copyto!(a, A)
 
-        c = collect(C)
+        c = 𝕊ℂ.𝐂_dbl
+        copyto!(c, C)
+        
+        if sylvester_algorithm == :bartels_stewart
+            b = 𝕊ℂ.𝐁
+            copyto!(b, B)
+        else
+            b = choose_matrix_format(B)
+        end
     else
-        a = choose_matrix_format(A)# |> sparse
+        a = choose_matrix_format(A)
 
-        c = choose_matrix_format(C)# |> sparse
+        b = choose_matrix_format(B)
+
+        c = choose_matrix_format(C)
     end
     
     # end # timeit_debug
     # @timeit_debug timer "Check if guess solves it already" begin
 
     if length(initial_guess) > 0
-        𝐂  = a * initial_guess * b + c - initial_guess
+        n = size(A, 1)
+        m = size(B, 2)
+        ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
         
-        reached_tol = ℒ.norm(𝐂) / ℒ.norm(initial_guess)
+        _tmp = 𝕊ℂ.tmp
+        _res = 𝕊ℂ.𝐂
+        ℒ.mul!(_tmp, initial_guess, b)
+        ℒ.mul!(_res, a, _tmp)
+        ℒ.axpy!(1, c, _res)
+        ℒ.axpy!(-1, initial_guess, _res)
+        
+        reached_tol = ℒ.norm(_res) / ℒ.norm(initial_guess)
 
         if reached_tol < acceptance_tol
             if verbose println("Sylvester equation - previous solution achieves relative tol of $reached_tol") end
-
-            # X = choose_matrix_format(initial_guess)
 
             return initial_guess, true
         end
@@ -69,11 +96,14 @@ function solve_sylvester_equation(A::M,
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) # try sylvester if previous one didn't solve it
-        aa = collect(A)
+        aa = 𝕊ℂ.𝐀
+        copyto!(aa, A)
 
-        bb = collect(B)
+        bb = 𝕊ℂ.𝐁
+        copyto!(bb, B)
 
-        cc = collect(C)
+        cc = 𝕊ℂ.𝐂_dbl
+        copyto!(cc, C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
                                                             Val(:bartels_stewart), 𝕊ℂ,
@@ -88,9 +118,12 @@ function solve_sylvester_equation(A::M,
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && reached_tol < sqrt(acceptance_tol)
-        aa = collect(A)
+        aa = 𝕊ℂ.𝐀
+        copyto!(aa, A)
 
-        cc = collect(C)
+        # Use 𝐂¹ (not 𝐂_dbl) because x may alias 𝕊ℂ.𝐂_dbl from a prior doubling solve
+        cc = 𝕊ℂ.𝐂¹
+        copyto!(cc, C)
 
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
@@ -109,9 +142,11 @@ function solve_sylvester_equation(A::M,
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :gmres
-        aa = collect(A)
+        aa = 𝕊ℂ.𝐀
+        copyto!(aa, A)
 
-        cc = collect(C)
+        cc = 𝕊ℂ.𝐂_dbl
+        copyto!(cc, C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:gmres), 𝕊ℂ,
@@ -126,9 +161,12 @@ function solve_sylvester_equation(A::M,
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && reached_tol < sqrt(acceptance_tol)
-        aa = collect(A)
+        aa = 𝕊ℂ.𝐀
+        copyto!(aa, A)
 
-        cc = collect(C)
+        # Use 𝐂¹ (not 𝐂_dbl) because x may alias 𝕊ℂ.𝐂_dbl from a prior doubling solve
+        cc = 𝕊ℂ.𝐂¹
+        copyto!(cc, C)
 
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
@@ -147,6 +185,8 @@ function solve_sylvester_equation(A::M,
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :doubling
+        # Must use collect() here: the doubling method aliases 𝕊ℂ.𝐀/𝕊ℂ.𝐂_dbl internally
+        # (squaring A, iterating C) then reads the original A/C for the final residual.
         aa = collect(A)
 
         cc = collect(C)
@@ -286,11 +326,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    𝐂_res = A * 𝐂 * B
+    𝐂_res += C
+    𝐂_res -= 𝐂
+    reached_tol = ℒ.norm(𝐂_res) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -313,17 +352,25 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
-    # ℒ.rmul!(𝐂, -1)
-    𝐂¹  = similar(𝐂)
-    𝐂B = copy(C)
+    # Use workspace for dense C-related buffers
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐂  = 𝕊ℂ.𝐂_dbl
+    𝐂¹ = 𝕊ℂ.𝐂¹
+    𝐂B = 𝕊ℂ.𝐂B
+    
+    # 𝐂  = A * initial_guess * B + C - initial_guess
+    ℒ.mul!(𝐂B, initial_guess, B)
+    ℒ.mul!(𝐂, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂)
+    ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -346,7 +393,9 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -357,24 +406,14 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         copy!(𝐂,𝐂¹)
     end
 
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-    
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-
     ℒ.axpy!(1, initial_guess, 𝐂)
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -401,17 +440,26 @@ function solve_sylvester_equation(  A::Matrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
-    𝐀  = copy(A)    
-    𝐀¹ = copy(A)
+    # Use workspace for dense matrices A and C
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐀  = 𝕊ℂ.𝐀
+    𝐀¹ = 𝕊ℂ.𝐀¹
+    copyto!(𝐀, A)
+    
     𝐁  = copy(B)
-    # 𝐁¹ = similar(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
-    # ℒ.rmul!(𝐂, -1)
-    𝐂¹  = similar(𝐂)
-    𝐂B = similar(C)
+    
+    𝐂  = 𝕊ℂ.𝐂_dbl
+    𝐂¹ = 𝕊ℂ.𝐂¹
+    𝐂B = 𝕊ℂ.𝐂B
+    
+    # 𝐂  = A * initial_guess * B + C - initial_guess
+    ℒ.mul!(𝐂B, initial_guess, B)
+    ℒ.mul!(𝐂, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂)
+    ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -446,7 +494,9 @@ function solve_sylvester_equation(  A::Matrix{T},
         # end # timeit_debug
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -459,28 +509,14 @@ function solve_sylvester_equation(  A::Matrix{T},
         # end # timeit_debug
     end
 
-    # @timeit_debug timer "Finalise" begin
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    ℒ.axpy!(1, initial_guess, 𝐂)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-
-    𝐂 += initial_guess
-
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -504,15 +540,25 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     end
 
     𝐀  = copy(A)    
-    # 𝐀¹ = copy(A)
-    𝐁  = copy(B)
-    𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
-    # ℒ.rmul!(𝐂, -1)
-    𝐂¹ = similar(𝐂)
-    𝐂B = copy(C)
+    # Use workspace for dense B and C buffers
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐁  = 𝕊ℂ.𝐁
+    𝐁¹ = 𝕊ℂ.𝐁¹
+    copyto!(𝐁, B)
+    
+    𝐂  = 𝕊ℂ.𝐂_dbl
+    𝐂¹ = 𝕊ℂ.𝐂¹
+    𝐂B = 𝕊ℂ.𝐂B
+    
+    # 𝐂  = A * initial_guess * B + C - initial_guess
+    ℒ.mul!(𝐂B, initial_guess, B)
+    ℒ.mul!(𝐂, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂)
+    ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -533,7 +579,9 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         # droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -544,24 +592,14 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         copy!(𝐂,𝐂¹)
     end
 
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    ℒ.axpy!(1, initial_guess, 𝐂)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-
-    𝐂 += initial_guess
-
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -585,16 +623,20 @@ function solve_sylvester_equation(  A::Matrix{T},
         initial_guess = zero(C)
     end
 
-    𝐀  = copy(A)    
-    𝐀¹ = copy(A)
-    𝐁  = copy(B)
-    𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
-    # ℒ.rmul!(𝐂, -1)
+    # Use workspace for dense A and B buffers
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐀  = 𝕊ℂ.𝐀
+    𝐀¹ = 𝕊ℂ.𝐀¹
+    𝐁  = 𝕊ℂ.𝐁
+    𝐁¹ = 𝕊ℂ.𝐁¹
+    copyto!(𝐀, A)
+    copyto!(𝐁, B)
+    
+    𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
-    # 𝐂B = copy(C)
 
     max_iter = 500
 
@@ -617,7 +659,10 @@ function solve_sylvester_equation(  A::Matrix{T},
         # droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            𝐂B = 𝕊ℂ.𝐂B
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -629,22 +674,16 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝐂 = 𝐂¹
     end
 
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
-
     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    𝐂B = 𝕊ℂ.𝐂B
+    𝐂_tmp = 𝕊ℂ.𝐂_dbl
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂_tmp, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂_tmp)
+    
+    reached_tol = ℒ.norm(𝐂_tmp) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -669,15 +708,18 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     end
 
     𝐀  = copy(A)    
-    # 𝐀¹ = copy(A)
-    𝐁  = copy(B)
-    𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
-    # ℒ.rmul!(𝐂, -1)
+    # Use workspace for dense B buffers
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐁  = 𝕊ℂ.𝐁
+    𝐁¹ = 𝕊ℂ.𝐁¹
+    copyto!(𝐁, B)
+    
+    𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
-    # 𝐂B = copy(C)
 
     max_iter = 500
 
@@ -700,7 +742,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         # droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            𝐂B = 𝕊ℂ.𝐂B
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -712,22 +757,16 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         𝐂 = 𝐂¹
     end
 
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
-
     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    𝐂B = 𝕊ℂ.𝐂B
+    𝐂_tmp = 𝕊ℂ.𝐂_dbl
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂_tmp, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂_tmp)
+    
+    reached_tol = ℒ.norm(𝐂_tmp) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -749,17 +788,19 @@ function solve_sylvester_equation(  A::Matrix{T},
         # guess_provided = false
         initial_guess = zero(C)
     end
-
-    𝐀  = copy(A)    
-    𝐀¹ = copy(A)
+    # Use workspace for dense A buffers
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
+    
+    𝐀  = 𝕊ℂ.𝐀
+    𝐀¹ = 𝕊ℂ.𝐀¹
+    copyto!(𝐀, A)
+    
     𝐁  = copy(B)
-    # 𝐁¹ = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
-    # ℒ.rmul!(𝐂, -1)
+    
+    𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
-    # 𝐂B = copy(C)
 
     max_iter = 500
 
@@ -782,7 +823,10 @@ function solve_sylvester_equation(  A::Matrix{T},
         droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            𝐂B = 𝕊ℂ.𝐂B
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -794,22 +838,16 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝐂 = 𝐂¹
     end
 
-    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
-
     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
+    𝐂B = 𝕊ℂ.𝐂B
+    𝐂_tmp = 𝕊ℂ.𝐂_dbl
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂_tmp, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂_tmp)
+    
+    reached_tol = ℒ.norm(𝐂_tmp) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -886,7 +924,9 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         # droptol!(𝐁, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂B, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂B)
+            normdiff = ℒ.norm(𝐂B)
             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
@@ -914,15 +954,14 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
     ℒ.axpy!(1, initial_guess, 𝐂)
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+    ℒ.mul!(𝐂B, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, 𝐂B)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    # end # timeit_debug
-
-    # if reached_tol > tol
-    #     println("Sylvester: doubling $reached_tol")
-    # end
-
-    return copy(𝐂), iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -1079,14 +1118,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.bicgstab.m == 0
-        𝕊ℂ.krylov_workspace.bicgstab =  BicgstabWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.bicgstab.m == 0
+        𝕊ℂ.krylov.bicgstab =  BicgstabWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.bicgstab(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.bicgstab!(   𝕊ℂ.krylov_workspace.bicgstab,
+        Krylov.bicgstab!(   𝕊ℂ.krylov.bicgstab,
                             sylvester, [vec(𝐂¹);], 
                             # [vec(initial_guess);], 
                             itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1101,7 +1140,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.bicgstab.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.bicgstab.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1132,7 +1171,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.bicgstab.stats.niter
+    iter = 𝕊ℂ.krylov.bicgstab.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol
@@ -1231,14 +1270,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.dqgmres.m == 0
-        𝕊ℂ.krylov_workspace.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.dqgmres.m == 0
+        𝕊ℂ.krylov.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "DQGMRES solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.dqgmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.dqgmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.dqgmres!(𝕊ℂ.krylov_workspace.dqgmres,
+        Krylov.dqgmres!(𝕊ℂ.krylov.dqgmres,
                         sylvester, [vec(𝐂¹);], 
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1253,7 +1292,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.dqgmres.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.dqgmres.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1284,7 +1323,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.dqgmres.stats.niter
+    iter = 𝕊ℂ.krylov.dqgmres.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol
@@ -1383,14 +1422,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
-    if 𝕊ℂ.krylov_workspace.gmres.m == 0
-        𝕊ℂ.krylov_workspace.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
+    if 𝕊ℂ.krylov.gmres.m == 0
+        𝕊ℂ.krylov.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.gmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         # 𝐂, info = Krylov.gmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.gmres!(𝕊ℂ.krylov_workspace.gmres,
+        Krylov.gmres!(𝕊ℂ.krylov.gmres,
                         sylvester, [vec(𝐂¹);], 
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
@@ -1405,7 +1444,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # @timeit_debug timer "Postprocess" begin
 
     # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝕊ℂ.krylov_workspace.gmres.x)
+    copyto!(𝐗, 𝕊ℂ.krylov.gmres.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * B)
     # ℒ.axpy!(1, C, tmp̄)
@@ -1436,7 +1475,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # end
     
     # iter = info.niter
-    iter = 𝕊ℂ.krylov_workspace.gmres.stats.niter
+    iter = 𝕊ℂ.krylov.gmres.stats.niter
 
     # return 𝕊ℂ.𝐗, iter, reached_tol
     return 𝐗, iter, reached_tol

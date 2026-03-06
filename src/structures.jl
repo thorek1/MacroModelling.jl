@@ -74,7 +74,8 @@
 #
 # 2. WORKSPACES (𝓂.workspaces) - Pre-allocated temporary buffers that are 
 #    reused across function calls to avoid repeated allocations:
-#    - qme: Quadratic matrix equation solver workspace
+#    - first_order: First-order perturbation solver workspace
+#    - qme_doubling: Quadratic matrix equation doubling solver workspace
 #    - sylvester_*: Sylvester equation solver workspaces  
 #    - lyapunov_*: Lyapunov equation solver workspaces
 #    - second_order/third_order: Higher order perturbation workspaces
@@ -86,10 +87,10 @@
 #    - non_stochastic_steady_state: NSSS solution values
 #    - jacobian/hessian/third_order_derivatives: Perturbation derivatives
 #    - first_order_solution_matrix/second_order_solution/etc.: Solved policy matrices
-#    - outdated: Flags indicating which caches need recomputation
+#    - valid_for: Parameter vectors for which each cache entry is valid
 #
 # 4. FUNCTIONS (𝓂.functions) - Compiled model functions:
-#    - NSSS_solve/check: Steady state solvers
+#    - NSSS_check + step-based NSSS solver functions
 #    - jacobian/hessian/third_order_derivatives: Derivative functions
 #    - state_update functions: Policy function evaluators
 #
@@ -97,7 +98,7 @@
 #   @model macro → post_model_macro (constants)
 #   @parameters macro → post_parameters_macro, post_complete_parameters (constants)
 #   solve!() → populates caches using workspaces, guided by constants
-#   get_irf/simulate/etc → reads from caches, may trigger solve!() if outdated
+#   get_irf/simulate/etc → reads from caches, may trigger solve!() if not valid_for current parameters
 #
 # =============================================================================
 
@@ -146,6 +147,7 @@ struct post_model_macro
     nMixed::Int
     nFuture_not_past_and_mixed::Int
     nPast_not_future_and_mixed::Int
+    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}
     # nPresent_but_not_only::Int
     nVars::Int
     nExo::Int
@@ -271,9 +273,13 @@ mutable struct second_order_indices
     # Triggered by: write_functions_mapping! ← solve!
     # =========================================================================
     𝛔::SparseMatrixCSC{Int}              # Commutation matrix
+    𝛔c₂::SparseMatrixCSC{Int}             # Compressed volatility: 𝐔₂ * 𝛔 * 𝐂₂
+    𝛔𝐂₂::SparseMatrixCSC{Int}            # Product 𝛔 * 𝐂₂ (precomputed)
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order
     𝐔₂::SparseMatrixCSC{Int}             # Unique elements selector for 2nd order
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
+    𝐔₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
+    𝛔𝐂₂_nonempty_row_as_kron_colmask::Vector{Int}    # Non-empty rows of σc₂, mapped to colmask in compressed_kron²
 
     # =========================================================================
     # COMPUTATIONAL CONSTANTS (for efficient sparse operations)
@@ -472,7 +478,10 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     𝐂B::Matrix{G}     # n×m temporary for C*B multiplication
     
     # Krylov solver state (lazily allocated)
-    krylov_workspace::krylov_workspace{G}
+    krylov::krylov_workspace{G}
+
+    # Stable primal solution cache for AD/rrule pullbacks
+    P::Matrix{G}
     
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
@@ -483,25 +492,69 @@ end
 
 
 """
-Pre-allocated workspace matrices for the quadratic matrix equation doubling algorithm.
-All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
+Pre-allocated workspace matrices for first-order perturbation and related AD paths.
 
-Used by `solve_quadratic_matrix_equation` with `Val{:doubling}` in quadratic_matrix_equation.jl.
-Also used by stochastic steady state calculations in `calculate_second_order_stochastic_steady_state`
-and `calculate_third_order_stochastic_steady_state`.
-Avoids per-call allocations for temporary matrices in the iterative doubling algorithm.
-
-Fields:
-- `E`, `F`: Working matrices for the doubling recurrence
-- `X`, `Y`: Current iteration solution matrices
-- `X_new`, `Y_new`, `E_new`, `F_new`: Next iteration matrices  
-- `temp1`, `temp2`, `temp3`: Temporary matrices for intermediate computations
-- `B̄`: Copy of B for LU factorization (modified in-place)
-- `AXX`: Temporary for residual computation (A * X² + B * X + C)
-- `I_n`: Pre-computed identity matrix for QME doubling (UniformScaling)
-- `I_nPast`: Pre-computed identity matrix for stochastic steady state (UniformScaling)
+Contains temporary matrices and factorization workspaces reused by
+`calculate_first_order_solution` and first-order derivative routines.
 """
-mutable struct qme_workspace{T <: Real, R <: Real}
+mutable struct first_order_workspace{T <: Real, R <: Real}
+    # Sylvester workspace for ForwardDiff path
+    sylvester::sylvester_workspace{T, R}
+
+    # ForwardDiff partials buffers (for forward-mode AD)
+    X̃_first_order::Matrix{R}   # For first order solution partials
+    p_tmp::Matrix{R}            # For calculate_first_order_solution
+    ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
+
+    # First-order perturbation workspaces (primal)
+    𝐧ₚ₋::Matrix{T}                     # nₚ₋ = A₊ᵤ * D
+    𝐌::Matrix{T}                       # M = A_future * expand_past
+    𝐀₊::Matrix{T}                      # A₊
+    𝐀₀::Matrix{T}                      # A₀
+    𝐀₋::Matrix{T}                      # A₋
+    𝐀̃₊::Matrix{T}                     # Ã₊
+    𝐀̃₀::Matrix{T}                     # Ã₀
+    𝐀̃₋::Matrix{T}                     # Ã₋
+    𝐀̄₀ᵤ::Matrix{T}                    # Ā₀ᵤ
+    𝐀₊ᵤ::Matrix{T}                     # A₊ᵤ
+    𝐀̃₀ᵤ::Matrix{T}                    # Ã₀ᵤ
+    𝐀₋ᵤ::Matrix{T}                     # A₋ᵤ
+    𝐀::Matrix{T}                       # A
+    ∇₀::Matrix{T}                      # copy of ∇₀ block (mutable workspace buffer)
+    ∇ₑ::Matrix{T}                      # copy of ∇ₑ block (mutable workspace buffer)
+
+    # FastLapackInterface QR workspaces for first-order solution
+    fast_qr_factors::Matrix{T}
+    fast_qr_ws::FastLapackInterface.QRWs{T}
+    fast_qr_orm_ws_plus::FastLapackInterface.QROrmWs{T}
+    fast_qr_orm_dims_plus::NTuple{3, Int}
+    fast_qr_orm_ws_zero::FastLapackInterface.QROrmWs{T}
+    fast_qr_orm_dims_zero::NTuple{3, Int}
+    fast_qr_orm_ws_minus::FastLapackInterface.QROrmWs{T}
+    fast_qr_orm_dims_minus::NTuple{3, Int}
+
+    # FastLapackInterface LU workspaces for first-order solve
+    fast_lu_ws_a0u::FastLapackInterface.LUWs
+    fast_lu_dims_a0u::NTuple{2, Int}
+    fast_lu_ws_nabla0::FastLapackInterface.LUWs
+    fast_lu_dims_nabla0::NTuple{2, Int}
+
+    # Dedicated FastLapackInterface LU workspace for NSSS implicit derivatives
+    fast_lu_ws_nsss::FastLapackInterface.LUWs
+    fast_lu_dims_nsss::NTuple{2, Int}
+    nsss_sparse_lu_buffer::𝒮.LinearCache
+    nsss_sparse_rhs::Vector{T}
+    nsss_jvp_rhs::Matrix{T}
+end
+
+
+"""
+Pre-allocated workspace matrices for quadratic matrix equation doubling and dual QME differentiation.
+
+All matrices are square with dimension n = size(A,1) = size(B,1) = size(C,1).
+Used by `solve_quadratic_matrix_equation` with `Val{:doubling}`.
+"""
+mutable struct qme_doubling_workspace{T <: Real, R <: Real}
     # Doubling algorithm working matrices
     E::Matrix{T}
     F::Matrix{T}
@@ -511,30 +564,78 @@ mutable struct qme_workspace{T <: Real, R <: Real}
     Y_new::Matrix{T}
     E_new::Matrix{T}
     F_new::Matrix{T}
-    
+
     # Temporary matrices for intermediate operations
     temp1::Matrix{T}
     temp2::Matrix{T}
     temp3::Matrix{T}
-    
-    # LU factorization buffer
+
+    # LU factorization and residual buffers
     B̄::Matrix{T}
-    
-    # Residual computation buffer
     AXX::Matrix{T}
-    
+
     # Sylvester workspace for ForwardDiff path
-    sylvester_ws::sylvester_workspace{T, R}
-    
+    sylvester::sylvester_workspace{T, R}
+
     # ForwardDiff partials buffers (for forward-mode AD)
     X̃::Matrix{R}               # For QME solution partials
-    X̃_first_order::Matrix{R}   # For first order solution partials
-    p_tmp::Matrix{R}            # For calculate_first_order_solution
-    ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
-    
-    # Pre-computed identity matrices (Diagonal{Bool} - supports indexing for schur algorithm)
-    I_n::ℒ.Diagonal{Bool, Vector{Bool}}       # Identity for QME doubling (dimension n = nVars - nPresent_only)
-    I_nPast::ℒ.Diagonal{Bool, Vector{Bool}}   # Identity for schur & stochastic steady state (dimension nPast_not_future_and_mixed)
+
+    # FastLapackInterface LU workspaces for QME doubling solve
+    fast_lu_ws_qme_a::FastLapackInterface.LUWs
+    fast_lu_dims_qme_a::NTuple{2, Int}
+    fast_lu_ws_qme_b::FastLapackInterface.LUWs
+    fast_lu_dims_qme_b::NTuple{2, Int}
+end
+
+
+"""
+Pre-allocated workspace matrices for the schur-based quadratic matrix equation solver.
+
+The schur method solves A*X² + B*X + C = 0 by forming a companion linearization
+and computing its generalized Schur decomposition. All temporary matrices are
+pre-allocated here to avoid per-call allocations.
+
+Fields:
+- `D`, `E`: Companion form matrices (n+nMixed) × (nPfm+nFnpm), overwritten by schur!
+- `Ã₋`, `Ã₀₊`: Negated slices from C and B (need owned copies for rmul!)
+- `Ã₀₋`: Product B[:,indices_past_not_future_in_comb] * I_nPast[not_mixed_in_past_idx,:]
+- `Z₂₁`, `S₁₁`, `T₁₁`: Schur decomposition result blocks (need owned copies for lu!)
+- `sol`: Assembled solution before reordering (nPfm+nFnpm) × nPfm
+- `temp_X2`: Buffer for X² in residual check
+- `AXX`: Buffer for A*X² + B*X + C residual
+- `eigenselect`: Boolean vector for eigenvalue selection
+"""
+mutable struct schur_workspace{T <: Real}
+    # Companion form matrices (overwritten by schur!)
+    D::Matrix{T}
+    E::Matrix{T}
+    # Slices that need negation (owned copies)
+    Ã₋::Matrix{T}
+    Ã₀₊::Matrix{T}
+    Ã₀₋::Matrix{T}
+    # Schur decomposition result blocks (owned copies for lu!)
+    Z₁₁::Matrix{T}
+    Z₂₁::Matrix{T}
+    S₁₁::Matrix{T}
+    T₁₁::Matrix{T}
+    # Solution assembly buffers
+    sol::Matrix{T}
+    # Residual check buffers
+    temp_X2::Matrix{T}
+    AXX::Matrix{T}
+    # Eigenvalue selection
+    eigenselect::Vector{Bool}
+    # FastLapack generalized Schur workspace
+    fast_qz_ws::FastLapackInterface.GeneralizedSchurWs{T}
+    fast_qz_dims::NTuple{2, Int}
+    # FastLapack LU workspaces for schur post-processing
+    fast_lu_ws_z11::FastLapackInterface.LUWs
+    fast_lu_dims_z11::NTuple{2, Int}
+    fast_lu_ws_s11::FastLapackInterface.LUWs
+    fast_lu_dims_s11::NTuple{2, Int}
+    # Scratch buffers for right-side solves (store transposed RHS)
+    fast_lu_rhs_t_z21::Matrix{T}
+    fast_lu_rhs_t_s11::Matrix{T}
 end
 
 
@@ -577,10 +678,11 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     b::Vector{T}
     
     # Krylov solver state (lazily allocated, can be reused across calls)
-    bicgstab_workspace::Krylov.BicgstabWorkspace{T, T, Vector{T}}
-    gmres_workspace::Krylov.GmresWorkspace{T, T, Vector{T}}
+    bicgstab::Krylov.BicgstabWorkspace{T, T, Vector{T}}
+    gmres::Krylov.GmresWorkspace{T, T, Vector{T}}
     
     # ForwardDiff partials buffers (for forward-mode AD)
+    P::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
     P̃::Matrix{R}       # For lyapunov equation partials
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
@@ -592,63 +694,174 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
-mutable struct non_stochastic_steady_state
-    solve_blocks_in_place::Vector{ss_solve_block}
-    dependencies::Any
-end
+
+# ============================================================================
+# NSSS Solver Pipeline — struct-of-arrays design
+#
+# Steps are stored as parallel vectors of per-step data, with shared
+# workspaces for scratch buffers and separated caches for past results.
+#
+# Step types are encoded as UInt8 flags:
+const ANALYTICAL_STEP = 0x01
+const NUMERICAL_STEP  = 0x02
+# ============================================================================
 
 """
-Tracks which cache elements are outdated and need recalculation.
+Per-step compiled functions, stored as parallel vectors indexed by step number.
 
-When parameters change (via `𝓂.parameter_values = ...`), all fields are set to `true` (outdated).
-When a cache is computed (e.g., by `solve!()`), its corresponding field is set to `false` (up to date).
-
-This enables lazy evaluation: caches are only recomputed when actually needed AND outdated.
+Each step has an optional `aux_func!` (pre-step domain-safety computation),
+an optional `error_func!` (domain-safety error check), and a main function
+which is either `eval_func!` (analytical) or dispatched via `solve_block` (numerical).
 """
-mutable struct outdated_caches
-    # Non-stochastic steady state
-    non_stochastic_steady_state::Bool
-    # Perturbation derivative buffers
-    jacobian::Bool
-    hessian::Bool
-    third_order_derivatives::Bool
-    # Perturbation solution buffers
-    first_order_solution::Bool
-    second_order_solution::Bool
-    pruned_second_order_solution::Bool
-    third_order_solution::Bool
-    pruned_third_order_solution::Bool
+struct NSSSSolverFunctions
+    # Per-step compiled functions (indexed by step number)
+    aux_funcs::Vector{Function}                        # f!(out, sol_vec, params_vec) — optional pre-step aux
+    error_funcs::Vector{Function}                      # g!(out, sol_vec, params_vec) — optional error check
+    eval_funcs::Vector{Function}                       # f!(out, sol_vec, params_vec) — main eval (analytical only)
+    solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
 end
+
+
+"""
+Per-step immutable configuration: indices, bounds, and metadata.
+
+Index arrays are stored in flat contiguous vectors, with per-step `UnitRange{Int}`
+providing zero-copy views into the flat storage. This reduces heap allocations
+and improves cache locality compared to per-step `Vector{Int}` fields.
+"""
+struct NSSSSolverConstants
+    # Step metadata
+    n_steps::Int
+    n_ext_params::Int
+    step_types::Vector{UInt8}                    # ANALYTICAL_STEP or NUMERICAL_STEP per step
+    descriptions::Vector{String}                 # debug description per step
+    block_indices::Vector{Int}                   # numerical block index (0 for analytical)
+
+    # Flat index arrays + per-step ranges
+    write_indices::Vector{Int}                   # flat: which sol_vec positions to write
+    write_ranges::Vector{UnitRange{Int}}         # per-step range into write_indices
+    aux_write_indices::Vector{Int}               # flat: aux write positions
+    aux_write_ranges::Vector{UnitRange{Int}}     # per-step range into aux_write_indices
+    param_gather_indices::Vector{Int}            # flat: numerical param gather (0-length for analytical)
+    param_gather_ranges::Vector{UnitRange{Int}}  # per-step range
+    var_gather_indices::Vector{Int}              # flat: numerical var gather (0-length for analytical)
+    var_gather_ranges::Vector{UnitRange{Int}}    # per-step range
+
+    # Flat bounds arrays + per-step ranges (analytical bounds for clamping)
+    lower_bounds::Vector{Float64}
+    upper_bounds::Vector{Float64}
+    has_bounds::BitVector
+    bounds_ranges::Vector{UnitRange{Int}}        # per-step range into lower/upper/has_bounds
+
+    # Flat bounds arrays for numerical block solver
+    numerical_lbs::Vector{Float64}
+    numerical_ubs::Vector{Float64}
+    numerical_bounds_ranges::Vector{UnitRange{Int}}  # per-step range into numerical_lbs/ubs
+
+    # Flat error buffer sizing per step
+    error_sizes::Vector{Int}                     # size of error output for each step
+    aux_error_sizes::Vector{Int}                 # size of aux error output (numerical steps)
+end
+
+
+"""
+Shared scratch buffers reused across all steps during a single solve pass.
+
+All buffers are pre-allocated to the maximum size needed across all steps,
+avoiding per-step allocation. Steps use `@view` slices into these buffers.
+"""
+mutable struct NSSSSolverWorkspace
+    main_buffer::Vector{Float64}      # for eval_func! output or params_and_solved_vars gather
+    aux_buffer::Vector{Float64}       # for aux_func! output
+    error_buffer::Vector{Float64}     # for error_func! / aux_error_func! output
+    params_vec_buffer::Vector{Float64} # extended parameter vector (bounded + calibration_no_var)
+    sol_vec_buffer::Vector{Float64}   # solution vector across NSSS steps
+    output_buffer::Vector{Float64}    # returned NSSS output (subset view materialized into reusable buffer)
+    guess_buffer::Vector{Float64}     # for initial_guess in numerical steps
+    inits::Vector{Vector{Float64}}    # 2-element container: [clamped_guess, cached_params]
+    params_and_solved_vars_buffer::Vector{Float64}  # gathered block inputs (params + solved vars)
+    lbs_buffer::Vector{Float64}       # numerical lower bounds for current block
+    ubs_buffer::Vector{Float64}       # numerical upper bounds for current block
+    scaled_parameters_buffer::Vector{Float64} # continuation interpolation scratch
+    continuation::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
+    continuation_capacity::Int
+end
+
+
+"""Construct an empty `NSSSSolverFunctions` with no steps."""
+NSSSSolverFunctions() = NSSSSolverFunctions(
+    Function[],
+    Function[],
+    Function[],
+    Union{Nothing,ss_solve_block}[],
+)
+
+"""Construct an empty `NSSSSolverConstants` with no steps."""
+NSSSSolverConstants() = NSSSSolverConstants(
+    0,
+    0,
+    UInt8[], String[], Int[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Int[], UnitRange{Int}[],
+    Float64[], Float64[], BitVector(), UnitRange{Int}[],
+    Float64[], Float64[], UnitRange{Int}[],
+    Int[], Int[],
+)
+
+"""Construct an empty `NSSSSolverWorkspace` with no buffers."""
+NSSSSolverWorkspace() = NSSSSolverWorkspace(
+    Float64[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+    [Float64[], Float64[Inf]],
+    Float64[], Float64[], Float64[],
+    Float64[], CircularBuffer{Vector{Vector{Float64}}}(1), 1,
+)
+
+mutable struct valid_for_caches
+    non_stochastic_steady_state::Vector{Float64}
+    first_order_solution::Vector{Float64}
+    second_order_solution::Vector{Float64}
+    pruned_second_order_solution::Vector{Float64}
+    third_order_solution::Vector{Float64}
+    pruned_third_order_solution::Vector{Float64}
+end
+
+
+valid_for_caches() = valid_for_caches(
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+)
 
 
 """
 Stored computation results that can be reused across function calls.
 
 Caches store the final outputs of expensive computations (steady state, perturbation solutions).
-They are invalidated when parameters change (tracked by `outdated` flags) and recomputed
-lazily when needed by get_* functions.
+Each cache is reused only when marked valid for the active parameter vector in `valid_for`.
 
 Purpose: Avoid recomputation when the same result is needed multiple times.
 
 Fields:
-- `outdated`: Flags indicating which caches need recomputation (see [`outdated_caches`](@ref))
+- `valid_for`: Parameter vectors for which each cache entry is valid
 - Perturbation derivatives (`jacobian`, `hessian`, `third_order_derivatives`): 
   Model derivative matrices evaluated at steady state
 - Perturbation solutions (`first_order_solution_matrix`, `second_order_solution`, etc.):
   Policy function coefficient matrices
 - `non_stochastic_steady_state`: NSSS solution values
-- `solver_cache`: Recent solver guesses for warm-starting
+- `solver`: Recent solver guesses for warm-starting
 
 Relationship to other structs:
 - Caches are computed using `constants` (for dimensions/structure) and `workspaces` (for temporary buffers)
 - Caches are read by get_* functions (get_irf, simulate, etc.)
-- Caches are invalidated when `parameter_values` changes
+- Caches are reused only when `valid_for` matches current `parameter_values`
 """
 mutable struct caches
-    # =========================================================================
-    # CACHE INVALIDATION FLAGS
-    # =========================================================================
-    outdated::outdated_caches
+    valid_for::valid_for_caches
     
     # =========================================================================
     # PERTURBATION DERIVATIVE CACHES
@@ -669,6 +882,7 @@ mutable struct caches
     # Policy function coefficient matrices (𝐒₁, 𝐒₂, 𝐒₃)
     # =========================================================================
     first_order_solution_matrix::Matrix{<: Real}           # 𝐒₁ - first order policy
+    first_order_obc_solution_matrix::Matrix{<: Real}       # Ŝ₁ - first order OBC policy
     qme_solution::Matrix{<: Real}                          # Quadratic matrix eqn solution
     second_order_stochastic_steady_state::Vector{<: Real}  # E[x] deviation from NSSS (2nd)
     second_order_solution::AbstractMatrix{<: Real}         # 𝐒₂ - second order policy
@@ -681,9 +895,9 @@ mutable struct caches
     # STEADY STATE CACHES
     # =========================================================================
     non_stochastic_steady_state::Vector{<: Real}           # NSSS values
-    solver_cache::CircularBuffer{Vector{Vector{Float64}}}  # Recent solver guesses
-    ∂equations_∂parameters::AbstractMatrix{<: Real}        # SS sensitivity to params
-    ∂equations_∂SS_and_pars::AbstractMatrix{<: Real}       # SS Jacobian
+    solver::CircularBuffer{Vector{Vector{Float64}}}  # Recent solver guesses
+    NSSS_∂equations_∂parameters::AbstractMatrix{<: Real}  # Dedicated NSSS SS sensitivity
+    NSSS_∂equations_∂SS_and_pars::AbstractMatrix{<: Real} # Dedicated NSSS SS Jacobian
 end
 
 # Structs for perturbation derivative functions (used for AD)
@@ -707,26 +921,16 @@ end
 
 mutable struct model_functions
     # NSSS-related functions
-    NSSS_solve::Function
     NSSS_check::Function
     NSSS_custom::Union{Nothing, Function}
     NSSS_∂equations_∂parameters::Function
     NSSS_∂equations_∂SS_and_pars::Function
+    nsss_solver::NSSSSolverFunctions
+    nsss_param_prep!::Union{Nothing, Function}
     # Perturbation derivative functions
     jacobian::jacobian_functions
     hessian::hessian_functions
     third_order_derivatives::third_order_derivatives_functions
-    # State update functions for perturbation solutions
-    first_order_state_update::Function
-    first_order_state_update_obc::Function
-    second_order_state_update::Function
-    second_order_state_update_obc::Function
-    pruned_second_order_state_update::Function
-    pruned_second_order_state_update_obc::Function
-    third_order_state_update::Function
-    third_order_state_update_obc::Function
-    pruned_third_order_state_update::Function
-    pruned_third_order_state_update_obc::Function
     # OBC-related functions
     obc_violation::Function
     # Whether all functions have been written/compiled
@@ -804,7 +1008,7 @@ end
 """  
 Workspace for Kalman filter computations.
 Contains pre-allocated buffers for state estimates, covariances, and matrix operations.
-Buffers are lazily allocated and resized as needed via ensure_kalman_buffers!.
+Buffers are lazily allocated and resized as needed via ensure_kalman_workspaces!.
 """
 mutable struct kalman_workspace{T <: Real}
     # Dimensions (for reallocation checks)
@@ -819,10 +1023,16 @@ mutable struct kalman_workspace{T <: Real}
     
     # Matrix buffers
     Ctmp::Matrix{T}          # (n_obs, n_states) - C*P buffer
+    𝐁::Matrix{T}             # (n_states, n_states) - B*B' buffer
     F::Matrix{T}             # (n_obs, n_obs) - innovation covariance
     K::Matrix{T}             # (n_states, n_obs) - Kalman gain
     tmp::Matrix{T}           # (n_states, n_states) - temp for P
     Ptmp::Matrix{T}          # (n_states, n_states) - temp for P
+
+    # FastLapackInterface LU workspace for F factorization/solves
+    fast_lu_ws_f::FastLapackInterface.LUWs
+    fast_lu_dims_f::NTuple{2, Int}
+    fast_lu_rhs_t_k::Matrix{T} # (n_obs, n_states) scratch for right solves
 end
 
 
@@ -854,6 +1064,12 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂∇₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂𝐒₁_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
     ∂spinv_3rd::Matrix{F}  # separate from 2nd order since dimensions differ
+    ∂∇₂_3rd::Matrix{F}
+    ∂∇₃_3rd::Matrix{F}
+    ∂𝐒₂_3rd::Matrix{F}
+    ∂𝐒₁₋╱𝟏ₑ_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_3rd::Matrix{F}
+    ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd::Matrix{F}
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials
@@ -871,8 +1087,9 @@ Purpose: Speed up computation by eliminating allocation overhead in hot loops.
 
 Fields:
 - `second_order/third_order`: Higher-order perturbation solution workspaces
-- `custom_steady_state_buffer`: Buffer for custom steady state evaluation
-- `qme`: Quadratic matrix equation solver workspace
+- `custom_steady_state`: Buffer for custom steady state evaluation
+- `first_order`: First-order perturbation solver workspace
+- `qme_doubling`: Quadratic matrix equation doubling solver workspace
 - `lyapunov_*`: Lyapunov equation solver workspaces (1st, 2nd, 3rd order)
 - `sylvester_*`: Sylvester equation solver workspace
 - `find_shocks`: Conditional forecast shock finding workspace
@@ -889,9 +1106,11 @@ mutable struct workspaces
     second_order::higher_order_workspace        # Kronecker products, sparse preallocs
     third_order::higher_order_workspace         # Separate workspace for 3rd order
     # Steady state buffer
-    custom_steady_state_buffer::Vector{Float64} # For custom SS function evaluation
+    custom_steady_state::Vector{Float64} # For custom SS function evaluation
     # Matrix equation solver workspaces
-    qme::qme_workspace{Float64, Float64}                 # Quadratic matrix equation (1st order)
+    first_order::first_order_workspace{Float64, Float64} # First-order perturbation solver
+    qme_doubling::qme_doubling_workspace{Float64, Float64} # QME doubling solver
+    schur::schur_workspace{Float64}                      # Schur-based QME solver
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
     lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
     lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
@@ -900,6 +1119,8 @@ mutable struct workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter
     kalman::kalman_workspace{Float64}            # Kalman filter
+    # NSSS solver shared scratch buffers
+    nsss_solver::NSSSSolverWorkspace
 end
 
 
@@ -907,7 +1128,9 @@ end
 struct post_parameters_macro
     parameters_as_function_of_parameters::Vector{Symbol}
     precompile::Bool
-    simplify::Bool
+    ss_symbolic_mode::Symbol
+    ss_solver_parameters_algorithm::Symbol
+    ss_solver_parameters_maxtime::Float64
     guess::Dict{Symbol, Float64}
     ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
@@ -941,6 +1164,8 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
     vars_in_ss_equations::Vector{Symbol}
     vars_in_ss_equations_with_aux::Vector{Symbol}
+    ss_var_idx_in_var_and_calib::Vector{Int}
+    calib_idx_in_var_and_calib::Vector{Int}
     SS_and_pars_names_lead_lag::Vector{Symbol}
     # SS_and_pars_names_no_exo::Vector{Symbol}
     SS_and_pars_no_exo_idx::Vector{Int}
@@ -953,11 +1178,29 @@ struct post_complete_parameters{S <: Union{Symbol, String}}
     future_not_past_and_mixed_in_comb::Vector{Int}
     past_not_future_and_mixed_in_comb::Vector{Int}
     Ir::ℒ.Diagonal{Bool, Vector{Bool}}
+    I_n::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
     nabla_e_start::Int
     expand_future::Matrix{Bool}
     expand_past::Matrix{Bool}
+    past_not_future_and_mixed_in_present_but_not_only::Vector{Int}
+    # Schur QME cached indices and constant matrices
+    indices_past_not_future_in_comb::Vector{Int}
+    I_nPast_not_mixed::Matrix{Bool}      # I_nPast[not_mixed_in_past_idx,:]
+    Ir_past_selector::Matrix{Bool}       # Ir[past_not_future_and_mixed_in_comb,:]
+    schur_Z₊::Matrix{Bool}               # zeros(nMixed, nFuture_not_past_and_mixed)
+    schur_I₊::Matrix{Bool}               # I(nFuture_not_past_and_mixed)[mixed_in_future_idx,:]
+    schur_Z₋::Matrix{Bool}               # zeros(nMixed, nPast_not_future_and_mixed)
+    schur_I₋::Matrix{Bool}               # I_nPast[mixed_in_past_idx,:]
+    nsss_dependencies::Any
+    nsss_n_sol::Int
+    nsss_output_indices::Vector{Int}
+    nsss_n_ext_params::Int
+    nsss_sol_names::Vector{Symbol}
+    nsss_exo_zero_indices::Vector{Int}
+    nsss_param_names_ext::Vector{Symbol}
+    nsss_fastest_solver_parameter_idx::Int
 end
 
 """
@@ -990,6 +1233,8 @@ mutable struct constants#{F <: Real, G <: AbstractFloat}
     second_order::second_order_indices
     # Third-order perturbation auxiliary matrices and indices
     third_order::third_order_indices
+    # NSSS solver step constants (indices, bounds, metadata)
+    nsss_solver::NSSSSolverConstants
 end
 
 mutable struct solver_parameters
@@ -1098,11 +1343,6 @@ mutable struct ℳ
     # =========================================================================
     model_name::Any                           # Model identifier
     parameter_values::Vector{Float64}         # Current parameter values (mutable)
-
-    # =========================================================================
-    # STEADY STATE SOLVER INFRASTRUCTURE
-    # =========================================================================
-    NSSS::non_stochastic_steady_state         # Steady state solver blocks
 
     # =========================================================================
     # MODEL EQUATIONS (various representations)

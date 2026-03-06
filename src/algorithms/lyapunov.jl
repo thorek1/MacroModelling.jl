@@ -341,7 +341,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     #     println("Lyapunov: doubling $reached_tol")
     # end
 
-    return copy(𝐂), iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -354,7 +354,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ensure Krylov buffers and bicgstab solver are allocated
-    ensure_lyapunov_bicgstab_solver!(workspace)
+    ensure_lyapunov_krylov_solver!(workspace, :bicgstab)
     
     # Use workspaces
     tmp̄ = workspace.tmp̄
@@ -374,9 +374,9 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     copyto!(b, vec(C))
     
     # Use pre-allocated solver
-    Krylov.bicgstab!(workspace.bicgstab_workspace, lyapunov, b, rtol = tol, atol = tol)
+    Krylov.bicgstab!(workspace.bicgstab, lyapunov, b, rtol = tol, atol = tol)
 
-    copyto!(𝐗, workspace.bicgstab_workspace.x)
+    copyto!(𝐗, workspace.bicgstab.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * A')
     # ℒ.axpy!(1, C, tmp̄)
@@ -393,7 +393,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: bicgstab $reached_tol")
     # end
 
-    return copy(𝐗), workspace.bicgstab_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.bicgstab.stats.niter, reached_tol
 end
 
 
@@ -404,7 +404,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 # timer::TimerOutput = TimerOutput(),
                                 tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ensure Krylov buffers and gmres solver are allocated
-    ensure_lyapunov_gmres_solver!(workspace)
+    ensure_lyapunov_krylov_solver!(workspace, :gmres)
     
     # Use workspaces
     tmp̄ = workspace.tmp̄
@@ -426,9 +426,9 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     copyto!(b, vec(C))
     
     # Use pre-allocated solver
-    Krylov.gmres!(workspace.gmres_workspace, lyapunov, b, rtol = tol, atol = tol)
+    Krylov.gmres!(workspace.gmres, lyapunov, b, rtol = tol, atol = tol)
 
-    copyto!(𝐗, workspace.gmres_workspace.x)
+    copyto!(𝐗, workspace.gmres.x)
 
     # ℒ.mul!(tmp̄, A, 𝐗 * A')
     # ℒ.axpy!(1, C, tmp̄)
@@ -445,7 +445,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     #     println("Lyapunov: gmres $reached_tol")
     # end
 
-    return copy(𝐗), workspace.gmres_workspace.stats.niter, reached_tol
+    return 𝐗, workspace.gmres.stats.niter, reached_tol
 end
 
 
