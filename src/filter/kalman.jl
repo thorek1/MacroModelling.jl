@@ -93,7 +93,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
     # timer = timer, 
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood, opts = opts)
     # timer = timer, 
 end
 
@@ -134,6 +134,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 ws::kalman_workspace; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                opts::CalculationOptions = merge_calculation_options(),
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin

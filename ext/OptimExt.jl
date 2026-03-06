@@ -1,6 +1,6 @@
 module OptimExt
 
-import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters, find_shocks_workspace
+import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters, find_shocks_workspace, solve_nsss_wrapper
 import Optim
 
 # Helper function for LBFGS optimization objective
@@ -134,7 +134,7 @@ function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ;
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol.NSSS_acceptance_tol
         push!(MacroModelling.DEFAULT_SOLVER_PARAMETERS, par_inputs)

@@ -17,14 +17,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where {R <: Real, S <: Real}
-    T = constants.post_model_macro
-    
-
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: Real, S <: Real}
     if length(initial_guess) > 0
         X = initial_guess
 
-        AXX = A * X^2
+        AXX = workspace.AXX
+        tmp = workspace.temp1
+        ℒ.mul!(tmp, X, X)
+        ℒ.mul!(AXX, A, tmp)
 
         AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
         
@@ -36,19 +36,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
-
-            return initial_guess, true
+            return Matrix{R}(initial_guess), true
         end
     end
 
-    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                        Val(quadratic_matrix_equation_algorithm), 
+    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C,
+                                                        Val(quadratic_matrix_equation_algorithm),
                                                         constants,
-                                                        workspace; 
+                                                        workspace;
                                                         initial_guess = initial_guess,
                                                         tol = tol,
                                                         # timer = timer,
-                                                        verbose = verbose)
+                                                        verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
 
@@ -61,7 +60,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_algorithm ≠ :doubling
@@ -72,7 +71,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose)::Tuple{Matrix{R}, Int64, R}
 
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         end
@@ -80,7 +79,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     # if (reached_tol > tol) println("QME failed: $reached_tol") end
 
-    return sol, reached_tol < acceptance_tol
+    converged::Bool = reached_tol < acceptance_tol
+    return sol, converged
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
@@ -93,20 +93,29 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
-    # Use cached identity matrix from workspace (Diagonal{Bool} supports indexing)
+    idx_constants = ensure_first_order_constants!(constants)
     T = constants.post_model_macro
-    # @timeit_debug timer "Prepare indice" begin
+
+    future_not_past_and_mixed_in_comb = idx_constants.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_constants.past_not_future_and_mixed_in_comb
+    indices_past_not_future_in_comb = idx_constants.indices_past_not_future_in_comb
+    reorder_select = idx_constants.reorder_select
+    I_plus_mixed = idx_constants.I_plus_mixed
+    I_past_mixed = idx_constants.I_past_mixed
+
     I_nPast = workspace.I_nPast
+    nPast = T.nPast_not_future_and_mixed
+    nFuture = T.nFuture_not_past_and_mixed
+    nSchur = nPast + nFuture
 
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-    indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
-
-    # end # timeit_debug
-    # @timeit_debug timer "Assemble matrices" begin
+    if size(workspace.schur_D, 1) != nSchur
+        workspace.schur_D = zeros(R, nSchur, nSchur)
+        workspace.schur_E = zeros(R, nSchur, nSchur)
+    end
+    D = workspace.schur_D
+    E = workspace.schur_E
+    fill!(D, zero(R))
+    fill!(E, zero(R))
 
     Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
     
@@ -116,49 +125,52 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     Ã₀₋ =  B[:,indices_past_not_future_in_comb] * I_nPast[T.not_mixed_in_past_idx,:]
 
-    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
-    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
-    
-    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = I_nPast[T.mixed_in_past_idx,:]
-    
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    I₊ = I_plus_mixed
+    I₋ = I_past_mixed
+
+    top_rows = 1:size(Ã₀₋, 1)
+    bottom_rows = (size(Ã₀₋, 1) + 1):nSchur
+    past_cols = 1:nPast
+    future_cols = (nPast + 1):nSchur
+
+    @views copyto!(D[top_rows, past_cols], Ã₀₋)
+    @views copyto!(D[top_rows, future_cols], Ã₊)
+    if T.nMixed > 0
+        @views copyto!(D[bottom_rows, past_cols], I₋)
+    end
     
     ℒ.rmul!(Ã₋,-1)
     ℒ.rmul!(Ã₀₊,-1)
-    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
-    
-    # end # timeit_debug
-    # @timeit_debug timer "Schur decomposition" begin
+
+    @views copyto!(E[top_rows, past_cols], Ã₋)
+    @views copyto!(E[top_rows, future_cols], Ã₀₊)
+    if T.nMixed > 0
+        @views copyto!(E[bottom_rows, future_cols], I₊)
+    end
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    schdcmp = try
-        ℒ.schur!(D, E)
-    catch
-        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
-    end
-
-    eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
-
-    # end # timeit_debug
-    # @timeit_debug timer "Reorder Schur decomposition" begin
-
-    try
+    schur_S, schur_T, schur_Z = (try
+        schdcmp = ℒ.schur!(D, E)
+        eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
         ℒ.ordschur!(schdcmp, eigenselect)
+
+        schur_Z = schdcmp.Z
+        schur_S = schdcmp.S
+        schur_T = schdcmp.T
+        (schur_S, schur_T, schur_Z)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
-    end
+        return Matrix{R}(A), 0, one(R)
+    end)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}}
 
     # end # timeit_debug
     # @timeit_debug timer "Postprocess" begin
 
-    Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-    Z₁₁ = schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    Z₂₁ = schur_Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
+    Z₁₁ = schur_Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-    S₁₁    = schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-    T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    S₁₁    = schur_S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+    T₁₁    = schur_T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
     # @timeit_debug timer "Matrix inversions" begin
 
@@ -166,14 +178,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     if !ℒ.issuccess(Ẑ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
+        return Matrix{R}(A), 0, one(R)
     end
 
     Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
     
     if !ℒ.issuccess(Ŝ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, 0, 1.0
+        return Matrix{R}(A), 0, one(R)
     end
 
     # end # timeit_debug
@@ -181,12 +193,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     # D      = Z₂₁ / Ẑ₁₁
     ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-    D = Z₂₁
-    
+
     # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
     ℒ.ldiv!(Ŝ₁₁, T₁₁)
     ℒ.mul!(S₁₁, Z₁₁, T₁₁)
     ℒ.rdiv!(S₁₁, Ẑ₁₁)
+
+    D = Z₂₁
+
     L = S₁₁
 
     sol = vcat(L[T.not_mixed_in_past_idx,:], D)
@@ -194,25 +208,28 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end # timeit_debug
     # end # timeit_debug
 
-    X = sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
+    X = sol[T.dynamic_order,:] * reorder_select
 
     iter = 0
 
-    AXX = A * X^2
+    AXX = workspace.AXX
+    tmp = workspace.temp1
+    ℒ.mul!(tmp, X, X)
+    ℒ.mul!(AXX, A, tmp)
     
-    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
+    AXXnorm = convert(R, max(ℒ.norm(AXX), ℒ.norm(C)))
     
     ℒ.mul!(AXX, B, X, 1, 1)
 
     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    reached_tol = convert(R, ℒ.norm(AXX) / AXXnorm)
     
     # if reached_tol > tol
     #     println("QME: schur $reached_tol")
     # end
 
-    return X, iter, reached_tol # schur can fail
+    return X, iter, reached_tol::R # schur can fail
 end
 
 
@@ -416,7 +433,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: doubling $reached_tol")
     # end
 
-    # Return a copy of X_new (to avoid returning a reference to mutable workspace)
     return copy(X_new), iter, reached_tol
 end
 

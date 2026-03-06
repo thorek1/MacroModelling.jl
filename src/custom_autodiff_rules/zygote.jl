@@ -380,7 +380,9 @@ function rrule(::typeof(get_NSSS_and_parameters),
         X = @ignore_derivatives ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.functions.NSSS_solve(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS)
+        fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
+        preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
+        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
     end
 
     # end # timeit_debug
@@ -971,7 +973,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
@@ -3847,6 +3849,7 @@ function rrule(::typeof(run_kalman_iterations),
                     ws::kalman_workspace; 
                     presample_periods = 0,
                     on_failure_loglikelihood = -Inf,
+                    opts::CalculationOptions = merge_calculation_options(),
                     # timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
     # @timeit_debug timer "Calculate Kalman filter - forward" begin

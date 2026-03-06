@@ -547,6 +547,24 @@ get_solution(Gali_2015_chapter_3_nonlinear)
 Gali_2015_chapter_3_nonlinear = nothing
 
 
+include("../models/Smets_Wouters_2003.jl")
+include("../models/Smets_Wouters_2003_obc.jl")
+
+ss_sw03 = get_SS(Smets_Wouters_2003)
+ss_sw03_obc = get_SS(Smets_Wouters_2003_obc)
+
+@test isapprox(ss_sw03_obc([:R, :pi, :Y], [:Steady_state]), ss_sw03([:R, :pi, :Y], [:Steady_state]), rtol = 1e-6)
+
+std_sw03 = get_std(Smets_Wouters_2003, derivatives = false)
+std_sw03_obc = get_std(Smets_Wouters_2003_obc, derivatives = false)
+
+common_std_keys = intersect(std_sw03.keys[], std_sw03_obc.keys[])
+@test isapprox(std_sw03_obc(common_std_keys), std_sw03(common_std_keys), atol = 1e-8)
+
+Smets_Wouters_2003 = nothing
+Smets_Wouters_2003_obc = nothing
+
+
 
 
 include("../models/Ghironi_Melitz_2005.jl")

@@ -226,6 +226,13 @@ function Qme_workspace(n::Int; T::Type = Float64, S::Type = Float64, nPast::Int 
                     zeros(T, n, n),  # temp3
                     zeros(T, n, n),  # B̄
                     zeros(T, n, n),  # AXX
+                    zeros(T, 0, 0),  # schur_D
+                    zeros(T, 0, 0),  # schur_E
+                    zeros(T, 0, 0),  # schur_sol
+                    zeros(T, 0, 0),  # schur_Z21
+                    zeros(T, 0, 0),  # schur_Z11
+                    zeros(T, 0, 0),  # schur_S11
+                    zeros(T, 0, 0),  # schur_T11
                     Sylvester_workspace(S = T),  # sylvester_ws
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃
@@ -627,7 +634,8 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T))  # Kalman filter - will be resized
+                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
@@ -635,7 +643,9 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             post_parameters_macro(
                 Symbol[],
                 false,
-                true,
+                :single_equation,
+                :ESCH,
+                120.0,
                 Dict{Symbol, Float64}(),
                 Set{Symbol}[],
                 Set{Symbol}[],
@@ -668,6 +678,8 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 spzeros(Float64, 0, 0),
                 Symbol[],
                 Symbol[],
+                Int[],
+                Int[],
                 Symbol[],
                 # Symbol[],
                 Int[],
@@ -679,14 +691,27 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
                 Int[],
                 Int[],
                 Int[],
+                Int[],
+                zeros(Bool, 0, 0),
+                zeros(Bool, 0, 0),
+                zeros(Bool, 0, 0),
                 ℒ.I(0),
                 1:0,
                 1:0,
                 1,
                 zeros(Bool, 0, 0),
-                zeros(Bool, 0, 0)),
+                zeros(Bool, 0, 0),
+                nothing,
+                0,
+                Int[],
+                0,
+                Symbol[],
+                Int[],
+                Symbol[],
+                1),
             Second_order_indices(),
-            Third_order_indices())
+            Third_order_indices(),
+            NSSSSolverConstants())
 end
 
 function _axis_has_string(axis)
@@ -752,6 +777,8 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :custom_ss_expand_matrix, p.custom_ss_expand_matrix),
         get(kwargs, :vars_in_ss_equations, p.vars_in_ss_equations),
         get(kwargs, :vars_in_ss_equations_with_aux, p.vars_in_ss_equations_with_aux),
+        get(kwargs, :ss_var_idx_in_var_and_calib, p.ss_var_idx_in_var_and_calib),
+        get(kwargs, :calib_idx_in_var_and_calib, p.calib_idx_in_var_and_calib),
         get(kwargs, :SS_and_pars_names_lead_lag, p.SS_and_pars_names_lead_lag),
         # get(kwargs, :SS_and_pars_names_no_exo, p.SS_and_pars_names_no_exo),
         get(kwargs, :SS_and_pars_no_exo_idx, p.SS_and_pars_no_exo_idx),
@@ -763,12 +790,24 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
         get(kwargs, :comb, p.comb),
         get(kwargs, :future_not_past_and_mixed_in_comb, p.future_not_past_and_mixed_in_comb),
         get(kwargs, :past_not_future_and_mixed_in_comb, p.past_not_future_and_mixed_in_comb),
+        get(kwargs, :indices_past_not_future_in_comb, p.indices_past_not_future_in_comb),
+        get(kwargs, :reorder_select, p.reorder_select),
+        get(kwargs, :I_plus_mixed, p.I_plus_mixed),
+        get(kwargs, :I_past_mixed, p.I_past_mixed),
         get(kwargs, :Ir, p.Ir),
         get(kwargs, :nabla_zero_cols, p.nabla_zero_cols),
         get(kwargs, :nabla_minus_cols, p.nabla_minus_cols),
         get(kwargs, :nabla_e_start, p.nabla_e_start),
         get(kwargs, :expand_future, p.expand_future),
         get(kwargs, :expand_past, p.expand_past),
+        get(kwargs, :nsss_dependencies, p.nsss_dependencies),
+        get(kwargs, :nsss_n_sol, p.nsss_n_sol),
+        get(kwargs, :nsss_output_indices, p.nsss_output_indices),
+        get(kwargs, :nsss_n_ext_params, p.nsss_n_ext_params),
+        get(kwargs, :nsss_sol_names, p.nsss_sol_names),
+        get(kwargs, :nsss_exo_zero_indices, p.nsss_exo_zero_indices),
+        get(kwargs, :nsss_param_names_ext, p.nsss_param_names_ext),
+        get(kwargs, :nsss_fastest_solver_parameter_idx, p.nsss_fastest_solver_parameter_idx),
     )
 end
 
@@ -1100,7 +1139,17 @@ function build_first_order_index_cache(T, I_nVars)
         past_not_future_and_mixed_in_comb = Int.(past_not_future_and_mixed_in_comb_tmp)
     end
 
+    indices_past_not_future_in_comb_tmp = indexin(T.past_not_future_idx, comb)
+    if any(isnothing.(indices_past_not_future_in_comb_tmp))
+        indices_past_not_future_in_comb = Int[]
+    else
+        indices_past_not_future_in_comb = Int.(indices_past_not_future_in_comb_tmp)
+    end
+
     Ir = ℒ.I(length(comb))
+    reorder_select = Ir[past_not_future_and_mixed_in_comb,:]
+    I_plus_mixed = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
+    I_past_mixed = ℒ.I(T.nPast_not_future_and_mixed)[T.mixed_in_past_idx,:]
 
     nabla_zero_cols = (T.nFuture_not_past_and_mixed + 1):(T.nFuture_not_past_and_mixed + T.nVars)
     nabla_minus_cols = (T.nFuture_not_past_and_mixed + T.nVars + 1):(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed)
@@ -1116,6 +1165,10 @@ function build_first_order_index_cache(T, I_nVars)
         comb = comb,
         future_not_past_and_mixed_in_comb = future_not_past_and_mixed_in_comb,
         past_not_future_and_mixed_in_comb = past_not_future_and_mixed_in_comb,
+        indices_past_not_future_in_comb = indices_past_not_future_in_comb,
+        reorder_select = reorder_select,
+        I_plus_mixed = I_plus_mixed,
+        I_past_mixed = I_past_mixed,
         Ir = Ir,
         nabla_zero_cols = nabla_zero_cols,
         nabla_minus_cols = nabla_minus_cols,
@@ -1144,6 +1197,10 @@ function ensure_first_order_constants!(𝓂)
             comb = cache.comb,
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            reorder_select = cache.reorder_select,
+            I_plus_mixed = cache.I_plus_mixed,
+            I_past_mixed = cache.I_past_mixed,
             Ir = cache.Ir,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
@@ -1173,6 +1230,10 @@ function ensure_first_order_constants!(constants::constants)
             comb = cache.comb,
             future_not_past_and_mixed_in_comb = cache.future_not_past_and_mixed_in_comb,
             past_not_future_and_mixed_in_comb = cache.past_not_future_and_mixed_in_comb,
+            indices_past_not_future_in_comb = cache.indices_past_not_future_in_comb,
+            reorder_select = cache.reorder_select,
+            I_plus_mixed = cache.I_plus_mixed,
+            I_past_mixed = cache.I_past_mixed,
             Ir = cache.Ir,
             nabla_zero_cols = cache.nabla_zero_cols,
             nabla_minus_cols = cache.nabla_minus_cols,
@@ -1337,6 +1398,9 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
 
         vars_in_ss_equations = T.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = T.vars_in_ss_equations
+        vars_and_calib = vcat(T.var, calibration_parameters)
+        ss_var_idx_in_var_and_calib = Int.(indexin(vars_in_ss_equations, vars_and_calib))
+        calib_idx_in_var_and_calib = Int.(indexin(calibration_parameters, vars_and_calib))
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))
 
@@ -1360,6 +1424,8 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
             custom_ss_expand_matrix = custom_ss_expand_matrix,
             vars_in_ss_equations = vars_in_ss_equations,
             vars_in_ss_equations_with_aux = vars_in_ss_equations_with_aux,
+            ss_var_idx_in_var_and_calib = ss_var_idx_in_var_and_calib,
+            calib_idx_in_var_and_calib = calib_idx_in_var_and_calib,
             SS_and_pars_names_lead_lag = SS_and_pars_names_lead_lag,
             # SS_and_pars_names_no_exo = SS_and_pars_names_no_exo,
             SS_and_pars_no_exo_idx = SS_and_pars_no_exo_idx,
