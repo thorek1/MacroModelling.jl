@@ -116,12 +116,34 @@ const _sympy_symbol_cache = Dict{Tuple{Symbol, Symbol}, SPyPyC.Sym{PythonCall.Co
 const _sympy_solve_cache = Dict{Tuple{String, String}, Union{Nothing, Vector{SPyPyC.Sym{PythonCall.Core.Py}}}}()
 
 # Module-level cache for the FULL RESULT of remove_redundant_SS_vars! per model.
-# Key: hash of (steady_state_aux_strings, parameter_bounds_keys) – entirely Julia-side,
-#      no Python calls needed.
+# Key: hash of (steady_state_aux_strings, bound_sign_classification) – entirely
+#      Julia-side, no Python calls needed.  The sign classification captures which
+#      symbols are positive/negative/unconstrained, since that affects SymPy solve.
 # Value: Dict{Int,Vector{Symbol}} – maps equation index to list of redundant variables.
 # On subsequent loads with an identical model structure, the SymPy solve calls are
 # skipped entirely; only the fast replace_with_one substitutions are applied.
 const _redundancy_result_cache = Dict{UInt, Dict{Int, Vector{Symbol}}}()
+
+"""
+    clear_sympy_caches!()
+
+Clear all session-level SymPy caches used to speed up repeated model parsing.
+
+Call this function if you need to free memory after defining many models, or if
+you encounter unexpected caching behaviour (e.g. after redefining a model with
+different parameter bounds in the same Julia session).
+
+The caches are:
+- `_sympy_symbol_cache`: SymPy symbol objects keyed by `(name, constraint)`.
+- `_sympy_solve_cache`: individual `solve_symbolically` results.
+- `_redundancy_result_cache`: full per-model redundancy analysis results.
+"""
+function clear_sympy_caches!()
+    empty!(_sympy_symbol_cache)
+    empty!(_sympy_solve_cache)
+    empty!(_redundancy_result_cache)
+    return nothing
+end
 
 """
     _populate_sympy_workspace!(syms, constraint)
@@ -4522,20 +4544,23 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list_aux_SS) .> 1))
 
     # Build a Julia-side cache key from the SS equations (no Python calls).
-    # The key captures both the equation structure and the parameter bounds that
-    # influence which symbols are treated as positive/negative/none.
-    model_key = hash((
-        string.(𝓂.equations.steady_state_aux),
-        sort(collect(keys(𝓂.constants.post_parameters_macro.bounds))),
-    ))
+    # Include the SIGN classification of each bounded symbol (positive/negative/none)
+    # because SymPy solve results depend on symbol assumptions, not just bound keys.
+    bound_sign_info = sort!([(symb,
+                              lb >= 0 ? :pos : ub <= 0 ? :neg : :bounded)
+                             for (symb, (lb, ub)) in 𝓂.constants.post_parameters_macro.bounds],
+                            by = first)
+    model_key = hash((string.(𝓂.equations.steady_state_aux), bound_sign_info))
 
     if haskey(_redundancy_result_cache, model_key)
         # Fast path: apply previously computed redundancy results directly.
+        # Retrieve SymPy symbol objects from the module global (already assigned
+        # by _populate_sympy_workspace! earlier in create_symbols_eqs!) using
+        # getglobal, which avoids a Python call and Core.eval compilation.
         cached_result = _redundancy_result_cache[model_key]
         for (i, redundant_syms) in cached_result
             for sym_name in redundant_syms
-                # Look up the current SymPy symbol from the workspace.
-                sym_obj = Core.eval(SymPyWorkspace, sym_name)
+                sym_obj = getglobal(SymPyWorkspace, sym_name)
                 push!(Symbolics.var_redundant_list[i], sym_obj)
                 ss_equations[i] = replace_with_one(ss_equations[i], sym_obj)
             end
