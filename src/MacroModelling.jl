@@ -102,96 +102,6 @@ module SymPyWorkspace
     Min = min
 end
 
-# Module-level cache for SymPy symbols keyed by (name, constraint_type).
-# constraint_type is one of :positive, :negative, :none.
-# Caching avoids redundant Python round-trips when the same symbol is needed
-# across multiple models or repeated @parameters calls in a session.
-const _sympy_symbol_cache = Dict{Tuple{Symbol, Symbol}, SPyPyC.Sym{PythonCall.Core.Py}}()
-
-# Module-level cache for SymPy solve results in remove_redundant_SS_vars!.
-# Key: (string(equation), string(variable)) tuple.
-# Value: the solve result (nothing if failed/skipped, Vector{Sym} otherwise).
-# Caching avoids repeating expensive SymPy solves when the same (model structure,
-# parameter configuration) is used across multiple model definitions in a session.
-const _sympy_solve_cache = Dict{Tuple{String, String}, Union{Nothing, Vector{SPyPyC.Sym{PythonCall.Core.Py}}}}()
-
-# Module-level cache for the FULL RESULT of remove_redundant_SS_vars! per model.
-# Key: hash of (steady_state_aux_strings, bound_sign_classification) – entirely
-#      Julia-side, no Python calls needed.  The sign classification captures which
-#      symbols are positive/negative/unconstrained, since that affects SymPy solve.
-# Value: Dict{Int,Vector{Symbol}} – maps equation index to list of redundant variables.
-# On subsequent loads with an identical model structure, the SymPy solve calls are
-# skipped entirely; only the fast replace_with_one substitutions are applied.
-const _redundancy_result_cache = Dict{UInt, Dict{Int, Vector{Symbol}}}()
-
-"""
-    clear_sympy_caches!()
-
-Clear all session-level SymPy caches used to speed up repeated model parsing.
-
-Call this function if you need to free memory after defining many models, or if
-you encounter unexpected caching behaviour (e.g. after redefining a model with
-different parameter bounds in the same Julia session).
-
-The caches are:
-- `_sympy_symbol_cache`: SymPy symbol objects keyed by `(name, constraint)`.
-- `_sympy_solve_cache`: individual `solve_symbolically` results.
-- `_redundancy_result_cache`: full per-model redundancy analysis results.
-"""
-function clear_sympy_caches!()
-    empty!(_sympy_symbol_cache)
-    empty!(_sympy_solve_cache)
-    empty!(_redundancy_result_cache)
-    return nothing
-end
-
-"""
-    _populate_sympy_workspace!(syms, constraint)
-
-Create SymPy symbols for all names in `syms` (a `Vector{Symbol}`) with the
-given `constraint` (`:positive`, `:negative`, or `:none`), cache the results in
-`_sympy_symbol_cache`, and assign each symbol as a module-level variable in
-`SymPyWorkspace` using `Core.eval`.
-
-Symbols that already exist in the cache are retrieved without making a new
-Python call.  All *missing* symbols for the same constraint type are created in
-a **single** batched `SPyPyC.symbols(...)` call (one Python round-trip per
-constraint group instead of one per symbol), which is the dominant source of
-speed-up for large models.
-"""
-function _populate_sympy_workspace!(syms::Vector{Symbol}, constraint::Symbol)
-    isempty(syms) && return
-
-    # Identify symbols not yet in the cache
-    missing_syms = filter(s -> !haskey(_sympy_symbol_cache, (s, constraint)), syms)
-
-    if !isempty(missing_syms)
-        # Build a space-separated name string for a single batched Python call
-        names_str = join(string.(missing_syms), " ")
-
-        raw = if constraint == :positive
-            SPyPyC.symbols(names_str, real = true, finite = true, positive = true)
-        elseif constraint == :negative
-            SPyPyC.symbols(names_str, real = true, finite = true, negative = true)
-        else
-            SPyPyC.symbols(names_str, real = true, finite = true)
-        end
-
-        # SPyPyC.symbols returns a Tuple for multiple names, a single Sym otherwise
-        sym_list = raw isa Tuple ? collect(raw) : [raw]
-
-        for (s, sv) in zip(missing_syms, sym_list)
-            _sympy_symbol_cache[(s, constraint)] = sv
-        end
-    end
-
-    # Assign symbols into SymPyWorkspace. Core.eval is required here because
-    # setglobal! cannot create new module globals, only update existing ones.
-    # Build a single begin...end block to reduce Core.eval overhead from N to 1.
-    assignments = [:($(s) = $(_sympy_symbol_cache[(s, constraint)])) for s in syms]
-    Core.eval(SymPyWorkspace, Expr(:block, assignments...))
-end
-
 # Reserved names that cannot be used as variables, shocks, or parameters
 # These are functions and operators available in SymPyWorkspace
 const SYMPYWORKSPACE_RESERVED_NAMES = Set([
@@ -876,15 +786,9 @@ end
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
-    obc_syms = collect(get_symbols(transformed_expr))
-    obc_missing = filter(s -> !haskey(_sympy_symbol_cache, (s, :none)), obc_syms)
-    for symbs in obc_missing
+    for symbs in get_symbols(transformed_expr)
         sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
-        _sympy_symbol_cache[(symbs, :none)] = sym_value
-    end
-    if !isempty(obc_syms)
-        obc_assignments = [:($(s) = $(_sympy_symbol_cache[(s, :none)])) for s in obc_syms]
-        Core.eval(SymPyWorkspace, Expr(:block, obc_assignments...))
+        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
     end
 
     eq = Core.eval(SymPyWorkspace, transformed_expr)
@@ -3817,15 +3721,9 @@ Min = min
 function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
-    simp_syms = collect(get_symbols(ex_ss))
-    simp_missing = filter(s -> !haskey(_sympy_symbol_cache, (s, :none)), simp_syms)
-    for x in simp_missing
+    for x in get_symbols(ex_ss)
         sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
-        _sympy_symbol_cache[(x, :none)] = sym_value
-    end
-    if !isempty(simp_syms)
-        simp_assignments = [:($(s) = $(_sympy_symbol_cache[(s, :none)])) for s in simp_syms]
-        Core.eval(SymPyWorkspace, Expr(:block, simp_assignments...))
+        Core.eval(SymPyWorkspace, :($x = $sym_value))
     end
 
     parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
@@ -4446,9 +4344,9 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                                 symbols_in_dynamic_equations_wo_subscripts,
                                 symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
 
-    symbols_pos  = Symbol[]
-    symbols_neg  = Symbol[]
-    symbols_none = Symbol[]
+    symbols_pos = []
+    symbols_neg = []
+    symbols_none = []
 
     for symb in symbols_in_equation
         if haskey(𝓂.constants.post_parameters_macro.bounds, symb)
@@ -4464,12 +4362,21 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         end
     end
 
-    # Create symbols in SymPyWorkspace instead of MacroModelling namespace.
-    # Each group is created in a single batched Python call and cached so that
-    # repeated invocations (e.g. re-running @parameters) avoid redundant work.
-    _populate_sympy_workspace!(symbols_pos,  :positive)
-    _populate_sympy_workspace!(symbols_neg,  :negative)
-    _populate_sympy_workspace!(symbols_none, :none)
+    # Create symbols in SymPyWorkspace instead of MacroModelling namespace
+    for pos in symbols_pos
+        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
+        Core.eval(SymPyWorkspace, :($pos = $sym_value))
+    end
+
+    for neg in symbols_neg
+        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
+        Core.eval(SymPyWorkspace, :($neg = $sym_value))
+    end
+
+    for none in symbols_none
+        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($none = $sym_value))
+    end
 
     symbolics(
                 map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.steady_state_aux),
@@ -4542,69 +4449,26 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     Symbolics.var_list_aux_SS)
 
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list_aux_SS) .> 1))
-
-    # Build a Julia-side cache key from the SS equations (no Python calls).
-    # Include the SIGN classification of each bounded symbol (positive/negative/none)
-    # because SymPy solve results depend on symbol assumptions, not just bound keys.
-    bound_sign_info = sort!([(symb,
-                              lb >= 0 ? :pos : ub <= 0 ? :neg : :bounded)
-                             for (symb, (lb, ub)) in 𝓂.constants.post_parameters_macro.bounds],
-                            by = first)
-    model_key = hash((string.(𝓂.equations.steady_state_aux), bound_sign_info))
-
-    if haskey(_redundancy_result_cache, model_key)
-        # Fast path: apply previously computed redundancy results directly.
-        # Retrieve SymPy symbol objects from the module global (already assigned
-        # by _populate_sympy_workspace! earlier in create_symbols_eqs!) using
-        # getglobal, which avoids a Python call and Core.eval compilation.
-        cached_result = _redundancy_result_cache[model_key]
-        for (i, redundant_syms) in cached_result
-            for sym_name in redundant_syms
-                sym_obj = getglobal(SymPyWorkspace, sym_name)
-                push!(Symbolics.var_redundant_list[i], sym_obj)
-                ss_equations[i] = replace_with_one(ss_equations[i], sym_obj)
-            end
-        end
-        return
-    end
-
-    # Slow path: compute redundancy via SymPy solve, then cache results.
-    result_for_cache = Dict{Int, Vector{Symbol}}()
-
     for i in redundant_idx
-        for var_to_solve_for in redundant_vars[i]
-            eq_str  = string(ss_equations[i])
-            var_str = string(var_to_solve_for)
-            cache_key = (eq_str, var_str)
-
-            if haskey(_sympy_solve_cache, cache_key)
-                soll = _sympy_solve_cache[cache_key]
-            elseif avoid_solve || count_ops(Meta.parse(eq_str)) > 15
+        for var_to_solve_for in redundant_vars[i]            
+            if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
                 soll = nothing
-                _sympy_solve_cache[cache_key] = nothing
             else
-                soll = solve_symbolically(ss_equations[i], var_to_solve_for)
-                _sympy_solve_cache[cache_key] = soll
+                soll = solve_symbolically(ss_equations[i],var_to_solve_for)
             end
 
             if isnothing(soll)
                 continue
             end
-
-            if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that equation only
-                push!(Symbolics.var_redundant_list[i], var_to_solve_for)
-                ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for)
-                # Record this redundancy for future fast-path use.
-                sym_name = Symbol(var_str)
-                if !haskey(result_for_cache, i)
-                    result_for_cache[i] = Symbol[]
-                end
-                push!(result_for_cache[i], sym_name)
+            
+            if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that euation only
+                push!(Symbolics.var_redundant_list[i],var_to_solve_for)
+                ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for) # replace euler constant as it is not translated to julia properly
             end
+
         end
     end
 
-    _redundancy_result_cache[model_key] = result_for_cache
 end
 
 
@@ -9012,80 +8876,27 @@ end
 
 end # dispatch_doctor
 
-# @setup_workload begin
-#     # Putting some things in `setup` can reduce the size of the
-#     # precompile file and potentially make loading faster.
-#     @model FS2000 precompile = true begin
-#         dA[0] = exp(gam + z_e_a  *  e_a[x])
-#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-#         W[0] = l[0] / n[0]
-#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-#         P[0] * c[0] = m[0]
-#         m[0] - 1 + d[0] = l[0]
-#         e[0] = exp(z_e_a  *  e_a[x])
-#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-#         gy_obs[0] = dA[0] * y[0] / y[-1]
-#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-#         log_gy_obs[0] = log(gy_obs[0])
-#         log_gp_obs[0] = log(gp_obs[0])
-#     end
+@compile_workload begin
+    # Small consumption-savings/RBC model (from docs/src/tutorials/rbc.md).
+    # Uses precompile = true to skip SymPy/Python calls (which are not safe during
+    # package precompilation). Only @parameters is called to trigger compilation of
+    # the NSSS solver code paths (write_ss_check_function!, write_steady_state_solver_function!,
+    # etc.) dominated by Symbolics.jl build_function JIT, without running get_* functions.
+    @model consumption_savings_precompile precompile = true begin
+        1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+        c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+        q[0] = exp(z[0]) * k[-1]^α
+        z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+    end
 
-#     @parameters FS2000 silent = true precompile = true begin  
-#         alp     = 0.356
-#         bet     = 0.993
-#         gam     = 0.0085
-#         mst     = 1.0002
-#         rho     = 0.129
-#         psi     = 0.65
-#         del     = 0.01
-#         z_e_a   = 0.035449
-#         z_e_m   = 0.008862
-#     end
-
-#     ENV["GKSwstype"] = "nul"
-
-#     @compile_workload begin
-#         # all calls in this block will be precompiled, regardless of whether
-#         # they belong to your package or not (on Julia 1.8 and higher)
-#         @model RBC precompile = true begin
-#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-#         end
-
-#         @parameters RBC silent = true precompile = true begin
-#             δ = 0.02
-#             α = 0.5
-#         end
-
-#         get_SS(FS2000, silent = true)
-#         get_SS(FS2000, parameters = :alp => 0.36, silent = true)
-#         get_solution(FS2000, silent = true)
-#         get_solution(FS2000, parameters = :alp => 0.35)
-#         get_standard_deviation(FS2000)
-#         get_correlation(FS2000)
-#         get_autocorrelation(FS2000)
-#         get_variance_decomposition(FS2000)
-#         get_conditional_variance_decomposition(FS2000)
-#         get_irf(FS2000)
-
-#         data = simulate(FS2000)([:c,:k],:,:simulate)
-#         get_loglikelihood(FS2000, data, FS2000.parameter_values)
-#         get_mean(FS2000, silent = true)
-#         get_std(FS2000, silent = true)
-#         # get_SSS(FS2000, silent = true)
-#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
-
-#         # import StatsPlots
-#         # plot_irf(FS2000)
-#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-#         # plot_conditional_variance_decomposition(FS2000)
-#     end
-# end
+    @parameters consumption_savings_precompile silent = true precompile = true begin
+        σᶻ = 0.01
+        ρᶻ = 0.2
+        δ = 0.02
+        α = 0.5
+        β = 0.95
+    end
+end
 
 # Include ForwardDiff Dual specializations for forward-mode AD
 # Must be at the end of the module because they depend on function definitions
