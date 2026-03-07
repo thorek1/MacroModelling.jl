@@ -278,6 +278,8 @@ mutable struct second_order_indices
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order
     𝐔₂::SparseMatrixCSC{Int}             # Unique elements selector for 2nd order
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
+    𝐈ₙ₊::SparseMatrixCSC{Int}            # Future-state row selector from I(nVars)
+    𝐈ₙ₋::SparseMatrixCSC{Int}            # Past-state row selector from I(nVars)
     𝐔₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
     𝛔𝐂₂_nonempty_row_as_kron_colmask::Vector{Int}    # Non-empty rows of σc₂, mapped to colmask in compressed_kron²
 
@@ -357,6 +359,7 @@ mutable struct third_order_indices
     𝐈₃::Dict{Vector{Int}, Int}           # Index mapping for 3rd order terms
     𝐂∇₃::SparseMatrixCSC{Int}            # Gradient duplication matrix
     𝐔∇₃::SparseMatrixCSC{Int}            # Gradient unique selector
+    ∇₃_rowmask::Vector{Int}              # Structural nonzero compressed gradient columns
     𝐏::SparseMatrixCSC{Int}              # Permutation matrix
     𝐏₁ₗ::SparseMatrixCSC{Int}            # Left permutation 1
     𝐏₁ᵣ::SparseMatrixCSC{Int}            # Right permutation 1

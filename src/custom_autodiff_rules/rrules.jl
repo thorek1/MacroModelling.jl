@@ -5183,7 +5183,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)]
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
@@ -5202,7 +5202,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "Setup second order matrices" begin
     # @timeit_debug timer "A" begin
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = spinv * ∇₁₊
     
@@ -5634,7 +5634,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋)]
     𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
@@ -5645,7 +5645,7 @@ function rrule(::typeof(calculate_third_order_solution),
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = spinv * ∇₁₊
 
@@ -5705,9 +5705,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
-    ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
-    ck3_aux = ∇₃ * ck3_aux_mat
-    𝐗₃ += ck3_aux
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
 
     C = spinv * 𝐗₃
 

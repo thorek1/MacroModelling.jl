@@ -1658,9 +1658,9 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         else
             out = SparseArrays.sparse(I, J, V, size(A, 1), size(D,2))
         end
-        if reused_sparse_buffers
-            out = copy(out)
-        end
+        # if reused_sparse_buffers
+        #     out = copy(out)
+        # end
     else
         out = choose_matrix_format(X)
     end
@@ -1833,9 +1833,9 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         else
             out = SparseArrays.sparse(I, J, V, size(A, 1), n_colB * n_colC)
         end
-        if reused_sparse_buffers
-            out = copy(out)
-        end
+        # if reused_sparse_buffers
+        #     out = copy(out)
+        # end
         # out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
     else
         out = choose_matrix_format(X)
@@ -2207,9 +2207,9 @@ function compressed_kron³(a::AbstractMatrix{T};
         # out = sparse!(I, J, V, m3_rows, m3_cols)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     return out
 end
@@ -2355,9 +2355,9 @@ function compressed_permuted_mixed_kron3(S::AbstractMatrix{TS},
         SparseArrays.sparse(I, J, V, n_rows, n_cols)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     if tol > 0
         droptol!(out, tol)
@@ -2541,9 +2541,9 @@ function compressed_kron²(a::AbstractMatrix{T};
         out = sparse!(I, J, V, m2_rows, m2_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     return out
 end
@@ -2827,9 +2827,9 @@ function compressed_mixed_kron(A::AbstractMatrix{TA},
         SparseArrays.sparse(spI, spJ, spV, m3, m3)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     if tol > 0
         droptol!(out, tol)
@@ -5893,6 +5893,7 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
+    n = T.nVars
     nₑ = T.nExo
 
     # setup compression matrices for hessian matrix
@@ -5919,6 +5920,8 @@ function create_second_order_auxiliary_matrices(constants::constants)
     so.𝐂₂ = 𝐂₂
     so.𝐔₂ = 𝐔₂
     so.𝐔∇₂ = 𝐔∇₂
+    so.𝐈ₙ₊ = sparse(1:T.nFuture_not_past_and_mixed, T.future_not_past_and_mixed_idx, 1, T.nFuture_not_past_and_mixed, n)
+    so.𝐈ₙ₋ = sparse(1:T.nPast_not_future_and_mixed, T.past_not_future_and_mixed_idx, 1, T.nPast_not_future_and_mixed, n)
     so.𝐔₂_nonempty_col_as_kron_rowmask = Int[]
     sigma_row_lookup = falses(size(so.𝛔c₂, 1))
     @inbounds for r in so.𝛔c₂.rowval
@@ -6046,6 +6049,7 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐈₃ = 𝐈₃
     to.𝐂∇₃ = 𝐂∇₃
     to.𝐔∇₃ = 𝐔∇₃
+    to.∇₃_rowmask = sort!(unique(∇₃_col_indices))
     to.𝐏 = 𝐏
     to.𝐏₁ₗ = 𝐏₁ₗ
     to.𝐏₁ᵣ = 𝐏₁ᵣ

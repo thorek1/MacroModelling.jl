@@ -262,7 +262,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     # droptol!(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,tol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
 
@@ -279,11 +279,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # spinv = choose_matrix_format(spinv)
 
     # end # timeit_debug
-
     # @timeit_debug timer "Setup second order matrices" begin
     # @timeit_debug timer "A" begin
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
     
@@ -433,7 +432,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋  - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
@@ -450,7 +449,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # end # timeit_debug
     
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
 
@@ -568,7 +567,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
