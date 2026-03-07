@@ -5705,8 +5705,10 @@ function rrule(::typeof(calculate_third_order_solution),
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
-
+    ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    ck3_aux = ∇₃ * ck3_aux_mat
+    𝐗₃ += ck3_aux
+    
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
