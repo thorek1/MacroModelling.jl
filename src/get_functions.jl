@@ -1549,7 +1549,8 @@ function get_steady_state(𝓂::ℳ;
         if stochastic
                 n_tuple = algorithm ∈ (:third_order, :pruned_third_order) ? 10 : 8
                 SSS_result, SSS_pb = rrule(calculate_stochastic_steady_state, Val(algorithm), 𝓂.parameter_values, 𝓂, opts = opts)
-                n_sss = length(SSS_result[1])
+                SSS = SSS_result[1]
+                n_sss = length(SSS)
                 n_ss = length(SSS_result[3])
                 nv = length(var_idx)
                 nc = length(calib_idx)
@@ -1569,7 +1570,7 @@ function get_steady_state(𝓂::ℳ;
                 end
                 dSSS = dSSS[:, param_idx]
 
-                return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+                return KeyedArray(hcat(SSS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
             (nsss_result, nsss_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
             out_idx = [var_idx..., calib_idx...]
