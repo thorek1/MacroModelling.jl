@@ -3,18 +3,20 @@ import Turing
 import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import Zygote
 
 include("../models/FS2000.jl")
 
 # load data
-dat = CSV.read("data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(header))
+data = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
 data = log.(data)
 
 # declare observables
-observables = sort(Symbol.("log_".*names(dat)))
+observables = sort(Symbol.("log_".*names))
 
 # subset observables in data
 data = data(observables,:)

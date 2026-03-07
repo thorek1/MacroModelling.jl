@@ -3,14 +3,16 @@ using Test
 import Turing
 import Pigeons
 import Turing: logpdf, PG, IS
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+dat, header = readdlm("data/usmodel.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
+data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
 # declare observables
 observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]

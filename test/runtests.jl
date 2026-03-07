@@ -14,7 +14,7 @@ import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing, Optim # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
-using CSV, DataFrames
+using DelimitedFiles
 using Dates
 
 function quarterly_dates(start_date::Date, len::Int)
@@ -367,10 +367,12 @@ if test_set == "plots_5"
         include("../models/Smets_Wouters_2007.jl")
 
         # load data
-        dat = CSV.read("data/usmodel.csv", DataFrame)
+        dat, header = readdlm("data/usmodel.csv", ',', header = true)
+        dat = Float64.(dat)
+        names = vec(Symbol.(strip.(header)))
 
         # load data
-        data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+        data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
         # declare observables as written in csv file
         observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
@@ -431,12 +433,14 @@ if test_set == "plots_5"
         include("../models/FS2000.jl")
 
         # load data
-        dat = CSV.read("data/FS2000_data.csv", DataFrame)
-        dataFS2000 = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+        dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
+        dat = Float64.(dat)
+        names = vec(Symbol.(header))
+        dataFS2000 = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
         dataFS2000 = log.(dataFS2000)
 
         # declare observables
-        observables = sort(Symbol.("log_".*names(dat)))
+        observables = sort(Symbol.("log_".*names))
 
         # subset observables in data
         dataFS2000 = dataFS2000(observables,:)
@@ -2166,15 +2170,17 @@ if test_set == "basic"
         end
 
         # write the parameters from NAWM_EAUS_2008 to a csv file
-        using CSV
-        using DataFrames
-
-        df = DataFrame(Parameter = NAWM_EAUS_2008.constants.post_complete_parameters.parameters, Value = NAWM_EAUS_2008.parameter_values)
-        CSV.write("NAWM_EAUS_2008_parameters.csv", df)
+        open("NAWM_EAUS_2008_parameters.csv", "w") do io
+            println(io, "Parameter,Value")
+            for (param, val) in zip(NAWM_EAUS_2008.constants.post_complete_parameters.parameters, NAWM_EAUS_2008.parameter_values)
+                println(io, string(param), ",", val)
+            end
+        end
 
         # read the parameters from the csv file as a Dict and update NAWM_EAUS_2008_incomplete
-        param_df = CSV.read("NAWM_EAUS_2008_parameters.csv", DataFrame)
-        param_dict = Dict(row.Parameter => row.Value for row in eachrow(param_df))
+        param_vals, param_header = readdlm("NAWM_EAUS_2008_parameters.csv", ',', header = true)
+        @assert vec(param_header) == ["Parameter", "Value"]
+        param_dict = Dict(Symbol(param_vals[i, 1]) => Float64(param_vals[i, 2]) for i in axes(param_vals, 1))
 
         sol1 = get_solution(NAWM_EAUS_2008_incomplete, parameters = param_dict)
         sol2 = get_solution(NAWM_EAUS_2008)

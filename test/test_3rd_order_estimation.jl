@@ -3,13 +3,15 @@ import Turing
 import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+dat, header = readdlm("data/usmodel.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
+data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
 # declare observables
 observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
@@ -106,7 +108,7 @@ end
 # include("../models/FS2000.jl")
 
 # # load data
-# dat = CSV.read("data/FS2000_data.csv", DataFrame)
+# dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
 # data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 # data = log.(data)
 

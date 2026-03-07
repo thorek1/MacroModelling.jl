@@ -59,10 +59,8 @@ Accessors = "0.1"
 Aqua = "0.8"
 AxisKeys = "0.2"
 BlockTriangularForm = "0.1"
-CSV = "0.10"
 ChainRulesCore = "1"
 Combinatorics = "1"
-DataFrames = "1"
 DataStructures = "0.18, 0.19"
 Dates = "1"
 DifferentiationInterface = "0.6,0.7"
@@ -113,8 +111,6 @@ julia = "1.10"
 [extras]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
@@ -130,4 +126,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ADTypes", "Aqua", "JET", "Dates", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
+test = ["ADTypes", "Aqua", "JET", "Dates", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]

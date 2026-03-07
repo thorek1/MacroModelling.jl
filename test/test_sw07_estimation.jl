@@ -3,13 +3,15 @@ import ADTypes: AutoZygote
 import Turing
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
+dat, header = readdlm("data/usmodel.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
 
 # load data
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
 # declare observables as written in csv file
 observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
