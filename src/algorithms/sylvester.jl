@@ -57,8 +57,8 @@ function solve_sylvester_equation(A::M,
     else
         a = choose_matrix_format(A)
 
-        # b = choose_matrix_format(B)
-        b = B
+        b = choose_matrix_format(B)
+        # b = B
 
         c = choose_matrix_format(C)
     end
