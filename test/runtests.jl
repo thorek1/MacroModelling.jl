@@ -435,7 +435,7 @@ if test_set == "plots_5"
         # load data
         dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
         dat = Float64.(dat)
-        names = vec(Symbol.(header))
+        names = vec(header)
         dataFS2000 = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
         dataFS2000 = log.(dataFS2000)
 

@@ -11,7 +11,7 @@ include("../models/FS2000.jl")
 # load data
 dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
 dat = Float64.(dat)
-names = vec(Symbol.(header))
+names = vec(header)
 data = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
 data = log.(data)
 
