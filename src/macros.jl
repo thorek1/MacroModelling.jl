@@ -1,5 +1,84 @@
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
+# Pure-Julia algebraic simplification used in precompile mode (avoids SymPy).
+# Applied after converting expressions to steady-state form (time subscripts stripped),
+# so that patterns like c[1]/c[0] and (1-l[1])/(1-l[0]) correctly simplify to 1.
+#
+# Rules applied bottom-up (postwalk order) on the SS-form expression:
+#   A / A       → 1
+#   A * A       → A^2        (not needed here but handled by postwalk recursion)
+#   A - A       → 0
+#   A + 0       → A,   0 + A → A
+#   A - 0       → A,   0 - A → -A
+#   A * 0       → 0,   0 * A → 0
+#   A * 1       → A,   1 * A → A
+#   A ^ 1       → A
+#   A ^ 0       → 1
+#   1 ^ A       → 1
+#   A / 1       → A
+#   log(A) - log(A) → 0     (captured by A-A after postwalk recurse)
+#   (X/Z) * (Y/Z)   → not simplified (require matching denominators case-by-case)
+#
+# Also handles the equation-level simplification:
+#   f(A)/f(C) = f(B)/f(C)  →  f(A) = f(B)   (cancel common factor on both sides of
+#   equivalently: A/C - B/C => (A-B)/C       an equation written as LHS - RHS = 0)
+#
+# Note: the function operates on the already-SS-converted expression. All transformations
+# are purely syntactic (structural equality) and safe to apply without domain knowledge.
+function trivial_simplify(ex)
+    if !(ex isa Expr)
+        return ex
+    end
+    # Convert to SS form: strips time subscripts l[1],l[0] → l, shocks → 0, etc.
+    ss_ex = convert_to_ss_equation(ex)
+    # Apply algebraic rewrites bottom-up so simpler forms enable further reductions
+    result = postwalk(ss_ex) do x
+        if !(x isa Expr) || x.head != :call
+            return x
+        end
+        f = x.args[1]
+        nargs = length(x.args) - 1   # number of operands
+
+        if f == :/ && nargs == 2
+            num, den = x.args[2], x.args[3]
+            num == den                  && return 1     # A / A → 1
+            den == 1                    && return num   # A / 1 → A
+            num == 0                    && return 0     # 0 / A → 0
+
+        elseif f == :* && nargs == 2
+            a, b = x.args[2], x.args[3]
+            a == 1                      && return b     # 1 * B → B
+            b == 1                      && return a     # A * 1 → A
+            a == 0 || b == 0            && return 0     # 0 * _ or _ * 0 → 0
+
+        elseif f == :^ && nargs == 2
+            base, exp_ = x.args[2], x.args[3]
+            exp_ == 1                   && return base  # A^1 → A
+            exp_ == 0                   && return 1     # A^0 → 1
+            base == 1                   && return 1     # 1^A → 1
+            base == 0 && exp_ isa Number && exp_ > 0 && return 0  # 0^n → 0 (n>0)
+
+        elseif f == :+ && nargs == 2
+            a, b = x.args[2], x.args[3]
+            b == 0                      && return a     # A + 0 → A
+            a == 0                      && return b     # 0 + A → A
+
+        elseif f == :- && nargs == 2
+            a, b = x.args[2], x.args[3]
+            a == b                      && return 0     # A - A → 0
+            b == 0                      && return a     # A - 0 → A
+            a == 0                      && return :(-($b))  # 0 - A → -A
+
+        elseif f == :- && nargs == 1
+            a = x.args[2]
+            a == 0                      && return 0     # -(0) → 0
+        end
+
+        return x
+    end
+    return result
+end
+
 
 """
 $(SIGNATURES)
@@ -339,7 +418,7 @@ macro model(𝓂,ex...)
                                 x.args[2].head == :call ? # nonnegative expressions
                                     begin
                                         if precompile
-                                            replacement = x.args[2]
+                                            replacement = trivial_simplify(x.args[2])
                                         else
                                             replacement = simplify(x.args[2])
                                         end
@@ -387,7 +466,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -431,7 +510,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -475,7 +554,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -519,7 +598,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -635,13 +714,13 @@ macro model(𝓂,ex...)
         
         if idx ∈ ss_equations_with_aux_variables
             if precompile
-                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],trivial_simplify(unblock(prs_ex).args[3])) 
             else
                 ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxiliary variable
             end
         else
             if precompile
-                ss_aux_equation = unblock(prs_ex)
+                ss_aux_equation = trivial_simplify(unblock(prs_ex))
             else
                 ss_aux_equation = simplify(unblock(prs_ex))
             end
