@@ -21,7 +21,7 @@ function Second_order_indices()
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
-        Int[],               # 𝐔₂_nonempty_col_as_kron_rowmask
+        Int[],               # ∇₂_nonempty_col_as_kron_rowmask
         Int[],               # 𝛔𝐂₂_nonempty_row_as_kron_colmask
         # Computational index caches (BitVectors)
         BitVector(),         # s_in_s⁺

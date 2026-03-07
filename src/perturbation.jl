@@ -293,7 +293,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     #   ∇₂ * compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
     # This skips explicit right-compression by M₂.𝐂₂ for this term.
     kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                         sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
     term1 = ∇₂ * kron_compressed
@@ -301,7 +301,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # Build second forcing term in compressed Hessian space with extra pruning.
     # We only keep compressed-kron columns that can survive right multiplication by σc₂.
     kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
-                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                             colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
                                             sparse_preallocation = ℂ.tmp_sparse_prealloc3)
 

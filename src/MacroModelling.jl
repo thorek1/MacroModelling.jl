@@ -5922,7 +5922,7 @@ function create_second_order_auxiliary_matrices(constants::constants)
     so.𝐔∇₂ = 𝐔∇₂
     so.𝐈ₙ₊ = sparse(1:T.nFuture_not_past_and_mixed, T.future_not_past_and_mixed_idx, 1, T.nFuture_not_past_and_mixed, n)
     so.𝐈ₙ₋ = sparse(1:T.nPast_not_future_and_mixed, T.past_not_future_and_mixed_idx, 1, T.nPast_not_future_and_mixed, n)
-    so.𝐔₂_nonempty_col_as_kron_rowmask = Int[]
+    so.∇₂_nonempty_col_as_kron_rowmask = Int[]
     sigma_row_lookup = falses(size(so.𝛔c₂, 1))
     @inbounds for r in so.𝛔c₂.rowval
         sigma_row_lookup[r] = true
@@ -6722,7 +6722,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             ∇₂_dyn = derivatives[2][1]
 
             𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
-            𝓂.constants.second_order.𝐔₂_nonempty_col_as_kron_rowmask = findall(@view(∇₂_dyn.colptr[1:end-1]) .< @view(∇₂_dyn.colptr[2:end]))
+            𝓂.constants.second_order.∇₂_nonempty_col_as_kron_rowmask = findall(@view(∇₂_dyn.colptr[1:end-1]) .< @view(∇₂_dyn.colptr[2:end]))
 
             lennz = nnz(∇₂_dyn)
 

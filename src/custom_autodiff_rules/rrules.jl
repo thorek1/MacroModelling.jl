@@ -5210,13 +5210,13 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "C" begin
 
     kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                         sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
     term1 = ∇₂ * kron_compressed
 
     kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
-                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                             colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
                                             sparse_preallocation = ℂ.tmp_sparse_prealloc3)
 
@@ -5389,7 +5389,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 2" begin
 
         compressed_kron²_pullback!(∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎,
-                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                         colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask)
         
         # end # timeit_debug
@@ -5399,7 +5399,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 3" begin
 
         compressed_kron²_pullback!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask)
+                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
 
         # end # timeit_debug
 
@@ -9455,6 +9455,7 @@ function rrule(::typeof(get_solution),
 
             # ── first_pb ──
             first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            
             ∂∇₁_total = ∂∇₁_from_2nd + first_grads[2]
 
             # ── jac_pb ──
