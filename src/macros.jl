@@ -1,5 +1,23 @@
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
+# Pure-Julia trivial simplification used in precompile mode (avoids SymPy).
+# Handles A/A → 1 so that expressions like c[1]/c[0] = c/c at steady state are
+# simplified without calling SymPy, preventing spurious auxiliary variables.
+# The function first converts the expression to SS form (removing time subscripts
+# like l[1], l[0] → l) before comparing sides, which correctly handles the common
+# pattern (1-l[1])/(1-l[0]) = 1 at SS.
+function trivial_simplify(ex)::Union{Expr, Symbol, Int, Float64}
+    if !(ex isa Expr)
+        return ex
+    end
+    ss_ex = convert_to_ss_equation(ex)
+    if ss_ex isa Expr && ss_ex.head == :call && ss_ex.args[1] == :/ &&
+            length(ss_ex.args) == 3 && ss_ex.args[2] == ss_ex.args[3]
+        return 1
+    end
+    return ex
+end
+
 
 """
 $(SIGNATURES)
@@ -339,7 +357,7 @@ macro model(𝓂,ex...)
                                 x.args[2].head == :call ? # nonnegative expressions
                                     begin
                                         if precompile
-                                            replacement = x.args[2]
+                                            replacement = trivial_simplify(x.args[2])
                                         else
                                             replacement = simplify(x.args[2])
                                         end
@@ -387,7 +405,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -431,7 +449,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -475,7 +493,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -519,7 +537,7 @@ macro model(𝓂,ex...)
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end

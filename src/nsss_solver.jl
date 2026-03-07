@@ -612,7 +612,7 @@ function make_equation_robust_to_domain_errors(eqs,
 
                                         :($(replacement) ^ $(x.args[3]))
                                     end :
-                                x.args[2] isa Float64 ?
+                                x.args[2] isa Number ?
                                     x :
                                 x.args[2].head == :call ?
                                     begin
