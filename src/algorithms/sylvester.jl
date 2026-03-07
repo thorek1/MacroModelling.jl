@@ -66,24 +66,28 @@ function solve_sylvester_equation(A::M,
     # end # timeit_debug
     # @timeit_debug timer "Check if guess solves it already" begin
 
-    if length(initial_guess) > 0
+    if length(initial_guess) > 0 || length(C) > 0
         n = size(A, 1)
         m = size(B, 2)
         ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
+
+        guess = length(initial_guess) > 0 ? initial_guess : c
+        guess_name = length(initial_guess) > 0 ? "previous solution" : "C"
         
         _tmp = 𝕊ℂ.tmp
         _res = 𝕊ℂ.𝐂
-        ℒ.mul!(_tmp, initial_guess, b)
+        ℒ.mul!(_tmp, guess, b)
         ℒ.mul!(_res, a, _tmp)
         ℒ.axpy!(1, c, _res)
-        ℒ.axpy!(-1, initial_guess, _res)
+        ℒ.axpy!(-1, guess, _res)
         
-        reached_tol = ℒ.norm(_res) / ℒ.norm(initial_guess)
+        denom = max(ℒ.norm(guess), ℒ.norm(c))
+        reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
 
         if reached_tol < acceptance_tol
-            if verbose println("Sylvester equation - previous solution achieves relative tol of $reached_tol") end
+            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol") end
 
-            return initial_guess, true
+            return choose_matrix_format(guess), true
         end
     end
     
