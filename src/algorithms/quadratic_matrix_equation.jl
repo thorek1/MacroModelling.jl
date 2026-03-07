@@ -43,7 +43,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # A*X² into AXX buffer
         ℒ.mul!(qme_ws.AXX, A, X²)
         
-        AXXnorm = max(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
+        AXXnorm = min(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
         
         # AXX += B*X
         ℒ.mul!(qme_ws.AXX, B, X, 1, 1)
@@ -292,7 +292,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # A*X² into AXX buffer
     ℒ.mul!(schur_ws_local.AXX, A, schur_ws_local.temp_X2)
     
-    AXXnorm = max(ℒ.norm(schur_ws_local.AXX), ℒ.norm(C))
+    AXXnorm = min(ℒ.norm(schur_ws_local.AXX), ℒ.norm(C))
     
     # AXX += B*X
     ℒ.mul!(schur_ws_local.AXX, B, X, 1, 1)
@@ -524,14 +524,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.mul!(temp1, X_new, X_new)
     ℒ.mul!(AXX, A, temp1)
     
-    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
-    
+    AXXnorm = min(ℒ.norm(AXX), ℒ.norm(C))
+
     ℒ.mul!(AXX, B, X_new, 1, 1)
 
     ℒ.axpy!(1, C, AXX)
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
-    
+
     # if reached_tol > tol
     #     println("QME: doubling $reached_tol")
     # end
