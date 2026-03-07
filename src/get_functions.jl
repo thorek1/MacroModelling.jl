@@ -1570,7 +1570,9 @@ function get_steady_state(𝓂::ℳ;
                 end
                 dSSS = dSSS[:, param_idx]
 
-                return KeyedArray(hcat(SSS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+                SS_and_pars = SSS_result[3]
+                steady_state_column = vcat(SSS[var_idx], SS_and_pars[calib_idx])
+                return KeyedArray(hcat(steady_state_column, dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
             (nsss_result, nsss_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
             out_idx = [var_idx..., calib_idx...]
