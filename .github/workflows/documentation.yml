@@ -23,7 +23,7 @@ jobs:
       # - run: pip3 install sympy
       - name: Set JULIA_NUM_THREADS
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy
