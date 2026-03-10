@@ -188,12 +188,9 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         # x += Δx
         ℒ.axpy!(-1, Δx, x)
     end
-
     copyto!(x_aug, 1, x, 1, length(x))
     kron_x_aug = ℒ.kron(x_aug, x_aug)
     solved = isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)         
-
-    # println(x)
 
     ∂𝐒₁ =  zero(𝐒₁)
     ∂𝐒₂ =  zero(𝐒₂)
@@ -203,13 +200,11 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
 
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
-
         S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
         ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * kron_x_aug' / 2
-
         # end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
@@ -305,22 +300,25 @@ function rrule(::typeof(calculate_jacobian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                jacobian_funcs::jacobian_functions)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
+                jacobian_funcs::jacobian_functions,
+                workspaces::workspaces)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs, workspaces)
+    ∂∇₁_vec = ensure_first_order_cotangent_buffer!(workspaces.first_order, length(jacobian))
 
     function calculate_jacobian_pullback(∂∇₁)
         if ∂∇₁ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁u = unthunk(∂∇₁)
+        copyto!(∂∇₁_vec, ∂∇₁u)
 
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
         jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁u)
-        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁u)
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        ∂parameters = caches_obj.jacobian_parameters * ∂∇₁_vec
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars * ∂∇₁_vec
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
@@ -331,23 +329,26 @@ function rrule(::typeof(calculate_hessian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                hessian_funcs::hessian_functions)
-    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
+                hessian_funcs::hessian_functions,
+                workspaces::workspaces)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs, workspaces)
+    ∂∇₂_vec = ensure_higher_order_cotangent_buffer!(workspaces.second_order, length(hessian))
 
     function calculate_hessian_pullback(∂∇₂)
         if ∂∇₂ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₂u = unthunk(∂∇₂)
+        copyto!(∂∇₂_vec, ∂∇₂u)
 
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂u)
-        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂u)
+        ∂parameters = caches_obj.hessian_parameters * ∂∇₂_vec
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars * ∂∇₂_vec
 
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return hessian, calculate_hessian_pullback
@@ -358,23 +359,26 @@ function rrule(::typeof(calculate_third_order_derivatives),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                third_order_derivatives_funcs::third_order_derivatives_functions)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
+                third_order_derivatives_funcs::third_order_derivatives_functions,
+                workspaces::workspaces)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs, workspaces)
+    ∂∇₃_vec = ensure_higher_order_cotangent_buffer!(workspaces.third_order, length(third_order_derivatives))
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
         if ∂∇₃ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₃u = unthunk(∂∇₃)
+        copyto!(∂∇₃_vec, ∂∇₃u)
 
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
         third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+        
+        ∂parameters = caches_obj.third_order_derivatives_parameters * ∂∇₃_vec
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars * ∂∇₃_vec
 
-        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃u)
-        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃u)
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
@@ -619,7 +623,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                         parameter_values,
                         SS_and_pars,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     first_out, first_pb = rrule(calculate_first_order_solution,
                                 ∇₁,
@@ -725,7 +730,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁, jacobian_pullback =
-        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     (𝐒₁_raw, qme_sol, solved), first_order_pullback =
         rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
@@ -751,7 +756,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     end
 
     ∇₂, hessian_pullback =
-        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     (𝐒₂_raw, solved2), second_order_pullback =
         rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
@@ -1150,7 +1155,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1356,7 +1361,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1966,7 +1971,8 @@ function rrule(::typeof(get_irf),
                         parameters,
                         reference_steady_state,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     # ── step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2131,7 +2137,7 @@ function rrule(::typeof(calculate_covariance),
     end
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2313,7 +2319,7 @@ function rrule(::typeof(calculate_mean),
     vec_Iₑ = so.vec_Iₑ
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2333,7 +2339,7 @@ function rrule(::typeof(calculate_mean),
     end
 
     # ── Step 4: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 5: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
@@ -2527,7 +2533,7 @@ function rrule(::typeof(calculate_second_order_moments),
     Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
@@ -2764,7 +2770,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
@@ -3086,7 +3092,7 @@ function rrule(::typeof(calculate_third_order_moments),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
@@ -3847,7 +3853,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
@@ -5498,14 +5504,12 @@ function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
         end
     end
 
-    for i1 in 1:n_rows, j1 in 1:n_rows
-        j1 ≤ i1 || continue
+    for i1 in 1:n_rows, j1 in 1:i1
         row = (i1 - 1) * i1 ÷ 2 + j1
         (norowmask || rowmask_lookup[row]) || continue
         divisor = i1 == j1 ? 2 : 1
 
-        for i2 in 1:n_cols, j2 in 1:n_cols
-            j2 ≤ i2 || continue
+        for i2 in 1:n_cols, j2 in 1:i2
             col = (i2 - 1) * i2 ÷ 2 + j2
             (nocolmask || colmask_lookup[col]) || continue
 
@@ -5533,25 +5537,33 @@ end
 function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
+    sparse_∂Y = ∂Y isa AbstractSparseMatrix
+    sparse_row_lookup = if sparse_∂Y
+        lookup = falses(size(∂Y, 1))
+        rowvals = ∂Y isa SparseMatrixCSC ? ∂Y.rowval : ∂Y.A.rowval
+        @inbounds for r in rowvals
+            lookup[r] = true
+        end
+        lookup
+    else
+        BitVector()
+    end
     # Unlike the forward pass, the pullback must iterate over ALL row/column
     # indices, not just nonzero ones.  The gradient at a zero entry X[r,c] can
     # be non-zero because  ∂(X[i]*X[j]*X[k])/∂X[i] = X[j]*X[k]  which is
     # generically non-zero even when X[i]=0.
-    for i1 in 1:n_rows, j1 in 1:n_rows
-        j1 ≤ i1 || continue
-        for k1 in 1:n_rows
-            k1 ≤ j1 || continue
+    for i1 in 1:n_rows, j1 in 1:i1
+        for k1 in 1:j1
             row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+            sparse_∂Y && !sparse_row_lookup[row] && continue
             # divisor for row symmetry
             if i1 == j1
                 divisor = (j1 == k1) ? 6 : 2
             else
                 divisor = (j1 == k1 || i1 == k1) ? 2 : 1
             end
-            for i2 in 1:n_cols, j2 in 1:n_cols
-                j2 ≤ i2 || continue
-                for k2 in 1:n_cols
-                    k2 ≤ j2 || continue
+            for i2 in 1:n_cols, j2 in 1:i2
+                for k2 in 1:j2
                     col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
                     g = ∂Y[row, col]
                     iszero(g) && continue
@@ -5747,7 +5759,44 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
     𝐔₂t  = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
 
-    # ck3_aux_mat already computed above (without rowmask) — reuse for pullback
+    # Materialized transposes of permutation matrices (avoid lazy transposes in pullback)
+    # M₃𝐏₁ₗ̂t = choose_matrix_format(M₃.𝐏₁ₗ̂')
+    M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃')
+    # M₃𝐏₂ₗ̂t = choose_matrix_format(M₃.𝐏₂ₗ̂')
+    M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃')
+    M₃𝐏₁ₗ̄t = choose_matrix_format(M₃.𝐏₁ₗ̄')
+    M₃𝐏₂ₗ̄t = choose_matrix_format(M₃.𝐏₂ₗ̄')
+    M₃𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ')
+    M₃𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ')
+
+    # Materialized transpose of the full product 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+    𝐔∇₃_prod_t = choose_matrix_format(𝐔∇₃')
+    M₃𝐏₁ₗ̂𝐔∇₃_prod_t = choose_matrix_format(M₃.𝐏₁ₗ̂' * 𝐔∇₃_prod_t)
+    M₃𝐏₂ₗ̂𝐔∇₃_prod_t = choose_matrix_format(M₃.𝐏₂ₗ̂' * 𝐔∇₃_prod_t)
+
+    # Materialized transposes of forward-pass intermediates
+    ∇₂t = choose_matrix_format(∇₂')
+    ∇₃t = choose_matrix_format(∇₃')
+    tmpkron1t = choose_matrix_format(tmpkron1')
+    tmpkron2t = choose_matrix_format(tmpkron2')
+    K22_sumt = choose_matrix_format(K22_sum')
+    ck3_aux_mat_t = choose_matrix_format(ck3_aux_mat')
+    𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
+    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎')
+
+    # Pre-materialized kron product transposes (avoid re-computing in pullback)
+    tmpkron10t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t)
+    S2p0_sigma = collect(𝐒₂₊╱𝟎 * M₂.𝛔)
+    tmpkron11t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, choose_matrix_format(S2p0_sigma'))
+    kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
+
+    # Precompute tmpkron0 * σ for pullback (constant during pullback)
+    tmpkron0_σ = tmpkron0 * M₂.𝛔
+
+    # --- ensure pullback workspace buffers ---
+    ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
 
     # =========================================================================
     #   PULLBACK
@@ -5771,16 +5820,57 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂C_adj = choose_matrix_format(∂C_adj)
 
+        # --- Initialize all gradient accumulators ---
+        # Dense workspace temporaries (overwritten by mul! each call)
+        ∂𝐗₃           = ℂ.∂𝐗₃_3rd
+        ∂A             = ℂ.∂A_3rd
+        ∂B_from_sylv   = ℂ.∂B_sylv_3rd
+        ∂𝐗₃_pre       = ℂ.∂𝐗₃_pre_3rd
+        ∂out2          = ℂ.∂out2_3rd
+        ∇₂t_∂out2     = ℂ.∇₂t_∂out2_3rd
+        mul_tmp        = ℂ.mul_tmp_3rd
+        ∂∇₁₊𝐒₁➕∇₁₀   = ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd
+
+        # Dense workspace accumulators (need zeroing)
+        ∂spinv         = ℂ.∂spinv_3rd
+        ∂∇₁            = ℂ.∂∇₁_3rd;  fill!(∂∇₁, zero(S))
+        ∂𝐒₁₃           = ℂ.∂𝐒₁_3rd;  fill!(∂𝐒₁₃, zero(S))
+
+        # Sparse-preserving gradient accumulators (fresh allocation each call)
+        ∂𝐒₂            = zero(𝐒₂)
+        ∂𝐒₁₊╱𝟎_tmp    = zero(𝐒₁₊╱𝟎)
+        ∂𝐒₂₊╱𝟎        = zero(𝐒₂₊╱𝟎)
+        ∂L_c           = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂R_c           = zero(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+        ∂L_d           = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂R_d           = zero(S2p0_sigma)
+        ∂𝐒₁₋╱𝟏ₑ_t8   = zero(𝐒₁₋╱𝟏ₑ)
+        ∂𝐒₂₋╱𝟎        = zero(𝐒₂₋╱𝟎)
+        ∂𝐒₁₋╱𝟏ₑ₃     = zero(𝐒₁₋╱𝟏ₑ)
+        ∂𝐒₁₊╱𝟎₃      = zero(𝐒₁₊╱𝟎)
+        ∂S1S1_stack    = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂tmpkron0_σ    = zero(tmpkron0_σ)
+        ∂S1S1_from22   = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂𝐒₁₊╱𝟎_tk0    = zero(𝐒₁₊╱𝟎)
+        ∂aux           = zero(aux)
+        ∂𝛔_discard     = zeros(S, size(M₂.𝛔))
+        ∂𝛔_discard2    = zeros(S, size(M₂.𝛔))
+
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
-        ∂A = ∂C_adj * B' * 𝐒₃_stable'
-        ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj
+        # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
+        ℒ.mul!(∂𝐗₃, ∂C_adj, B')
+        ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+        # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
+        ℒ.mul!(∂𝐗₃, A', ∂C_adj)
+        ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
+        # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
+        # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
+        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj, density_threshold = 1.0, min_length = 0)
 
-        # C = spinv * 𝐗₃
-        ∂𝐗₃   = spinv' * ∂C_adj
-        ∂spinv = ∂C_adj * 𝐗₃'
-
-        # A = spinv * ∇₁₊
-        ∂spinv += ∂A * ∇₁₊'
+        # C = spinv * 𝐗₃  →  ∂spinv
+        # A = spinv * ∇₁₊  →  ∂spinv accumulation
+        ℒ.mul!(∂spinv, ∂C_adj, 𝐗₃')
+        ℒ.mul!(∂spinv, ∂A, ∇₁₊', 1, 1)
 
         # =====================================================================
         #  ∂∇₃  (linear: ∇₃ appears in two additive terms of 𝐗₃)
@@ -5791,16 +5881,19 @@ function rrule(::typeof(calculate_third_order_solution),
         # Term 2:  𝐗₃ += ∇₃ · ck3_aux_mat
         #   ∂∇₃_term2 = ∂𝐗₃ · ck3_aux_matᵀ
 
-        ∂𝐗₃_pre = ∂𝐗₃ * 𝐂₃t   # adjoint of 𝐗₃ = 𝐗₃_pre * 𝐂₃ + ck3_aux
-
-        ∂∇₃ = ∂𝐗₃_pre * K22_sum' * 𝐔∇₃t + ∂𝐗₃ * ck3_aux_mat'
-
+        ∂𝐗₃_pre = ∂𝐗₃ * 𝐂₃t
+        # ℒ.mul!(∂𝐗₃_pre, ∂𝐗₃, 𝐂₃t)   # adjoint of 𝐗₃ = 𝐗₃_pre * 𝐂₃ + ck3_aux
+        
+        # tmp_∂∇₃ = ∂𝐗₃_pre * K22_sumt   # intermediate (allocates)
+        # ∂∇₃ = tmp_∂∇₃ * 𝐔∇₃t              # allocating (dense result)
+        # ℒ.mul!(∂∇₃, ∂𝐗₃, ck3_aux_mat', 1, 1)
+        ∂∇₃ = ∂𝐗₃_pre * K22_sumt * 𝐔∇₃t + ∂𝐗₃ * ck3_aux_mat_t
         # =====================================================================
         #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃_pre → 𝐗₃)
         # =====================================================================
         # out2 enters 𝐗₃_pre as:  𝐗₃_pre = ... + out2 · 𝐏
         # ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ
-        ∂out2 = ∂𝐗₃_pre * 𝐏t
+        ℒ.mul!(∂out2, ∂𝐗₃_pre, 𝐏t)
 
         # out2  = ∇₂ · tmpkron1 · tmpkron2                                      (term a)
         #       + ∇₂ · tmpkron1 · 𝐏₁ₗ · tmpkron2 · 𝐏₁ᵣ                        (term b)
@@ -5808,13 +5901,11 @@ function rrule(::typeof(calculate_third_order_solution),
         #       + ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)                                  (term d)
         #   (term 8 = ∇₁₊ · mm_𝐒₂_kron does not involve ∇₂.)
 
-        # For correctness-first: materialize kron products
-        R_a = tmpkron1 * tmpkron2                                       # term a right factor
-        R_b = tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ                  # term b right factor
-        R_c = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)  # term c right factor
-        R_d = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔))   # term d right factor
-
-        ∂∇₂ = ∂out2 * R_a' + ∂out2 * R_b' + ∂out2 * R_c' + ∂out2 * R_d'
+        # Chain multiplication with pre-transposed matrices (avoid materializing R_a, R_b, R_c, R_d)
+        ∂∇₂ = ∂out2 * tmpkron10t                                                      # term c (allocating → dense)
+        ℒ.mul!(∂∇₂, ∂out2 * tmpkron2t, tmpkron1t, 1, 1)                             # term a
+        ℒ.mul!(∂∇₂, ∂out2 * M₃𝐏₁ᵣt * tmpkron2t * M₃𝐏₁ₗt, tmpkron1t, 1, 1)       # term b
+        ℒ.mul!(∂∇₂, ∂out2, tmpkron11t, 1, 1)                                        # term d
 
 
         # =====================================================================
@@ -5830,42 +5921,39 @@ function rrule(::typeof(calculate_third_order_solution),
         #   (d) ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)       — second factor depends on 𝐒₂
         #   (8) ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)  — both 𝐒₂ and 𝐒₂₋╱𝟎 depend on 𝐒₂
 
-        ∂𝐒₂ = zeros(S, size(𝐒₂))
+        # Shared intermediate: ∇₂ᵀ * ∂out2 (used for ∂tmpkron1, ∂kron_c, ∂kron_d)
+        ℒ.mul!(∇₂t_∂out2, ∇₂t, ∂out2)
 
         # --- terms (a) and (b):  through tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) ---
         # ∂(∇₂·tmpkron1·R) w.r.t. tmpkron1 = ∇₂ᵀ·∂out2·Rᵀ
-        ∂tmpkron1  = ∇₂' * ∂out2 * tmpkron2'                            # from (a)
-        ∂tmpkron1 += ∇₂' * ∂out2 * (M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ')    # from (b)
+        ∂tmpkron1  = ∇₂t_∂out2 * tmpkron2t                              # from (a)
+        ∂tmpkron1 += ∇₂t_∂out2 * (M₃𝐏₁ᵣt * tmpkron2t * M₃𝐏₁ₗt)    # from (b)
 
         # kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) pullback → ∂𝐒₂₊╱𝟎 via fill_kron_adjoint!
-        ∂𝐒₁₊╱𝟎_tmp = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂𝐒₂₊╱𝟎 = zeros(S, size(𝐒₂₊╱𝟎))
-        fill_kron_adjoint!(∂𝐒₂₊╱𝟎, ∂𝐒₁₊╱𝟎_tmp, Matrix{S}(∂tmpkron1), Matrix{S}(𝐒₂₊╱𝟎), 𝐒₁₊╱𝟎)
+        fill_kron_adjoint!(∂𝐒₂₊╱𝟎, ∂𝐒₁₊╱𝟎_tmp, ∂tmpkron1, 𝐒₂₊╱𝟎, 𝐒₁₊╱𝟎)
 
         # 𝐒₂₊╱𝟎 = [𝐒₂[i₊,:]; 0]  →  ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎[1:length(i₊),:]
-        ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎[1:length(i₊),:]
+        @views ∂𝐒₂[i₊,:] .+= ∂𝐒₂₊╱𝟎[1:length(i₊),:]
 
         # --- term (c): through ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 ---
-        # ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)  →  ∂kron_c = ∇₂ᵀ · ∂out2
-        ∂kron_c = ∇₂' * ∂out2
+        # ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)  →  ∂kron_c = ∇₂ᵀ · ∂out2 (reuse shared intermediate)
+        ∂kron_c = ∇₂t_∂out2
         # kron(L, R) pullback  where L = ⎸𝐒₁..⎹, R = ⎸𝐒₂k..⎹
-        ∂L_c = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂R_c = zeros(S, size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
-        fill_kron_adjoint!(∂R_c, ∂L_c, Matrix{S}(∂kron_c), Matrix{S}(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        fill_kron_adjoint!(∂R_c, ∂L_c, ∂kron_c, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
 
         # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [ (𝐒₂·kron𝐒₁₋╱𝟏ₑ + 𝐒₁·[𝐒₂[i₋,:];0])[i₊,:] ; 𝐒₂ ; 0 ]
         # Top block (rows 1:n₊): depends on 𝐒₂ through 𝐒₂·kron𝐒₁₋╱𝟏ₑ and 𝐒₁·[𝐒₂[i₋,:];0]
         n₊_len = length(i₊)
         ∂top_block = ∂R_c[1:n₊_len, :]
         # From 𝐒₂·kron𝐒₁₋╱𝟏ₑ:
-        ∂𝐒₂ += ℒ.I(n)[:,i₊] * ∂top_block * kron𝐒₁₋╱𝟏ₑ'
+        @views ∂𝐒₂[i₊,:] .+= ∂top_block * kron𝐒₁₋╱𝟏ₑ'
         # From 𝐒₁·[𝐒₂[i₋,:];0] → ∂𝐒₂[i₋,:] += 𝐒₁' * I[:,i₊] * ∂top_block
         #   (since [𝐒₂[i₋,:];0] pads with zeros, only i₋ rows of 𝐒₂ contribute)
         ∂𝐒₂_padded = 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_block   # n₋+1+nₑ × nₑ₋²
-        ∂𝐒₂[i₋,:] += ∂𝐒₂_padded[1:n₋, :]
+        @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂_padded[1:n₋, :]
 
         # Middle block (rows n₊_len+1 : n₊_len+n): directly 𝐒₂
-        ∂𝐒₂ += ∂R_c[n₊_len .+ (1:n), :]
+        @views ∂𝐒₂ .+= ∂R_c[n₊_len .+ (1:n), :]
 
         # Bottom block is zeros
 
@@ -5873,30 +5961,25 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)  →  ∂kron_d = ∇₂ᵀ · ∂out2
         # (same ∂kron_d = ∂kron_c since ∂out2 is the total adjoint — but we need
         #  the Kron adjoint for the actual kron pair (L, 𝐒₂₊╱𝟎·𝛔) )
-        ∂L_d = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        S2p0_sigma = collect(𝐒₂₊╱𝟎 * M₂.𝛔)
-        ∂R_d = zeros(S, size(S2p0_sigma))
-        fill_kron_adjoint!(∂R_d, ∂L_d, Matrix{S}(∂kron_c), Matrix{S}(S2p0_sigma), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        fill_kron_adjoint!(∂R_d, ∂L_d, ∂kron_c, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
 
         # 𝐒₂₊╱𝟎·𝛔  →  ∂𝐒₂₊╱𝟎_d = ∂R_d · 𝛔ᵀ
         ∂𝐒₂₊╱𝟎_d = ∂R_d * 𝛔t
-        ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎_d[1:length(i₊),:]
+        @views ∂𝐒₂[i₊,:] .+= ∂𝐒₂₊╱𝟎_d[1:length(i₊),:]
 
         # --- term (8): ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) ---
         # out2_term8 = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         # ∂(∇₁₊·𝐒₂·K) w.r.t. 𝐒₂ = ∇₁₊ᵀ · ∂out2 · Kᵀ
-        kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-        ∂𝐒₂ += ∇₁₊' * ∂out2 * kron_s1_s2'
+        tmp_t8 = ∇₁₊' * ∂out2
+        ∂𝐒₂ = ∂𝐒₂ + tmp_t8 * kron_s1_s2'
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
         # ∂kron_term8 = (∇₁₊·𝐒₂)ᵀ · ∂out2
         ∂kron_term8 = (∇₁₊ * 𝐒₂)' * ∂out2
-        ∂𝐒₁₋╱𝟏ₑ_t8 = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₂₋╱𝟎 = zeros(S, size(𝐒₂₋╱𝟎))
-        fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, Matrix{S}(∂kron_term8), Matrix{S}(𝐒₂₋╱𝟎), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∂kron_term8, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ)
 
         # 𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; 0]  →  ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
-        ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
+        @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂₋╱𝟎[1:n₋,:]
 
         # =====================================================================
         #  ∂∇₁
@@ -5908,90 +5991,80 @@ function rrule(::typeof(calculate_third_order_solution),
         #      → A = spinv·∇₁₊   and   out2 += ∇₁₊ · mm_𝐒₂_kron
 
         # step 1: ∂ through inv(∇₁₊𝐒₁➕∇₁₀)  (∂spinv already accumulated)
-        ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
+        ℒ.mul!(mul_tmp, spinv', ∂spinv)
+        ℒ.mul!(∂∇₁₊𝐒₁➕∇₁₀, mul_tmp, spinv')
+        ℒ.rmul!(∂∇₁₊𝐒₁➕∇₁₀, -1)
 
-        ∂∇₁ = zeros(S, size(∇₁))
         ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋] * 𝐒₁[i₊,1:n₋]'
         ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
 
         # step 2: ∂ through ∇₁₊
-        ∂∇₁₊ = spinv' * ∂A             # from A = spinv · ∇₁₊
-        ∂∇₁₊ += ∂out2 * mm_𝐒₂_kron'    # from out2 += ∇₁₊ · mm_𝐒₂_kron
+        ∂∇₁₊ = spinv' * ∂A                   # from A = spinv · ∇₁₊ (allocating → dense)
+        ℒ.mul!(∂∇₁₊, ∂out2, mm_𝐒₂_kron_t, 1, 1)  # from out2 += ∇₁₊ · mm_𝐒₂_kron
 
         ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
 
         # =====================================================================
         #  ∂𝑺₁  (𝑺₁ enters through 𝐒₁, affecting A,B,C,out2 via many paths)
         # =====================================================================
-        ∂𝐒₁₋╱𝟏ₑ₃ = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₁₊╱𝟎₃ = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂S1S1_stack = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂𝐒₁₃ = zeros(S, n, nₑ₋)
-
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from out2 terms c,d (kron outer factors) ---
-        ∂S1S1_stack .+= ∂L_c .+ ∂L_d
+        ℒ.axpy!(1, ∂L_c, ∂S1S1_stack)
+        ℒ.axpy!(1, ∂L_d, ∂S1S1_stack)
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from K22_sum → tmpkron22 ---
-        ∂K22_sum = 𝐔∇₃' * ∂𝐗₃_pre
-        ∂tmpkron22 = ∂K22_sum + M₃.𝐏₁ₗ̂' * ∂K22_sum * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∂K22_sum * M₃.𝐏₂ᵣ̃'
-        tmpkron0_σ = collect(tmpkron0 * M₂.𝛔)
-        ∂tmpkron0_σ = zeros(S, size(tmpkron0_σ))
-        ∂S1S1_from22 = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        fill_kron_adjoint!(∂tmpkron0_σ, ∂S1S1_from22, Matrix{S}(∂tmpkron22), Matrix{S}(tmpkron0_σ), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂S1S1_stack .+= ∂S1S1_from22
+        # Main-branch pattern: use materialized transposes, inline chain multiplication
+        ∂tmpkron22 = 𝐔∇₃_prod_t * ∂𝐗₃_pre + M₃𝐏₁ₗ̂𝐔∇₃_prod_t * ∂𝐗₃_pre * M₃𝐏₁ᵣ̃t + M₃𝐏₂ₗ̂𝐔∇₃_prod_t * ∂𝐗₃_pre * M₃𝐏₂ᵣ̃t
+        fill_kron_adjoint!(∂tmpkron0_σ, ∂S1S1_from22, ∂tmpkron22, tmpkron0_σ, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ℒ.axpy!(1, ∂S1S1_from22, ∂S1S1_stack)
         ∂tmpkron0 = ∂tmpkron0_σ * 𝛔t
-        ∂𝐒₁₊╱𝟎_tk0 = zeros(S, size(𝐒₁₊╱𝟎))
-        fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, Matrix{S}(∂tmpkron0), Matrix{S}(𝐒₁₊╱𝟎), Matrix{S}(𝐒₁₊╱𝟎))
-        ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tk0
+        fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, ∂tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+        ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
-        ∂ck3_aux = ∇₃' * ∂𝐗₃
-        ∂aux = zeros(S, size(aux))
-        compressed_kron³_pullback!(∂aux, Matrix{S}(∂ck3_aux), Matrix{S}(aux))
-        ∂S1S1_stack .+= M₃.𝐒𝐏' * ∂aux
+        ∂ck3_aux = ∇₃t * ∂𝐗₃
+        compressed_kron³_pullback!(∂aux, ∂ck3_aux, aux)
+        ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
-        ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tmp
+        ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via tmpkron_σ = kron(B=𝐒₁₋╱𝟏ₑ, A=𝛔) ---
         ∂B_pre = 𝐔₃t * ∂B_from_sylv
         ∂B_pre_raw = ∂B_pre * 𝐂₃t
-        ∂tmpkron_σ₃ = ∂B_pre_raw + M₃.𝐏₁ₗ̄' * ∂B_pre_raw * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̄' * ∂B_pre_raw * M₃.𝐏₂ᵣ̃'
-        ∂𝛔_discard = zeros(S, size(M₂.𝛔))
-        fill_kron_adjoint!(∂𝛔_discard, ∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂tmpkron_σ₃), Matrix{S}(M₂.𝛔), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        ∂tmpkron_σ₃ = ∂B_pre_raw + M₃𝐏₁ₗ̄t * ∂B_pre_raw * M₃𝐏₁ᵣ̃t + M₃𝐏₂ₗ̄t * ∂B_pre_raw * M₃𝐏₂ᵣ̃t
+        fill_kron_adjoint!(∂𝛔_discard, ∂𝐒₁₋╱𝟏ₑ₃, ∂tmpkron_σ₃, Matrix{S}(M₂.𝛔), Matrix{S}(𝐒₁₋╱𝟏ₑ))
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂B_from_sylv), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
-        tmp_a = tmpkron1' * ∇₂' * ∂out2
-        ∂tmpkron2 = tmp_a + M₃.𝐏₁ₗ' * tmp_a * M₃.𝐏₁ᵣ'
-        ∂𝛔_discard2 = zeros(S, size(M₂.𝛔))
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, Matrix{S}(∂tmpkron2), Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(M₂.𝛔))
+        tmp_a = tmpkron1t * ∇₂t_∂out2
+        ∂tmpkron2 = tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt
+        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, ∂tmpkron2, Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(M₂.𝛔))
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from term 8 kron (already computed for ∂𝐒₂) ---
-        ∂𝐒₁₋╱𝟏ₑ₃ .+= ∂𝐒₁₋╱𝟏ₑ_t8
+        ℒ.axpy!(1, ∂𝐒₁₋╱𝟏ₑ_t8, ∂𝐒₁₋╱𝟏ₑ₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from kron𝐒₁₋╱𝟏ₑ in ⎸𝐒₂k..⎹ top block ---
-        ∂kron𝐒₁₋╱𝟏ₑ₃ = Matrix{S}(𝐒₂' * ℒ.I(n)[:,i₊] * ∂top_block)
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝐒₁₋╱𝟏ₑ₃, ∂kron𝐒₁₋╱𝟏ₑ₃, Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        ∂kron𝐒₁₋╱𝟏ₑ₃ = 𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block
+        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝐒₁₋╱𝟏ₑ₃, ∂kron𝐒₁₋╱𝟏ₑ₃, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁ : from 𝐒₁·[𝐒₂[i₋,:];0] in ⎸𝐒₂k..⎹ top block ---
         S2_padded = [𝐒₂[i₋,:]; zeros(S, nₑ + 1, nₑ₋^2)]
-        ∂𝐒₁₃ += ℒ.I(n)[:,i₊] * ∂top_block * S2_padded'
+        @views ∂𝐒₁₃[i₊,:] .+= ∂top_block * S2_padded'
 
         # === Convert ∂S1S1_stack → ∂𝐒₁ and ∂𝐒₁₋╱𝟏ₑ ===
         n₊l = length(i₊)
         ∂top_S1S1 = ∂S1S1_stack[1:n₊l, :]
-        ∂𝐒₁₃ += ℒ.I(n)[:,i₊] * ∂top_S1S1 * 𝐒₁₋╱𝟏ₑ'
-        ∂𝐒₁₋╱𝟏ₑ₃ += 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_S1S1
-        ∂𝐒₁₃ += ∂S1S1_stack[n₊l .+ (1:n), :]
+        @views ∂𝐒₁₃[i₊,:] .+= ∂top_S1S1 * 𝐒₁₋╱𝟏ₑ'
+        ∂𝐒₁₋╱𝟏ₑ₃ .+= 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_S1S1
+        @views ∂𝐒₁₃ .+= ∂S1S1_stack[n₊l .+ (1:n), :]
 
         # === Convert ∂𝐒₁₊╱𝟎ₓ → ∂𝐒₁ ===
-        ∂𝐒₁₃[i₊,:] += ∂𝐒₁₊╱𝟎₃[1:n₊l,:]
+        @views ∂𝐒₁₃[i₊,:] .+= ∂𝐒₁₊╱𝟎₃[1:n₊l,:]
 
         # === Convert ∂𝐒₁₋╱𝟏ₑ → ∂𝐒₁ ===
-        ∂𝐒₁₃[i₋,:] += ∂𝐒₁₋╱𝟏ₑ₃[1:length(i₋),:]
+        @views ∂𝐒₁₃[i₋,:] .+= ∂𝐒₁₋╱𝟏ₑ₃[1:length(i₋),:]
 
         # === ∂𝐒₁ from ∇₁₊𝐒₁➕∇₁₀ (spinv) ===
         ∂𝐒₁₃[i₊,1:n₋] -= ∇₁[:,1:n₊]' * ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋]
@@ -9352,7 +9425,8 @@ function rrule(::typeof(get_solution),
                         parameters,
                         SS_and_pars,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -9386,7 +9460,8 @@ function rrule(::typeof(get_solution),
                              parameters,
                              SS_and_pars,
                              𝓂.caches,
-                             𝓂.functions.hessian)
+                            𝓂.functions.hessian,
+                            𝓂.workspaces)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -9478,7 +9553,8 @@ function rrule(::typeof(get_solution),
                              parameters,
                              SS_and_pars,
                              𝓂.caches,
-                             𝓂.functions.hessian)
+                            𝓂.functions.hessian,
+                            𝓂.workspaces)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -9499,7 +9575,8 @@ function rrule(::typeof(get_solution),
                                     parameters,
                                     SS_and_pars,
                                     𝓂.caches,
-                                    𝓂.functions.third_order_derivatives)
+                                    𝓂.functions.third_order_derivatives,
+                                    𝓂.workspaces)
 
         # ── Step 7: Third-order solution ──
         # calculate_third_order_solution now receives compressed 𝐒₂ and compressed ∇₂

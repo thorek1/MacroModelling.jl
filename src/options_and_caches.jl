@@ -197,6 +197,7 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         zeros(T,0,0),
                         Sylvester_workspace(S = S),
+                        zeros(T,0),    # ∂∇_vec
                         # Second order pullback gradient buffers (lazily allocated)
                         zeros(T,0,0),  # ∂∇₂
                         zeros(T,0,0),  # ∂∇₁
@@ -215,6 +216,29 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_3rd
                         zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_3rd
                         zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd
+                        # Third order pullback temporary buffers
+                        zeros(T,0,0),  # ∂𝐒₂₊╱𝟎_3rd
+                        zeros(T,0,0),  # ∂R_c_3rd
+                        zeros(T,0,0),  # ∂L_c_3rd
+                        zeros(T,0,0),  # ∂L_d_3rd
+                        zeros(T,0,0),  # ∂R_d_3rd
+                        zeros(T,0,0),  # ∂𝐒₂₋╱𝟎_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_t8_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_tmp_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_tk0_3rd
+                        zeros(T,0,0),  # ∂tmpkron0_σ_3rd
+                        zeros(T,0,0),  # ∂aux_3rd
+                        zeros(T,0,0),  # ∂𝛔_discard_3rd
+                        # Third order pullback intermediate product buffers (for mul!)
+                        zeros(T,0,0),  # ∂A_3rd
+                        zeros(T,0,0),  # ∂B_sylv_3rd
+                        zeros(T,0,0),  # ∂𝐗₃_3rd
+                        zeros(T,0,0),  # ∂𝐗₃_pre_3rd
+                        zeros(T,0,0),  # ∂out2_3rd
+                        zeros(T,0,0),  # ∂∇₁₊_3rd
+                        zeros(T,0,0),  # ∂∇₁₊𝐒₁➕∇₁₀_3rd
+                        zeros(T,0,0),  # ∇₂t_∂out2_3rd
+                        zeros(T,0,0),  # mul_tmp_3rd
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order
@@ -245,6 +269,7 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
                     zeros(S, 0, 0),  # ∂SS_and_pars
+                    zeros(T, 0),     # ∂∇₁_vec
                     # First-order perturbation workspaces (primal)
                     zeros(T, 0, 0),  # 𝐧ₚ₋
                     zeros(T, 0, 0),  # 𝐌
@@ -1305,6 +1330,47 @@ function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
 end
 
 """
+    ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
+
+Ensure workspace buffers for the third-order pullback are allocated with correct dimensions.
+Only dense intermediate-product temporaries are workspace-backed; gradient accumulators for
+∇₂, ∇₃, 𝐒₂ and "may be sparse" matrices are freshly allocated via `zero()` inside the
+pullback to preserve their sparse/dense format.
+"""
+function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::Type{S}, T, M₂, M₃) where S
+    n      = T.nVars
+    n₊     = T.nFuture_not_past_and_mixed
+    n₋     = T.nPast_not_future_and_mixed
+    nₑ     = T.nExo
+    nₑ₋    = n₋ + 1 + nₑ
+    n_stack = n₊ + n + n₋ + nₑ
+
+    # Structural dimensions from constants
+    n_∇₂     = size(M₂.𝐔∇₂, 2)
+    n_𝐂₃_r   = size(M₃.𝐂₃, 1)
+    n_𝐂₃     = size(M₃.𝐂₃, 2)
+    σ_c       = size(M₂.𝛔, 2)
+    n_out2_c  = σ_c * nₑ₋
+
+    # Dense workspace: always-dense gradient accumulators (matches main branch)
+    size(ℂ.∂spinv_3rd)          == (n, n)             || (ℂ.∂spinv_3rd = zeros(S, n, n))
+    size(ℂ.∂∇₁_3rd)            == (n, n_stack)       || (ℂ.∂∇₁_3rd = zeros(S, n, n_stack))
+    size(ℂ.∂𝐒₁_3rd)            == (n, nₑ₋)          || (ℂ.∂𝐒₁_3rd = zeros(S, n, nₑ₋))
+
+    # Dense workspace: intermediate-product temporaries (overwritten by mul! each call)
+    size(ℂ.∂A_3rd)              == (n, n)             || (ℂ.∂A_3rd = zeros(S, n, n))
+    size(ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd)   == (n, n)             || (ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd = zeros(S, n, n))
+    size(ℂ.mul_tmp_3rd)         == (n, n)             || (ℂ.mul_tmp_3rd = zeros(S, n, n))
+    size(ℂ.∂B_sylv_3rd)        == (n_𝐂₃, n_𝐂₃)     || (ℂ.∂B_sylv_3rd = zeros(S, n_𝐂₃, n_𝐂₃))
+    size(ℂ.∂𝐗₃_3rd)            == (n, n_𝐂₃)         || (ℂ.∂𝐗₃_3rd = zeros(S, n, n_𝐂₃))
+    size(ℂ.∂𝐗₃_pre_3rd)        == (n, n_𝐂₃_r)      || (ℂ.∂𝐗₃_pre_3rd = zeros(S, n, n_𝐂₃_r))
+    size(ℂ.∂out2_3rd)          == (n, n_out2_c)      || (ℂ.∂out2_3rd = zeros(S, n, n_out2_c))
+    size(ℂ.∇₂t_∂out2_3rd)     == (n_∇₂, n_out2_c)  || (ℂ.∇₂t_∂out2_3rd = zeros(S, n_∇₂, n_out2_c))
+
+    return ℂ
+end
+
+"""
     ensure_first_order_workspace_buffers!(ws, T, n_dyn, n_comb)
 
 Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
@@ -1338,6 +1404,22 @@ function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T
     size(ws.∇ₑ) == (n, nₑ) || (ws.∇ₑ = zeros(R, n, nₑ))
 
     return ws
+end
+
+function ensure_first_order_cotangent_buffer!(ws::first_order_workspace{T}, n::Int) where T <: Real
+    if length(ws.∂∇₁_vec) != n
+        ws.∂∇₁_vec = zeros(T, n)
+    end
+
+    return ws.∂∇₁_vec
+end
+
+function ensure_higher_order_cotangent_buffer!(ws::higher_order_workspace{T}, n::Int) where T <: Real
+    if length(ws.∂∇_vec) != n
+        ws.∂∇_vec = zeros(T, n)
+    end
+
+    return ws.∂∇_vec
 end
 
 """

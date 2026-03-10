@@ -58,12 +58,7 @@ function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts 
 end
 
 function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
-    if hasmethod(calculate_jacobian, Tuple{typeof(parameters), typeof(SS_and_pars), ℳ})
-        out = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-    else
-        out = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
-    end
-    return out
+    return calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 end
 
 

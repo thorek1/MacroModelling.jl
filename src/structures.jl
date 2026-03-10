@@ -508,6 +508,7 @@ mutable struct first_order_workspace{T <: Real, R <: Real}
     X̃_first_order::Matrix{R}   # For first order solution partials
     p_tmp::Matrix{R}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
+    ∂∇₁_vec::Vector{T}          # Flattened cotangent buffer for calculate_jacobian pullback
 
     # First-order perturbation workspaces (primal)
     𝐧ₚ₋::Matrix{T}                     # nₚ₋ = A₊ᵤ * D
@@ -871,14 +872,14 @@ mutable struct caches
     # Computed by model derivative functions, used by perturbation solvers
     # =========================================================================
     jacobian::AbstractMatrix{<: Real}                      # ∇f at SS
-    jacobian_parameters::AbstractMatrix{<: Real}           # ∂∇f/∂θ
-    jacobian_SS_and_pars::AbstractMatrix{<: Real}          # ∂∇f/∂(SS,θ)
+    jacobian_parameters::AbstractMatrix{<: Real}           # ∂∇f/∂θ, stored as (targets × vec(∇f))
+    jacobian_SS_and_pars::AbstractMatrix{<: Real}          # ∂∇f/∂(SS,θ), stored as (targets × vec(∇f))
     hessian::AbstractMatrix{<: Real}                       # ∇²f at SS
-    hessian_parameters::AbstractMatrix{<: Real}            # ∂∇²f/∂θ
-    hessian_SS_and_pars::AbstractMatrix{<: Real}           # ∂∇²f/∂(SS,θ)
+    hessian_parameters::AbstractMatrix{<: Real}            # ∂∇²f/∂θ, stored as (targets × vec(∇²f))
+    hessian_SS_and_pars::AbstractMatrix{<: Real}           # ∂∇²f/∂(SS,θ), stored as (targets × vec(∇²f))
     third_order_derivatives::AbstractMatrix{<: Real}       # ∇³f at SS
-    third_order_derivatives_parameters::AbstractMatrix{<: Real}  # ∂∇³f/∂θ
-    third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real} # ∂∇³f/∂(SS,θ)
+    third_order_derivatives_parameters::AbstractMatrix{<: Real}  # ∂∇³f/∂θ, stored as (targets × vec(∇³f))
+    third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real} # ∂∇³f/∂(SS,θ), stored as (targets × vec(∇³f))
     
     # =========================================================================
     # PERTURBATION SOLUTION CACHES
@@ -1054,6 +1055,7 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G, H}
+    ∂∇_vec::Vector{F}          # Flattened cotangent buffer for low-level higher-order derivative pullbacks
     # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
     # Second order pullback buffers
     ∂∇₂::Matrix{F}
@@ -1073,6 +1075,29 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂𝐒₁₋╱𝟏ₑ_3rd::Matrix{F}
     ∂𝐒₁₊╱𝟎_3rd::Matrix{F}
     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd::Matrix{F}
+    # Third order pullback temporary buffers (reused across calls)
+    ∂𝐒₂₊╱𝟎_3rd::Matrix{F}
+    ∂R_c_3rd::Matrix{F}
+    ∂L_c_3rd::Matrix{F}
+    ∂L_d_3rd::Matrix{F}
+    ∂R_d_3rd::Matrix{F}
+    ∂𝐒₂₋╱𝟎_3rd::Matrix{F}
+    ∂𝐒₁₋╱𝟏ₑ_t8_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_tmp_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_tk0_3rd::Matrix{F}
+    ∂tmpkron0_σ_3rd::Matrix{F}
+    ∂aux_3rd::Matrix{F}
+    ∂𝛔_discard_3rd::Matrix{F}
+    # Third order pullback intermediate product buffers (for mul!)
+    ∂A_3rd::Matrix{F}
+    ∂B_sylv_3rd::Matrix{F}
+    ∂𝐗₃_3rd::Matrix{F}
+    ∂𝐗₃_pre_3rd::Matrix{F}
+    ∂out2_3rd::Matrix{F}
+    ∂∇₁₊_3rd::Matrix{F}
+    ∂∇₁₊𝐒₁➕∇₁₀_3rd::Matrix{F}
+    ∇₂t_∂out2_3rd::Matrix{F}
+    mul_tmp_3rd::Matrix{F}
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials

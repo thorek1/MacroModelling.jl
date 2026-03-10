@@ -5252,7 +5252,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
     ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                          constants,
@@ -5277,7 +5277,7 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
@@ -5472,7 +5472,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5534,7 +5534,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5785,7 +5785,7 @@ function solve!(𝓂::ℳ;
             
             # @timeit_debug timer "Calculate Jacobian" begin
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
             
             # end # timeit_debug
 
@@ -5807,7 +5807,7 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
@@ -6532,6 +6532,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
 
+    function prepare_sensitivity_buffer(derivative_sensitivities)
+        transposed = derivative_sensitivities isa SparseMatrixCSC ? sparse(transpose(derivative_sensitivities)) : permutedims(derivative_sensitivities)
+        lennz = nnz(transposed)
+
+        if (lennz / length(transposed) > density_threshold) || (length(transposed) < min_length)
+            return convert(Matrix, transposed), zeros(Float64, size(transposed)), lennz
+        end
+
+        buffer = similar(transposed, Float64)
+        buffer.nzval .= 0
+        return transposed, buffer, lennz
+    end
+
 
     ∇₁_dyn = derivatives[1][1]
 
@@ -6565,18 +6578,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.caches.jacobian = buffer
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:nps]
-
-    lennz = nnz(∇₁_parameters)
-
-    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
-        ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
-        buffer_parameters = zeros(Float64, size(∇₁_parameters))
-    else
-        ∇₁_parameters_mat = ∇₁_parameters
-        buffer_parameters = similar(∇₁_parameters, Float64)
-        buffer_parameters.nzval .= 0
-    end
+    ∇₁_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,1:nps])
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -6595,18 +6597,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.caches.jacobian_parameters = buffer_parameters
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
-
-    lennz = nnz(∇₁_SS_and_pars)
-
-    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
-        ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
-        buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
-    else
-        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
-        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
-        buffer_SS_and_pars.nzval .= 0
-    end
+    ∇₁_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,nps+1:end])
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -6752,18 +6743,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.hessian = buffer
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:nps]
-
-            lennz = nnz(∇₂_parameters)
-
-            if (lennz / length(∇₂_parameters) > density_threshold) || (length(∇₂_parameters) < min_length)
-                ∇₂_parameters_mat = convert(Matrix, ∇₂_parameters)
-                buffer_parameters = zeros(Float64, size(∇₂_parameters))
-            else
-                ∇₂_parameters_mat = ∇₂_parameters
-                buffer_parameters = similar(∇₂_parameters, Float64)
-                buffer_parameters.nzval .= 0
-            end
+            ∇₂_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,1:nps])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6782,18 +6762,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.hessian_parameters = buffer_parameters
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
-
-            lennz = nnz(∇₂_SS_and_pars)
-
-            if (lennz / length(∇₂_SS_and_pars) > density_threshold) || (length(∇₂_SS_and_pars) < min_length)
-                ∇₂_SS_and_pars_mat = convert(Matrix, ∇₂_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₂_SS_and_pars))
-            else
-                ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
-                buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
-            end
+            ∇₂_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,nps+1:end])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6853,18 +6822,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.third_order_derivatives = buffer
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:nps]
-
-            lennz = nnz(∇₃_parameters)
-
-            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
-                ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
-                buffer_parameters = zeros(Float64, size(∇₃_parameters))
-            else
-                ∇₃_parameters_mat = ∇₃_parameters
-                buffer_parameters = similar(∇₃_parameters, Float64)
-                buffer_parameters.nzval .= 0
-            end
+            ∇₃_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,1:nps])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6883,18 +6841,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.third_order_derivatives_parameters = buffer_parameters
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
-
-            lennz = nnz(∇₃_SS_and_pars)
-
-            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
-                ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
-            else
-                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
-                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
-            end
+            ∇₃_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,nps+1:end])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -7309,7 +7256,8 @@ end
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
-                            jacobian_funcs::jacobian_functions)::Matrix{M} where {M,N}
+                            jacobian_funcs::jacobian_functions,
+                            workspaces::workspaces)::Matrix{M} where {M,N}
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -7333,7 +7281,8 @@ end
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
-                            hessian_funcs::hessian_functions)::SparseMatrixCSC{M, Int} where {M,N}
+                            hessian_funcs::hessian_functions,
+                            workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -7358,7 +7307,8 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
-                                            third_order_derivatives_funcs::third_order_derivatives_functions)::SparseMatrixCSC{M, Int} where {M,N}
+                                            third_order_derivatives_funcs::third_order_derivatives_functions,
+                                            workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
@@ -8855,7 +8805,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
