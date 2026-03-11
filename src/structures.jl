@@ -363,6 +363,10 @@ mutable struct third_order_indices
     𝐔∇₃::SparseMatrixCSC{Int}            # Gradient unique selector
     ∇₃_rowmask::Vector{Int}              # Structural nonzero compressed gradient columns
     𝐏::SparseMatrixCSC{Int}              # Permutation matrix
+
+
+
+    𝐏𝐂₃::SparseMatrixCSC{Int}            # Cached product 𝐏 * 𝐂₃
     𝐏₁ₗ::SparseMatrixCSC{Int}            # Left permutation 1
     𝐏₁ᵣ::SparseMatrixCSC{Int}            # Right permutation 1
     𝐏₁ₗ̂::SparseMatrixCSC{Int}            # Modified left permutation 1
@@ -1055,6 +1059,7 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc7::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G, H}
     ∂∇_vec::Vector{F}          # Flattened cotangent buffer for low-level higher-order derivative pullbacks

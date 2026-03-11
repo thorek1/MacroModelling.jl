@@ -1955,7 +1955,8 @@ is placed across three slots while the `(B, C)` block is kept ordered.
 function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
                                         B::AbstractMatrix{TB},
                                         C::AbstractMatrix{TC};
-                                        tol::AbstractFloat = eps()) where {TA <: Real, TB <: Real, TC <: Real}
+                                        tol::AbstractFloat = eps(),
+                                        sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TA <: Real, TB <: Real, TC <: Real}
     n_rows_A, n_cols_A = size(A)
     n_rows_B, n_cols_B = size(B)
     n_rows_C, n_cols_C = size(C)
@@ -2024,10 +2025,26 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
     pC = nnzC / max(length(Ĉ), 1)
     p_est = min(one(T), 9 * pA * pB * pC)
 
-    estimated_nnz = max(10000, Int(floor(m3_rows * m3_cols * p_est)))
-    I = Vector{Int}(undef, estimated_nnz)
-    J = Vector{Int}(undef, estimated_nnz)
-    V = Vector{T}(undef, estimated_nnz)
+    reused_sparse_buffers = sparse_preallocation !== nothing && length(sparse_preallocation[1]) > 0
+    spalloc = if sparse_preallocation === nothing
+        (Int[], Int[], T[], Int[], Int[], Int[], T[])
+    else
+        sparse_preallocation
+    end
+
+    estimated_nnz = if length(spalloc[1]) == 0
+        max(10000, Int(floor(m3_rows * m3_cols * p_est)))
+    else
+        length(spalloc[3])
+    end
+
+    resize!(spalloc[1], estimated_nnz)
+    resize!(spalloc[2], estimated_nnz)
+    resize!(spalloc[3], estimated_nnz)
+
+    I = spalloc[1]
+    J = spalloc[2]
+    V = spalloc[3]
 
     row_acc = zeros(T, m3_cols)
     row_touched = Int[]
@@ -2147,16 +2164,25 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
     resize!(J, k)
     resize!(V, k)
 
-    klasttouch = Vector{Int}(undef, m3_cols)
-    csrrowptr = Vector{Int}(undef, m3_rows + 1)
-    csrcolval = Vector{Int}(undef, k)
-    csrnzval = Vector{T}(undef, k)
+    klasttouch = spalloc[4]
+    csrrowptr = spalloc[5]
+    csrcolval = spalloc[6]
+    csrnzval = spalloc[7]
+
+    resize!(klasttouch, m3_cols)
+    resize!(csrrowptr, m3_rows + 1)
+    resize!(csrcolval, length(I))
+    resize!(csrnzval, length(I))
 
     out = if k >= m3_cols + 1
         sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
     else
         SparseArrays.sparse(I, J, V, m3_rows, m3_cols)
     end
+
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     if tol > 0
         droptol!(out, tol)
@@ -6279,6 +6305,7 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐔∇₃ = 𝐔∇₃
     to.∇₃_rowmask = sort!(unique(∇₃_col_indices))
     to.𝐏 = 𝐏
+    to.𝐏𝐂₃ = 𝐏 * 𝐂₃
     to.𝐏₁ₗ = 𝐏₁ₗ
     to.𝐏₁ᵣ = 𝐏₁ᵣ
     to.𝐏₁ₗ̂ = 𝐏₁ₗ̂

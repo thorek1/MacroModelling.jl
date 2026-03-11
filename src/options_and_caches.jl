@@ -72,7 +72,7 @@ function Third_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return third_order_indices(
-        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
+        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏𝐂₃, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
         empty_sparse_int,    # 𝐂₃
         empty_sparse_int,    # 𝐔₃
         Dict{Vector{Int}, Int}(),  # 𝐈₃
@@ -80,6 +80,7 @@ function Third_order_indices()
         empty_sparse_int,    # 𝐔∇₃
         Int[],               # ∇₃_rowmask
         empty_sparse_int,    # 𝐏
+        empty_sparse_int,    # 𝐏𝐂₃
         empty_sparse_int,    # 𝐏₁ₗ
         empty_sparse_int,    # 𝐏₁ᵣ
         empty_sparse_int,    # 𝐏₁ₗ̂
@@ -192,6 +193,7 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         spzeros(T,0,0),
                         spzeros(T,0,0),
                         spzeros(T,0,0),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),

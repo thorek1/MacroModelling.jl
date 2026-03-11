@@ -463,7 +463,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # B *= M₃.𝐂₃
     # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔₁, M₂.𝛔₂)#, timer = timer)
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔₁, M₂.𝛔₂,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
@@ -491,24 +492,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "∇₃" begin   
 
-    if length(ℂ.tmpkron0) > 0 && eltype(ℂ.tmpkron0) == S
-        ℒ.kron!(ℂ.tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    else
-        ℂ.tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    end
-    
-    if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
-        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    else
-        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    end
-
-    # tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
-    𝐗₃ = 𝐔∇₃ * ℂ.tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₂ᵣ̃
-    
     # end # timeit_debug
     # @timeit_debug timer "∇₂ & ∇₁₊" begin
 
@@ -561,9 +544,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Mult" begin
     # ℒ.mul!(𝐗₃, out2, M₃.𝐏, 1, 1) # less memory but way slower; .+= also more memory and slower
-    𝐗₃ += out2 * M₃.𝐏
+    𝐗₃ = out2 * M₃.𝐏𝐂₃
 
-    𝐗₃ *= M₃.𝐂₃
+    S₁₊╱𝟎σ₁ = 𝐒₁₊╱𝟎 * M₂.𝛔₁
+    S₁₊╱𝟎σ₂ = 𝐒₁₊╱𝟎 * M₂.𝛔₂
+
+    tmpkron22 = compressed_permuted_mixed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                               S₁₊╱𝟎σ₁,
+                                               S₁₊╱𝟎σ₂,
+                                               sparse_preallocation = ℂ.tmp_sparse_prealloc7)
+
+    𝐗₃ += ∇₃ * tmpkron22
 
     # end # timeit_debug
     # end # timeit_debug
