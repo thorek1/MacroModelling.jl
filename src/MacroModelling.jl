@@ -1936,6 +1936,236 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H}
 end
 
 
+"""
+    compressed_permuted_mixed_kron(A, B, C; tol = eps())
+
+Compute the compressed third-order Kronecker sum corresponding to exactly these
+three permutations:
+
+- `kron(A, kron(B, C))`
+- `kron(B, kron(A, C))`
+- `kron(B, kron(C, A))`
+
+and then compress with `U₃ * (...) * C₃`.
+
+This is intentionally **not** the full 6-permutation symmetrization. It matches
+the third-order `B`-term construction used in perturbation code where one factor
+is placed across three slots while the `(B, C)` block is kept ordered.
+"""
+function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
+                                        B::AbstractMatrix{TB},
+                                        C::AbstractMatrix{TC};
+                                        tol::AbstractFloat = eps()) where {TA <: Real, TB <: Real, TC <: Real}
+    n_rows_A, n_cols_A = size(A)
+    n_rows_B, n_cols_B = size(B)
+    n_rows_C, n_cols_C = size(C)
+
+    @assert n_rows_A == n_rows_B == n_rows_C "A, B, and C must have the same number of rows"
+    @assert n_cols_A == n_cols_B == n_cols_C "A, B, and C must have the same number of columns"
+
+    T = promote_type(TA, TB, TC)
+
+    Â = Matrix{T}(A)
+    B̂ = Matrix{T}(B)
+    Ĉ = Matrix{T}(C)
+
+    n = n_rows_A
+    m3_rows = n * (n + 1) * (n + 2) ÷ 6
+    m3_cols = n * (n + 1) * (n + 2) ÷ 6
+
+    # Row-wise sparse views (as index/value lists) for fast triple products
+    A_cols = Vector{Vector{Int}}(undef, n)
+    A_vals = Vector{Vector{T}}(undef, n)
+    B_cols = Vector{Vector{Int}}(undef, n)
+    B_vals = Vector{Vector{T}}(undef, n)
+    C_cols = Vector{Vector{Int}}(undef, n)
+    C_vals = Vector{Vector{T}}(undef, n)
+
+    @inbounds for r in 1:n
+        a_ci = Int[]
+        a_vi = T[]
+        b_ci = Int[]
+        b_vi = T[]
+        c_ci = Int[]
+        c_vi = T[]
+
+        @inbounds for c in 1:n
+            va = Â[r, c]
+            vb = B̂[r, c]
+            vc = Ĉ[r, c]
+
+            if abs(va) > eps(T)
+                push!(a_ci, c)
+                push!(a_vi, va)
+            end
+            if abs(vb) > eps(T)
+                push!(b_ci, c)
+                push!(b_vi, vb)
+            end
+            if abs(vc) > eps(T)
+                push!(c_ci, c)
+                push!(c_vi, vc)
+            end
+        end
+
+        A_cols[r] = a_ci
+        A_vals[r] = a_vi
+        B_cols[r] = b_ci
+        B_vals[r] = b_vi
+        C_cols[r] = c_ci
+        C_vals[r] = c_vi
+    end
+
+    nnzA = count(v -> abs(v) > eps(T), Â)
+    nnzB = count(v -> abs(v) > eps(T), B̂)
+    nnzC = count(v -> abs(v) > eps(T), Ĉ)
+    pA = nnzA / max(length(Â), 1)
+    pB = nnzB / max(length(B̂), 1)
+    pC = nnzC / max(length(Ĉ), 1)
+    p_est = min(one(T), 9 * pA * pB * pC)
+
+    estimated_nnz = max(10000, Int(floor(m3_rows * m3_cols * p_est)))
+    I = Vector{Int}(undef, estimated_nnz)
+    J = Vector{Int}(undef, estimated_nnz)
+    V = Vector{T}(undef, estimated_nnz)
+
+    row_acc = zeros(T, m3_cols)
+    row_touched = Int[]
+    row_mask = falses(m3_cols)
+
+    α = 0.7
+    k = 0
+
+    @inbounds for i1 in 1:n
+        for j1 in 1:i1
+            for l1 in 1:j1
+                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + l1
+
+                empty!(row_touched)
+
+                nperm = if i1 == j1 == l1
+                    1
+                elseif i1 == j1 || j1 == l1
+                    3
+                else
+                    6
+                end
+
+                for p in 1:nperm
+                    i = i1
+                    j = j1
+                    l = l1
+
+                    if nperm == 3
+                        if i1 == j1
+                            if p == 1
+                                i = i1; j = i1; l = l1
+                            elseif p == 2
+                                i = i1; j = l1; l = i1
+                            else
+                                i = l1; j = i1; l = i1
+                            end
+                        else
+                            if p == 1
+                                i = i1; j = j1; l = j1
+                            elseif p == 2
+                                i = j1; j = i1; l = j1
+                            else
+                                i = j1; j = j1; l = i1
+                            end
+                        end
+                    elseif nperm == 6
+                        if p == 1
+                            i = i1; j = j1; l = l1
+                        elseif p == 2
+                            i = i1; j = l1; l = j1
+                        elseif p == 3
+                            i = j1; j = i1; l = l1
+                        elseif p == 4
+                            i = j1; j = l1; l = i1
+                        elseif p == 5
+                            i = l1; j = i1; l = j1
+                        else
+                            i = l1; j = j1; l = i1
+                        end
+                    end
+
+                    for term in 1:3
+                        cols1 = term == 1 ? A_cols[i] : B_cols[i]
+                        vals1 = term == 1 ? A_vals[i] : B_vals[i]
+                        cols2 = term == 1 ? B_cols[j] : (term == 2 ? A_cols[j] : C_cols[j])
+                        vals2 = term == 1 ? B_vals[j] : (term == 2 ? A_vals[j] : C_vals[j])
+                        cols3 = term == 3 ? A_cols[l] : C_cols[l]
+                        vals3 = term == 3 ? A_vals[l] : C_vals[l]
+
+                        @inbounds for p1 in eachindex(cols1)
+                            d = cols1[p1]
+                            v1 = vals1[p1]
+                            @inbounds for p2 in eachindex(cols2)
+                                e = cols2[p2]
+                                d >= e || continue
+                                v12 = v1 * vals2[p2]
+                                @inbounds for p3 in eachindex(cols3)
+                                    f = cols3[p3]
+                                    e >= f || continue
+                                    col = (d - 1) * d * (d + 1) ÷ 6 + (e - 1) * e ÷ 2 + f
+                                    v = v12 * vals3[p3]
+                                    if !row_mask[col]
+                                        row_mask[col] = true
+                                        push!(row_touched, col)
+                                    end
+                                    row_acc[col] += v
+                                end
+                            end
+                        end
+                    end
+                end
+
+                @inbounds for col in row_touched
+                    v = row_acc[col]
+                    if abs(v) > eps(T)
+                        k += 1
+                        if k > estimated_nnz
+                            increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * m3_rows * m3_cols)))
+                            estimated_nnz += min(m3_rows * m3_cols, increment)
+                            resize!(I, estimated_nnz)
+                            resize!(J, estimated_nnz)
+                            resize!(V, estimated_nnz)
+                        end
+                        I[k] = row
+                        J[k] = col
+                        V[k] = v
+                    end
+                    row_acc[col] = zero(T)
+                    row_mask[col] = false
+                end
+            end
+        end
+    end
+
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    klasttouch = Vector{Int}(undef, m3_cols)
+    csrrowptr = Vector{Int}(undef, m3_rows + 1)
+    csrcolval = Vector{Int}(undef, k)
+    csrnzval = Vector{T}(undef, k)
+
+    out = if k >= m3_cols + 1
+        sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    else
+        SparseArrays.sparse(I, J, V, m3_rows, m3_cols)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
@@ -5892,9 +6122,17 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     # set up vector to capture volatility effect
     nₑ₋ = n₋ + 1 + nₑ
-    redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
-    redu_idxs = findnz(ℒ.kron(redu, redu))[1]
-    𝛔 = @views sparse(redu_idxs[Int.(range(1,nₑ^2,nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1, nₑ₋^2, nₑ₋^2)
+    rows_𝛔₁ = (n₋ + 2):nₑ₋
+    cols_𝛔₁ = fill(n₋ + 1, nₑ)
+    vals_𝛔₁ = ones(Bool, nₑ)
+    𝛔₁ = sparse(rows_𝛔₁, cols_𝛔₁, vals_𝛔₁, nₑ₋, nₑ₋)
+
+    rows_𝛔₂ = [n₋ + 2]
+    cols_𝛔₂ = [n₋ + 1]
+    vals_𝛔₂ = ones(Bool, 1)
+    𝛔₂ = sparse(rows_𝛔₂, cols_𝛔₂, vals_𝛔₂, nₑ₋, nₑ₋)
+
+    𝛔 = sparse(Int.(ℒ.kron(𝛔₁, 𝛔₂)))
     
     # setup compression matrices for transition matrix
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
@@ -5903,6 +6141,8 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     so = constants.second_order
     so.𝛔 = 𝛔
+    so.𝛔₁ = 𝛔₁
+    so.𝛔₂ = 𝛔₂
     so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
     so.𝛔𝐂₂ = 𝛔 * 𝐂₂
     so.𝐂₂ = 𝐂₂

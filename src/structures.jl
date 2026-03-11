@@ -255,7 +255,7 @@ Second-order perturbation auxiliary matrices and index caches.
 These are computed once when the model structure is known and reused across solutions.
 Contains three categories of data:
 
-1. **Auxiliary matrices** (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂): Sparse integer matrices for second-order
+1. **Auxiliary matrices** (𝛔, 𝛔₁, 𝛔₂, 𝐂₂, 𝐔₂, 𝐔∇₂): Sparse matrices for second-order
    perturbation solution. Populated by `create_second_order_auxiliary_matrices` during
    `write_functions_mapping!`.
 
@@ -273,6 +273,8 @@ mutable struct second_order_indices
     # Triggered by: write_functions_mapping! ← solve!
     # =========================================================================
     𝛔::SparseMatrixCSC{Int}              # Commutation matrix
+    𝛔₁::SparseMatrixCSC{Bool, Int}        # First factor in 𝛔 = kron(𝛔₁, 𝛔₂)
+    𝛔₂::SparseMatrixCSC{Bool, Int}        # Second factor in 𝛔 = kron(𝛔₁, 𝛔₂)
     𝛔c₂::SparseMatrixCSC{Int}             # Compressed volatility: 𝐔₂ * 𝛔 * 𝐂₂
     𝛔𝐂₂::SparseMatrixCSC{Int}            # Product 𝛔 * 𝐂₂ (precomputed)
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order

@@ -432,7 +432,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋  - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
@@ -457,9 +457,13 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Add tmpkron" begin
 
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    B *= M₃.𝐂₃
+
+    # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    # B *= M₃.𝐂₃
+
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔₁, M₂.𝛔₂)#, timer = timer)
+
     B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
     # end # timeit_debug

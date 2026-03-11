@@ -9,11 +9,14 @@ See [`second_order_indices`](@ref) for field documentation.
 """
 function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_sparse_bool = spzeros(Bool, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_indices(
-        # Auxiliary matrices (𝛔, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂, 𝐈ₙ₊, 𝐈ₙ₋)
+        # Auxiliary matrices (𝛔, 𝛔₁, 𝛔₂, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂, 𝐈ₙ₊, 𝐈ₙ₋)
         empty_sparse_int,
+        empty_sparse_bool,
+        empty_sparse_bool,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
