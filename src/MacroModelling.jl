@@ -1185,11 +1185,7 @@ function fill_kron_adjoint!(∂A::AbstractMatrix{R},
     @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
     
     n1, m1 = size(B)
-    n2 = size(A,1)
-    
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    const_n1n2m1 = n1 * n2 * m1
+    n2, m2 = size(A)
 
     # Access the sparse matrix internal representation
     if ∂X isa SparseMatrixCSC
@@ -1209,13 +1205,11 @@ function fill_kron_adjoint!(∂A::AbstractMatrix{R},
             row = rowval[idx]
             val = nzval[idx]
 
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
             @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
                 
                 # Update ∂B and ∂A
                 ∂A[k,l] += B[i,j] * val
@@ -1283,11 +1277,7 @@ function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractAr
     @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
     
     n1, m1 = size(∂B)
-    n2 = size(A,1)
-    
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    const_n1n2m1 = n1 * n2 * m1
+    n2, m2 = size(A)
     
     # Access the sparse matrix internal representation
     colptr = ∂X.colptr  # Column pointers
@@ -1301,13 +1291,11 @@ function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractAr
             row = rowval[idx]
             val = nzval[idx]
 
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
             @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
                 
                 # Update ∂B and ∂A
                 ∂B[i,j] += A[k,l] * val

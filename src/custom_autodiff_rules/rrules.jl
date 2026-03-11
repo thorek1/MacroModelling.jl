@@ -5537,25 +5537,20 @@ end
 function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
-    sparse_∂Y = ∂Y isa AbstractSparseMatrix
-    sparse_row_lookup = if sparse_∂Y
-        lookup = falses(size(∂Y, 1))
-        rowvals = ∂Y isa SparseMatrixCSC ? ∂Y.rowval : ∂Y.A.rowval
-        @inbounds for r in rowvals
-            lookup[r] = true
-        end
-        lookup
-    else
-        BitVector()
-    end
     # Unlike the forward pass, the pullback must iterate over ALL row/column
     # indices, not just nonzero ones.  The gradient at a zero entry X[r,c] can
     # be non-zero because  ∂(X[i]*X[j]*X[k])/∂X[i] = X[j]*X[k]  which is
     # generically non-zero even when X[i]=0.
+    # However, we can skip rows that have no stored entries in sparse ∂Y (optimization).
+    sparse_rows = if ∂Y isa SparseMatrixCSC
+        Set(rowvals(∂Y))
+    else
+        Set(1:size(∂Y, 1))
+    end
     for i1 in 1:n_rows, j1 in 1:i1
         for k1 in 1:j1
             row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-            sparse_∂Y && !sparse_row_lookup[row] && continue
+            row ∉ sparse_rows && continue
             # divisor for row symmetry
             if i1 == j1
                 divisor = (j1 == k1) ? 6 : 2
@@ -5929,6 +5924,9 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron1  = ∇₂t_∂out2 * tmpkron2t                              # from (a)
         ∂tmpkron1 += ∇₂t_∂out2 * (M₃𝐏₁ᵣt * tmpkron2t * M₃𝐏₁ₗt)    # from (b)
 
+        # Force only the cotangent argument onto the dense fill_kron_adjoint! path here
+        # and in the analogous calls below. The primal factors may stay sparse/abstract,
+        # but the sparse ∂X overload only iterates stored cotangent entries.
         # kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) pullback → ∂𝐒₂₊╱𝟎 via fill_kron_adjoint!
         fill_kron_adjoint!(∂𝐒₂₊╱𝟎, ∂𝐒₁₊╱𝟎_tmp, ∂tmpkron1, 𝐒₂₊╱𝟎, 𝐒₁₊╱𝟎)
 
@@ -6020,6 +6018,9 @@ function rrule(::typeof(calculate_third_order_solution),
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, ∂tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎₃)
 
+        # Force only the cotangent input dense here and in the analogous compressed_kron³
+        # call below. The primal matrix may stay sparse because the helper densifies it
+        # internally, but sparse cotangents can skip valid structurally-zero adjoints.
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
         ∂ck3_aux = ∇₃t * ∂𝐗₃
         compressed_kron³_pullback!(∂aux, ∂ck3_aux, aux)
