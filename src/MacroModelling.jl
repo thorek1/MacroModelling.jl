@@ -7511,6 +7511,11 @@ function calculate_hessian(parameters::Vector{M},
                             caches_obj::caches,
                             hessian_funcs::hessian_functions,
                             workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
+    S = promote_type(M, N)
+    if eltype(workspaces.second_order.Ŝ) != S
+        workspaces.second_order = Higher_order_workspace(T = S)
+    end
+
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -7537,6 +7542,11 @@ function calculate_third_order_derivatives(parameters::Vector{M},
                                             caches_obj::caches,
                                             third_order_derivatives_funcs::third_order_derivatives_functions,
                                             workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
+    S = promote_type(M, N)
+    if eltype(workspaces.third_order.Ŝ) != S
+        workspaces.third_order = Higher_order_workspace(T = S)
+    end
+
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
