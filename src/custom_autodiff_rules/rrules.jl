@@ -5558,14 +5558,14 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatr
                 divisor = (j1 == k1 || i1 == k1) ? 2 : 1
             end
             for i2 in 1:n_cols, j2 in 1:i2
-                for k2 in 1:j2
+                @inbounds for k2 in 1:j2
                     col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
                     g = ∂Y[row, col]
                     iszero(g) && continue
                     g_d = g / divisor
-                    @inbounds aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
-                    @inbounds aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
-                    @inbounds aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
                     ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
                     ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
                     ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
@@ -5833,20 +5833,20 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # Sparse-preserving gradient accumulators (fresh allocation each call)
         ∂𝐒₂            = zero(𝐒₂)
-        ∂𝐒₁₊╱𝟎_tmp    = zero(𝐒₁₊╱𝟎)
-        ∂𝐒₂₊╱𝟎        = zero(𝐒₂₊╱𝟎)
-        ∂L_c           = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂R_c           = zero(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-        ∂L_d           = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂R_d           = zero(S2p0_sigma)
-        ∂𝐒₁₋╱𝟏ₑ_t8   = zero(𝐒₁₋╱𝟏ₑ)
-        ∂𝐒₂₋╱𝟎        = zero(𝐒₂₋╱𝟎)
-        ∂𝐒₁₋╱𝟏ₑ₃     = zero(𝐒₁₋╱𝟏ₑ)
+        ∂𝐒₁₊╱𝟎_tmp    = zeros(S, size(𝐒₁₊╱𝟎))
+        ∂𝐒₂₊╱𝟎        = zeros(S, size(𝐒₂₊╱𝟎))
+        ∂L_c           = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        ∂R_c           = zeros(S, size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
+        ∂L_d           = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        ∂R_d           = zeros(S, size(S2p0_sigma))
+        ∂𝐒₁₋╱𝟏ₑ_t8   = zeros(S, size(𝐒₁₋╱𝟏ₑ))
+        ∂𝐒₂₋╱𝟎        = zeros(S, size(𝐒₂₋╱𝟎))
+        ∂𝐒₁₋╱𝟏ₑ₃     = zeros(S, size(𝐒₁₋╱𝟏ₑ))
         ∂𝐒₁₊╱𝟎₃      = zero(𝐒₁₊╱𝟎)
         ∂S1S1_stack    = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂tmpkron0_σ    = zero(tmpkron0_σ)
-        ∂S1S1_from22   = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂𝐒₁₊╱𝟎_tk0    = zero(𝐒₁₊╱𝟎)
+        ∂tmpkron0_σ    = zeros(S, size(tmpkron0_σ))
+        ∂S1S1_from22   = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        ∂𝐒₁₊╱𝟎_tk0    = zeros(S, size(𝐒₁₊╱𝟎))
         ∂aux           = zero(aux)
         ∂𝛔_discard     = zeros(S, size(M₂.𝛔))
         ∂𝛔_discard2    = zeros(S, size(M₂.𝛔))
@@ -6022,7 +6022,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # call below. The primal matrix may stay sparse because the helper densifies it
         # internally, but sparse cotangents can skip valid structurally-zero adjoints.
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
-        ∂ck3_aux = ∇₃t * ∂𝐗₃
+        ∂ck3_aux = collect(∇₃t * ∂𝐗₃)
         compressed_kron³_pullback!(∂aux, ∂ck3_aux, aux)
         ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
