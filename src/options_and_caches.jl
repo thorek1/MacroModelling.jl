@@ -198,6 +198,7 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         zeros(T,0,0),
                         Sylvester_workspace(S = S),
                         zeros(T,0),    # ∂∇_vec
