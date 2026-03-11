@@ -6305,6 +6305,7 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐔∇₃ = 𝐔∇₃
     to.∇₃_rowmask = sort!(unique(∇₃_col_indices))
     to.𝐏 = 𝐏
+    to.𝐏𝐂₃ = 𝐏 * 𝐂₃
     to.𝐏₁ₗ = 𝐏₁ₗ
     to.𝐏₁ᵣ = 𝐏₁ᵣ
     to.𝐏₁ₗ̂ = 𝐏₁ₗ̂

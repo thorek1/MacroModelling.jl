@@ -363,6 +363,10 @@ mutable struct third_order_indices
     𝐔∇₃::SparseMatrixCSC{Int}            # Gradient unique selector
     ∇₃_rowmask::Vector{Int}              # Structural nonzero compressed gradient columns
     𝐏::SparseMatrixCSC{Int}              # Permutation matrix
+
+
+
+    𝐏𝐂₃::SparseMatrixCSC{Int}            # Cached product 𝐏 * 𝐂₃
     𝐏₁ₗ::SparseMatrixCSC{Int}            # Left permutation 1
     𝐏₁ᵣ::SparseMatrixCSC{Int}            # Right permutation 1
     𝐏₁ₗ̂::SparseMatrixCSC{Int}            # Modified left permutation 1
