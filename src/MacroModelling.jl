@@ -1480,7 +1480,7 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
-    if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
+    if count(x -> abs(x) > tol, A) / length(A) < density_threshold && length(A) > min_length
         # Use dense_to_sparse to avoid Julia 1.12 SparseArrays bug in SparseMatrixCSC(::Matrix)
         a = dense_to_sparse(A, tol)
         if multithreaded
@@ -2227,23 +2227,37 @@ function compressed_kron(A::AbstractMatrix{TA},
         return spzeros(T, m3_rows, m3_cols)
     end
 
-    # Dense copies for fast element access
-    Â = A isa Matrix{T} ? A : Matrix{T}(A)
-    B̂ = B isa Matrix{T} ? B : Matrix{T}(B)
-    Ĉ = C isa Matrix{T} ? C : Matrix{T}(C)
-
-    # Sparse copies for findnz-based unique index extraction
+    # Sparse copies for support-aware iteration
     As = A isa SparseMatrixCSC ? A : sparse(A)
     Bs = B isa SparseMatrixCSC ? B : sparse(B)
     Cs = C isa SparseMatrixCSC ? C : sparse(C)
 
-    # Union of unique non-zero row and column indices across all three matrices
-    ri_A, ci_A, _ = findnz(As)
-    ri_B, ci_B, _ = findnz(Bs)
-    ri_C, ci_C, _ = findnz(Cs)
+    # Column supports are matrix-specific; row supports are column-conditional
+    # (for each output column triple (i2,j2,k2) only iterate over rows that are
+    # nonzero in A[:,i2], B[:,j2], or C[:,k2]).
+    _, ci_A, _ = findnz(As)
+    _, ci_B, _ = findnz(Bs)
+    _, ci_C, _ = findnz(Cs)
 
-    ui = sort!(unique!([ri_A; ri_B; ri_C]))
-    uj = sort!(unique!([ci_A; ci_B; ci_C]))
+    uj_A = sort!(unique!(ci_A))
+    uj_B = sort!(unique!(ci_B))
+    uj_C = sort!(unique!(ci_C))
+
+    # Per-column nz ranges for each matrix (CSC column slices)
+    ranges_A = Vector{UnitRange{Int}}(undef, n_cols)
+    ranges_B = Vector{UnitRange{Int}}(undef, n_cols)
+    ranges_C = Vector{UnitRange{Int}}(undef, n_cols)
+    rv_A = SparseArrays.rowvals(As)
+    rv_B = SparseArrays.rowvals(Bs)
+    rv_C = SparseArrays.rowvals(Cs)
+    nzv_A = nonzeros(As)
+    nzv_B = nonzeros(Bs)
+    nzv_C = nonzeros(Cs)
+    @inbounds for col in 1:n_cols
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+        ranges_B[col] = SparseArrays.nzrange(Bs, col)
+        ranges_C[col] = SparseArrays.nzrange(Cs, col)
+    end
 
     # Preallocation buffers
     spI, spJ, spV_untyped = sparse_preallocation[1], sparse_preallocation[2], sparse_preallocation[3]
@@ -2304,68 +2318,64 @@ function compressed_kron(A::AbstractMatrix{TA},
         end
     end
 
-    # Main loop: iterate over sorted row triples (i1 ≥ j1 ≥ k1) and col triples (i2 ≥ j2 ≥ k2)
-    for i1 in ui
-        for j1 in ui
-            if j1 ≤ i1
-                for k1 in ui
-                    if k1 ≤ j1
+    # Main loop: column triples (i2≥j2≥k2) outermost.
+    # For each fixed column triple, iterate only over nz rows of A[:,i2], B[:,j2], and C[:,k2].
+    # Sorting each ordered row triple into compressed coordinates and assembling with `+`
+    # reproduces `𝐔 * kron(A, kron(B, C)) * 𝐂` exactly while exploiting matrix-specific sparsity.
+    for i2 in uj_A
+        rng_A = ranges_A[i2]
+        for j2 in uj_B
+            j2 ≤ i2 || continue
+            rng_B = ranges_B[j2]
+            for k2 in uj_C
+                k2 ≤ j2 || continue
+                rng_C = ranges_C[k2]
 
-                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
 
-                        if norowmask || rowmask_lookup[row]
-                            for i2 in uj
-                                for j2 in uj
-                                    if j2 ≤ i2
-                                        for k2 in uj
-                                            if k2 ≤ j2
+                if nocolmask || colmask_lookup[col]
+                    @inbounds for pA in rng_A
+                        a_row = rv_A[pA]
+                        a_val = nzv_A[pA]
+                        for pB in rng_B
+                            b_row = rv_B[pB]
+                            ab_val = a_val * nzv_B[pB]
+                            for pC in rng_C
+                                c_row = rv_C[pC]
+                                val = ab_val * nzv_C[pC]
 
-                                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+                                abs(val) > tol || continue
 
-                                                if nocolmask || colmask_lookup[col]
-                                                    # A gets outermost kron column (i2),
-                                                    # B gets middle kron column (j2),
-                                                    # C gets innermost kron column (k2).
-                                                    # Sum over all 6 permutations of row indices (i1,j1,k1).
-                                                    @inbounds Ai = Â[i1, i2]
-                                                    @inbounds Aj = Â[j1, i2]
-                                                    @inbounds Ak = Â[k1, i2]
-                                                    @inbounds Bi = B̂[i1, j2]
-                                                    @inbounds Bj = B̂[j1, j2]
-                                                    @inbounds Bk = B̂[k1, j2]
-                                                    @inbounds Ci = Ĉ[i1, k2]
-                                                    @inbounds Cj = Ĉ[j1, k2]
-                                                    @inbounds Ck = Ĉ[k1, k2]
+                                i1 = a_row
+                                j1 = b_row
+                                k1 = c_row
 
-                                                    val = Ai * (Bj * Ck + Bk * Cj) + Aj * (Bi * Ck + Bk * Ci) + Ak * (Bi * Cj + Bj * Ci)
+                                if i1 < j1
+                                    i1, j1 = j1, i1
+                                end
+                                if j1 < k1
+                                    j1, k1 = k1, j1
+                                end
+                                if i1 < j1
+                                    i1, j1 = j1, i1
+                                end
 
-                                                    if abs(val) > tol
-                                                        # Divisor: 6 if all row indices equal,
-                                                        # 2 if exactly two equal, 1 if all distinct
-                                                        if i1 == j1
-                                                            divisor = i1 == k1 ? 6 : 2
-                                                        else
-                                                            divisor = (i1 == k1 || j1 == k1) ? 2 : 1
-                                                        end
+                                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
 
-                                                        k += 1
+                                if norowmask || rowmask_lookup[row]
+                                    k += 1
 
-                                                        if k > estimated_nnz
-                                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
-                                                            resize!(I, estimated_nnz)
-                                                            resize!(J, estimated_nnz)
-                                                            resize!(V, estimated_nnz)
-                                                        end
-
-                                                        @inbounds I[k] = row
-                                                        @inbounds J[k] = col
-                                                        @inbounds V[k] = val / divisor
-                                                    end
-                                                end
-                                            end
-                                        end
+                                    if k > estimated_nnz
+                                        estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                        estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
+                                        resize!(I, estimated_nnz)
+                                        resize!(J, estimated_nnz)
+                                        resize!(V, estimated_nnz)
                                     end
+
+                                    I[k] = row
+                                    J[k] = col
+                                    V[k] = val
                                 end
                             end
                         end

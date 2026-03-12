@@ -575,7 +575,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
                                 S₁₊╱𝟎σ₁,
                                 S₁₊╱𝟎σ₂)
-
+    # tmpkron22_alt = M₃.𝐔∇₃ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(S₁₊╱𝟎σ₁, S₁₊╱𝟎σ₂)) * M₃.𝐂₃
     𝐗₃ += ∇₃ * tmpkron22
 
     # end # timeit_debug
