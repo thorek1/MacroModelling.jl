@@ -2260,11 +2260,13 @@ function compressed_kron(A::AbstractMatrix{TA},
     end
 
     # Preallocation buffers
-    spI, spJ, spV_untyped = sparse_preallocation[1], sparse_preallocation[2], sparse_preallocation[3]
+    spI = sparse_preallocation[1]
+    spJ = sparse_preallocation[2]
+    spV_untyped = sparse_preallocation[3]
     spV = if eltype(spV_untyped) == T
         spV_untyped
     else
-        T[]
+        Vector{T}(undef, length(spV_untyped))
     end
 
     lennz_A = nnz(As)
@@ -2393,7 +2395,12 @@ function compressed_kron(A::AbstractMatrix{TA},
     klasttouch = sparse_preallocation[4]
     csrrowptr  = sparse_preallocation[5]
     csrcolval  = sparse_preallocation[6]
-    csrnzval   = sparse_preallocation[7]
+    csrnzval_untyped = sparse_preallocation[7]
+    csrnzval = if eltype(csrnzval_untyped) == T
+        csrnzval_untyped
+    else
+        Vector{T}(undef, length(csrnzval_untyped))
+    end
 
     resize!(klasttouch, m3_cols)
     resize!(csrrowptr, m3_rows + 1)

@@ -5465,6 +5465,212 @@ function rrule(::typeof(calculate_second_order_solution),
 end
 
 
+# Helper: adjoint of compressed_kron(A, B, C; rowmask, colmask) w.r.t. A, B, C.
+# Forward contribution for each ordered output column triple (i2≥j2≥k2) and
+# row triple assembled from supports is:
+#   Y[row,col] += A[a_row,i2] * B[b_row,j2] * C[c_row,k2]
+# with row obtained from sorting (a_row,b_row,c_row) into i1≥j1≥k1.
+function compressed_kron_pullback!(∂A::AbstractMatrix{T},
+                                   ∂B::AbstractMatrix{T},
+                                   ∂C::AbstractMatrix{T},
+                                   ∂Y::AbstractMatrix{T},
+                                   A::AbstractMatrix{TA},
+                                   B::AbstractMatrix{TB},
+                                   C::AbstractMatrix{TC};
+                                   tol::AbstractFloat = eps(),
+                                   rowmask::Vector{Int} = Int[],
+                                   colmask::Vector{Int} = Int[]) where {T <: Real, TA <: Real, TB <: Real, TC <: Real}
+
+    n_rows, n_cols = size(A)
+    size(B) == (n_rows, n_cols) || throw(DimensionMismatch("B must have same size as A"))
+    size(C) == (n_rows, n_cols) || throw(DimensionMismatch("C must have same size as A"))
+
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
+
+    if rowmask == Int[0] || colmask == Int[0]
+        return
+    end
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    Bs = B isa SparseMatrixCSC ? B : sparse(B)
+    Cs = C isa SparseMatrixCSC ? C : sparse(C)
+
+    _, ci_A, _ = findnz(As)
+    _, ci_B, _ = findnz(Bs)
+    _, ci_C, _ = findnz(Cs)
+
+    uj_A = sort!(unique!(ci_A))
+    uj_B = sort!(unique!(ci_B))
+    uj_C = sort!(unique!(ci_C))
+
+    ranges_A = Vector{UnitRange{Int}}(undef, n_cols)
+    ranges_B = Vector{UnitRange{Int}}(undef, n_cols)
+    ranges_C = Vector{UnitRange{Int}}(undef, n_cols)
+    rv_A = SparseArrays.rowvals(As)
+    rv_B = SparseArrays.rowvals(Bs)
+    rv_C = SparseArrays.rowvals(Cs)
+    nzv_A = nonzeros(As)
+    nzv_B = nonzeros(Bs)
+    nzv_C = nonzeros(Cs)
+    @inbounds for col in 1:n_cols
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+        ranges_B[col] = SparseArrays.nzrange(Bs, col)
+        ranges_C[col] = SparseArrays.nzrange(Cs, col)
+    end
+
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+    rowmask_lookup = norowmask ? BitVector() : falses(m3_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(m3_cols)
+
+    if !norowmask
+        @inbounds for r in rowmask
+            if 1 <= r <= m3_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask
+        @inbounds for c in colmask
+            if 1 <= c <= m3_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
+
+    for i2 in uj_A
+        rng_A = ranges_A[i2]
+        for j2 in uj_B
+            j2 <= i2 || continue
+            rng_B = ranges_B[j2]
+            for k2 in uj_C
+                k2 <= j2 || continue
+                rng_C = ranges_C[k2]
+
+                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+                (nocolmask || colmask_lookup[col]) || continue
+
+                @inbounds for pA in rng_A
+                    a_row = rv_A[pA]
+                    a_val = nzv_A[pA]
+                    for pB in rng_B
+                        b_row = rv_B[pB]
+                        b_val = nzv_B[pB]
+                        ab_val = a_val * b_val
+                        for pC in rng_C
+                            c_row = rv_C[pC]
+                            c_val = nzv_C[pC]
+                            val = ab_val * c_val
+                            abs(val) > tol || continue
+
+                            i1 = a_row
+                            j1 = b_row
+                            k1 = c_row
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            (norowmask || rowmask_lookup[row]) || continue
+
+                            g = ∂Y[row, col]
+                            iszero(g) && continue
+
+                            ∂A[a_row, i2] += g * (b_val * c_val)
+                            ∂B[b_row, j2] += g * (a_val * c_val)
+                            ∂C[c_row, k2] += g * (ab_val)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
+function rrule(::typeof(compressed_kron),
+               A::AbstractMatrix{TA},
+               B::AbstractMatrix{TB},
+               C::AbstractMatrix{TC};
+               tol::AbstractFloat = eps(),
+               rowmask::Vector{Int} = Int[],
+               colmask::Vector{Int} = Int[],
+               sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, TB <: Real, TC <: Real}
+
+    Y = compressed_kron(A, B, C;
+                        tol = tol,
+                        rowmask = rowmask,
+                        colmask = colmask,
+                        sparse_preallocation = sparse_preallocation)
+
+    projA = ProjectTo(A)
+    projB = ProjectTo(B)
+    projC = ProjectTo(C)
+
+    function compressed_kron_pullback(∂Ȳ)
+        ∂Y_unthunk = unthunk(∂Ȳ)
+
+        if ∂Y_unthunk isa AbstractZero
+            S = promote_type(TA, TB, TC)
+            return NoTangent(),
+                   projA(zeros(S, size(A)...)),
+                   projB(zeros(S, size(B)...)),
+                   projC(zeros(S, size(C)...))
+        end
+
+        ∂Y_matrix = if ∂Y_unthunk isa AbstractMatrix
+            ∂Y_unthunk
+        elseif hasproperty(∂Y_unthunk, :nzval)
+            nzval_bar = unthunk(getproperty(∂Y_unthunk, :nzval))
+            if nzval_bar isa AbstractZero
+                spzeros(promote_type(TA, TB, TC), size(Y, 1), size(Y, 2))
+            else
+                nzval_vec = nzval_bar isa AbstractVector ? nzval_bar : collect(nzval_bar)
+                SparseMatrixCSC(size(Y, 1),
+                                size(Y, 2),
+                                copy(Y.colptr),
+                                copy(Y.rowval),
+                                Vector{eltype(nzval_vec)}(nzval_vec))
+            end
+        else
+            collect(∂Y_unthunk)
+        end
+        S = promote_type(TA, TB, TC, eltype(∂Y_matrix))
+
+        ∂A = zeros(S, size(A)...)
+        ∂B = zeros(S, size(B)...)
+        ∂C = zeros(S, size(C)...)
+
+        ∂Y_typed = eltype(∂Y_matrix) == S ? ∂Y_matrix : Matrix{S}(∂Y_matrix)
+
+        compressed_kron_pullback!(∂A,
+                                  ∂B,
+                                  ∂C,
+                                  ∂Y_typed,
+                                  A,
+                                  B,
+                                  C;
+                                  tol = tol,
+                                  rowmask = rowmask,
+                                  colmask = colmask)
+
+        return NoTangent(), projA(∂A), projB(∂B), projC(∂C)
+    end
+
+    return Y, compressed_kron_pullback
+end
+
+
 # Helper: adjoint of compressed_kron²(X; rowmask, colmask) w.r.t. X.
 # Forward value at (row(i1,j1), col(i2,j2)): (X[i1,i2]*X[j1,j2] + X[i1,j2]*X[j1,i2]) / divisor,
 # where divisor = 2 if i1 == j1 else 1, and only masked rows/cols are materialized.
@@ -5676,16 +5882,13 @@ function rrule(::typeof(calculate_third_order_solution),
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    # tmpkron0 = kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    # tmpkron22 = kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * 𝛔)
-    tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
-
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
-    K22_sum = tmpkron22 + M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-
-    𝐗₃_∇₃_term = 𝐔∇₃ * K22_sum   # the ∇₃-dependent part (before 𝐂₃ and ck3)
+    S₁₊╱𝟎σ₁ = 𝐒₁₊╱𝟎 * M₂.𝛔₁
+    S₁₊╱𝟎σ₂ = 𝐒₁₊╱𝟎 * M₂.𝛔₂
+    tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                S₁₊╱𝟎σ₁,
+                                S₁₊╱𝟎σ₂,
+                                tol = opts.tol.droptol,
+                                sparse_preallocation = ℂ.tmp_sparse_prealloc6)
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
@@ -5706,14 +5909,13 @@ function rrule(::typeof(calculate_third_order_solution),
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
     out2 += ∇₁₊ * mm_𝐒₂_kron
 
-    𝐗₃_pre = 𝐗₃_∇₃_term + out2 * M₃.𝐏    # before 𝐂₃ compression
-
-    𝐗₃ = 𝐗₃_pre * M₃.𝐂₃
+    𝐗₃ = out2 * M₃.𝐏𝐂₃
+    𝐗₃ += ∇₃ * tmpkron22
 
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
-    ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    ck3_aux_mat = compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
     ck3_aux = ∇₃ * ck3_aux_mat
     𝐗₃ += ck3_aux
     
@@ -5748,34 +5950,26 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # --- precompute transposed constants for pullback -----------------------------
     𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
+    𝐏𝐂₃t = choose_matrix_format(M₃.𝐏𝐂₃', density_threshold = 1.0)
     𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
-    𝐏t  = choose_matrix_format(M₃.𝐏',  density_threshold = 1.0)
-    𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
     𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
     𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
     𝐔₂t  = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
 
     # Materialized transposes of permutation matrices (avoid lazy transposes in pullback)
-    # M₃𝐏₁ₗ̂t = choose_matrix_format(M₃.𝐏₁ₗ̂')
     M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃')
-    # M₃𝐏₂ₗ̂t = choose_matrix_format(M₃.𝐏₂ₗ̂')
     M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃')
     M₃𝐏₁ₗ̄t = choose_matrix_format(M₃.𝐏₁ₗ̄')
     M₃𝐏₂ₗ̄t = choose_matrix_format(M₃.𝐏₂ₗ̄')
     M₃𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ')
     M₃𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ')
 
-    # Materialized transpose of the full product 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-    𝐔∇₃_prod_t = choose_matrix_format(𝐔∇₃')
-    M₃𝐏₁ₗ̂𝐔∇₃_prod_t = choose_matrix_format(M₃.𝐏₁ₗ̂' * 𝐔∇₃_prod_t)
-    M₃𝐏₂ₗ̂𝐔∇₃_prod_t = choose_matrix_format(M₃.𝐏₂ₗ̂' * 𝐔∇₃_prod_t)
-
     # Materialized transposes of forward-pass intermediates
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
     tmpkron1t = choose_matrix_format(tmpkron1')
     tmpkron2t = choose_matrix_format(tmpkron2')
-    K22_sumt = choose_matrix_format(K22_sum')
+    tmpkron22_t = choose_matrix_format(tmpkron22')
     ck3_aux_mat_t = choose_matrix_format(ck3_aux_mat')
     𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
@@ -5786,9 +5980,6 @@ function rrule(::typeof(calculate_third_order_solution),
     tmpkron11t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, choose_matrix_format(S2p0_sigma'))
     kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
-
-    # Precompute tmpkron0 * σ for pullback (constant during pullback)
-    tmpkron0_σ = tmpkron0 * M₂.𝛔
 
     # --- ensure pullback workspace buffers ---
     ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
@@ -5820,7 +6011,6 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐗₃           = ℂ.∂𝐗₃_3rd
         ∂A             = ℂ.∂A_3rd
         ∂B_from_sylv   = ℂ.∂B_sylv_3rd
-        ∂𝐗₃_pre       = ℂ.∂𝐗₃_pre_3rd
         ∂out2          = ℂ.∂out2_3rd
         ∇₂t_∂out2     = ℂ.∇₂t_∂out2_3rd
         mul_tmp        = ℂ.mul_tmp_3rd
@@ -5844,9 +6034,6 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₁₋╱𝟏ₑ₃     = zeros(S, size(𝐒₁₋╱𝟏ₑ))
         ∂𝐒₁₊╱𝟎₃      = zero(𝐒₁₊╱𝟎)
         ∂S1S1_stack    = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂tmpkron0_σ    = zeros(S, size(tmpkron0_σ))
-        ∂S1S1_from22   = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂𝐒₁₊╱𝟎_tk0    = zeros(S, size(𝐒₁₊╱𝟎))
         ∂aux           = zero(aux)
         ∂𝛔_discard     = zeros(S, size(M₂.𝛔))
         ∂𝛔_discard2    = zeros(S, size(M₂.𝛔))
@@ -5870,25 +6057,15 @@ function rrule(::typeof(calculate_third_order_solution),
         # =====================================================================
         #  ∂∇₃  (linear: ∇₃ appears in two additive terms of 𝐗₃)
         # =====================================================================
-        # Term 1:  𝐗₃ contains (∇₃·𝐔∇₃)·K22_sum  (goes through ·𝐂₃ then ·spinv⁻¹)
-        #   i.e.  𝐗₃_pre_part1 = ∇₃ · 𝐔∇₃ · K22_sum  →  𝐗₃ += 𝐗₃_pre_part1 · 𝐂₃
-        #   ∂∇₃_term1 = ∂𝐗₃ · 𝐂₃ᵀ · K22_sumᵀ · 𝐔∇₃ᵀ  (but that's = ∂𝐗₃_pre · K22_sumᵀ · 𝐔∇₃ᵀ)
-        # Term 2:  𝐗₃ += ∇₃ · ck3_aux_mat
-        #   ∂∇₃_term2 = ∂𝐗₃ · ck3_aux_matᵀ
-
-        ∂𝐗₃_pre = ∂𝐗₃ * 𝐂₃t
-        # ℒ.mul!(∂𝐗₃_pre, ∂𝐗₃, 𝐂₃t)   # adjoint of 𝐗₃ = 𝐗₃_pre * 𝐂₃ + ck3_aux
-        
-        # tmp_∂∇₃ = ∂𝐗₃_pre * K22_sumt   # intermediate (allocates)
-        # ∂∇₃ = tmp_∂∇₃ * 𝐔∇₃t              # allocating (dense result)
-        # ℒ.mul!(∂∇₃, ∂𝐗₃, ck3_aux_mat', 1, 1)
-        ∂∇₃ = ∂𝐗₃_pre * K22_sumt * 𝐔∇₃t + ∂𝐗₃ * ck3_aux_mat_t
+        # 𝐗₃ = out2 * 𝐏𝐂₃ + ∇₃ * tmpkron22 + ∇₃ * ck3_aux_mat
+        # ∇₃ has two direct linear terms; out2 maps through 𝐏𝐂₃.
+        ∂∇₃ = ∂𝐗₃ * tmpkron22_t + ∂𝐗₃ * ck3_aux_mat_t
         # =====================================================================
         #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃_pre → 𝐗₃)
         # =====================================================================
-        # out2 enters 𝐗₃_pre as:  𝐗₃_pre = ... + out2 · 𝐏
-        # ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ
-        ℒ.mul!(∂out2, ∂𝐗₃_pre, 𝐏t)
+        # out2 enters 𝐗₃ as: 𝐗₃ = out2 · 𝐏𝐂₃ + ...
+        # ∂out2 = ∂𝐗₃ · (𝐏𝐂₃)ᵀ
+        ℒ.mul!(∂out2, ∂𝐗₃, 𝐏𝐂₃t)
 
         # out2  = ∇₂ · tmpkron1 · tmpkron2                                      (term a)
         #       + ∇₂ · tmpkron1 · 𝐏₁ₗ · tmpkron2 · 𝐏₁ᵣ                        (term b)
@@ -5907,7 +6084,7 @@ function rrule(::typeof(calculate_third_order_solution),
         #  ∂𝐒₂  (𝐒₂ enters out2 via several stacking matrices)
         # =====================================================================
         # 𝐒₂ does NOT affect A, B, or the ∇₃ terms — only out2.
-        # We already have ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ from the ∂∇₂ section above.
+        # We already have ∂out2 from the 𝐗₃ = out2 * 𝐏𝐂₃ adjoint.
         #
         # out2 terms that depend on 𝐒₂:
         #   (a) ∇₂ · tmpkron1 · tmpkron2           — tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -6009,14 +6186,22 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂L_c, ∂S1S1_stack)
         ℒ.axpy!(1, ∂L_d, ∂S1S1_stack)
 
-        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from K22_sum → tmpkron22 ---
-        # Main-branch pattern: use materialized transposes, inline chain multiplication
-        ∂tmpkron22 = 𝐔∇₃_prod_t * ∂𝐗₃_pre + M₃𝐏₁ₗ̂𝐔∇₃_prod_t * ∂𝐗₃_pre * M₃𝐏₁ᵣ̃t + M₃𝐏₂ₗ̂𝐔∇₃_prod_t * ∂𝐗₃_pre * M₃𝐏₂ᵣ̃t
-        fill_kron_adjoint!(∂tmpkron0_σ, ∂S1S1_from22, ∂tmpkron22, tmpkron0_σ, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ℒ.axpy!(1, ∂S1S1_from22, ∂S1S1_stack)
-        ∂tmpkron0 = ∂tmpkron0_σ * 𝛔t
-        fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, ∂tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-        ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎₃)
+        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
+        ∂tmpkron22 = collect(∇₃t * ∂𝐗₃)
+        ∂S1S1_from_ck = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        ∂S1p0σ1_from_ck = zeros(S, size(S₁₊╱𝟎σ₁))
+        ∂S1p0σ2_from_ck = zeros(S, size(S₁₊╱𝟎σ₂))
+        compressed_kron_pullback!(∂S1S1_from_ck,
+                      ∂S1p0σ1_from_ck,
+                      ∂S1p0σ2_from_ck,
+                      ∂tmpkron22,
+                      ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                      S₁₊╱𝟎σ₁,
+                      S₁₊╱𝟎σ₂;
+                      tol = opts.tol.droptol)
+        ℒ.axpy!(1, ∂S1S1_from_ck, ∂S1S1_stack)
+        ℒ.axpy!(1, ∂S1p0σ1_from_ck * choose_matrix_format(M₂.𝛔₁'), ∂𝐒₁₊╱𝟎₃)
+        ℒ.axpy!(1, ∂S1p0σ2_from_ck * choose_matrix_format(M₂.𝛔₂'), ∂𝐒₁₊╱𝟎₃)
 
         # Force only the cotangent input dense here and in the analogous compressed_kron³
         # call below. The primal matrix may stay sparse because the helper densifies it
