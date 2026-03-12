@@ -2192,6 +2192,218 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
 end
 
 
+"""
+    compressed_kron(A, B, C; tol, rowmask, colmask, sparse_preallocation)
+
+Compute the compressed third-order Kronecker product of three matrices:
+`𝐔 * kron(A, kron(B, C)) * 𝐂` where 𝐔 and 𝐂 are the third-order
+unique-element expansion and duplication matrices respectively.
+
+All three matrices must have the same dimensions (nr × nc), which may be rectangular.
+The result is a sparse matrix of size m3_rows × m3_cols where
+`m3_rows = nr*(nr+1)*(nr+2)÷6` and `m3_cols = nc*(nc+1)*(nc+2)÷6`.
+"""
+function compressed_kron(A::AbstractMatrix{TA},
+                         B::AbstractMatrix{TB},
+                         C::AbstractMatrix{TC};
+                         tol::AbstractFloat = eps(),
+                         rowmask::Vector{Int} = Int[],
+                         colmask::Vector{Int} = Int[],
+                         sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, TB <: Real, TC <: Real}
+
+    T = promote_type(TA, TB, TC)
+
+    # All three matrices must have matching dimensions
+    n_rows, n_cols = size(A)
+    size(B) == (n_rows, n_cols) || throw(DimensionMismatch("B must have same size as A, got $(size(B)) vs $(size(A))"))
+    size(C) == (n_rows, n_cols) || throw(DimensionMismatch("C must have same size as A, got $(size(C)) vs $(size(A))"))
+
+    # Compressed output dimensions
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
+
+    # Early return for zero masks
+    if rowmask == Int[0] || colmask == Int[0]
+        return spzeros(T, m3_rows, m3_cols)
+    end
+
+    # Dense copies for fast element access
+    Â = A isa Matrix{T} ? A : Matrix{T}(A)
+    B̂ = B isa Matrix{T} ? B : Matrix{T}(B)
+    Ĉ = C isa Matrix{T} ? C : Matrix{T}(C)
+
+    # Sparse copies for findnz-based unique index extraction
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    Bs = B isa SparseMatrixCSC ? B : sparse(B)
+    Cs = C isa SparseMatrixCSC ? C : sparse(C)
+
+    # Union of unique non-zero row and column indices across all three matrices
+    ri_A, ci_A, _ = findnz(As)
+    ri_B, ci_B, _ = findnz(Bs)
+    ri_C, ci_C, _ = findnz(Cs)
+
+    ui = sort!(unique!([ri_A; ri_B; ri_C]))
+    uj = sort!(unique!([ci_A; ci_B; ci_C]))
+
+    # Preallocation buffers
+    spI, spJ, spV_untyped = sparse_preallocation[1], sparse_preallocation[2], sparse_preallocation[3]
+    spV = if eltype(spV_untyped) == T
+        spV_untyped
+    else
+        T[]
+    end
+
+    lennz_A = nnz(As)
+    lennz_B = nnz(Bs)
+    lennz_C = nnz(Cs)
+    len = length(A)
+
+    m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
+    m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
+
+    # Density-based nnz estimation (geometric mean of per-matrix densities)
+    avg_density = ((lennz_A / max(len, 1)) * (lennz_B / max(len, 1)) * (lennz_C / max(len, 1))) ^ (one(Float64) / 3)
+
+    if length(spI) == 0
+        estimated_nnz = floor(Int, max(m3_r * m3_c * avg_density ^ m3_exp, 10000))
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    else
+        estimated_nnz = length(spV)
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    end
+
+    I = spI
+    J = spJ
+    V = spV
+
+    k = 0
+
+    # Row/col mask lookups
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+    rowmask_lookup = norowmask ? BitVector() : falses(m3_rows)
+    colmask_lookup = nocolmask ? BitVector() : falses(m3_cols)
+
+    if !norowmask && rowmask != Int[0]
+        @inbounds for r in rowmask
+            if 1 <= r <= m3_rows
+                rowmask_lookup[r] = true
+            end
+        end
+    end
+    if !nocolmask && colmask != Int[0]
+        @inbounds for c in colmask
+            if 1 <= c <= m3_cols
+                colmask_lookup[c] = true
+            end
+        end
+    end
+
+    # Main loop: iterate over sorted row triples (i1 ≥ j1 ≥ k1) and col triples (i2 ≥ j2 ≥ k2)
+    for i1 in ui
+        for j1 in ui
+            if j1 ≤ i1
+                for k1 in ui
+                    if k1 ≤ j1
+
+                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                        if norowmask || rowmask_lookup[row]
+                            for i2 in uj
+                                for j2 in uj
+                                    if j2 ≤ i2
+                                        for k2 in uj
+                                            if k2 ≤ j2
+
+                                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+                                                if nocolmask || colmask_lookup[col]
+                                                    # A gets outermost kron column (i2),
+                                                    # B gets middle kron column (j2),
+                                                    # C gets innermost kron column (k2).
+                                                    # Sum over all 6 permutations of row indices (i1,j1,k1).
+                                                    @inbounds Ai = Â[i1, i2]
+                                                    @inbounds Aj = Â[j1, i2]
+                                                    @inbounds Ak = Â[k1, i2]
+                                                    @inbounds Bi = B̂[i1, j2]
+                                                    @inbounds Bj = B̂[j1, j2]
+                                                    @inbounds Bk = B̂[k1, j2]
+                                                    @inbounds Ci = Ĉ[i1, k2]
+                                                    @inbounds Cj = Ĉ[j1, k2]
+                                                    @inbounds Ck = Ĉ[k1, k2]
+
+                                                    val = Ai * (Bj * Ck + Bk * Cj) + Aj * (Bi * Ck + Bk * Ci) + Ak * (Bi * Cj + Bj * Ci)
+
+                                                    if abs(val) > tol
+                                                        # Divisor: 6 if all row indices equal,
+                                                        # 2 if exactly two equal, 1 if all distinct
+                                                        if i1 == j1
+                                                            divisor = i1 == k1 ? 6 : 2
+                                                        else
+                                                            divisor = (i1 == k1 || j1 == k1) ? 2 : 1
+                                                        end
+
+                                                        k += 1
+
+                                                        if k > estimated_nnz
+                                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
+                                                            resize!(I, estimated_nnz)
+                                                            resize!(J, estimated_nnz)
+                                                            resize!(V, estimated_nnz)
+                                                        end
+
+                                                        @inbounds I[k] = row
+                                                        @inbounds J[k] = col
+                                                        @inbounds V[k] = val / divisor
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    # Sparse assembly with preallocation buffers
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
+
+    resize!(klasttouch, m3_cols)
+    resize!(csrrowptr, m3_rows + 1)
+    resize!(csrcolval, length(I))
+    resize!(csrnzval, length(I))
+
+    out = if k >= m3_cols + 1
+        sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    else
+        SparseArrays.sparse(I, J, V, m3_rows, m3_cols)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
