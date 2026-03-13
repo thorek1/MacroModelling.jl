@@ -463,7 +463,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # B *= M₃.𝐂₃
     # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
         # println("size(𝐒₁₋╱𝟏ₑ) = ",size(𝐒₁₋╱𝟏ₑ))
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔₁, M₂.𝛔₂,
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
                                        sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
     # println("size(B) = ",size(B))
     # end # timeit_debug

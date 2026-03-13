@@ -1936,256 +1936,161 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H}
 end
 
 
-"""
-    compressed_permuted_mixed_kron(A, B, C; tol = eps())
+# Loop-based compressed permuted mixed Kronecker product.
+# Computes  U₃ * (kron(A,σ) + P₁ₗ̄*kron(A,σ)*P₁ᵣ̃ + P₂ₗ̄*kron(A,σ)*P₂ᵣ̃) * C₃
+# directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
+#
+# A is n×n,  σ is n²×n².
+# Output is m₃×m₃ sparse where m₃ = n(n+1)(n+2)/6.
+#
+# The uncompressed entry at row (i,j,k) col (a,b,c) of the sum is:
+#   A[i,a]*σ[(j-1)n+k,(b-1)n+c]                      (identity)
+# + A[j,b]*σ[(i-1)n+k,(a-1)n+c]                      (P₁: swap i↔j rows, a↔b cols)
+# + A[j,b]*σ[(k-1)n+i,(c-1)n+a]                      (P₂: cycle (i,j,k)→(j,k,i), (a,b,c)→(b,c,a))
+#
+# Compression: U₃ sums over all row permutations that sort to (i₁≥j₁≥k₁);
+#              C₃ selects the sorted column representative (α≥β≥γ).
+function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix;
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
 
-Compute the compressed third-order Kronecker sum corresponding to exactly these
-three permutations:
+    # Convert to dense for O(1) element access in tight loops
+    â = A isa Matrix{T} ? A : Matrix{T}(A)
+    σ̂ = σ isa Matrix{T} ? σ : Matrix{T}(σ)
 
-- `kron(A, kron(B, C))`
-- `kron(B, kron(A, C))`
-- `kron(B, kron(C, A))`
+    n = size(â, 1)
 
-and then compress with `U₃ * (...) * C₃`.
+    m₃ = n * (n + 1) * (n + 2) ÷ 6
 
-This is intentionally **not** the full 6-permutation symmetrization. It matches
-the third-order `B`-term construction used in perturbation code where one factor
-is placed across three slots while the `(B, C)` block is kept ordered.
-"""
-function compressed_permuted_mixed_kron(A::AbstractMatrix{TA},
-                                        B::AbstractMatrix{TB},
-                                        C::AbstractMatrix{TC};
-                                        tol::AbstractFloat = eps(),
-                                        sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TA <: Real, TB <: Real, TC <: Real}
-    n_rows_A, n_cols_A = size(A)
-    n_rows_B, n_cols_B = size(B)
-    n_rows_C, n_cols_C = size(C)
+    # --- sparse buffer management (same pattern as compressed_kron³) ---
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = max(m₃, 10000)
 
-    @assert n_rows_A == n_rows_B == n_rows_C "A, B, and C must have the same number of rows"
-    @assert n_cols_A == n_cols_B == n_cols_C "A, B, and C must have the same number of columns"
-
-    T = promote_type(TA, TB, TC)
-
-    Â = Matrix{T}(A)
-    B̂ = Matrix{T}(B)
-    Ĉ = Matrix{T}(C)
-
-    n = n_rows_A
-    m3_rows = n * (n + 1) * (n + 2) ÷ 6
-    m3_cols = n * (n + 1) * (n + 2) ÷ 6
-
-    # Row-wise sparse views (as index/value lists) for fast triple products
-    A_cols = Vector{Vector{Int}}(undef, n)
-    A_vals = Vector{Vector{T}}(undef, n)
-    B_cols = Vector{Vector{Int}}(undef, n)
-    B_vals = Vector{Vector{T}}(undef, n)
-    C_cols = Vector{Vector{Int}}(undef, n)
-    C_vals = Vector{Vector{T}}(undef, n)
-
-    @inbounds for r in 1:n
-        a_ci = Int[]
-        a_vi = T[]
-        b_ci = Int[]
-        b_vi = T[]
-        c_ci = Int[]
-        c_vi = T[]
-
-        @inbounds for c in 1:n
-            va = Â[r, c]
-            vb = B̂[r, c]
-            vc = Ĉ[r, c]
-
-            if abs(va) > eps(T)
-                push!(a_ci, c)
-                push!(a_vi, va)
-            end
-            if abs(vb) > eps(T)
-                push!(b_ci, c)
-                push!(b_vi, vb)
-            end
-            if abs(vc) > eps(T)
-                push!(c_ci, c)
-                push!(c_vi, vc)
-            end
-        end
-
-        A_cols[r] = a_ci
-        A_vals[r] = a_vi
-        B_cols[r] = b_ci
-        B_vals[r] = b_vi
-        C_cols[r] = c_ci
-        C_vals[r] = c_vi
-    end
-
-    nnzA = count(v -> abs(v) > eps(T), Â)
-    nnzB = count(v -> abs(v) > eps(T), B̂)
-    nnzC = count(v -> abs(v) > eps(T), Ĉ)
-    pA = nnzA / max(length(Â), 1)
-    pB = nnzB / max(length(B̂), 1)
-    pC = nnzC / max(length(Ĉ), 1)
-    p_est = min(one(T), 9 * pA * pB * pC)
-
-    reused_sparse_buffers = sparse_preallocation !== nothing && length(sparse_preallocation[1]) > 0
-    spalloc = if sparse_preallocation === nothing
-        (Int[], Int[], T[], Int[], Int[], Int[], T[])
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
     else
-        sparse_preallocation
+        estimated_nnz = length(sparse_preallocation[3])
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
     end
 
-    estimated_nnz = if length(spalloc[1]) == 0
-        max(10000, Int(floor(m3_rows * m3_cols * p_est)))
-    else
-        length(spalloc[3])
-    end
+    II = sparse_preallocation[1]
+    JJ = sparse_preallocation[2]
+    VV = sparse_preallocation[3]
 
-    resize!(spalloc[1], estimated_nnz)
-    resize!(spalloc[2], estimated_nnz)
-    resize!(spalloc[3], estimated_nnz)
+    cnt = 0   # non-zero counter
 
-    I = spalloc[1]
-    J = spalloc[2]
-    V = spalloc[3]
+    # Iterate over sorted row triples (i₁ ≥ j₁ ≥ k₁)
+    for i₁ in 1:n
+        for j₁ in 1:i₁
+            for k₁ in 1:j₁
+                row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
 
-    row_acc = zeros(T, m3_cols)
-    row_touched = Int[]
-    row_mask = falses(m3_cols)
+                # Iterate over sorted column triples (α ≥ β ≥ γ)
+                for α in 1:n
+                    for β in 1:α
+                        for γ in 1:β
+                            col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
 
-    α = 0.7
-    k = 0
+                            val = zero(T)
 
-    @inbounds for i1 in 1:n
-        for j1 in 1:i1
-            for l1 in 1:j1
-                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + l1
+                            # Sum over distinct permutations (p,q,r) of (i₁,j₁,k₁).
+                            # Each permutation contributes three terms (identity + P₁ + P₂):
+                            #   A[p,α]*σ[(q-1)*n+r, (β-1)*n+γ]
+                            # + A[q,β]*σ[(p-1)*n+r, (α-1)*n+γ]
+                            # + A[r,γ]*σ[(p-1)*n+q, (α-1)*n+β]
 
-                empty!(row_touched)
+                            if i₁ == j₁ && j₁ == k₁
+                                # 1 distinct permutation: (i₁,i₁,i₁)
+                                @inbounds s = (i₁ - 1) * n + i₁
+                                @inbounds val += â[i₁, α] * σ̂[s, (β - 1) * n + γ]
+                                @inbounds val += â[i₁, β] * σ̂[s, (α - 1) * n + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[s, (α - 1) * n + β]
 
-                nperm = if i1 == j1 == l1
-                    1
-                elseif i1 == j1 || j1 == l1
-                    3
-                else
-                    6
-                end
+                            elseif i₁ == j₁
+                                # 3 distinct permutations
+                                # (p,q,r) = (i₁,i₁,k₁)
+                                @inbounds val += â[i₁, α] * σ̂[(i₁ - 1) * n + k₁, (β - 1) * n + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(i₁ - 1) * n + k₁, (α - 1) * n + γ]
+                                @inbounds val += â[k₁, γ] * σ̂[(i₁ - 1) * n + i₁, (α - 1) * n + β]
+                                # (p,q,r) = (i₁,k₁,i₁)
+                                @inbounds val += â[i₁, α] * σ̂[(k₁ - 1) * n + i₁, (β - 1) * n + γ]
+                                @inbounds val += â[k₁, β] * σ̂[(i₁ - 1) * n + i₁, (α - 1) * n + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(i₁ - 1) * n + k₁, (α - 1) * n + β]
+                                # (p,q,r) = (k₁,i₁,i₁)
+                                @inbounds val += â[k₁, α] * σ̂[(i₁ - 1) * n + i₁, (β - 1) * n + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(k₁ - 1) * n + i₁, (α - 1) * n + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(k₁ - 1) * n + i₁, (α - 1) * n + β]
 
-                for p in 1:nperm
-                    i = i1
-                    j = j1
-                    l = l1
+                            elseif j₁ == k₁
+                                # 3 distinct permutations
+                                # (p,q,r) = (i₁,j₁,j₁)
+                                @inbounds val += â[i₁, α] * σ̂[(j₁ - 1) * n + j₁, (β - 1) * n + γ]
+                                @inbounds val += â[j₁, β] * σ̂[(i₁ - 1) * n + j₁, (α - 1) * n + γ]
+                                @inbounds val += â[j₁, γ] * σ̂[(i₁ - 1) * n + j₁, (α - 1) * n + β]
+                                # (p,q,r) = (j₁,i₁,j₁)
+                                @inbounds val += â[j₁, α] * σ̂[(i₁ - 1) * n + j₁, (β - 1) * n + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(j₁ - 1) * n + j₁, (α - 1) * n + γ]
+                                @inbounds val += â[j₁, γ] * σ̂[(j₁ - 1) * n + i₁, (α - 1) * n + β]
+                                # (p,q,r) = (j₁,j₁,i₁)
+                                @inbounds val += â[j₁, α] * σ̂[(j₁ - 1) * n + i₁, (β - 1) * n + γ]
+                                @inbounds val += â[j₁, β] * σ̂[(j₁ - 1) * n + i₁, (α - 1) * n + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(j₁ - 1) * n + j₁, (α - 1) * n + β]
 
-                    if nperm == 3
-                        if i1 == j1
-                            if p == 1
-                                i = i1; j = i1; l = l1
-                            elseif p == 2
-                                i = i1; j = l1; l = i1
                             else
-                                i = l1; j = i1; l = i1
-                            end
-                        else
-                            if p == 1
-                                i = i1; j = j1; l = j1
-                            elseif p == 2
-                                i = j1; j = i1; l = j1
-                            else
-                                i = j1; j = j1; l = i1
-                            end
-                        end
-                    elseif nperm == 6
-                        if p == 1
-                            i = i1; j = j1; l = l1
-                        elseif p == 2
-                            i = i1; j = l1; l = j1
-                        elseif p == 3
-                            i = j1; j = i1; l = l1
-                        elseif p == 4
-                            i = j1; j = l1; l = i1
-                        elseif p == 5
-                            i = l1; j = i1; l = j1
-                        else
-                            i = l1; j = j1; l = i1
-                        end
-                    end
-
-                    for term in 1:3
-                        cols1 = term == 1 ? A_cols[i] : B_cols[i]
-                        vals1 = term == 1 ? A_vals[i] : B_vals[i]
-                        cols2 = term == 1 ? B_cols[j] : (term == 2 ? A_cols[j] : C_cols[j])
-                        vals2 = term == 1 ? B_vals[j] : (term == 2 ? A_vals[j] : C_vals[j])
-                        cols3 = term == 3 ? A_cols[l] : C_cols[l]
-                        vals3 = term == 3 ? A_vals[l] : C_vals[l]
-
-                        @inbounds for p1 in eachindex(cols1)
-                            d = cols1[p1]
-                            v1 = vals1[p1]
-                            @inbounds for p2 in eachindex(cols2)
-                                e = cols2[p2]
-                                d >= e || continue
-                                v12 = v1 * vals2[p2]
-                                @inbounds for p3 in eachindex(cols3)
-                                    f = cols3[p3]
-                                    e >= f || continue
-                                    col = (d - 1) * d * (d + 1) ÷ 6 + (e - 1) * e ÷ 2 + f
-                                    v = v12 * vals3[p3]
-                                    if !row_mask[col]
-                                        row_mask[col] = true
-                                        push!(row_touched, col)
-                                    end
-                                    row_acc[col] += v
+                                # 6 distinct permutations of (i₁,j₁,k₁)
+                                @inbounds for (p, q, r) in ((i₁,j₁,k₁), (i₁,k₁,j₁), (j₁,i₁,k₁),
+                                                            (j₁,k₁,i₁), (k₁,i₁,j₁), (k₁,j₁,i₁))
+                                    val += â[p, α] * σ̂[(q - 1) * n + r, (β - 1) * n + γ]
+                                    val += â[q, β] * σ̂[(p - 1) * n + r, (α - 1) * n + γ]
+                                    val += â[r, γ] * σ̂[(p - 1) * n + q, (α - 1) * n + β]
                                 end
                             end
-                        end
-                    end
-                end
 
-                @inbounds for col in row_touched
-                    v = row_acc[col]
-                    if abs(v) > eps(T)
-                        k += 1
-                        if k > estimated_nnz
-                            increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * m3_rows * m3_cols)))
-                            estimated_nnz += min(m3_rows * m3_cols, increment)
-                            resize!(I, estimated_nnz)
-                            resize!(J, estimated_nnz)
-                            resize!(V, estimated_nnz)
+                            if abs(val) > tol
+                                cnt += 1
+
+                                if cnt > estimated_nnz
+                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                    estimated_nnz = min(m₃ * m₃, estimated_nnz)
+                                    resize!(II, estimated_nnz)
+                                    resize!(JJ, estimated_nnz)
+                                    resize!(VV, estimated_nnz)
+                                end
+
+                                II[cnt] = row
+                                JJ[cnt] = col
+                                VV[cnt] = val
+                            end
                         end
-                        I[k] = row
-                        J[k] = col
-                        V[k] = v
                     end
-                    row_acc[col] = zero(T)
-                    row_mask[col] = false
                 end
             end
         end
     end
 
-    resize!(I, k)
-    resize!(J, k)
-    resize!(V, k)
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
 
-    klasttouch = spalloc[4]
-    csrrowptr = spalloc[5]
-    csrcolval = spalloc[6]
-    csrnzval = spalloc[7]
+    # Assemble sparse matrix using preallocated CSR workspace
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
 
-    resize!(klasttouch, m3_cols)
-    resize!(csrrowptr, m3_rows + 1)
-    resize!(csrcolval, length(I))
-    resize!(csrnzval, length(I))
+    resize!(klasttouch, m₃)
+    resize!(csrrowptr, m₃ + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
 
-    out = if k >= m3_cols + 1
-        sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    out = if length(II) >= m₃ + 1
+        sparse!(II, JJ, VV, m₃, m₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
     else
-        SparseArrays.sparse(I, J, V, m3_rows, m3_cols)
-    end
-
-    # if reused_sparse_buffers
-    #     out = copy(out)
-    # end
-
-    if tol > 0
-        droptol!(out, tol)
+        SparseArrays.sparse(II, JJ, VV, m₃, m₃)
     end
 
     return out
