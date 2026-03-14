@@ -2326,6 +2326,162 @@ function compressed_kron(A::AbstractMatrix{TA},
 end
 
 
+# 2-arg overload: compressed_kron(A, σ)
+# Computes  𝐔∇₃ * kron(A, σ) * 𝐂₃
+# directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
+#
+# A is nᵣ × nᶜ (may be rectangular),  σ is nᵣ² × nᶜ².
+# Output is m₃ᵣ × m₃ᶜ sparse where m₃ᵣ = nᵣ(nᵣ+1)(nᵣ+2)/6, m₃ᶜ = nᶜ(nᶜ+1)(nᶜ+2)/6.
+#
+# kron(A,σ) at row (i,j,k) col (a,b,c) equals A[i,a]*σ[(j-1)*nᵣ+k, (b-1)*nᶜ+c].
+# 𝐔∇₃ sums all row triples that sort to (i₁≥j₁≥k₁); 𝐂₃ selects the sorted column (α≥β≥γ).
+function compressed_kron(A::AbstractMatrix{TA},
+                         σ::AbstractMatrix{Tσ};
+                         tol::AbstractFloat = eps(),
+                         sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, Tσ <: Real}
+
+    T = promote_type(TA, Tσ)
+
+    nᵣ, nᶜ = size(A)
+    size(σ) == (nᵣ^2, nᶜ^2) || throw(DimensionMismatch("σ must be $(nᵣ^2)×$(nᶜ^2), got $(size(σ))"))
+
+    m₃ᵣ = nᵣ * (nᵣ + 1) * (nᵣ + 2) ÷ 6
+    m₃ᶜ = nᶜ * (nᶜ + 1) * (nᶜ + 2) ÷ 6
+
+    # Convert to sparse for CSC iteration
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    # --- sparse buffer management ---
+    spI = sparse_preallocation[1]
+    spJ = sparse_preallocation[2]
+    spV_untyped = sparse_preallocation[3]
+    spV = if eltype(spV_untyped) == T
+        spV_untyped
+    else
+        Vector{T}(undef, length(spV_untyped))
+    end
+
+    lennz_A = nnz(As)
+    lennz_σ = nnz(σs)
+    len_A = length(A)
+    len_σ = length(σ)
+
+    avg_density = sqrt((lennz_A / max(len_A, 1)) * (lennz_σ / max(len_σ, 1)))
+
+    if length(spI) == 0
+        estimated_nnz = floor(Int, max(m₃ᵣ * m₃ᶜ * avg_density ^ 3, 10000))
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    else
+        estimated_nnz = length(spV)
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    end
+
+    II = spI
+    JJ = spJ
+    VV = spV
+
+    cnt = 0
+
+    # Iterate sorted column triples (α ≥ β ≥ γ) where α indexes A's columns
+    # and (β, γ) index σ's columns via σ_col = (β-1)*nᶜ + γ.
+    for α in 1:nᶜ
+        rng_A = SparseArrays.nzrange(As, α)
+        isempty(rng_A) && continue
+
+        for β in 1:α
+            for γ in 1:β
+                σ_col = (β - 1) * nᶜ + γ
+                rng_σ = SparseArrays.nzrange(σs, σ_col)
+                isempty(rng_σ) && continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                @inbounds for pA in rng_A
+                    i = rv_A[pA]
+                    a_val = nzv_A[pA]
+
+                    for pσ in rng_σ
+                        s = rv_σ[pσ]
+                        σ_val = nzv_σ[pσ]
+
+                        val = a_val * σ_val
+                        abs(val) > tol || continue
+
+                        # Decompose σ row: s = (j-1)*nᵣ + k
+                        j = (s - 1) ÷ nᵣ + 1
+                        k = (s - 1) % nᵣ + 1
+
+                        # Sort row triple (i, j, k) → (i₁ ≥ j₁ ≥ k₁)
+                        i₁ = i; j₁ = j; k₁ = k
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+                        if j₁ < k₁; j₁, k₁ = k₁, j₁; end
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+
+                        row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
+
+                        cnt += 1
+
+                        if cnt > estimated_nnz
+                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                            estimated_nnz = min(m₃ᵣ * m₃ᶜ, estimated_nnz)
+                            resize!(II, estimated_nnz)
+                            resize!(JJ, estimated_nnz)
+                            resize!(VV, estimated_nnz)
+                        end
+
+                        II[cnt] = row
+                        JJ[cnt] = col
+                        VV[cnt] = val
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
+
+    # Sparse assembly with preallocation buffers
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval_untyped = sparse_preallocation[7]
+    csrnzval = if eltype(csrnzval_untyped) == T
+        csrnzval_untyped
+    else
+        Vector{T}(undef, length(csrnzval_untyped))
+    end
+
+    resize!(klasttouch, m₃ᶜ)
+    resize!(csrrowptr, m₃ᵣ + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
+
+    out = if cnt >= m₃ᶜ + 1
+        sparse!(II, JJ, VV, m₃ᵣ, m₃ᶜ, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    else
+        SparseArrays.sparse(II, JJ, VV, m₃ᵣ, m₃ᶜ)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
