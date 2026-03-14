@@ -6438,18 +6438,9 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     # set up vector to capture volatility effect
     nₑ₋ = n₋ + 1 + nₑ
-    rows_𝛔₁ = (n₋ + 2):nₑ₋
-    cols_𝛔₁ = fill(n₋ + 1, nₑ)
-    vals_𝛔₁ = ones(Bool, nₑ)
-    𝛔₁ = sparse(rows_𝛔₁, cols_𝛔₁, vals_𝛔₁, nₑ₋, nₑ₋)
-
-    rows_𝛔₂ = [n₋ + 2]
-    cols_𝛔₂ = [n₋ + 1]
-    vals_𝛔₂ = ones(Bool, 1)
-    𝛔₂ = sparse(rows_𝛔₂, cols_𝛔₂, vals_𝛔₂, nₑ₋, nₑ₋)
-
-    𝛔 = sparse(Int.(ℒ.kron(𝛔₁, 𝛔₂)))
-    
+    redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
+    redu_idxs = findnz(ℒ.kron(redu, redu))[1]
+    𝛔 = @views sparse(redu_idxs[Int.(range(1,nₑ^2,nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1, nₑ₋^2, nₑ₋^2)
     # setup compression matrices for transition matrix
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
     𝐂₂ = sparse(colls2, 1:length(colls2), 1)
@@ -6457,8 +6448,6 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     so = constants.second_order
     so.𝛔 = 𝛔
-    so.𝛔₁ = 𝛔₁
-    so.𝛔₂ = 𝛔₂
     so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
     so.𝛔𝐂₂ = 𝛔 * 𝐂₂
     so.𝐂₂ = 𝐂₂

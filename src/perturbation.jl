@@ -569,14 +569,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     𝐗₃ = out2 * M₃.𝐏𝐂₃
 
-    S₁₊╱𝟎σ₁ = 𝐒₁₊╱𝟎 * M₂.𝛔₁
-    S₁₊╱𝟎σ₂ = 𝐒₁₊╱𝟎 * M₂.𝛔₂
+
 
     tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔,
                                sparse_preallocation = ℂ.tmp_sparse_prealloc6)
     # tmpkron22_alt = M₃.𝐔∇₃ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₃.𝐂₃
     𝐗₃ += ∇₃ * tmpkron22
-
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin

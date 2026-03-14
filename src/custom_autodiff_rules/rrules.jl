@@ -5882,13 +5882,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    S₁₊╱𝟎σ₁ = 𝐒₁₊╱𝟎 * M₂.𝛔₁
-    S₁₊╱𝟎σ₂ = 𝐒₁₊╱𝟎 * M₂.𝛔₂
-    tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                S₁₊╱𝟎σ₁,
-                                S₁₊╱𝟎σ₂,
-                                tol = opts.tol.droptol,
-                                sparse_preallocation = ℂ.tmp_sparse_prealloc6)
+    tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔,
+                               sparse_preallocation = ℂ.tmp_sparse_prealloc6)
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
