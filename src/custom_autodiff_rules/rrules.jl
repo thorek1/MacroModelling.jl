@@ -5598,6 +5598,84 @@ function compressed_kron_pullback!(∂A::AbstractMatrix{T},
 end
 
 
+# Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
+# Forward contribution for each sorted output column triple (α≥β≥γ) is:
+#   Y[row,col] += A[i,α] * σ[(j-1)*nᵣ+k, (β-1)*nᶜ+γ]
+# where row is obtained by sorting (i,j,k) into i₁≥j₁≥k₁.
+function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
+                                        ∂σ::AbstractMatrix{T},
+                                        ∂Y::AbstractMatrix{T},
+                                        A::AbstractMatrix{TA},
+                                        σ::AbstractMatrix{Tσ};
+                                        tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nᵣ, nᶜ = size(A)
+    size(σ) == (nᵣ^2, nᶜ^2) || throw(DimensionMismatch("σ must be $(nᵣ^2)×$(nᶜ^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nᶜ)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nᶜ^2)
+    @inbounds for col in 1:nᶜ
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nᶜ^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    @inbounds for α in 1:nᶜ
+        rng_A = ranges_A[α]
+        isempty(rng_A) && continue
+
+        for β in 1:α
+            for γ in 1:β
+                σ_col = (β - 1) * nᶜ + γ
+                rng_σ = ranges_σ[σ_col]
+                isempty(rng_σ) && continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                for pA in rng_A
+                    i = rv_A[pA]
+                    a_val = nzv_A[pA]
+
+                    for pσ in rng_σ
+                        s = rv_σ[pσ]
+                        σ_val = nzv_σ[pσ]
+
+                        val = a_val * σ_val
+                        abs(val) > tol || continue
+
+                        j = (s - 1) ÷ nᵣ + 1
+                        k = (s - 1) % nᵣ + 1
+
+                        i₁ = i; j₁ = j; k₁ = k
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+                        if j₁ < k₁; j₁, k₁ = k₁, j₁; end
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+
+                        row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
+                        g = ∂Y[row, col]
+                        iszero(g) && continue
+
+                        ∂A[i, α] += g * σ_val
+                        ∂σ[s, σ_col] += g * a_val
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
 function rrule(::typeof(compressed_kron),
                A::AbstractMatrix{TA},
                B::AbstractMatrix{TB},
@@ -6183,20 +6261,24 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
         ∂tmpkron22 = collect(∇₃t * ∂𝐗₃)
+        S1p0_kron_sigma = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
         ∂S1S1_from_ck = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂S1p0σ1_from_ck = zeros(S, size(S₁₊╱𝟎σ₁))
-        ∂S1p0σ2_from_ck = zeros(S, size(S₁₊╱𝟎σ₂))
-        compressed_kron_pullback!(∂S1S1_from_ck,
-                      ∂S1p0σ1_from_ck,
-                      ∂S1p0σ2_from_ck,
-                      ∂tmpkron22,
-                      ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                      S₁₊╱𝟎σ₁,
-                      S₁₊╱𝟎σ₂;
-                      tol = opts.tol.droptol)
+        ∂S1p0_kron_sigma = zeros(S, size(S1p0_kron_sigma))
+        compressed_kron_pullback_2arg!(∂S1S1_from_ck,
+                           ∂S1p0_kron_sigma,
+                           ∂tmpkron22,
+                           ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                           S1p0_kron_sigma;
+                           tol = opts.tol.droptol)
+
+        ∂S1p0_kron = ∂S1p0_kron_sigma * 𝛔t
+        ∂S1p0_left = zeros(S, size(𝐒₁₊╱𝟎))
+        ∂S1p0_right = zeros(S, size(𝐒₁₊╱𝟎))
+        fill_kron_adjoint!(∂S1p0_left, ∂S1p0_right, ∂S1p0_kron, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+
         ℒ.axpy!(1, ∂S1S1_from_ck, ∂S1S1_stack)
-        ℒ.axpy!(1, ∂S1p0σ1_from_ck * choose_matrix_format(M₂.𝛔₁'), ∂𝐒₁₊╱𝟎₃)
-        ℒ.axpy!(1, ∂S1p0σ2_from_ck * choose_matrix_format(M₂.𝛔₂'), ∂𝐒₁₊╱𝟎₃)
+        ℒ.axpy!(1, ∂S1p0_left, ∂𝐒₁₊╱𝟎₃)
+        ℒ.axpy!(1, ∂S1p0_right, ∂𝐒₁₊╱𝟎₃)
 
         # Force only the cotangent input dense here and in the analogous compressed_kron³
         # call below. The primal matrix may stay sparse because the helper densifies it

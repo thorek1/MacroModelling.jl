@@ -1954,12 +1954,27 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
                     tol::AbstractFloat = eps(),
                     sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
 
-    # Convert to dense for O(1) element access in tight loops
-    â = A isa Matrix{T} ? A : Matrix{T}(A)
-    σ̂ = σ isa Matrix{T} ? σ : Matrix{T}(σ)
+    nr = size(A, 1)
+    nc = size(A, 2)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
 
-    nr = size(â, 1)
-    nc = size(â, 2)
+    # Sparse copies for support-aware iteration.
+    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
+    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
 
     mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
     mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
@@ -1985,88 +2000,165 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
 
     cnt = 0   # non-zero counter
 
-    # Iterate over sorted row triples (i₁ ≥ j₁ ≥ k₁)
-    for i₁ in 1:nr
-        for j₁ in 1:i₁
-            for k₁ in 1:j₁
-                row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
+    # Iterate sorted output columns first (α ≥ β ≥ γ). For each column triple,
+    # only traverse non-zero supports from the relevant A and σ columns.
+    for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
 
-                # Iterate over sorted column triples (α ≥ β ≥ γ)
-                for α in 1:nc
-                    for β in 1:α
-                        for γ in 1:β
-                            col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
 
-                            val = zero(T)
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
 
-                            # Sum over distinct permutations (p,q,r) of (i₁,j₁,k₁).
-                            # Each permutation contributes three terms (identity + P₁ + P₂):
-                            #   A[p,α]*σ[(q-1)*nr+r, (β-1)*nc+γ]
-                            # + A[q,β]*σ[(p-1)*nr+r, (α-1)*nc+γ]
-                            # + A[r,γ]*σ[(p-1)*nr+q, (α-1)*nc+β]
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
 
-                            if i₁ == j₁ && j₁ == k₁
-                                # 1 distinct permutation: (i₁,i₁,i₁)
-                                @inbounds s = (i₁ - 1) * nr + i₁
-                                @inbounds val += â[i₁, α] * σ̂[s, (β - 1) * nc + γ]
-                                @inbounds val += â[i₁, β] * σ̂[s, (α - 1) * nc + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[s, (α - 1) * nc + β]
+                (has_t1 || has_t2 || has_t3) || continue
 
-                            elseif i₁ == j₁
-                                # 3 distinct permutations
-                                # (p,q,r) = (i₁,i₁,k₁)
-                                @inbounds val += â[i₁, α] * σ̂[(i₁ - 1) * nr + k₁, (β - 1) * nc + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(i₁ - 1) * nr + k₁, (α - 1) * nc + γ]
-                                @inbounds val += â[k₁, γ] * σ̂[(i₁ - 1) * nr + i₁, (α - 1) * nc + β]
-                                # (p,q,r) = (i₁,k₁,i₁)
-                                @inbounds val += â[i₁, α] * σ̂[(k₁ - 1) * nr + i₁, (β - 1) * nc + γ]
-                                @inbounds val += â[k₁, β] * σ̂[(i₁ - 1) * nr + i₁, (α - 1) * nc + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(i₁ - 1) * nr + k₁, (α - 1) * nc + β]
-                                # (p,q,r) = (k₁,i₁,i₁)
-                                @inbounds val += â[k₁, α] * σ̂[(i₁ - 1) * nr + i₁, (β - 1) * nc + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(k₁ - 1) * nr + i₁, (α - 1) * nc + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(k₁ - 1) * nr + i₁, (α - 1) * nc + β]
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
 
-                            elseif j₁ == k₁
-                                # 3 distinct permutations
-                                # (p,q,r) = (i₁,j₁,j₁)
-                                @inbounds val += â[i₁, α] * σ̂[(j₁ - 1) * nr + j₁, (β - 1) * nc + γ]
-                                @inbounds val += â[j₁, β] * σ̂[(i₁ - 1) * nr + j₁, (α - 1) * nc + γ]
-                                @inbounds val += â[j₁, γ] * σ̂[(i₁ - 1) * nr + j₁, (α - 1) * nc + β]
-                                # (p,q,r) = (j₁,i₁,j₁)
-                                @inbounds val += â[j₁, α] * σ̂[(i₁ - 1) * nr + j₁, (β - 1) * nc + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(j₁ - 1) * nr + j₁, (α - 1) * nc + γ]
-                                @inbounds val += â[j₁, γ] * σ̂[(j₁ - 1) * nr + i₁, (α - 1) * nc + β]
-                                # (p,q,r) = (j₁,j₁,i₁)
-                                @inbounds val += â[j₁, α] * σ̂[(j₁ - 1) * nr + i₁, (β - 1) * nc + γ]
-                                @inbounds val += â[j₁, β] * σ̂[(j₁ - 1) * nr + i₁, (α - 1) * nc + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(j₁ - 1) * nr + j₁, (α - 1) * nc + β]
+                # term 1: A[p, α] * σ[(q, r), (β, γ)]
+                if has_t1
+                    @inbounds for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
 
-                            else
-                                # 6 distinct permutations of (i₁,j₁,k₁)
-                                @inbounds for (p, q, r) in ((i₁,j₁,k₁), (i₁,k₁,j₁), (j₁,i₁,k₁),
-                                                            (j₁,k₁,i₁), (k₁,i₁,j₁), (k₁,j₁,i₁))
-                                    val += â[p, α] * σ̂[(q - 1) * nr + r, (β - 1) * nc + γ]
-                                    val += â[q, β] * σ̂[(p - 1) * nr + r, (α - 1) * nc + γ]
-                                    val += â[r, γ] * σ̂[(p - 1) * nr + q, (α - 1) * nc + β]
-                                end
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
                             end
 
-                            if abs(val) > tol
-                                cnt += 1
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
 
-                                if cnt > estimated_nnz
-                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                    estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
-                                    resize!(II, estimated_nnz)
-                                    resize!(JJ, estimated_nnz)
-                                    resize!(VV, estimated_nnz)
-                                end
-
-                                II[cnt] = row
-                                JJ[cnt] = col
-                                VV[cnt] = val
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
                             end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
+                        end
+                    end
+                end
+
+                # term 2: A[q, β] * σ[(p, r), (α, γ)]
+                if has_t2
+                    @inbounds for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
+                            end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
+                        end
+                    end
+                end
+
+                # term 3: A[r, γ] * σ[(p, q), (α, β)]
+                if has_t3
+                    @inbounds for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
+                            end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
                         end
                     end
                 end
@@ -2089,10 +2181,14 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
     resize!(csrcolval, length(II))
     resize!(csrnzval, length(II))
 
-    out = if length(II) >= mr₃ + 1
+    out = if length(II) >= mc₃ + 1
         sparse!(II, JJ, VV, mr₃, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
     else
         SparseArrays.sparse(II, JJ, VV, mr₃, mc₃)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
     end
 
     return out
