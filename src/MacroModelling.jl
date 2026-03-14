@@ -1940,13 +1940,13 @@ end
 # Computes  U₃ * (kron(A,σ) + P₁ₗ̄*kron(A,σ)*P₁ᵣ̃ + P₂ₗ̄*kron(A,σ)*P₂ᵣ̃) * C₃
 # directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
 #
-# A is n×n,  σ is n²×n².
-# Output is m₃×m₃ sparse where m₃ = n(n+1)(n+2)/6.
+# A is nr×nc (may be rectangular),  σ is nr²×nc².
+# Output is mr₃×mc₃ sparse where mr₃ = nr(nr+1)(nr+2)/6, mc₃ = nc(nc+1)(nc+2)/6.
 #
 # The uncompressed entry at row (i,j,k) col (a,b,c) of the sum is:
-#   A[i,a]*σ[(j-1)n+k,(b-1)n+c]                      (identity)
-# + A[j,b]*σ[(i-1)n+k,(a-1)n+c]                      (P₁: swap i↔j rows, a↔b cols)
-# + A[j,b]*σ[(k-1)n+i,(c-1)n+a]                      (P₂: cycle (i,j,k)→(j,k,i), (a,b,c)→(b,c,a))
+#   A[i,a]*σ[(j-1)*nr+k,(b-1)*nc+c]                   (identity)
+# + A[j,b]*σ[(i-1)*nr+k,(a-1)*nc+c]                   (P₁: swap i↔j rows, a↔b cols)
+# + A[j,b]*σ[(k-1)*nr+i,(c-1)*nc+a]                   (P₂: cycle (i,j,k)→(j,k,i), (a,b,c)→(b,c,a))
 #
 # Compression: U₃ sums over all row permutations that sort to (i₁≥j₁≥k₁);
 #              C₃ selects the sorted column representative (α≥β≥γ).
@@ -1958,13 +1958,15 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
     â = A isa Matrix{T} ? A : Matrix{T}(A)
     σ̂ = σ isa Matrix{T} ? σ : Matrix{T}(σ)
 
-    n = size(â, 1)
+    nr = size(â, 1)
+    nc = size(â, 2)
 
-    m₃ = n * (n + 1) * (n + 2) ÷ 6
+    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
+    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
 
     # --- sparse buffer management (same pattern as compressed_kron³) ---
     if length(sparse_preallocation[1]) == 0
-        estimated_nnz = max(m₃, 10000)
+        estimated_nnz = max(min(mr₃, mc₃), 10000)
 
         resize!(sparse_preallocation[1], estimated_nnz)
         resize!(sparse_preallocation[2], estimated_nnz)
@@ -1984,13 +1986,13 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
     cnt = 0   # non-zero counter
 
     # Iterate over sorted row triples (i₁ ≥ j₁ ≥ k₁)
-    for i₁ in 1:n
+    for i₁ in 1:nr
         for j₁ in 1:i₁
             for k₁ in 1:j₁
                 row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
 
                 # Iterate over sorted column triples (α ≥ β ≥ γ)
-                for α in 1:n
+                for α in 1:nc
                     for β in 1:α
                         for γ in 1:β
                             col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
@@ -1999,54 +2001,54 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
 
                             # Sum over distinct permutations (p,q,r) of (i₁,j₁,k₁).
                             # Each permutation contributes three terms (identity + P₁ + P₂):
-                            #   A[p,α]*σ[(q-1)*n+r, (β-1)*n+γ]
-                            # + A[q,β]*σ[(p-1)*n+r, (α-1)*n+γ]
-                            # + A[r,γ]*σ[(p-1)*n+q, (α-1)*n+β]
+                            #   A[p,α]*σ[(q-1)*nr+r, (β-1)*nc+γ]
+                            # + A[q,β]*σ[(p-1)*nr+r, (α-1)*nc+γ]
+                            # + A[r,γ]*σ[(p-1)*nr+q, (α-1)*nc+β]
 
                             if i₁ == j₁ && j₁ == k₁
                                 # 1 distinct permutation: (i₁,i₁,i₁)
-                                @inbounds s = (i₁ - 1) * n + i₁
-                                @inbounds val += â[i₁, α] * σ̂[s, (β - 1) * n + γ]
-                                @inbounds val += â[i₁, β] * σ̂[s, (α - 1) * n + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[s, (α - 1) * n + β]
+                                @inbounds s = (i₁ - 1) * nr + i₁
+                                @inbounds val += â[i₁, α] * σ̂[s, (β - 1) * nc + γ]
+                                @inbounds val += â[i₁, β] * σ̂[s, (α - 1) * nc + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[s, (α - 1) * nc + β]
 
                             elseif i₁ == j₁
                                 # 3 distinct permutations
                                 # (p,q,r) = (i₁,i₁,k₁)
-                                @inbounds val += â[i₁, α] * σ̂[(i₁ - 1) * n + k₁, (β - 1) * n + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(i₁ - 1) * n + k₁, (α - 1) * n + γ]
-                                @inbounds val += â[k₁, γ] * σ̂[(i₁ - 1) * n + i₁, (α - 1) * n + β]
+                                @inbounds val += â[i₁, α] * σ̂[(i₁ - 1) * nr + k₁, (β - 1) * nc + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(i₁ - 1) * nr + k₁, (α - 1) * nc + γ]
+                                @inbounds val += â[k₁, γ] * σ̂[(i₁ - 1) * nr + i₁, (α - 1) * nc + β]
                                 # (p,q,r) = (i₁,k₁,i₁)
-                                @inbounds val += â[i₁, α] * σ̂[(k₁ - 1) * n + i₁, (β - 1) * n + γ]
-                                @inbounds val += â[k₁, β] * σ̂[(i₁ - 1) * n + i₁, (α - 1) * n + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(i₁ - 1) * n + k₁, (α - 1) * n + β]
+                                @inbounds val += â[i₁, α] * σ̂[(k₁ - 1) * nr + i₁, (β - 1) * nc + γ]
+                                @inbounds val += â[k₁, β] * σ̂[(i₁ - 1) * nr + i₁, (α - 1) * nc + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(i₁ - 1) * nr + k₁, (α - 1) * nc + β]
                                 # (p,q,r) = (k₁,i₁,i₁)
-                                @inbounds val += â[k₁, α] * σ̂[(i₁ - 1) * n + i₁, (β - 1) * n + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(k₁ - 1) * n + i₁, (α - 1) * n + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(k₁ - 1) * n + i₁, (α - 1) * n + β]
+                                @inbounds val += â[k₁, α] * σ̂[(i₁ - 1) * nr + i₁, (β - 1) * nc + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(k₁ - 1) * nr + i₁, (α - 1) * nc + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(k₁ - 1) * nr + i₁, (α - 1) * nc + β]
 
                             elseif j₁ == k₁
                                 # 3 distinct permutations
                                 # (p,q,r) = (i₁,j₁,j₁)
-                                @inbounds val += â[i₁, α] * σ̂[(j₁ - 1) * n + j₁, (β - 1) * n + γ]
-                                @inbounds val += â[j₁, β] * σ̂[(i₁ - 1) * n + j₁, (α - 1) * n + γ]
-                                @inbounds val += â[j₁, γ] * σ̂[(i₁ - 1) * n + j₁, (α - 1) * n + β]
+                                @inbounds val += â[i₁, α] * σ̂[(j₁ - 1) * nr + j₁, (β - 1) * nc + γ]
+                                @inbounds val += â[j₁, β] * σ̂[(i₁ - 1) * nr + j₁, (α - 1) * nc + γ]
+                                @inbounds val += â[j₁, γ] * σ̂[(i₁ - 1) * nr + j₁, (α - 1) * nc + β]
                                 # (p,q,r) = (j₁,i₁,j₁)
-                                @inbounds val += â[j₁, α] * σ̂[(i₁ - 1) * n + j₁, (β - 1) * n + γ]
-                                @inbounds val += â[i₁, β] * σ̂[(j₁ - 1) * n + j₁, (α - 1) * n + γ]
-                                @inbounds val += â[j₁, γ] * σ̂[(j₁ - 1) * n + i₁, (α - 1) * n + β]
+                                @inbounds val += â[j₁, α] * σ̂[(i₁ - 1) * nr + j₁, (β - 1) * nc + γ]
+                                @inbounds val += â[i₁, β] * σ̂[(j₁ - 1) * nr + j₁, (α - 1) * nc + γ]
+                                @inbounds val += â[j₁, γ] * σ̂[(j₁ - 1) * nr + i₁, (α - 1) * nc + β]
                                 # (p,q,r) = (j₁,j₁,i₁)
-                                @inbounds val += â[j₁, α] * σ̂[(j₁ - 1) * n + i₁, (β - 1) * n + γ]
-                                @inbounds val += â[j₁, β] * σ̂[(j₁ - 1) * n + i₁, (α - 1) * n + γ]
-                                @inbounds val += â[i₁, γ] * σ̂[(j₁ - 1) * n + j₁, (α - 1) * n + β]
+                                @inbounds val += â[j₁, α] * σ̂[(j₁ - 1) * nr + i₁, (β - 1) * nc + γ]
+                                @inbounds val += â[j₁, β] * σ̂[(j₁ - 1) * nr + i₁, (α - 1) * nc + γ]
+                                @inbounds val += â[i₁, γ] * σ̂[(j₁ - 1) * nr + j₁, (α - 1) * nc + β]
 
                             else
                                 # 6 distinct permutations of (i₁,j₁,k₁)
                                 @inbounds for (p, q, r) in ((i₁,j₁,k₁), (i₁,k₁,j₁), (j₁,i₁,k₁),
                                                             (j₁,k₁,i₁), (k₁,i₁,j₁), (k₁,j₁,i₁))
-                                    val += â[p, α] * σ̂[(q - 1) * n + r, (β - 1) * n + γ]
-                                    val += â[q, β] * σ̂[(p - 1) * n + r, (α - 1) * n + γ]
-                                    val += â[r, γ] * σ̂[(p - 1) * n + q, (α - 1) * n + β]
+                                    val += â[p, α] * σ̂[(q - 1) * nr + r, (β - 1) * nc + γ]
+                                    val += â[q, β] * σ̂[(p - 1) * nr + r, (α - 1) * nc + γ]
+                                    val += â[r, γ] * σ̂[(p - 1) * nr + q, (α - 1) * nc + β]
                                 end
                             end
 
@@ -2055,7 +2057,7 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
 
                                 if cnt > estimated_nnz
                                     estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                    estimated_nnz = min(m₃ * m₃, estimated_nnz)
+                                    estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
                                     resize!(II, estimated_nnz)
                                     resize!(JJ, estimated_nnz)
                                     resize!(VV, estimated_nnz)
@@ -2082,15 +2084,15 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
     csrcolval  = sparse_preallocation[6]
     csrnzval   = sparse_preallocation[7]
 
-    resize!(klasttouch, m₃)
-    resize!(csrrowptr, m₃ + 1)
+    resize!(klasttouch, mc₃)
+    resize!(csrrowptr, mr₃ + 1)
     resize!(csrcolval, length(II))
     resize!(csrnzval, length(II))
 
-    out = if length(II) >= m₃ + 1
-        sparse!(II, JJ, VV, m₃, m₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    out = if length(II) >= mr₃ + 1
+        sparse!(II, JJ, VV, mr₃, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
     else
-        SparseArrays.sparse(II, JJ, VV, m₃, m₃)
+        SparseArrays.sparse(II, JJ, VV, mr₃, mc₃)
     end
 
     return out
