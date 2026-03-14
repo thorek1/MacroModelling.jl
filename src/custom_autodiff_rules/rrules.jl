@@ -5465,139 +5465,6 @@ function rrule(::typeof(calculate_second_order_solution),
 end
 
 
-# Helper: adjoint of compressed_kron(A, B, C; rowmask, colmask) w.r.t. A, B, C.
-# Forward contribution for each ordered output column triple (i2≥j2≥k2) and
-# row triple assembled from supports is:
-#   Y[row,col] += A[a_row,i2] * B[b_row,j2] * C[c_row,k2]
-# with row obtained from sorting (a_row,b_row,c_row) into i1≥j1≥k1.
-function compressed_kron_pullback!(∂A::AbstractMatrix{T},
-                                   ∂B::AbstractMatrix{T},
-                                   ∂C::AbstractMatrix{T},
-                                   ∂Y::AbstractMatrix{T},
-                                   A::AbstractMatrix{TA},
-                                   B::AbstractMatrix{TB},
-                                   C::AbstractMatrix{TC};
-                                   tol::AbstractFloat = eps(),
-                                   rowmask::Vector{Int} = Int[],
-                                   colmask::Vector{Int} = Int[]) where {T <: Real, TA <: Real, TB <: Real, TC <: Real}
-
-    n_rows, n_cols = size(A)
-    size(B) == (n_rows, n_cols) || throw(DimensionMismatch("B must have same size as A"))
-    size(C) == (n_rows, n_cols) || throw(DimensionMismatch("C must have same size as A"))
-
-    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
-    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
-
-    if rowmask == Int[0] || colmask == Int[0]
-        return
-    end
-
-    As = A isa SparseMatrixCSC ? A : sparse(A)
-    Bs = B isa SparseMatrixCSC ? B : sparse(B)
-    Cs = C isa SparseMatrixCSC ? C : sparse(C)
-
-    _, ci_A, _ = findnz(As)
-    _, ci_B, _ = findnz(Bs)
-    _, ci_C, _ = findnz(Cs)
-
-    uj_A = sort!(unique!(ci_A))
-    uj_B = sort!(unique!(ci_B))
-    uj_C = sort!(unique!(ci_C))
-
-    ranges_A = Vector{UnitRange{Int}}(undef, n_cols)
-    ranges_B = Vector{UnitRange{Int}}(undef, n_cols)
-    ranges_C = Vector{UnitRange{Int}}(undef, n_cols)
-    rv_A = SparseArrays.rowvals(As)
-    rv_B = SparseArrays.rowvals(Bs)
-    rv_C = SparseArrays.rowvals(Cs)
-    nzv_A = nonzeros(As)
-    nzv_B = nonzeros(Bs)
-    nzv_C = nonzeros(Cs)
-    @inbounds for col in 1:n_cols
-        ranges_A[col] = SparseArrays.nzrange(As, col)
-        ranges_B[col] = SparseArrays.nzrange(Bs, col)
-        ranges_C[col] = SparseArrays.nzrange(Cs, col)
-    end
-
-    norowmask = length(rowmask) == 0
-    nocolmask = length(colmask) == 0
-    rowmask_lookup = norowmask ? BitVector() : falses(m3_rows)
-    colmask_lookup = nocolmask ? BitVector() : falses(m3_cols)
-
-    if !norowmask
-        @inbounds for r in rowmask
-            if 1 <= r <= m3_rows
-                rowmask_lookup[r] = true
-            end
-        end
-    end
-    if !nocolmask
-        @inbounds for c in colmask
-            if 1 <= c <= m3_cols
-                colmask_lookup[c] = true
-            end
-        end
-    end
-
-    for i2 in uj_A
-        rng_A = ranges_A[i2]
-        for j2 in uj_B
-            j2 <= i2 || continue
-            rng_B = ranges_B[j2]
-            for k2 in uj_C
-                k2 <= j2 || continue
-                rng_C = ranges_C[k2]
-
-                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
-                (nocolmask || colmask_lookup[col]) || continue
-
-                @inbounds for pA in rng_A
-                    a_row = rv_A[pA]
-                    a_val = nzv_A[pA]
-                    for pB in rng_B
-                        b_row = rv_B[pB]
-                        b_val = nzv_B[pB]
-                        ab_val = a_val * b_val
-                        for pC in rng_C
-                            c_row = rv_C[pC]
-                            c_val = nzv_C[pC]
-                            val = ab_val * c_val
-                            abs(val) > tol || continue
-
-                            i1 = a_row
-                            j1 = b_row
-                            k1 = c_row
-
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-                            if j1 < k1
-                                j1, k1 = k1, j1
-                            end
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                            (norowmask || rowmask_lookup[row]) || continue
-
-                            g = ∂Y[row, col]
-                            iszero(g) && continue
-
-                            ∂A[a_row, i2] += g * (b_val * c_val)
-                            ∂B[b_row, j2] += g * (a_val * c_val)
-                            ∂C[c_row, k2] += g * (ab_val)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return
-end
-
-
 # Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
 # Forward contribution for each sorted output column triple (α≥β≥γ) is:
 #   Y[row,col] += A[i,α] * σ[(j-1)*nᵣ+k, (β-1)*nᶜ+γ]
@@ -5675,77 +5542,162 @@ function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
     return
 end
 
+# Helper: adjoint of compressed_permuted_mixed_kron(A, σ; tol) w.r.t. A and σ.
+function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
+                                                  ∂σ::AbstractMatrix{T},
+                                                  ∂Y::AbstractMatrix{T},
+                                                  A::AbstractMatrix{TA},
+                                                  σ::AbstractMatrix{Tσ};
+                                                  tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
 
-function rrule(::typeof(compressed_kron),
-               A::AbstractMatrix{TA},
-               B::AbstractMatrix{TB},
-               C::AbstractMatrix{TC};
-               tol::AbstractFloat = eps(),
-               rowmask::Vector{Int} = Int[],
-               colmask::Vector{Int} = Int[],
-               sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, TB <: Real, TC <: Real}
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
 
-    Y = compressed_kron(A, B, C;
-                        tol = tol,
-                        rowmask = rowmask,
-                        colmask = colmask,
-                        sparse_preallocation = sparse_preallocation)
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
 
-    projA = ProjectTo(A)
-    projB = ProjectTo(B)
-    projC = ProjectTo(C)
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
 
-    function compressed_kron_pullback(∂Ȳ)
-        ∂Y_unthunk = unthunk(∂Ȳ)
-
-        if ∂Y_unthunk isa AbstractZero
-            S = promote_type(TA, TB, TC)
-            return NoTangent(),
-                   projA(zeros(S, size(A)...)),
-                   projB(zeros(S, size(B)...)),
-                   projC(zeros(S, size(C)...))
-        end
-
-        ∂Y_matrix = if ∂Y_unthunk isa AbstractMatrix
-            ∂Y_unthunk
-        elseif hasproperty(∂Y_unthunk, :nzval)
-            nzval_bar = unthunk(getproperty(∂Y_unthunk, :nzval))
-            if nzval_bar isa AbstractZero
-                spzeros(promote_type(TA, TB, TC), size(Y, 1), size(Y, 2))
-            else
-                nzval_vec = nzval_bar isa AbstractVector ? nzval_bar : collect(nzval_bar)
-                SparseMatrixCSC(size(Y, 1),
-                                size(Y, 2),
-                                copy(Y.colptr),
-                                copy(Y.rowval),
-                                Vector{eltype(nzval_vec)}(nzval_vec))
-            end
-        else
-            collect(∂Y_unthunk)
-        end
-        S = promote_type(TA, TB, TC, eltype(∂Y_matrix))
-
-        ∂A = zeros(S, size(A)...)
-        ∂B = zeros(S, size(B)...)
-        ∂C = zeros(S, size(C)...)
-
-        ∂Y_typed = eltype(∂Y_matrix) == S ? ∂Y_matrix : Matrix{S}(∂Y_matrix)
-
-        compressed_kron_pullback!(∂A,
-                                  ∂B,
-                                  ∂C,
-                                  ∂Y_typed,
-                                  A,
-                                  B,
-                                  C;
-                                  tol = tol,
-                                  rowmask = rowmask,
-                                  colmask = colmask)
-
-        return NoTangent(), projA(∂A), projB(∂B), projC(∂C)
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
     end
 
-    return Y, compressed_kron_pullback
+    G = Matrix(∂Y)
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            iszero(g) && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                            ∂σ[qr, σ_col_βγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            iszero(g) && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                            ∂σ[pr, σ_col_αγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            iszero(g) && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                            ∂σ[pq, σ_col_αβ] += g * a_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
 end
 
 
@@ -5960,8 +5912,10 @@ function rrule(::typeof(calculate_third_order_solution),
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    tmpkron22 = compressed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔,
-                               sparse_preallocation = ℂ.tmp_sparse_prealloc6)
+    S1p0_kron_sigma = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
+    tmpkron22 = compressed_permuted_mixed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                               S1p0_kron_sigma,
+                                               sparse_preallocation = ℂ.tmp_sparse_prealloc6)
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
@@ -6261,15 +6215,14 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
         ∂tmpkron22 = collect(∇₃t * ∂𝐗₃)
-        S1p0_kron_sigma = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
         ∂S1S1_from_ck = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
         ∂S1p0_kron_sigma = zeros(S, size(S1p0_kron_sigma))
-        compressed_kron_pullback_2arg!(∂S1S1_from_ck,
-                           ∂S1p0_kron_sigma,
-                           ∂tmpkron22,
-                           ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                           S1p0_kron_sigma;
-                           tol = opts.tol.droptol)
+        compressed_permuted_mixed_kron_pullback!(∂S1S1_from_ck,
+                             ∂S1p0_kron_sigma,
+                             ∂tmpkron22,
+                             ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                             S1p0_kron_sigma;
+                             tol = opts.tol.droptol)
 
         ∂S1p0_kron = ∂S1p0_kron_sigma * 𝛔t
         ∂S1p0_left = zeros(S, size(𝐒₁₊╱𝟎))
