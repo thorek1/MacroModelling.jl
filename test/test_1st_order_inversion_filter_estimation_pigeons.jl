@@ -54,6 +54,7 @@ end
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)+1e10)) #, verbose = true))
 
 init_params = FS2000.parameter_values
+const PIGEONS_SEED = 30
 
 const FS2000_LP = typeof(FS2000_lp)
 
@@ -66,12 +67,13 @@ function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
     return result
 end
 
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
             n_rounds = 10,
+            seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
 samps = MCMCChains.Chains(pt)
