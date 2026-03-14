@@ -198,6 +198,8 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        zeros(T,0,0),  # 𝐒₁
+                        zeros(T,0,0),  # 𝐒₁₋╱𝟏ₑ
                         zeros(T,0,0),
                         Sylvester_workspace(S = S),
                         zeros(T,0),    # ∂∇_vec
@@ -245,6 +247,12 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order
+end
+
+function ensure_higher_order_solution_buffers!(ws::higher_order_workspace{S,G,H}, n::Int, nₑ₋::Int) where {S <: Real, G <: AbstractFloat, H <: Real}
+    size(ws.𝐒₁) == (n, nₑ₋) || (ws.𝐒₁ = zeros(S, n, nₑ₋))
+    size(ws.𝐒₁₋╱𝟏ₑ) == (nₑ₋, nₑ₋) || (ws.𝐒₁₋╱𝟏ₑ = zeros(S, nₑ₋, nₑ₋))
+    return ws
 end
 
 """

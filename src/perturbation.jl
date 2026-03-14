@@ -235,6 +235,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     initial_guess_sylv = if length(initial_guess) == 0
         zeros(S, 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -246,10 +248,16 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
     # droptol!(𝐒₁,tol)
     
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]# |> sparse
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
     # droptol!(𝐒₁₋╱𝟏ₑ,tol)
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0)
 
@@ -407,6 +415,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     n = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     initial_guess_sylv = if length(initial_guess) == 0
         zeros(S, 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -418,9 +428,15 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
     
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 

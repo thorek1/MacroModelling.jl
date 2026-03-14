@@ -1058,6 +1058,8 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc7::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    𝐒₁::Matrix{F}
+    𝐒₁₋╱𝟏ₑ::Matrix{F}
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G, H}
     ∂∇_vec::Vector{F}          # Flattened cotangent buffer for low-level higher-order derivative pullbacks
