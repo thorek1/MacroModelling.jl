@@ -5935,24 +5935,29 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
-    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-
     ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
-    out2  = ∇₂ * tmpkron1 * tmpkron2
-    out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
-    S2p0_sigma = 𝐒₂₊╱𝟎 * M₂.𝛔
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, S2p0_sigma, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+    # Terms (a)+(b): ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * [tmpkron2 + 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ] * 𝐏𝐂₃
+    tmpkron2 = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol))
+    D_ab = (tmpkron2 + M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ) * M₃.𝐏𝐂₃
+    𝐗₃ = mat_mult_kron(∇₂, collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎), D_ab, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
+    # Term (c): ∇₂ * kron(⎸𝐒₁..⎹, ⎸𝐒₂k..⎹) * 𝐏𝐂₃
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+
+    # Term (d): ∇₂ * kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎*𝛔) * 𝐏𝐂₃
+    S2p0_sigma = 𝐒₂₊╱𝟎 * M₂.𝛔
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(S2p0_sigma), M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
+
+    # Term (e): ∇₁₊ * 𝐒₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) * 𝐏𝐂₃
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
-    out2 += ∇₁₊ * mm_𝐒₂_kron
+    𝐗₃ += ∇₁₊ * mm_𝐒₂_kron * M₃.𝐏𝐂₃
 
-    𝐗₃ = out2 * M₃.𝐏𝐂₃
+    # Pullback-only intermediate: kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) needed for ∂𝐒₁₋╱𝟏ₑ
+    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
     𝐗₃ += ∇₃ * tmpkron22
 
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
@@ -6011,16 +6016,15 @@ function rrule(::typeof(calculate_third_order_solution),
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
     tmpkron1t = choose_matrix_format(tmpkron1')
-    tmpkron2t = choose_matrix_format(tmpkron2')
+    D_ab_t = choose_matrix_format(D_ab')
     tmpkron22_t = choose_matrix_format(tmpkron22')
     ck3_aux_mat_t = choose_matrix_format(ck3_aux_mat')
     𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎')
+    S2p0_sigma_t = choose_matrix_format(S2p0_sigma')
 
     # Pre-materialized kron product transposes (avoid re-computing in pullback)
-    tmpkron10t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t)
-    tmpkron11t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, choose_matrix_format(S2p0_sigma'))
     kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
 
@@ -6110,17 +6114,16 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂out2 = ∂𝐗₃ · (𝐏𝐂₃)ᵀ
         ℒ.mul!(∂out2, ∂𝐗₃, 𝐏𝐂₃t)
 
-        # out2  = ∇₂ · tmpkron1 · tmpkron2                                      (term a)
-        #       + ∇₂ · tmpkron1 · 𝐏₁ₗ · tmpkron2 · 𝐏₁ᵣ                        (term b)
-        #       + ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)                                   (term c)
-        #       + ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)                                  (term d)
-        #   (term 8 = ∇₁₊ · mm_𝐒₂_kron does not involve ∇₂.)
+        # 𝐗₃ = ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * D_ab                               (terms a+b)
+        #     + ∇₂ * kron(⎸𝐒₁..⎹, ⎸𝐒₂k..⎹) * 𝐏𝐂₃                             (term c)
+        #     + ∇₂ * kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔) * 𝐏𝐂₃                             (term d)
+        #   (term e = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) · 𝐏𝐂₃ does not involve ∇₂.)
 
-        # Chain multiplication with pre-transposed matrices (avoid materializing R_a, R_b, R_c, R_d)
-        ∂∇₂ = ∂out2 * tmpkron10t                                                      # term c (allocating → dense)
-        ℒ.mul!(∂∇₂, ∂out2 * tmpkron2t, tmpkron1t, 1, 1)                             # term a
-        ℒ.mul!(∂∇₂, ∂out2 * M₃𝐏₁ᵣt * tmpkron2t * M₃𝐏₁ₗt, tmpkron1t, 1, 1)       # term b
-        ℒ.mul!(∂∇₂, ∂out2, tmpkron11t, 1, 1)                                        # term d
+        # ∂∇₂ via mat_mult_kron (avoids materializing cubic kron transposes)
+        ∂mid_ab = ∂𝐗₃ * D_ab_t                                                        # n × nₑ₋³
+        ∂∇₂ = mat_mult_kron(∂mid_ab, collect(𝐒₁₊╱𝟎'), collect(𝐒₂₊╱𝟎'))               # terms a+b
+        ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t) # term c
+        ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, S2p0_sigma_t)        # term d
 
 
         # =====================================================================
@@ -6139,10 +6142,9 @@ function rrule(::typeof(calculate_third_order_solution),
         # Shared intermediate: ∇₂ᵀ * ∂out2 (used for ∂tmpkron1, ∂kron_c, ∂kron_d)
         ℒ.mul!(∇₂t_∂out2, ∇₂t, ∂out2)
 
-        # --- terms (a) and (b):  through tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) ---
-        # ∂(∇₂·tmpkron1·R) w.r.t. tmpkron1 = ∇₂ᵀ·∂out2·Rᵀ
-        ∂tmpkron1  = ∇₂t_∂out2 * tmpkron2t                              # from (a)
-        ∂tmpkron1 += ∇₂t_∂out2 * (M₃𝐏₁ᵣt * tmpkron2t * M₃𝐏₁ₗt)    # from (b)
+        # --- terms (a) and (b): through kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) via D_ab ---
+        # ∂kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) = ∇₂ᵀ * ∂𝐗₃ * D_ab' (combines terms a+b)
+        ∂tmpkron1 = ∇₂t * ∂mid_ab
 
         # Force only the cotangent argument onto the dense fill_kron_adjoint! path here
         # and in the analogous calls below. The primal factors may stay sparse/abstract,

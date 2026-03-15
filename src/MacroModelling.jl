@@ -1548,7 +1548,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         nnzC = sum(abs.(C) .> eps())
         nnzD = sum(abs.(D) .> eps())
 
-        p = nnzA * nnzB * nnzC * nnzD / (length(A) * length(B) * length(C) * length(D))
+        p = Float64(nnzA) * Float64(nnzB) * Float64(nnzC) * Float64(nnzD) / (Float64(length(A)) * Float64(length(B)) * Float64(length(C)) * Float64(length(D)))
 
         if length(sparse_preallocation[1]) == 0
             estimated_nnz = Int(ceil((1 - (1 - p)^size(A,1)) * size(A,1) * size(D,2)))
@@ -5867,8 +5867,21 @@ function create_second_order_auxiliary_matrices(constants::constants)
     𝐂₂ = sparse(colls2, 1:length(colls2), 1)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
+    # Build symmetrised volatility: 𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+    # P_swap is the commutation matrix swapping axes 1 and 2 in nₑ₋² space
+    swap_rows = Vector{Int}(undef, nₑ₋^2)
+    swap_cols = Vector{Int}(undef, nₑ₋^2)
+    @inbounds for a in 1:nₑ₋, b in 1:nₑ₋
+        idx = (a - 1) * nₑ₋ + b
+        swap_rows[idx] = idx
+        swap_cols[idx] = (b - 1) * nₑ₋ + a
+    end
+    P_swap = sparse(swap_rows, swap_cols, ones(Int, nₑ₋^2), nₑ₋^2, nₑ₋^2)
+    𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+
     so = constants.second_order
     so.𝛔 = 𝛔
+    so.𝛔_sym = 𝛔_sym
     so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
     so.𝛔𝐂₂ = 𝛔 * 𝐂₂
     so.𝐂₂ = 𝐂₂
