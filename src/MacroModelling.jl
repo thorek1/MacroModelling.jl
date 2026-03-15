@@ -5895,6 +5895,11 @@ function create_second_order_auxiliary_matrices(constants::constants)
         sigma_row_lookup[r] = true
     end
     so.𝛔𝐂₂_nonempty_row_as_kron_colmask = findall(sigma_row_lookup)
+    # Pre-transposed constants for rrule pullback (computed once)
+    so.𝛔ᵀ = sparse(𝛔')
+    so.𝐂₂ᵀ = sparse(𝐂₂')
+    so.𝐔₂ᵀ = sparse(𝐔₂')
+    so.𝐔∇₂ᵀ = sparse(𝐔∇₂')
     return so
 end
 
@@ -6028,6 +6033,16 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐏₁ᵣ̃ = 𝐏₁ᵣ̃
     to.𝐏₂ᵣ̃ = 𝐏₂ᵣ̃
     to.𝐒𝐏 = 𝐒𝐏
+    # Pre-transposed constants for rrule pullback (computed once)
+    to.𝐂₃ᵀ = sparse(𝐂₃')
+    to.𝐔₃ᵀ = sparse(𝐔₃')
+    to.𝐏𝐂₃ᵀ = sparse((to.𝐏𝐂₃)')
+    to.𝐏₁ₗᵀ = sparse(𝐏₁ₗ')
+    to.𝐏₁ᵣᵀ = sparse(𝐏₁ᵣ')
+    to.𝐏₁ₗ̄ᵀ = sparse(𝐏₁ₗ̄')
+    to.𝐏₂ₗ̄ᵀ = sparse(𝐏₂ₗ̄')
+    to.𝐏₁ᵣ̃ᵀ = sparse(𝐏₁ᵣ̃')
+    to.𝐏₂ᵣ̃ᵀ = sparse(𝐏₂ᵣ̃')
     return to
 end
 
@@ -8337,6 +8352,37 @@ end # dispatch_doctor
 noop_state_update(state::AbstractVector{<:Real}, ::AbstractVector{<:Real}) = state
 noop_state_update(state::AbstractVector{<:AbstractVector{<:Real}}, ::AbstractVector{<:Real}) = state
 
+function initialize_pruned_state(state::AbstractVector{T}, n_states::Int) where T <: Real
+    return [Vector{T}(state), zeros(T, n_states)]
+end
+
+function initialize_pruned_state(state::AbstractVector{T}, n_states::Int, ::Val{3}) where T <: Real
+    return [Vector{T}(state), zeros(T, n_states), zeros(T, n_states)]
+end
+
+function pruned_second_order_state_update(pruned_states::AbstractVector{<:AbstractVector{T}}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
+    aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+    aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+end
+
+function pruned_second_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
+    return pruned_second_order_state_update(initialize_pruned_state(state, n_states), shock, past_idx, n_states, 𝐒₁, 𝐒₂)
+end
+
+function pruned_third_order_state_update(pruned_states::AbstractVector{<:AbstractVector{T}}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂, 𝐒₃) where {T <: Real, S <: Real}
+    aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+    aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
+    aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+    aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
+    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+end
+
+function pruned_third_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂, 𝐒₃) where {T <: Real, S <: Real}
+    return pruned_third_order_state_update(initialize_pruned_state(state, n_states, Val(3)), shock, past_idx, n_states, 𝐒₁, 𝐒₂, 𝐒₃)
+end
+
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update
     pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
@@ -8372,25 +8418,12 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif algorithm == :pruned_second_order
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
-            end
+            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂)
         elseif algorithm == :pruned_third_order
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-            end
+            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂, 𝐒₃)
         end
     else
         if algorithm == :first_order
@@ -8420,26 +8453,13 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
-            end
+            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂)
         elseif algorithm == :pruned_third_order
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-            end
+            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
         end
     end
 

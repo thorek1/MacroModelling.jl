@@ -283,6 +283,11 @@ mutable struct second_order_indices
     𝐈ₙ₋::SparseMatrixCSC{Int}            # Past-state row selector from I(nVars)
     ∇₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
     𝛔𝐂₂_nonempty_row_as_kron_colmask::Vector{Int}    # Non-empty rows of σc₂, mapped to colmask in compressed_kron²
+    # Pre-transposed constants for rrule pullback
+    𝛔ᵀ::SparseMatrixCSC{Int}             # 𝛔'
+    𝐂₂ᵀ::SparseMatrixCSC{Int}            # 𝐂₂'
+    𝐔₂ᵀ::SparseMatrixCSC{Int}            # 𝐔₂'
+    𝐔∇₂ᵀ::SparseMatrixCSC{Int}           # 𝐔∇₂'
 
     # =========================================================================
     # COMPUTATIONAL CONSTANTS (for efficient sparse operations)
@@ -375,6 +380,17 @@ mutable struct third_order_indices
     𝐏₁ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 1
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 2
     𝐒𝐏::SparseMatrixCSC{Int}             # Combined selection-permutation
+
+    # Pre-transposed constants (computed once, reused by rrule pullback)
+    𝐂₃ᵀ::SparseMatrixCSC{Int}             # 𝐂₃'
+    𝐔₃ᵀ::SparseMatrixCSC{Int}             # 𝐔₃'
+    𝐏𝐂₃ᵀ::SparseMatrixCSC{Int}            # 𝐏𝐂₃'
+    𝐏₁ₗᵀ::SparseMatrixCSC{Int}            # 𝐏₁ₗ'
+    𝐏₁ᵣᵀ::SparseMatrixCSC{Int}            # 𝐏₁ᵣ'
+    𝐏₁ₗ̄ᵀ::SparseMatrixCSC{Int}            # 𝐏₁ₗ̄'
+    𝐏₂ₗ̄ᵀ::SparseMatrixCSC{Int}            # 𝐏₂ₗ̄'
+    𝐏₁ᵣ̃ᵀ::SparseMatrixCSC{Int}            # 𝐏₁ᵣ̃'
+    𝐏₂ᵣ̃ᵀ::SparseMatrixCSC{Int}            # 𝐏₂ᵣ̃'
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS

@@ -5273,11 +5273,11 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # sp𝐒₁₊╱𝟎t = choose_matrix_format(𝐒₁₊╱𝟎', density_threshold = 1.0)
 
-    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
+    𝛔t = M₂.𝛔ᵀ
 
-    𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
+    𝐔₂t = M₂.𝐔₂ᵀ
 
-    𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = 1.0)
+    𝐂₂t = M₂.𝐂₂ᵀ
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
@@ -5911,10 +5911,8 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- B matrix -----------------------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)
 
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
@@ -5956,8 +5954,6 @@ function rrule(::typeof(calculate_third_order_solution),
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
     𝐗₃ += ∇₁₊ * mm_𝐒₂_kron * M₃.𝐏𝐂₃
 
-    # Pullback-only intermediate: kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) needed for ∂𝐒₁₋╱𝟏ₑ
-    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
     𝐗₃ += ∇₃ * tmpkron22
 
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
@@ -5997,25 +5993,19 @@ function rrule(::typeof(calculate_third_order_solution),
     end
 
     # --- precompute transposed constants for pullback -----------------------------
-    𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
-    𝐏𝐂₃t = choose_matrix_format(M₃.𝐏𝐂₃', density_threshold = 1.0)
-    𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
-    𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
-    𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
-    𝐔₂t  = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
+    # Use pre-cached transposes from constants (computed once at model compile time)
+    𝐏𝐂₃t = M₃.𝐏𝐂₃ᵀ
+    𝛔t  = M₂.𝛔ᵀ
+    𝐔∇₂t = M₂.𝐔∇₂ᵀ
+    𝐔₂t  = M₂.𝐔₂ᵀ
 
-    # Materialized transposes of permutation matrices (avoid lazy transposes in pullback)
-    M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃')
-    M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃')
-    M₃𝐏₁ₗ̄t = choose_matrix_format(M₃.𝐏₁ₗ̄')
-    M₃𝐏₂ₗ̄t = choose_matrix_format(M₃.𝐏₂ₗ̄')
-    M₃𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ')
-    M₃𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ')
+    # Use pre-cached transposes of permutation matrices (for out2 terms a,b pullback)
+    M₃𝐏₁ₗt = M₃.𝐏₁ₗᵀ
+    M₃𝐏₁ᵣt = M₃.𝐏₁ᵣᵀ
 
     # Materialized transposes of forward-pass intermediates
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
-    tmpkron1t = choose_matrix_format(tmpkron1')
     D_ab_t = choose_matrix_format(D_ab')
     tmpkron22_t = choose_matrix_format(tmpkron22')
     ck3_aux_mat_t = choose_matrix_format(ck3_aux_mat')
@@ -6024,8 +6014,6 @@ function rrule(::typeof(calculate_third_order_solution),
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎')
     S2p0_sigma_t = choose_matrix_format(S2p0_sigma')
 
-    # Pre-materialized kron product transposes (avoid re-computing in pullback)
-    kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
 
     # --- ensure pullback workspace buffers ---
@@ -6068,22 +6056,23 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂∇₁            = ℂ.∂∇₁_3rd;  fill!(∂∇₁, zero(S))
         ∂𝐒₁₃           = ℂ.∂𝐒₁_3rd;  fill!(∂𝐒₁₃, zero(S))
 
-        # Sparse-preserving gradient accumulators (fresh allocation each call)
-        ∂𝐒₂            = zero(𝐒₂)
-        ∂𝐒₁₊╱𝟎_tmp    = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂𝐒₂₊╱𝟎        = zeros(S, size(𝐒₂₊╱𝟎))
-        ∂L_c           = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂R_c           = zeros(S, size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
-        ∂L_d           = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂R_d           = zeros(S, size(S2p0_sigma))
-        ∂𝐒₁₋╱𝟏ₑ_t8   = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₂₋╱𝟎        = zeros(S, size(𝐒₂₋╱𝟎))
-        ∂𝐒₁₋╱𝟏ₑ₃     = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₁₊╱𝟎₃      = zero(𝐒₁₊╱𝟎)
-        ∂S1S1_stack    = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
-        ∂aux           = zero(aux)
-        ∂𝛔_discard     = zeros(S, size(M₂.𝛔))
-        ∂𝛔_discard2    = zeros(S, size(M₂.𝛔))
+        # Sparse-preserving gradient accumulators (reuse workspace buffers)
+        ∂𝐒₂            = zero(𝐒₂)  # sparse — must stay fresh
+
+        ∂𝐒₁₊╱𝟎_tmp    = ℂ.∂𝐒₁₊╱𝟎_tmp_3rd;  fill!(∂𝐒₁₊╱𝟎_tmp, zero(S))
+        ∂𝐒₂₊╱𝟎        = ℂ.∂𝐒₂₊╱𝟎_3rd;       fill!(∂𝐒₂₊╱𝟎, zero(S))
+        ∂L_c           = ℂ.∂L_c_3rd;          fill!(∂L_c, zero(S))
+        ∂R_c           = ℂ.∂R_c_3rd;          fill!(∂R_c, zero(S))
+        ∂L_d           = ℂ.∂L_d_3rd;          fill!(∂L_d, zero(S))
+        ∂R_d           = ℂ.∂R_d_3rd;          fill!(∂R_d, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ_t8   = ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd;  fill!(∂𝐒₁₋╱𝟏ₑ_t8, zero(S))
+        ∂𝐒₂₋╱𝟎        = ℂ.∂𝐒₂₋╱𝟎_3rd;       fill!(∂𝐒₂₋╱𝟎, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ₃     = ℂ.∂𝐒₁₋╱𝟏ₑ_3rd;     fill!(∂𝐒₁₋╱𝟏ₑ₃, zero(S))
+        ∂𝐒₁₊╱𝟎₃      = ℂ.∂𝐒₁₊╱𝟎_3rd;       fill!(∂𝐒₁₊╱𝟎₃, zero(S))
+        ∂S1S1_stack    = ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd; fill!(∂S1S1_stack, zero(S))
+        ∂aux           = ℂ.∂aux_3rd;          fill!(∂aux, zero(S))
+        ∂𝛔_discard     = ℂ.∂𝛔_discard_3rd;   fill!(∂𝛔_discard, zero(S))
+        ∂𝛔_discard2    = ℂ.∂tmpkron0_σ_3rd;   fill!(∂𝛔_discard2, zero(S))
 
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
         # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
@@ -6191,7 +6180,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # out2_term8 = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         # ∂(∇₁₊·𝐒₂·K) w.r.t. 𝐒₂ = ∇₁₊ᵀ · ∂out2 · Kᵀ
         tmp_t8 = ∇₁₊' * ∂out2
-        ∂𝐒₂ = ∂𝐒₂ + tmp_t8 * kron_s1_s2'
+        ∂𝐒₂ = ∂𝐒₂ + mat_mult_kron(tmp_t8, collect(𝐒₁₋╱𝟏ₑ'), collect(𝐒₂₋╱𝟎'))
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
         # ∂kron_term8 = (∇₁₊·𝐒₂)ᵀ · ∂out2
@@ -6262,17 +6251,14 @@ function rrule(::typeof(calculate_third_order_solution),
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
-        # --- ∂𝐒₁₋╱𝟏ₑ : from B via tmpkron_σ = kron(B=𝐒₁₋╱𝟏ₑ, A=𝛔) ---
-        ∂B_pre = 𝐔₃t * ∂B_from_sylv
-        ∂B_pre_raw = ∂B_pre * 𝐂₃t
-        ∂tmpkron_σ₃ = ∂B_pre_raw + M₃𝐏₁ₗ̄t * ∂B_pre_raw * M₃𝐏₁ᵣ̃t + M₃𝐏₂ₗ̄t * ∂B_pre_raw * M₃𝐏₂ᵣ̃t
-        fill_kron_adjoint!(∂𝛔_discard, ∂𝐒₁₋╱𝟏ₑ₃, ∂tmpkron_σ₃, Matrix{S}(M₂.𝛔), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
+        compressed_permuted_mixed_kron_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
         compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
-        tmp_a = tmpkron1t * ∇₂t_∂out2
+        tmp_a = collect(mat_mult_kron(collect(∇₂t_∂out2'), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎)))'
         ∂tmpkron2 = tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, ∂tmpkron2, Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(M₂.𝛔))
 

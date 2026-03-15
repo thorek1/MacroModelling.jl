@@ -25,6 +25,11 @@ function Second_order_indices()
         empty_sparse_int,
         Int[],               # ∇₂_nonempty_col_as_kron_rowmask
         Int[],               # 𝛔𝐂₂_nonempty_row_as_kron_colmask
+        # Pre-transposed constants for rrule pullback
+        empty_sparse_int,    # 𝛔ᵀ
+        empty_sparse_int,    # 𝐂₂ᵀ
+        empty_sparse_int,    # 𝐔₂ᵀ
+        empty_sparse_int,    # 𝐔∇₂ᵀ
         # Computational index caches (BitVectors)
         BitVector(),         # s_in_s⁺
         BitVector(),         # s_in_s
@@ -89,6 +94,16 @@ function Third_order_indices()
         empty_sparse_int,    # 𝐏₁ᵣ̃
         empty_sparse_int,    # 𝐏₂ᵣ̃
         empty_sparse_int,    # 𝐒𝐏
+        # Pre-transposed constants for rrule pullback
+        empty_sparse_int,    # 𝐂₃ᵀ
+        empty_sparse_int,    # 𝐔₃ᵀ
+        empty_sparse_int,    # 𝐏𝐂₃ᵀ
+        empty_sparse_int,    # 𝐏₁ₗᵀ
+        empty_sparse_int,    # 𝐏₁ᵣᵀ
+        empty_sparse_int,    # 𝐏₁ₗ̄ᵀ
+        empty_sparse_int,    # 𝐏₂ₗ̄ᵀ
+        empty_sparse_int,    # 𝐏₁ᵣ̃ᵀ
+        empty_sparse_int,    # 𝐏₂ᵣ̃ᵀ
         # Conditional forecast index caches
         Int[],               # var_vol³_idxs
         Int[],               # shock_idxs2
@@ -276,7 +291,7 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                              verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
-                    Sylvester_workspace(S = T, T = S),  # sylvester
+                    Sylvester_workspace(S = S, T = T),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
@@ -1378,6 +1393,23 @@ function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::
     size(ℂ.∂𝐗₃_pre_3rd)        == (n, n_𝐂₃_r)      || (ℂ.∂𝐗₃_pre_3rd = zeros(S, n, n_𝐂₃_r))
     size(ℂ.∂out2_3rd)          == (n, n_out2_c)      || (ℂ.∂out2_3rd = zeros(S, n, n_out2_c))
     size(ℂ.∇₂t_∂out2_3rd)     == (n_∇₂, n_out2_c)  || (ℂ.∇₂t_∂out2_3rd = zeros(S, n_∇₂, n_out2_c))
+
+    # Pullback gradient accumulator buffers (zeroed at start of each pullback call)
+    size(ℂ.∂𝐒₁₊╱𝟎_tmp_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_tmp_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂𝐒₂₊╱𝟎_3rd)        == (n_stack, nₑ₋^2)  || (ℂ.∂𝐒₂₊╱𝟎_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂L_c_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂L_c_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂R_c_3rd)           == (n_stack, nₑ₋^2)  || (ℂ.∂R_c_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂L_d_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂L_d_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂R_d_3rd)           == (n_stack, nₑ₋^2)  || (ℂ.∂R_d_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd)   == (nₑ₋, nₑ₋)       || (ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd = zeros(S, nₑ₋, nₑ₋))
+    size(ℂ.∂𝐒₂₋╱𝟎_3rd)        == (nₑ₋, nₑ₋^2)     || (ℂ.∂𝐒₂₋╱𝟎_3rd = zeros(S, nₑ₋, nₑ₋^2))
+    size(ℂ.∂𝐒₁₋╱𝟏ₑ_3rd)      == (nₑ₋, nₑ₋)       || (ℂ.∂𝐒₁₋╱𝟏ₑ_3rd = zeros(S, nₑ₋, nₑ₋))
+    size(ℂ.∂𝐒₁₊╱𝟎_3rd)        == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂𝐒₁₊╱𝟎_tk0_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_tk0_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd) == (n_stack, nₑ₋) || (ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂aux_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂aux_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂𝛔_discard_3rd)    == (nₑ₋^2, nₑ₋^2)   || (ℂ.∂𝛔_discard_3rd = zeros(S, nₑ₋^2, nₑ₋^2))
+    size(ℂ.∂tmpkron0_σ_3rd)   == (nₑ₋^2, nₑ₋^2)   || (ℂ.∂tmpkron0_σ_3rd = zeros(S, nₑ₋^2, nₑ₋^2))
 
     return ℂ
 end
