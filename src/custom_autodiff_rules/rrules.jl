@@ -5787,7 +5787,7 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatr
     # generically non-zero even when X[i]=0.
     # However, we can skip rows that have no stored entries in sparse ∂Y (optimization).
     sparse_rows = if ∂Y isa SparseMatrixCSC
-        Set(rowvals(∂Y))
+        Set(SparseArrays.rowvals(∂Y))
     else
         Set(1:size(∂Y, 1))
     end

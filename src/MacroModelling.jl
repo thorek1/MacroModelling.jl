@@ -8334,7 +8334,8 @@ end
 
 end # dispatch_doctor
 
-noop_state_update(::Float64, ::Float64) = nothing
+noop_state_update(state::AbstractVector{<:Real}, ::AbstractVector{<:Real}) = state
+noop_state_update(state::AbstractVector{<:AbstractVector{<:Real}}, ::AbstractVector{<:Real}) = state
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update

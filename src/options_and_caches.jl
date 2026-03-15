@@ -263,9 +263,9 @@ Create a pre-allocated workspace for first-order perturbation and related AD pat
 """
 function First_order_workspace(; T::Type = Float64, S::Type = Float64)
     empty_qr_factors = zeros(T, 0, 0)
-    empty_qr_ws = FastLapackInterface.QRWs(empty_qr_factors)
+    empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
     empty_qr_rhs = zeros(T, 0, 0)
-    empty_qr_orm_ws = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
+    empty_qr_orm_ws::FastLapackInterface.QROrmWs = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
     empty_lu_factors = zeros(T, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
     empty_sparse = spzeros(T, 0, 0)
