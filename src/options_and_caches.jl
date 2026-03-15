@@ -291,7 +291,7 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                              verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
-                    Sylvester_workspace(S = S, T = T),  # sylvester
+                    Sylvester_workspace(S = T, T = S),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(S, 0, 0),  # X̃_first_order
                     zeros(S, 0, 0),  # p_tmp
