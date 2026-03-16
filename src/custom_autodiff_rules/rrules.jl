@@ -5279,6 +5279,10 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐂₂t = M₂.𝐂₂ᵀ
 
+    Bt = choose_matrix_format(B', density_threshold = 1.0)
+    At = choose_matrix_format(A', density_threshold = 1.0)
+    𝐒₂_stable_t = choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
+
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
     # end # timeit_debug
@@ -5352,9 +5356,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C = choose_matrix_format(∂C) # Dense
 
-        ∂A = ∂C * B' * 𝐒₂_stable' # Dense
+        ∂A = ∂C * Bt * 𝐒₂_stable_t
 
-        ∂B = 𝐒₂_stable' * A' * ∂C # Dense
+        ∂B = 𝐒₂_stable_t * At * ∂C
 
         # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
         ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
@@ -5785,27 +5789,31 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatr
     # indices, not just nonzero ones.  The gradient at a zero entry X[r,c] can
     # be non-zero because  ∂(X[i]*X[j]*X[k])/∂X[i] = X[j]*X[k]  which is
     # generically non-zero even when X[i]=0.
-    # However, we can skip rows that have no stored entries in sparse ∂Y (optimization).
-    sparse_rows = if ∂Y isa SparseMatrixCSC
-        Set(SparseArrays.rowvals(∂Y))
+    # However, we can skip columns that have no stored entries in sparse ∂Y.
+    sparse_cols = if ∂Y isa SparseMatrixCSC
+        colmask = falses(size(∂Y, 2))
+        @inbounds for col in 1:size(∂Y, 2)
+            colmask[col] = ∂Y.colptr[col] < ∂Y.colptr[col + 1]
+        end
+        colmask
     else
-        Set(1:size(∂Y, 1))
+        trues(size(∂Y, 2))
     end
-    for i1 in 1:n_rows, j1 in 1:i1
-        for k1 in 1:j1
-            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-            row ∉ sparse_rows && continue
-            # divisor for row symmetry
-            if i1 == j1
-                divisor = (j1 == k1) ? 6 : 2
-            else
-                divisor = (j1 == k1 || i1 == k1) ? 2 : 1
-            end
-            for i2 in 1:n_cols, j2 in 1:i2
-                @inbounds for k2 in 1:j2
-                    col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+    for i2 in 1:n_cols, j2 in 1:i2
+        for k2 in 1:j2
+            col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+            sparse_cols[col] || continue
+            for i1 in 1:n_rows, j1 in 1:i1
+                @inbounds for k1 in 1:j1
+                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                     g = ∂Y[row, col]
                     iszero(g) && continue
+                    # divisor for row symmetry
+                    if i1 == j1
+                        divisor = (j1 == k1) ? 6 : 2
+                    else
+                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                    end
                     g_d = g / divisor
                     aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
                     aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
@@ -6019,6 +6027,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- ensure pullback workspace buffers ---
     ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
 
+    tmpkron22_ck3_aux_mat_t = choose_matrix_format(tmpkron22_t + ck3_aux_mat_t)
     # =========================================================================
     #   PULLBACK
     # =========================================================================
@@ -6081,6 +6090,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
         ℒ.mul!(∂𝐗₃, A', ∂C_adj)
         ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
+        # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
         # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
         # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
         ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj, density_threshold = 1.0, min_length = 0)
@@ -6095,7 +6105,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # =====================================================================
         # 𝐗₃ = out2 * 𝐏𝐂₃ + ∇₃ * tmpkron22 + ∇₃ * ck3_aux_mat
         # ∇₃ has two direct linear terms; out2 maps through 𝐏𝐂₃.
-        ∂∇₃ = ∂𝐗₃ * tmpkron22_t + ∂𝐗₃ * ck3_aux_mat_t
+        ∂∇₃ = ∂𝐗₃ * tmpkron22_ck3_aux_mat_t
         # =====================================================================
         #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃_pre → 𝐗₃)
         # =====================================================================
@@ -6133,7 +6143,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- terms (a) and (b): through kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) via D_ab ---
         # ∂kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) = ∇₂ᵀ * ∂𝐗₃ * D_ab' (combines terms a+b)
-        ∂tmpkron1 = ∇₂t * ∂mid_ab
+        ∂tmpkron1 = (∇₂t * ∂mid_ab)
+        # ∂tmpkron1 = sparse(∇₂t * ∂mid_ab)
 
         # Force only the cotangent argument onto the dense fill_kron_adjoint! path here
         # and in the analogous calls below. The primal factors may stay sparse/abstract,
@@ -6146,9 +6157,10 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- term (c): through ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 ---
         # ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)  →  ∂kron_c = ∇₂ᵀ · ∂out2 (reuse shared intermediate)
-        ∂kron_c = ∇₂t_∂out2
+        # ∂kron_c = sparse(∇₂t_∂out2)
+        ∂kron_c = (∇₂t_∂out2)
         # kron(L, R) pullback  where L = ⎸𝐒₁..⎹, R = ⎸𝐒₂k..⎹
-        fill_kron_adjoint!(∂R_c, ∂L_c, ∂kron_c, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        fill_kron_adjoint!(∂R_c, ∂L_c, ∂kron_c, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) # TODO: see if you can find ways to speed up fill_kron_adjoint!, this seems to be the bottleneck in this function. see if you can make it fast while retaining sparsity.
 
         # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [ (𝐒₂·kron𝐒₁₋╱𝟏ₑ + 𝐒₁·[𝐒₂[i₋,:];0])[i₊,:] ; 𝐒₂ ; 0 ]
         # Top block (rows 1:n₊): depends on 𝐒₂ through 𝐒₂·kron𝐒₁₋╱𝟏ₑ and 𝐒₁·[𝐒₂[i₋,:];0]
@@ -6158,7 +6170,7 @@ function rrule(::typeof(calculate_third_order_solution),
         @views ∂𝐒₂[i₊,:] .+= ∂top_block * kron𝐒₁₋╱𝟏ₑ'
         # From 𝐒₁·[𝐒₂[i₋,:];0] → ∂𝐒₂[i₋,:] += 𝐒₁' * I[:,i₊] * ∂top_block
         #   (since [𝐒₂[i₋,:];0] pads with zeros, only i₋ rows of 𝐒₂ contribute)
-        ∂𝐒₂_padded = 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_block   # n₋+1+nₑ × nₑ₋²
+        ∂𝐒₂_padded = 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_block   # TODO: In general check if there are more optimizations that can be carried over from the non-AD call. # n₋+1+nₑ × nₑ₋²
         @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂_padded[1:n₋, :]
 
         # Middle block (rows n₊_len+1 : n₊_len+n): directly 𝐒₂
@@ -6184,7 +6196,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
         # ∂kron_term8 = (∇₁₊·𝐒₂)ᵀ · ∂out2
-        ∂kron_term8 = (∇₁₊ * 𝐒₂)' * ∂out2
+        # ∂kron_term8 = sparse((∇₁₊ * 𝐒₂)' * ∂out2)
+        ∂kron_term8 = ((∇₁₊ * 𝐒₂)' * ∂out2)
         fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∂kron_term8, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ)
 
         # 𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; 0]  →  ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
@@ -6208,7 +6221,8 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
 
         # step 2: ∂ through ∇₁₊
-        ∂∇₁₊ = spinv' * ∂A                   # from A = spinv · ∇₁₊ (allocating → dense)
+        ∂∇₁₊ = ℂ.∂∇₁₊_3rd
+        ℒ.mul!(∂∇₁₊, spinv', ∂A)  # from A = spinv · ∇₁₊
         ℒ.mul!(∂∇₁₊, ∂out2, mm_𝐒₂_kron_t, 1, 1)  # from out2 += ∇₁₊ · mm_𝐒₂_kron
 
         ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
@@ -6221,9 +6235,11 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂L_d, ∂S1S1_stack)
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
-        ∂tmpkron22 = collect(∇₃t * ∂𝐗₃)
-        ∂S1S1_from_ck = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂S1p0_kron_sigma = zeros(S, size(S1p0_kron_sigma))
+        ∂tmpkron22 = (∇₃t * ∂𝐗₃)
+        ∂S1S1_from_ck = ℂ.∂S1S1_from_ck_3rd
+        fill!(∂S1S1_from_ck, zero(S))
+        ∂S1p0_kron_sigma = ℂ.∂S1p0_kron_sigma_3rd
+        fill!(∂S1p0_kron_sigma, zero(S))
         compressed_permuted_mixed_kron_pullback!(∂S1S1_from_ck,
                              ∂S1p0_kron_sigma,
                              ∂tmpkron22,
@@ -6231,9 +6247,12 @@ function rrule(::typeof(calculate_third_order_solution),
                              S1p0_kron_sigma;
                              tol = opts.tol.droptol)
 
-        ∂S1p0_kron = ∂S1p0_kron_sigma * 𝛔t
-        ∂S1p0_left = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂S1p0_right = zeros(S, size(𝐒₁₊╱𝟎))
+        # ∂S1p0_kron = sparse(∂S1p0_kron_sigma * 𝛔t)
+        ∂S1p0_kron = (∂S1p0_kron_sigma * 𝛔t)
+        ∂S1p0_left = ℂ.∂S1p0_left_3rd
+        fill!(∂S1p0_left, zero(S))
+        ∂S1p0_right = ℂ.∂S1p0_right_3rd
+        fill!(∂S1p0_right, zero(S))
         fill_kron_adjoint!(∂S1p0_left, ∂S1p0_right, ∂S1p0_kron, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
 
         ℒ.axpy!(1, ∂S1S1_from_ck, ∂S1S1_stack)
@@ -6244,7 +6263,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # call below. The primal matrix may stay sparse because the helper densifies it
         # internally, but sparse cotangents can skip valid structurally-zero adjoints.
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
-        ∂ck3_aux = collect(∇₃t * ∂𝐗₃)
+        ∂ck3_aux = collect(∇₃t * ∂𝐗₃) # this one should be dense, makes a difference
         compressed_kron³_pullback!(∂aux, ∂ck3_aux, aux)
         ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
@@ -6258,15 +6277,17 @@ function rrule(::typeof(calculate_third_order_solution),
         compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
-        tmp_a = collect(mat_mult_kron(collect(∇₂t_∂out2'), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎)))'
-        ∂tmpkron2 = tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, ∂tmpkron2, Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(M₂.𝛔))
+        tmp_a = collect(mat_mult_kron(collect(∇₂t_∂out2'), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎))') # TODO: see how to speed this up also for sparse inputs. seems mach faster for dense ones
+        # ∂tmpkron2 = sparse(tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt) 
+        ∂tmpkron2 = (tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt)# TODO: i think this is handled differently in the primal call and can be done in one go here as well (as in the permutation matrices are not used anymore, and i think it shoudnt be necessary to be used here either)
+        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, ∂tmpkron2, 𝐒₁₋╱𝟏ₑ, collect(M₂.𝛔))
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from term 8 kron (already computed for ∂𝐒₂) ---
         ℒ.axpy!(1, ∂𝐒₁₋╱𝟏ₑ_t8, ∂𝐒₁₋╱𝟏ₑ₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from kron𝐒₁₋╱𝟏ₑ in ⎸𝐒₂k..⎹ top block ---
-        ∂kron𝐒₁₋╱𝟏ₑ₃ = 𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block
+        # ∂kron𝐒₁₋╱𝟏ₑ₃ = sparse(𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block)
+        ∂kron𝐒₁₋╱𝟏ₑ₃ = (𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block)
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝐒₁₋╱𝟏ₑ₃, ∂kron𝐒₁₋╱𝟏ₑ₃, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁ : from 𝐒₁·[𝐒₂[i₋,:];0] in ⎸𝐒₂k..⎹ top block ---

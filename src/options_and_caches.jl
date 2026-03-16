@@ -250,6 +250,10 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂tmpkron0_σ_3rd
                         zeros(T,0,0),  # ∂aux_3rd
                         zeros(T,0,0),  # ∂𝛔_discard_3rd
+                        zeros(T,0,0),  # ∂S1S1_from_ck_3rd
+                        zeros(T,0,0),  # ∂S1p0_kron_sigma_3rd
+                        zeros(T,0,0),  # ∂S1p0_left_3rd
+                        zeros(T,0,0),  # ∂S1p0_right_3rd
                         # Third order pullback intermediate product buffers (for mul!)
                         zeros(T,0,0),  # ∂A_3rd
                         zeros(T,0,0),  # ∂B_sylv_3rd
@@ -1410,6 +1414,11 @@ function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::
     size(ℂ.∂aux_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂aux_3rd = zeros(S, n_stack, nₑ₋))
     size(ℂ.∂𝛔_discard_3rd)    == (nₑ₋^2, nₑ₋^2)   || (ℂ.∂𝛔_discard_3rd = zeros(S, nₑ₋^2, nₑ₋^2))
     size(ℂ.∂tmpkron0_σ_3rd)   == (nₑ₋^2, nₑ₋^2)   || (ℂ.∂tmpkron0_σ_3rd = zeros(S, nₑ₋^2, nₑ₋^2))
+    size(ℂ.∂∇₁₊_3rd)          == (n, n)             || (ℂ.∂∇₁₊_3rd = zeros(S, n, n))
+    size(ℂ.∂S1S1_from_ck_3rd) == (n_stack, nₑ₋)    || (ℂ.∂S1S1_from_ck_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂S1p0_kron_sigma_3rd) == (n_stack^2, σ_c) || (ℂ.∂S1p0_kron_sigma_3rd = zeros(S, n_stack^2, σ_c))
+    size(ℂ.∂S1p0_left_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂S1p0_left_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂S1p0_right_3rd)   == (n_stack, nₑ₋)    || (ℂ.∂S1p0_right_3rd = zeros(S, n_stack, nₑ₋))
 
     return ℂ
 end

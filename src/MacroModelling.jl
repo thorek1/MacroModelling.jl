@@ -1178,8 +1178,8 @@ end
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
                             ∂B::AbstractMatrix{R}, 
                             ∂X::AbstractSparseMatrix{R}, 
-                            A::AbstractMatrix{R}, 
-                            B::AbstractMatrix{R}) where R <: Real
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
     @assert size(∂A) == size(A)
     @assert size(∂B) == size(B)
     @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
@@ -1223,8 +1223,8 @@ end
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
                             ∂B::AbstractMatrix{R}, 
                             ∂X::DenseMatrix{R}, 
-                            A::AbstractMatrix{R}, 
-                            B::AbstractMatrix{R}) where R <: Real
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
     @assert size(∂A) == size(A)
     @assert size(∂B) == size(B)
     @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
@@ -1245,6 +1245,70 @@ function fill_kron_adjoint!(∂A::AbstractMatrix{R},
     for e in eachslice(re∂X; dims = (2,4))
         @inbounds ∂B[ei] += ℒ.dot(A,e)
         ei += 1
+    end
+end
+
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                            ∂B::AbstractMatrix{R},
+                            ∂X::DenseMatrix{R},
+                            A::SparseMatrixCSC{TA, Int},
+                            B::SparseMatrixCSC{TB, Int}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+
+    n1, m1 = size(B)
+    n2, m2 = size(A)
+
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval = A.nzval
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval = B.nzval
+
+    # ∂A[k,l] += Σ_{i,j} B[i,j] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for l in 1:m2
+        base_col_l = l
+        for k in 1:n2
+            acc = zero(R)
+            for j in 1:m1
+                b_start = B_colptr[j]
+                b_stop = B_colptr[j + 1] - 1
+                col_idx = (j - 1) * m2 + base_col_l
+                for bidx in b_start:b_stop
+                    i = B_rowval[bidx]
+                    row_idx = (i - 1) * n2 + k
+                    acc += R(B_nzval[bidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂A[k, l] += acc
+        end
+    end
+
+    # ∂B[i,j] += Σ_{k,l} A[k,l] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for j in 1:m1
+        b_start = B_colptr[j]
+        b_stop = B_colptr[j + 1] - 1
+        for bidx in b_start:b_stop
+            i = B_rowval[bidx]
+            row_base = (i - 1) * n2
+            col_base = (j - 1) * m2
+            acc = zero(R)
+            for l in 1:m2
+                a_start = A_colptr[l]
+                a_stop = A_colptr[l + 1] - 1
+                col_idx = col_base + l
+                for aidx in a_start:a_stop
+                    k = A_rowval[aidx]
+                    row_idx = row_base + k
+                    acc += R(A_nzval[aidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂B[i, j] += acc
+        end
     end
 end
 
