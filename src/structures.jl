@@ -1111,7 +1111,6 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂𝐒₁₊╱𝟎_tk0_3rd::Matrix{F}
     ∂tmpkron0_σ_3rd::Matrix{F}
     ∂aux_3rd::Matrix{F}
-    ∂𝛔_discard_3rd::Matrix{F}
     ∂S1S1_from_ck_3rd::Matrix{F}
     ∂S1p0_kron_sigma_3rd::Matrix{F}
     ∂S1p0_left_3rd::Matrix{F}

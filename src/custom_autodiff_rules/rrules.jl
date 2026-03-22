@@ -5407,7 +5407,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 2" begin
 
         compressed_kron²_pullback!(∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎,
-                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
+                        tol = opts.tol.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                         colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask)
         
         # end # timeit_debug
@@ -5417,7 +5417,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 3" begin
 
         compressed_kron²_pullback!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
+                        tol = opts.tol.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
 
         # end # timeit_debug
 
@@ -5476,6 +5476,808 @@ function rrule(::typeof(calculate_second_order_solution),
     return (𝐒₂_stable, solved), second_order_solution_pullback
 end
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Kron-adjoint helper kernels (fill_kron_adjoint!, mul_fill_kron_adjoint!, etc.)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
+                            ∂B::AbstractMatrix{R}, 
+                            ∂X::AbstractSparseMatrix{R}, 
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(B)
+    n2, m2 = size(A)
+
+    # Access the sparse matrix internal representation
+    if ∂X isa SparseMatrixCSC
+        colptr = ∂X.colptr  # Column pointers
+        rowval = ∂X.rowval  # Row indices of non-zeros
+        nzval  = ∂X.nzval   # Non-zero values
+    else
+        colptr = ∂X.A.colptr  # Column pointers
+        rowval = ∂X.A.rowval  # Row indices of non-zeros
+        nzval  = ∂X.A.nzval   # Non-zero values
+    end
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            @inbounds begin
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
+                
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+                ∂B[i,j] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
+                            ∂B::AbstractMatrix{R}, 
+                            ∂X::DenseMatrix{R}, 
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    re∂X = reshape(∂X, 
+                    size(A,1), 
+                    size(B,1), 
+                    size(A,2), 
+                    size(B,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = (1,3))
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+
+    ei = 1
+    for e in eachslice(re∂X; dims = (2,4))
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                            ∂B::AbstractMatrix{R},
+                            ∂X::DenseMatrix{R},
+                            A::SparseMatrixCSC{TA, Int},
+                            B::SparseMatrixCSC{TB, Int}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+
+    n1, m1 = size(B)
+    n2, m2 = size(A)
+
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval = A.nzval
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval = B.nzval
+
+    # ∂A[k,l] += Σ_{i,j} B[i,j] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for l in 1:m2
+        base_col_l = l
+        for k in 1:n2
+            acc = zero(R)
+            for j in 1:m1
+                b_start = B_colptr[j]
+                b_stop = B_colptr[j + 1] - 1
+                col_idx = (j - 1) * m2 + base_col_l
+                for bidx in b_start:b_stop
+                    i = B_rowval[bidx]
+                    row_idx = (i - 1) * n2 + k
+                    acc += R(B_nzval[bidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂A[k, l] += acc
+        end
+    end
+
+    # ∂B[i,j] += Σ_{k,l} A[k,l] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for j in 1:m1
+        b_start = B_colptr[j]
+        b_stop = B_colptr[j + 1] - 1
+        for bidx in b_start:b_stop
+            i = B_rowval[bidx]
+            row_base = (i - 1) * n2
+            col_base = (j - 1) * m2
+            acc = zero(R)
+            for l in 1:m2
+                a_start = A_colptr[l]
+                a_stop = A_colptr[l + 1] - 1
+                col_idx = col_base + l
+                for aidx in a_start:a_stop
+                    k = A_rowval[aidx]
+                    row_idx = row_base + k
+                    acc += R(A_nzval[aidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint!(∂A::V, ∂B::V, ∂X::V, A::V, B::V) where V <: Vector{<: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    re∂X = reshape(∂X, 
+                    length(A), 
+                    length(B))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 1)
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 2)
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractArray{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(∂B)
+    n2, m2 = size(A)
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            @inbounds begin
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
+                
+                # Update ∂B and ∂A
+                ∂B[i,j] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1 = length(∂B)
+    n2 = size(A,1)
+    # println("hello")
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2) + 1
+                
+                # Update ∂B and ∂A
+                ∂B[i] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint_∂B!(∂X::DenseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+        
+    re∂X = reshape(∂X, 
+                    size(A,1), 
+                    length(∂B), 
+                    size(A,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 2)
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂A!(∂X::DenseMatrix{R}, ∂A::Vector{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂A) * length(B) "∂X must have the same length as kron(B,A)"
+        
+    re∂X = reshape(∂X, 
+                    length(∂A), 
+                    size(B,1), 
+                    size(B,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 1)
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMatrix{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(B)
+    n2 = size(∂A,1)
+    
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    const_n1n2m1 = n1 * n2 * m1
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+            end
+        end
+    end
+end
+
+
+# Fused operation: computes fill_kron_adjoint!(∂A, ∂B, M1*M2, A, B)
+# without materializing the full product M1*M2.
+# 
+# M1*M2 has shape (n1*n2, m1*m2) where kron(B,A) has the same shape,
+# B is (n1,m1) and A is (n2,m2).
+#
+# Processes column-blocks of M1*M2 to keep memory usage at O(n1*n2*block_size)
+# instead of O(n1*n2*m1*m2).
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::AbstractMatrix{TA},
+                                B::AbstractMatrix{TB};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2 "M1 rows ($(size(M1,1))) must equal n1*n2 ($(n1*n2))"
+    @assert size(M2, 2) == m1 * m2 "M2 cols ($(size(M2,2))) must equal m1*m2 ($(m1*m2))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n1 * n2
+
+    # Process one j-block at a time: columns (j-1)*m2+1 : j*m2
+    # Each block produces a (nrows × m2) matrix, reshaped to (n2, n1, m2)
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        # blk = M1 * M2[:, col_start:col_end]  — shape (n1*n2, m2)
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Reshape blk to (n2, n1, m2) for accumulation
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[:,l] += re_blk[:,i,l] * B[i,j] for all i → ∂A[:,l] += Σ_i B[i,j]*re_blk[:,i,l]
+        # = re_blk[:,:,l] * B[:,j]
+        for l in 1:m2
+            slice_l = view(re_blk, :, :, l)  # (n2, n1)
+            for i in 1:n1
+                bij = B[i, j]
+                if abs(bij) > tol
+                    for k in 1:n2
+                        ∂A[k, l] += bij * slice_l[k, i]
+                    end
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] = Σ_l dot(A[:,l], re_blk[:,i,l])
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for k in 1:n2
+                    acc += A[k, l] * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Sparse-factor variant: when A and B are sparse, exploit nzrange for dot products
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::SparseMatrixCSC{TA, Int},
+                                B::SparseMatrixCSC{TB, Int};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval  = B.nzval
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval  = A.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — only iterate nonzero B[i,j]
+        b_start = B_colptr[j]
+        b_stop  = B_colptr[j + 1] - 1
+        for l in 1:m2
+            for bidx in b_start:b_stop
+                i   = B_rowval[bidx]
+                bij = R(B_nzval[bidx])
+                for k in 1:n2
+                    ∂A[k, l] += bij * re_blk[k, i, l]
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — only iterate nonzero A[k,l]
+        for bidx in b_start:b_stop
+            i = B_rowval[bidx]
+            acc = zero(R)
+            for l in 1:m2
+                for aidx in A_colptr[l]:(A_colptr[l + 1] - 1)
+                    k = A_rowval[aidx]
+                    acc += R(A_nzval[aidx]) * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Mixed-sparsity variant: A is sparse, B is dense
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::SparseMatrixCSC{TA, Int},
+                                B::AbstractMatrix{TB};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval  = A.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — B is dense, use iszero guard
+        for l in 1:m2
+            for i in 1:n1
+                bij = B[i, j]
+                if abs(bij) > tol
+                    for k in 1:n2
+                        ∂A[k, l] += bij * re_blk[k, i, l]
+                    end
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — A is sparse, use nzrange
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for aidx in A_colptr[l]:(A_colptr[l + 1] - 1)
+                    k = A_rowval[aidx]
+                    acc += R(A_nzval[aidx]) * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Mixed-sparsity variant: A is dense, B is sparse
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::AbstractMatrix{TA},
+                                B::SparseMatrixCSC{TB, Int};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval  = B.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — B is sparse, only iterate nonzero B[i,j]
+        b_start = B_colptr[j]
+        b_stop  = B_colptr[j + 1] - 1
+        for l in 1:m2
+            for bidx in b_start:b_stop
+                i   = B_rowval[bidx]
+                bij = R(B_nzval[bidx])
+                for k in 1:n2
+                    ∂A[k, l] += bij * re_blk[k, i, l]
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — iterate all i (∂B is dense)
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for k in 1:n2
+                    akl = A[k, l]
+                    if abs(akl) > tol
+                        acc += akl * re_blk[k, i, l]
+                    end
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Variant that computes fill_kron_adjoint_∂A! for both the identity and a permuted
+# version of ∂X in a single sparse iteration pass.
+#
+# Equivalent to:
+#   fill_kron_adjoint_∂A!(∂X, ∂A, B)
+#   fill_kron_adjoint_∂A!(Pₗ * ∂X * Pᵣ, ∂A, B)
+# but avoids materializing the permuted matrix.
+#
+# perm_row and perm_col are integer vectors representing the row/column permutations
+# such that (Pₗ * ∂X * Pᵣ)[perm_row[row], perm_col[col]] = ∂X[row, col].
+# Accumulates the ∂A adjoint from ∂X + P₁ₗ * ∂X * P₁ᵣ where ∂X is the cotangent
+# of kron(B, A) and P₁ is the (2,1,3) tensor-axis swap on the d³ row/column space
+# (d = n_A = size(∂A,1)).  The permutation is baked in — no external vectors needed.
+#
+# Requires n_B = n_A² and m_B = m_A² (i.e. B is the d²×d² outer factor).
+function fill_kron_adjoint_∂A_with_perm!(∂X::AbstractSparseMatrix{R},
+                                          ∂A::AbstractMatrix{S},
+                                          B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂A) * length(B) "∂X must have the same length as kron(B,A)"
+
+    # Convention: kron(B, A) — A is inner (fastest-varying), B is outer
+    # Same decomposition as fill_kron_adjoint! reshape(∂X, n_A, n_B, m_A, m_B)
+    n_A = size(∂A, 1)
+    n_B = size(B, 1)
+    m_A = size(∂A, 2)
+
+    @assert n_B == n_A * n_A "fill_kron_adjoint_∂A_with_perm! requires n_B == n_A² for the (2,1,3) axis swap"
+    @assert size(B, 2) == m_A * m_A "fill_kron_adjoint_∂A_with_perm! requires m_B == m_A² for the (2,1,3) axis swap"
+
+    const_nAnB   = n_A * n_B
+    const_nAnBmA = n_A * n_B * m_A
+    nrows = size(∂X, 1)
+
+    colptr = ∂X.colptr
+    rowval = ∂X.rowval
+    nzval  = ∂X.nzval
+
+    @inbounds for col in 1:size(∂X, 2)
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            # --- Identity contribution (linear-index decomposition) ---
+            L = (col - 1) * nrows + row - 1
+            i_A = L % n_A + 1
+            i_B = (L ÷ n_A) % n_B + 1
+            j_A = (L ÷ const_nAnB) % m_A + 1
+            j_B = (L ÷ const_nAnBmA) + 1
+            ∂A[i_A, j_A] += B[i_B, j_B] * val
+
+            # --- (2,1,3) axis-swap contribution ---
+            # The outer index i_B (1-based) encodes two sub-axes of size n_A:
+            #   k₂ = (i_B-1) % n_A,  k₃ = (i_B-1) ÷ n_A
+            # Swapping axis 1 (i_A) with axis 2 (k₂) gives:
+            i_Ap = (i_B - 1) % n_A + 1
+            i_Bp = (i_A - 1) + ((i_B - 1) ÷ n_A) * n_A + 1
+            j_Ap = (j_B - 1) % m_A + 1
+            j_Bp = (j_A - 1) + ((j_B - 1) ÷ m_A) * m_A + 1
+            ∂A[i_Ap, j_Ap] += B[i_Bp, j_Bp] * val
+        end
+    end
+end
+
+
+# Fused variant of fill_kron_adjoint_∂A_with_perm! that processes M1 * M2
+# in column blocks without materializing the full product.
+#
+# Equivalent to:
+#   fill_kron_adjoint_∂A_with_perm!(sparse(M1 * M2), ∂A, B)
+# but avoids allocating the (n_A³ × m_A³) intermediate.
+#
+# Requires n_B = n_A² and m_B = m_A² (same as fill_kron_adjoint_∂A_with_perm!).
+function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
+                                              M2::AbstractMatrix,
+                                              ∂A::AbstractMatrix{S},
+                                              B::AbstractMatrix{T};
+                                              block::AbstractMatrix{S} = Matrix{S}(undef, size(M1, 1), 0)) where {S <: Real, T <: Real}
+    n_A = size(∂A, 1)
+    m_A = size(∂A, 2)
+    n_B = size(B, 1)
+    m_B = size(B, 2)
+
+    @assert n_B == n_A * n_A "mul_fill_kron_adjoint_∂A_with_perm! requires n_B == n_A²"
+    @assert m_B == m_A * m_A "mul_fill_kron_adjoint_∂A_with_perm! requires m_B == m_A²"
+    @assert size(M1, 1) == n_A * n_B "M1 rows ($(size(M1,1))) must equal n_A * n_B ($(n_A * n_B))"
+    @assert size(M2, 2) == m_A * m_B "M2 cols ($(size(M2,2))) must equal m_A * m_B ($(m_A * m_B))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n_A * n_B  # = n_A³
+
+    if size(block, 1) == nrows && size(block, 2) >= m_A
+        blk = view(block, :, 1:m_A)
+    else
+        blk = Matrix{S}(undef, nrows, m_A)
+    end
+
+    @inbounds for j in 1:m_B  # j = j_B (outer column index of B)
+        col_start = (j - 1) * m_A + 1
+        col_end   = j * m_A
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Pre-compute the fixed permuted column index for j_B = j
+        # (2,1,3) axis swap: j_Ap depends only on j, not on j_A
+        j_Ap_fixed = (j - 1) % m_A + 1
+
+        for j_A in 1:m_A
+            # (2,1,3) axis swap: j_Bp depends on both j_A and j
+            j_Bp = (j_A - 1) + ((j - 1) ÷ m_A) * m_A + 1
+
+            for row in 1:nrows
+                val = blk[row, j_A]
+
+                # Decompose row into (i_A, i_B) for kron(B, A) convention
+                i_A = (row - 1) % n_A + 1
+                i_B = (row - 1) ÷ n_A + 1
+
+                # Identity contribution
+                ∂A[i_A, j_A] += B[i_B, j] * val
+
+                # (2,1,3) axis-swap contribution
+                i_Ap = (i_B - 1) % n_A + 1
+                i_Bp = (i_A - 1) + ((i_B - 1) ÷ n_A) * n_A + 1
+                ∂A[i_Ap, j_Ap_fixed] += B[i_Bp, j_Bp] * val
+            end
+        end
+    end
+end
+
+
+# Sparse-B variant of mul_fill_kron_adjoint_∂A_with_perm! that exploits B's sparsity.
+# When B is ultra-sparse (e.g. σ with ~nₑ nonzeros in nₑ₋² × nₑ₋²),
+# this skips ~99.7% of work by iterating only nzrange columns.
+function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
+                                              M2::AbstractMatrix,
+                                              ∂A::AbstractMatrix{S},
+                                              B::SparseMatrixCSC{TB, Int};
+                                              block::AbstractMatrix{S} = Matrix{S}(undef, size(M1, 1), 0)) where {S <: Real, TB <: Real}
+    n_A = size(∂A, 1)
+    m_A = size(∂A, 2)
+    n_B = size(B, 1)
+    m_B = size(B, 2)
+
+    @assert n_B == n_A * n_A "mul_fill_kron_adjoint_∂A_with_perm! requires n_B == n_A²"
+    @assert m_B == m_A * m_A "mul_fill_kron_adjoint_∂A_with_perm! requires m_B == m_A²"
+    @assert size(M1, 1) == n_A * n_B "M1 rows ($(size(M1,1))) must equal n_A * n_B ($(n_A * n_B))"
+    @assert size(M2, 2) == m_A * m_B "M2 cols ($(size(M2,2))) must equal m_A * m_B ($(m_A * m_B))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n_A * n_B  # = n_A³
+
+    B_colptr = B.colptr
+    B_rowval = SparseArrays.rowvals(B)
+    B_nzval  = nonzeros(B)
+
+    # Precompute which B columns have nonzeros for fast skip checks
+    has_nz = falses(m_B)
+    @inbounds for col in 1:m_B
+        has_nz[col] = B_colptr[col] < B_colptr[col + 1]
+    end
+
+    if size(block, 1) == nrows && size(block, 2) >= m_A
+        blk = view(block, :, 1:m_A)
+    else
+        blk = Matrix{S}(undef, nrows, m_A)
+    end
+
+    @inbounds for j in 1:m_B  # j = j_B (outer column index of B)
+        # Check if this j contributes anything:
+        # Identity path: B[:,j] has nonzeros
+        # Perm path: for each j_A, B[:, j_Bp(j_A, j)] has nonzeros
+        need_blk = has_nz[j]
+        if !need_blk
+            j_div = (j - 1) ÷ m_A
+            for j_A in 1:m_A
+                j_Bp = (j_A - 1) + j_div * m_A + 1
+                if has_nz[j_Bp]
+                    need_blk = true
+                    break
+                end
+            end
+        end
+        need_blk || continue
+
+        col_start = (j - 1) * m_A + 1
+        col_end   = j * m_A
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Pre-compute for (2,1,3) axis swap
+        j_Ap_fixed = (j - 1) % m_A + 1
+        j_div = (j - 1) ÷ m_A
+
+        # Identity contribution: iterate nonzeros of B[:, j]
+        for bidx in B_colptr[j]:(B_colptr[j + 1] - 1)
+            i_B = B_rowval[bidx]
+            b_val = S(B_nzval[bidx])
+            # i_A = (row-1) % n_A + 1 for row = (i_B-1)*n_A + 1 : i_B*n_A
+            row_start = (i_B - 1) * n_A
+            for j_A in 1:m_A
+                for i_A in 1:n_A
+                    ∂A[i_A, j_A] += b_val * blk[row_start + i_A, j_A]
+                end
+            end
+        end
+
+        # (2,1,3) axis-swap contribution: for each j_A, iterate nonzeros of B[:, j_Bp]
+        for j_A in 1:m_A
+            j_Bp = (j_A - 1) + j_div * m_A + 1
+            for bidx in B_colptr[j_Bp]:(B_colptr[j_Bp + 1] - 1)
+                i_Bp = B_rowval[bidx]
+                b_val = S(B_nzval[bidx])
+                # Reverse-map: i_Ap = (i_B-1) % n_A + 1, but here i_Bp encodes
+                # i_Bp = (i_A-1) + ((i_B-1) ÷ n_A) * n_A + 1
+                # So: i_A = (i_Bp-1) % n_A + 1, block_offset = (i_Bp-1) ÷ n_A
+                i_A = (i_Bp - 1) % n_A + 1
+                block_k3 = (i_Bp - 1) ÷ n_A  # = (i_B-1) ÷ n_A = k₃ - 1
+
+                # The identity i_Ap = (i_B-1) % n_A + 1 = k₂
+                # and row = (i_B-1)*n_A + i_A  where i_B = k₂ + k₃*n_A + 1
+                # We need to iterate over all k₂ (= i_Ap's corresponding i_B values)
+                # For a given i_Bp, we have i_A and block_k3 fixed.
+                # i_Ap = k₂ + 1 ranges over 1:n_A, with i_B = k₂ + block_k3*n_A + 1
+                # and row = (i_B-1)*n_A + i_A = (k₂ + block_k3*n_A)*n_A + i_A
+                for k2 in 0:(n_A - 1)
+                    i_Ap = k2 + 1
+                    row = (k2 + block_k3 * n_A) * n_A + i_A
+                    ∂A[i_Ap, j_Ap_fixed] += b_val * blk[row, j_A]
+                end
+            end
+        end
+    end
+end
 
 # Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
 # Forward contribution for each sorted output column triple (α≥β≥γ) is:
@@ -5541,7 +6343,7 @@ function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
 
                         row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
                         g = ∂Y[row, col]
-                        iszero(g) && continue
+                        abs(g) <= tol && continue
 
                         ∂A[i, α] += g * σ_val
                         ∂σ[s, σ_col] += g * a_val
@@ -5631,7 +6433,7 @@ function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
 
                             row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                             g = G[row, col]
-                            iszero(g) && continue
+                            abs(g) <= tol && continue
 
                             σ_val = nzv_σ[is]
                             ∂A[p, α] += g * σ_val
@@ -5664,7 +6466,7 @@ function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
 
                             row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                             g = G[row, col]
-                            iszero(g) && continue
+                            abs(g) <= tol && continue
 
                             σ_val = nzv_σ[is]
                             ∂A[q, β] += g * σ_val
@@ -5697,7 +6499,327 @@ function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
 
                             row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                             g = G[row, col]
-                            iszero(g) && continue
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                            ∂σ[pq, σ_col_αβ] += g * a_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
+# ∂A-only variant: skips ∂σ accumulation (matches fill_kron_adjoint_∂A! pattern).
+# Use when the ∂σ output is discarded (e.g. B-pullback for Sylvester).
+function compressed_permuted_mixed_kron_pullback_∂A!(∂A::AbstractMatrix{T},
+                                                     ∂Y::AbstractMatrix{T},
+                                                     A::AbstractMatrix{TA},
+                                                     σ::AbstractMatrix{Tσ};
+                                                     tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    G = Matrix(∂Y)
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
+# Fused variant: computes g_col = M1 * M2[:, col] lazily per (α,β,γ) triple
+# instead of materializing the full ∂Y = M1 * M2 matrix.
+# Equivalent to:
+#   compressed_permuted_mixed_kron_pullback!(∂A, ∂σ, M1 * M2, A, σ; tol)
+# but avoids the n_compressed³ × n_compressed³ allocation.
+function mul_compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
+                                                      ∂σ::AbstractMatrix{T},
+                                                      M1::AbstractMatrix,
+                                                      M2::AbstractMatrix,
+                                                      A::AbstractMatrix{TA},
+                                                      σ::AbstractMatrix{Tσ};
+                                                      tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    g_col = Vector{T}(undef, size(M1, 1))
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                # Compute g_col = M1 * M2[:, col] lazily for this triple
+                ℒ.mul!(g_col, M1, view(M2, :, col))
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                            ∂σ[qr, σ_col_βγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                            ∂σ[pr, σ_col_αγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
 
                             σ_val = nzv_σ[is]
                             ∂A[r, γ] += g * σ_val
@@ -5719,6 +6841,7 @@ end
 function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
                                     ∂Y::AbstractMatrix{T},
                                     X::AbstractMatrix{T};
+                                    tol::Real = 0.0,
                                     rowmask::Vector{Int} = Int[],
                                     colmask::Vector{Int} = Int[]) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
@@ -5762,7 +6885,7 @@ function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
             (nocolmask || colmask_lookup[col]) || continue
 
             g = ∂Y[row, col]
-            iszero(g) && continue
+            abs(g) <= tol && continue
             g_d = g / divisor
 
             @inbounds aii = Xd[i1, i2]
@@ -5782,7 +6905,7 @@ end
 # Helper: adjoint of compressed_kron³(X) w.r.t. X.
 # Forward: out[row,col] = (aii*(ajj*akk + ajk*akj) + aij*(aji*akk + ajk*aki) + aik*(aji*akj + ajj*aki)) / divisor
 # where row ↔ (i1≥j1≥k1) and col ↔ (i2≥j2≥k2) and a_pq = X[p,q].
-function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}) where T <: Real
+function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}; tol::Real = 0.0) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
     # Unlike the forward pass, the pullback must iterate over ALL row/column
@@ -5807,7 +6930,59 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatr
                 @inbounds for k1 in 1:j1
                     row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                     g = ∂Y[row, col]
-                    iszero(g) && continue
+                    abs(g) <= tol && continue
+                    # divisor for row symmetry
+                    if i1 == j1
+                        divisor = (j1 == k1) ? 6 : 2
+                    else
+                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                    end
+                    g_d = g / divisor
+                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+                    ∂X[k1, i2] += g_d * (aij * ajk + aik * ajj)
+                    ∂X[k1, j2] += g_d * (aik * aji + aii * ajk)
+                    ∂X[k1, k2] += g_d * (aii * ajj + aij * aji)
+                end
+            end
+        end
+    end
+end
+
+# Fused variant: computes g_col = M1 * M2[:, col] lazily per (i2,j2,k2) triple
+# instead of materializing the full ∂Y = M1 * M2 matrix.
+# Equivalent to:
+#   compressed_kron³_pullback!(∂X, M1 * M2, X)
+# but avoids the n_compressed³ × n_compressed³ allocation.
+function mul_compressed_kron³_pullback!(∂X::AbstractMatrix{T},
+                                        M1::AbstractMatrix,
+                                        M2::AbstractMatrix,
+                                        X::AbstractMatrix{T};
+                                        tol::Real = 0.0) where T <: Real
+    Xd = X isa DenseMatrix ? X : collect(X)
+    n_rows, n_cols = size(Xd)
+
+    g_col = Vector{T}(undef, size(M1, 1))
+
+    for i2 in 1:n_cols, j2 in 1:i2
+        for k2 in 1:j2
+            col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+            # Compute g_col = M1 * M2[:, col] lazily for this triple
+            ℒ.mul!(g_col, M1, view(M2, :, col))
+
+            for i1 in 1:n_rows, j1 in 1:i1
+                @inbounds for k1 in 1:j1
+                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                    g = g_col[row]
+                    abs(g) <= tol && continue
                     # divisor for row symmetry
                     if i1 == j1
                         divisor = (j1 == k1) ? 6 : 2
@@ -6007,11 +7182,9 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐔∇₂t = M₂.𝐔∇₂ᵀ
     𝐔₂t  = M₂.𝐔₂ᵀ
 
-    # Use pre-cached transposes of permutation matrices (for out2 terms a,b pullback)
-    M₃𝐏₁ₗt = M₃.𝐏₁ₗᵀ
-    M₃𝐏₁ᵣt = M₃.𝐏₁ᵣᵀ
-
     # Materialized transposes of forward-pass intermediates
+    At = choose_matrix_format(A')
+    Bt = choose_matrix_format(B')
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
     D_ab_t = choose_matrix_format(D_ab')
@@ -6024,6 +7197,15 @@ function rrule(::typeof(calculate_third_order_solution),
 
     mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
 
+    # Precompute (∇₁₊ · 𝐒₂)ᵀ for term 8 fused kron adjoint
+    ∇₁₊_𝐒₂_t = choose_matrix_format((∇₁₊ * 𝐒₂)')
+
+    # Precompute (∇₂ · kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎))ᵀ for fused terms a+b pullback
+    nabla2_kron_S1S2_t = collect(mat_mult_kron(collect(∇₂), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎))')
+
+    # Sparse σ for fill_kron_adjoint_∂A_with_perm! (ultra-sparse: ~nₑ nonzeros in nₑ₋² × nₑ₋²)
+    σ_sparse = M₂.𝛔 isa SparseMatrixCSC ? M₂.𝛔 : sparse(M₂.𝛔)
+
     # --- ensure pullback workspace buffers ---
     ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
 
@@ -6032,14 +7214,14 @@ function rrule(::typeof(calculate_third_order_solution),
     #   PULLBACK
     # =========================================================================
     function third_order_solution_pullback(∂𝐒₃_solved)
-        ∂𝐒₃ = ∂𝐒₃_solved[1]
+        ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
 
         if ℒ.norm(∂𝐒₃) < opts.tol.sylvester_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ∂C_adj, slvd = solve_sylvester_equation(A', B', Matrix{Float64}(∂𝐒₃), ℂ.sylvester_workspace,
+        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
                                                   sylvester_algorithm = opts.sylvester_algorithm³,
                                                   tol = opts.tol.sylvester_tol,
                                                   acceptance_tol = opts.tol.sylvester_acceptance_tol,
@@ -6056,7 +7238,6 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂A             = ℂ.∂A_3rd
         ∂B_from_sylv   = ℂ.∂B_sylv_3rd
         ∂out2          = ℂ.∂out2_3rd
-        ∇₂t_∂out2     = ℂ.∇₂t_∂out2_3rd
         mul_tmp        = ℂ.mul_tmp_3rd
         ∂∇₁₊𝐒₁➕∇₁₀   = ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd
 
@@ -6080,20 +7261,18 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₁₊╱𝟎₃      = ℂ.∂𝐒₁₊╱𝟎_3rd;       fill!(∂𝐒₁₊╱𝟎₃, zero(S))
         ∂S1S1_stack    = ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd; fill!(∂S1S1_stack, zero(S))
         ∂aux           = ℂ.∂aux_3rd;          fill!(∂aux, zero(S))
-        ∂𝛔_discard     = ℂ.∂𝛔_discard_3rd;   fill!(∂𝛔_discard, zero(S))
-        ∂𝛔_discard2    = ℂ.∂tmpkron0_σ_3rd;   fill!(∂𝛔_discard2, zero(S))
 
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
         # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
-        ℒ.mul!(∂𝐗₃, ∂C_adj, B')
+        ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
         ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
         # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
-        ℒ.mul!(∂𝐗₃, A', ∂C_adj)
+        ℒ.mul!(∂𝐗₃, At, ∂C_adj)
         ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
         # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
         # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
         # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
-        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj, density_threshold = 1.0, min_length = 0)
+        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj)
 
         # C = spinv * 𝐗₃  →  ∂spinv
         # A = spinv * ∇₁₊  →  ∂spinv accumulation
@@ -6119,7 +7298,7 @@ function rrule(::typeof(calculate_third_order_solution),
         #   (term e = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) · 𝐏𝐂₃ does not involve ∇₂.)
 
         # ∂∇₂ via mat_mult_kron (avoids materializing cubic kron transposes)
-        ∂mid_ab = ∂𝐗₃ * D_ab_t                                                        # n × nₑ₋³
+        ∂mid_ab = choose_matrix_format(∂𝐗₃ * D_ab_t)                                   # n × nₑ₋³
         ∂∇₂ = mat_mult_kron(∂mid_ab, collect(𝐒₁₊╱𝟎'), collect(𝐒₂₊╱𝟎'))               # terms a+b
         ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t) # term c
         ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, S2p0_sigma_t)        # term d
@@ -6138,9 +7317,6 @@ function rrule(::typeof(calculate_third_order_solution),
         #   (d) ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)       — second factor depends on 𝐒₂
         #   (8) ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)  — both 𝐒₂ and 𝐒₂₋╱𝟎 depend on 𝐒₂
 
-        # Shared intermediate: ∇₂ᵀ * ∂out2 (used for ∂tmpkron1, ∂kron_c, ∂kron_d)
-        ℒ.mul!(∇₂t_∂out2, ∇₂t, ∂out2)
-
         # --- terms (a) and (b): through kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) via D_ab ---
         # ∂kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) = ∇₂ᵀ * ∂𝐗₃ * D_ab' (combines terms a+b)
         ∂tmpkron1 = (∇₂t * ∂mid_ab)
@@ -6156,11 +7332,8 @@ function rrule(::typeof(calculate_third_order_solution),
         @views ∂𝐒₂[i₊,:] .+= ∂𝐒₂₊╱𝟎[1:length(i₊),:]
 
         # --- term (c): through ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 ---
-        # ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)  →  ∂kron_c = ∇₂ᵀ · ∂out2 (reuse shared intermediate)
-        # ∂kron_c = sparse(∇₂t_∂out2)
-        ∂kron_c = (∇₂t_∂out2)
-        # kron(L, R) pullback  where L = ⎸𝐒₁..⎹, R = ⎸𝐒₂k..⎹
-        fill_kron_adjoint!(∂R_c, ∂L_c, ∂kron_c, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) # TODO: see if you can find ways to speed up fill_kron_adjoint!, this seems to be the bottleneck in this function. see if you can make it fast while retaining sparsity.
+        # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — avoids materializing ∇₂t_∂out2
+        mul_fill_kron_adjoint!(∂R_c, ∂L_c, ∇₂t, ∂out2, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.droptol)
 
         # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [ (𝐒₂·kron𝐒₁₋╱𝟏ₑ + 𝐒₁·[𝐒₂[i₋,:];0])[i₊,:] ; 𝐒₂ ; 0 ]
         # Top block (rows 1:n₊): depends on 𝐒₂ through 𝐒₂·kron𝐒₁₋╱𝟏ₑ and 𝐒₁·[𝐒₂[i₋,:];0]
@@ -6179,10 +7352,8 @@ function rrule(::typeof(calculate_third_order_solution),
         # Bottom block is zeros
 
         # --- term (d): through kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔) ---
-        # ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)  →  ∂kron_d = ∇₂ᵀ · ∂out2
-        # (same ∂kron_d = ∂kron_c since ∂out2 is the total adjoint — but we need
-        #  the Kron adjoint for the actual kron pair (L, 𝐒₂₊╱𝟎·𝛔) )
-        fill_kron_adjoint!(∂R_d, ∂L_d, ∂kron_c, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — same pattern, different kron factors
+        mul_fill_kron_adjoint!(∂R_d, ∂L_d, ∇₂t, ∂out2, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.droptol)
 
         # 𝐒₂₊╱𝟎·𝛔  →  ∂𝐒₂₊╱𝟎_d = ∂R_d · 𝛔ᵀ
         ∂𝐒₂₊╱𝟎_d = ∂R_d * 𝛔t
@@ -6195,10 +7366,8 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₂ = ∂𝐒₂ + mat_mult_kron(tmp_t8, collect(𝐒₁₋╱𝟏ₑ'), collect(𝐒₂₋╱𝟎'))
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
-        # ∂kron_term8 = (∇₁₊·𝐒₂)ᵀ · ∂out2
-        # ∂kron_term8 = sparse((∇₁₊ * 𝐒₂)' * ∂out2)
-        ∂kron_term8 = ((∇₁₊ * 𝐒₂)' * ∂out2)
-        fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∂kron_term8, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ)
+        # Fused: (∇₁₊·𝐒₂)ᵀ · ∂out2 with fill_kron_adjoint! in one pass
+        mul_fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∇₁₊_𝐒₂_t, ∂out2, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol)
 
         # 𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; 0]  →  ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
         @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂₋╱𝟎[1:n₋,:]
@@ -6235,20 +7404,23 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂L_d, ∂S1S1_stack)
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
-        ∂tmpkron22 = (∇₃t * ∂𝐗₃)
+        # Fused: compute g_col = ∇₃ᵀ * ∂𝐗₃[:, col] lazily per (α,β,γ) triple
+        # instead of materializing the full ∂tmpkron22 = ∇₃ᵀ * ∂𝐗₃ matrix.
         ∂S1S1_from_ck = ℂ.∂S1S1_from_ck_3rd
         fill!(∂S1S1_from_ck, zero(S))
         ∂S1p0_kron_sigma = ℂ.∂S1p0_kron_sigma_3rd
         fill!(∂S1p0_kron_sigma, zero(S))
-        compressed_permuted_mixed_kron_pullback!(∂S1S1_from_ck,
+        mul_compressed_permuted_mixed_kron_pullback!(∂S1S1_from_ck,
                              ∂S1p0_kron_sigma,
-                             ∂tmpkron22,
+                             ∇₃t, ∂𝐗₃,
                              ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
                              S1p0_kron_sigma;
                              tol = opts.tol.droptol)
 
-        # ∂S1p0_kron = sparse(∂S1p0_kron_sigma * 𝛔t)
-        ∂S1p0_kron = (∂S1p0_kron_sigma * 𝛔t)
+        # Sparsify ∂S1p0_kron_sigma: structurally bounded by σ's support, so very sparse.
+        # sparse × sparse matmul avoids dense intermediate; downstream fill_kron_adjoint!
+        # uses the sparse overload that iterates only nonzero cotangent entries.
+        ∂S1p0_kron = choose_matrix_format(sparse(∂S1p0_kron_sigma) * 𝛔t)
         ∂S1p0_left = ℂ.∂S1p0_left_3rd
         fill!(∂S1p0_left, zero(S))
         ∂S1p0_right = ℂ.∂S1p0_right_3rd
@@ -6259,28 +7431,24 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂S1p0_left, ∂𝐒₁₊╱𝟎₃)
         ℒ.axpy!(1, ∂S1p0_right, ∂𝐒₁₊╱𝟎₃)
 
-        # Force only the cotangent input dense here and in the analogous compressed_kron³
-        # call below. The primal matrix may stay sparse because the helper densifies it
-        # internally, but sparse cotangents can skip valid structurally-zero adjoints.
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
-        ∂ck3_aux = collect(∇₃t * ∂𝐗₃) # this one should be dense, makes a difference
-        compressed_kron³_pullback!(∂aux, ∂ck3_aux, aux)
+        # Fused: compute g_col = ∇₃ᵀ * ∂𝐗₃[:, col] lazily per (i2,j2,k2) triple
+        mul_compressed_kron³_pullback!(∂aux, ∇₃t, ∂𝐗₃, aux; tol = opts.tol.droptol)
         ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
-        compressed_permuted_mixed_kron_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.droptol)
+        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ)
+        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
-        tmp_a = collect(mat_mult_kron(collect(∇₂t_∂out2'), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎))') # TODO: see how to speed this up also for sparse inputs. seems mach faster for dense ones
-        # ∂tmpkron2 = sparse(tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt) 
-        ∂tmpkron2 = (tmp_a + M₃𝐏₁ₗt * tmp_a * M₃𝐏₁ᵣt)# TODO: i think this is handled differently in the primal call and can be done in one go here as well (as in the permutation matrices are not used anymore, and i think it shoudnt be necessary to be used here either)
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, ∂tmpkron2, 𝐒₁₋╱𝟏ₑ, collect(M₂.𝛔))
+        # Fused: nabla2_kron_S1S2_t * ∂out2 in blocks + identity/(2,1,3) permuted ∂A
+        # Avoids materializing both ∇₂t_∂out2 (n_∇₂ × n_out2_c) and tmp_a (nₑ₋³ × nₑ₋³)
+        mul_fill_kron_adjoint_∂A_with_perm!(nabla2_kron_S1S2_t, ∂out2, ∂𝐒₁₋╱𝟏ₑ₃, σ_sparse)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from term 8 kron (already computed for ∂𝐒₂) ---
         ℒ.axpy!(1, ∂𝐒₁₋╱𝟏ₑ_t8, ∂𝐒₁₋╱𝟏ₑ₃)
