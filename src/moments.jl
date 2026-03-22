@@ -837,24 +837,71 @@ function calculate_third_order_moments(parameters::Vector{T},
         s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
         e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Compressed Lyapunov state dimensions
+        # ŝ⊗ŝ (component 3): nˢ² → m₂ˢ = nˢ(nˢ+1)/2 (symmetric)
+        # ŝ⊗ŝ⊗ŝ (component 6): nˢ³ → m₃ˢ = nˢ(nˢ+1)(nˢ+2)/6 (symmetric)
+        m₂ˢ = nˢ * (nˢ + 1) ÷ 2
+        m₃ˢ = nˢ * (nˢ + 1) * (nˢ + 2) ÷ 6
 
-        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+        # Build elimination (E) and duplication (D) matrices for symmetric compression
+        # E selects canonical entries (full → compressed), D expands (compressed → full)
+        # Second order: vech(ŝ⊗ŝ) ↔ vec(ŝ⊗ŝ)
+        colls2_s = [nˢ * (i-1) + k for i in 1:nˢ for k in 1:i]
+        E₂ˢ = sparse(1:m₂ˢ, colls2_s, 1.0, m₂ˢ, nˢ^2)
+        lin2_to_c = Vector{Int}(undef, nˢ^2)
+        for j in 1:nˢ^2
+            i_r = (j - 1) ÷ nˢ + 1
+            i_c = (j - 1) % nˢ + 1
+            i_s = max(i_r, i_c)
+            k_s = min(i_r, i_c)
+            lin2_to_c[j] = (i_s - 1) * i_s ÷ 2 + k_s
+        end
+        D₂ˢ = sparse(1:nˢ^2, lin2_to_c, 1.0, nˢ^2, m₂ˢ)
+
+        # Third order: vech₃(ŝ⊗ŝ⊗ŝ) ↔ vec(ŝ⊗ŝ⊗ŝ)
+        colls3_s = [nˢ^2 * (i-1) + nˢ * (k-1) + l for i in 1:nˢ for k in 1:i for l in 1:k]
+        E₃ˢ = sparse(1:m₃ˢ, colls3_s, 1.0, m₃ˢ, nˢ^3)
+        c3_pos = Dict(colls3_s[i] => i for i in 1:m₃ˢ)
+        lin3_to_c = Vector{Int}(undef, nˢ^3)
+        for k in 1:nˢ
+            for j in 1:nˢ
+                for i in 1:nˢ
+                    sorted_ids = sort([k, j, i])
+                    lin_idx = (sorted_ids[3] - 1) * nˢ^2 + (sorted_ids[2] - 1) * nˢ + sorted_ids[1]
+                    lin3_to_c[(k-1)*nˢ^2 + (j-1)*nˢ + i] = c3_pos[lin_idx]
+                end
+            end
+        end
+        D₃ˢ = sparse(1:nˢ^3, lin3_to_c, 1.0, nˢ^3, m₃ˢ)
+
+        # Compressed blocks for ŝ_to_ŝ₃
+        block_33_c = E₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
+        block_23_c = (s_s_to_s₂ / 2) * D₂ˢ
+        block_46_c = (s_s_s_to_s₃ / 6) * D₃ˢ
+        block_56_c = ℒ.kron(s_to_s₁, s_s_to_s₂ / 2) * D₃ˢ
+        block_66_c = compressed_kron³(s_to_s₁)
+
+        # Set up compressed pruned state transition matrices
+        # State: [ŝ(nˢ), ŝδ₂(nˢ), vech(ŝ⊗ŝ)(m₂ˢ), ŝδ₃(nˢ), ŝ⊗ŝδ₂(nˢ²), vech₃(ŝ⊗ŝ⊗ŝ)(m₃ˢ)]
+        ŝ_to_ŝ₃ = [  s_to_s₁                                   zeros(nˢ, nˢ + m₂ˢ + nˢ + nˢ^2 + m₃ˢ)
+                                            zeros(nˢ, nˢ) s_to_s₁   block_23_c   zeros(nˢ, nˢ + nˢ^2 + m₃ˢ)
+                                            zeros(m₂ˢ, 2 * nˢ)               block_33_c  zeros(m₂ˢ, nˢ + nˢ^2 + m₃ˢ)
+                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + m₂ˢ)      s_to_s₁       s_s_to_s₂    block_46_c
+                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, nˢ + m₂ˢ + nˢ)     s_to_s₁_by_s_to_s₁  block_56_c
+                                            zeros(m₃ˢ, 2*nˢ + m₂ˢ + nˢ + nˢ^2)   block_66_c]
+
+        # Compressed ê_to_ŝ₃: rows 3 and 6 left-multiplied by E₂ˢ and E₃ˢ
+        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(m₂ˢ,nᵉ)  E₂ˢ*e_to_s₁_by_e_to_s₁  E₂ˢ*I_plus_s_s*s_to_s₁_by_e_to_s₁  zeros(m₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                         ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                        zeros(m₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) E₃ˢ*(ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   E₃ˢ*(ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  E₃ˢ*ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        # Compressed ŝ_to_y₃: cols 3 and 6 right-multiplied by D₂ˢ and D₃ˢ
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  (s_s_to_y₂ / 2)*D₂ˢ   s_to_y₁    s_s_to_y₂     (s_s_s_to_y₃ / 6)*D₃ˢ]
 
-        ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+        ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
         μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
                                     (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
@@ -875,20 +922,21 @@ function calculate_third_order_moments(parameters::Vector{T},
                 spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)    spzeros(nˢ*nᵉ^2,nᵉ^3)
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
-
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        # Compressed Eᴸᶻ: cols 3 and 6 right-multiplied by D₂ˢ and D₃ˢ
+        n_state_c = 3*nˢ + m₂ˢ + nˢ^2 + m₃ˢ
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, n_state_c)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + m₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * D₃ˢ, vec_Iₑ)
+                spzeros(nᵉ^3, n_state_c)]
         
-        droptol!(ŝ_to_ŝ₃, eps())
-        droptol!(ê_to_ŝ₃, eps())
+        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
         
-        A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
         droptol!(A, eps())
 
-        C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+        C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
         # Ensure third-order lyapunov workspace and solve
@@ -906,7 +954,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.constants.post_model_macro.var), indexin(variance_observable, 𝓂.constants.post_model_macro.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
