@@ -1957,6 +1957,210 @@ function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix
 
     return out
 end
+
+# Fused  M * compressed_permuted_mixed_kron(A, σ)
+# Computes the product without materializing the large mr₃×mc₃ intermediate.
+# M is m × mr₃ sparse, A is nr × nc, σ is nr² × nc².  Output: m × mc₃ sparse.
+function mul_compressed_permuted_mixed_kron(M::SparseMatrixCSC, A::AbstractMatrix{T}, σ::AbstractMatrix;
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
+
+    nr = size(A, 1)
+    nc = size(A, 2)
+    m  = size(M, 1)
+    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
+    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
+
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+    size(M, 2) == mr₃ || throw(DimensionMismatch("M must have $mr₃ columns, got $(size(M, 2))"))
+
+    # Sparse copies for support-aware iteration
+    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
+    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+    rv_M = SparseArrays.rowvals(M)
+    nzv_M = nonzeros(M)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    # Small result buffer (size m, not mr₃)
+    result_col = zeros(T, m)
+
+    # --- sparse IJV buffer management ---
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = max(min(m * mc₃ ÷ 4, m * mc₃), 10000)
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    end
+
+    II = sparse_preallocation[1]
+    JJ = sparse_preallocation[2]
+    VV = sparse_preallocation[3]
+    cnt = 0
+
+    for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                fill!(result_col, zero(T))
+
+                # term 1: A[p, α] * σ[(q,r), (β,γ)] — scatter through M
+                if has_t1
+                    @inbounds for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # term 2: A[q, β] * σ[(p,r), (α,γ)] — scatter through M
+                if has_t2
+                    @inbounds for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # term 3: A[r, γ] * σ[(p,q), (α,β)] — scatter through M
+                if has_t3
+                    @inbounds for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # Extract nonzeros into IJV
+                @inbounds for i in 1:m
+                    v = result_col[i]
+                    if abs(v) > tol
+                        cnt += 1
+                        if cnt > estimated_nnz
+                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                            estimated_nnz = min(m * mc₃, estimated_nnz)
+                            resize!(II, estimated_nnz)
+                            resize!(JJ, estimated_nnz)
+                            resize!(VV, estimated_nnz)
+                        end
+                        II[cnt] = i
+                        JJ[cnt] = col
+                        VV[cnt] = v
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
+
+    # Sparse assembly
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
+
+    resize!(klasttouch, mc₃)
+    resize!(csrrowptr, m + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
+
+    out = if length(II) >= mc₃ + 1
+        sparse!(II, JJ, VV, m, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    else
+        SparseArrays.sparse(II, JJ, VV, m, mc₃)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
 # 2-arg overload: compressed_kron(A, σ)
 # Computes  𝐔∇₃ * kron(A, σ) * 𝐂₃
 # directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
@@ -2378,6 +2582,155 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     return out
 end
+
+# Fused  M * compressed_kron³(a)
+# Computes the product without materializing the large mr₃×mc₃ intermediate.
+# M is m × mr₃ sparse, a is n_rows × n_cols.  Output: m × mc₃ sparse.
+# Row-outer / col-inner with sorted bounded ranges + direct IJV scatter.
+# nzrange(M, row) checked once per row triple — skips ALL col iterations.
+# Duplicate (I,J) entries resolved by sparse!(+).
+function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
+
+    if typeof(a) <: DenseMatrix{T}
+        â = a
+        a_sp = sparse(a)
+    else
+        â = convert(Matrix, a)
+        a_sp = a isa SparseMatrixCSC ? a : sparse(a)
+    end
+
+    n_rows, n_cols = size(a_sp)
+    m = size(M, 1)
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
+
+    size(M, 2) == m3_rows || throw(DimensionMismatch("M must have $m3_rows columns, got $(size(M, 2))"))
+
+    rv_M = SparseArrays.rowvals(M)
+    nzv_M = nonzeros(M)
+
+    # Find unique non-zero row and column indices (sorted for bounded iteration)
+    rowinds, colinds, _ = findnz(a_sp)
+    ui = sort!(unique(rowinds))
+    uj = sort!(unique(colinds))
+    n_ui = length(ui)
+    n_uj = length(uj)
+
+    # --- sparse IJV buffer management ---
+    if length(sparse_preallocation[1]) == 0
+        lennz = nnz(a_sp)
+        estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(a)) ^ 4, 10000))
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    end
+
+    I = sparse_preallocation[1]
+    J = sparse_preallocation[2]
+    V = sparse_preallocation[3]
+    k = 0
+
+    # Row-outer loop: row triples (i1 ≥ j1 ≥ k1) with bounded index ranges
+    for idx_i1 in 1:n_ui
+        @inbounds i1 = ui[idx_i1]
+        for idx_j1 in 1:idx_i1                 # j1 ≤ i1 by construction
+            @inbounds j1 = ui[idx_j1]
+            for idx_k1 in 1:idx_j1             # k1 ≤ j1 by construction
+                @inbounds k1 = ui[idx_k1]
+
+                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                # nzrange checked ONCE per row triple — skips ALL col iterations
+                rng_M = SparseArrays.nzrange(M, row)
+                isempty(rng_M) && continue
+
+                # Divisor depends only on row triple
+                if i1 == j1
+                    divisor = i1 == k1 ? 6 : 2
+                else
+                    divisor = (i1 ≠ k1 && j1 ≠ k1) ? 1 : 2
+                end
+
+                # Col-inner loop: column triples (i2 ≥ j2 ≥ k2) with bounded ranges
+                for idx_i2 in 1:n_uj
+                    @inbounds i2 = uj[idx_i2]
+                    for idx_j2 in 1:idx_i2     # j2 ≤ i2 by construction
+                        @inbounds j2 = uj[idx_j2]
+                        for idx_k2 in 1:idx_j2 # k2 ≤ j2 by construction
+                            @inbounds k2 = uj[idx_k2]
+
+                            @inbounds aii = â[i1, i2]
+                            @inbounds aij = â[i1, j2]
+                            @inbounds aik = â[i1, k2]
+                            @inbounds aji = â[j1, i2]
+                            @inbounds ajj = â[j1, j2]
+                            @inbounds ajk = â[j1, k2]
+                            @inbounds aki = â[k1, i2]
+                            @inbounds akj = â[k1, j2]
+                            @inbounds akk = â[k1, k2]
+
+                            val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
+
+                            if abs(val) > tol
+                                scaled_val = val / divisor
+                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+                                # Direct IJV scatter through M[:, row]
+                                for p_M in rng_M
+                                    k += 1
+                                    if k > estimated_nnz
+                                        estimated_nnz = k + max(1000, k ÷ 10)
+                                        resize!(I, estimated_nnz)
+                                        resize!(J, estimated_nnz)
+                                        resize!(V, estimated_nnz)
+                                    end
+                                    I[k] = @inbounds rv_M[p_M]
+                                    J[k] = col
+                                    V[k] = @inbounds(nzv_M[p_M]) * scaled_val
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    # Sparse assembly — sparse!(+) resolves duplicate (I,J) entries
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
+
+    resize!(klasttouch, m3_cols)
+    resize!(csrrowptr, m + 1)
+    resize!(csrcolval, length(I))
+    resize!(csrnzval, length(I))
+
+    out = if length(I) >= m3_cols + 1
+        sparse!(I, J, V, m, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    else
+        SparseArrays.sparse(I, J, V, m, m3_cols)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
 function compressed_kron²(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
