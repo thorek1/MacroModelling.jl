@@ -831,7 +831,9 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
+                Lyapunov_workspace(0, T = T),  # block-triangular inner - will be resized
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
+                Sylvester_workspace(S = S),  # block-triangular sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
                 Kalman_workspace(T = T),  # Kalman filter - will be resized
@@ -1529,8 +1531,14 @@ function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbo
             workspaces.lyapunov_3rd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_3rd_order
+    elseif order == :block
+        ws = workspaces.lyapunov_block
+        if ws.n != n
+            workspaces.lyapunov_block = Lyapunov_workspace(n)
+        end
+        return workspaces.lyapunov_block
     else
-        error("Invalid order: $order. Must be :first_order, :second_order, or :third_order")
+        error("Invalid order: $order. Must be :first_order, :second_order, :third_order, or :block")
     end
 end
 

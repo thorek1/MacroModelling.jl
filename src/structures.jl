@@ -1174,7 +1174,9 @@ mutable struct workspaces
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
     lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
     lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
+    lyapunov_block::lyapunov_workspace{Float64, Float64}      # Block-triangular inner Lyapunov
     sylvester_1st_order::sylvester_workspace{Float64, Float64} # Sylvester equation
+    sylvester_block::sylvester_workspace{Float64, Float64}    # Block-triangular Sylvester
     # Filter workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter

@@ -441,6 +441,259 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 end
 
 
+# Eigenspace-based Lyapunov solver for compressed Kronecker structure:
+#   A = L₃ˢ (T⊗T⊗T) D₃ˢ
+# Solves A X Aᵀ + C = X via eigendecomposition of the small matrix T.
+function solve_compressed_kron3_lyapunov(T_mat::AbstractMatrix{R},
+                                         L₃ˢ::AbstractSparseMatrix,
+                                         D₃ˢ::AbstractSparseMatrix,
+                                         C::AbstractMatrix{R}) where R <: Real
+    nˢ = size(T_mat, 1)
+    n₃ˢ = size(L₃ˢ, 1)
+
+    # Eigendecompose the small T (nˢ × nˢ)
+    F = ℒ.eigen(T_mat)
+    Λ_vals = F.values      # may be complex
+    V = F.vectors
+
+    # Build compressed eigenvalue vector: λᵢλⱼλₖ for unique triples i≥j≥k
+    compressed_eigenvalues = Vector{ComplexF64}(undef, n₃ˢ)
+    idx = 0
+    for i in 1:nˢ, k in 1:i, l in 1:k
+        idx += 1
+        compressed_eigenvalues[idx] = Λ_vals[i] * Λ_vals[k] * Λ_vals[l]
+    end
+
+    # Build P = L₃ˢ (V⊗V⊗V) D₃ˢ  (n₃ˢ × n₃ˢ) without forming V⊗V⊗V
+    Vc = ComplexF64.(V)
+    P = zeros(ComplexF64, n₃ˢ, n₃ˢ)
+
+    # Pre-compute triple indices (same ordering: i≥k≥l)
+    triples = Vector{NTuple{3,Int}}(undef, n₃ˢ)
+    idx = 0
+    for i in 1:nˢ, k in 1:i, l in 1:k
+        idx += 1
+        triples[idx] = (i, k, l)
+    end
+
+    @inbounds for col_k in 1:n₃ˢ
+        ei, ej, el = triples[col_k]
+        if ei == ej == el
+            for row_m in 1:n₃ˢ
+                sa, sb, sc = triples[row_m]
+                P[row_m, col_k] = Vc[sa, ei] * Vc[sb, ej] * Vc[sc, el]
+            end
+        elseif ei == ej
+            for row_m in 1:n₃ˢ
+                sa, sb, sc = triples[row_m]
+                P[row_m, col_k] = Vc[sa,ei]*Vc[sb,ej]*Vc[sc,el] +
+                                   Vc[sa,ei]*Vc[sb,el]*Vc[sc,ej] +
+                                   Vc[sa,el]*Vc[sb,ei]*Vc[sc,ej]
+            end
+        elseif ej == el
+            for row_m in 1:n₃ˢ
+                sa, sb, sc = triples[row_m]
+                P[row_m, col_k] = Vc[sa,ei]*Vc[sb,ej]*Vc[sc,el] +
+                                   Vc[sa,ej]*Vc[sb,ei]*Vc[sc,el] +
+                                   Vc[sa,ej]*Vc[sb,el]*Vc[sc,ei]
+            end
+        else  # all distinct: 6 permutations
+            for row_m in 1:n₃ˢ
+                sa, sb, sc = triples[row_m]
+                P[row_m, col_k] = Vc[sa,ei]*Vc[sb,ej]*Vc[sc,el] +
+                                   Vc[sa,ei]*Vc[sb,el]*Vc[sc,ej] +
+                                   Vc[sa,ej]*Vc[sb,ei]*Vc[sc,el] +
+                                   Vc[sa,ej]*Vc[sb,el]*Vc[sc,ei] +
+                                   Vc[sa,el]*Vc[sb,ei]*Vc[sc,ej] +
+                                   Vc[sa,el]*Vc[sb,ej]*Vc[sc,ei]
+            end
+        end
+    end
+
+    # Transform: C̃ = P⁻¹ C (P⁻¹)ᵀ
+    Plu = ℒ.lu(P)
+    C_complex = ComplexF64.(C)
+    C_tilde = Plu \ C_complex
+    C_tilde = C_tilde / transpose(Plu)
+
+    # Element-wise solve: Ỹ_{pq} = C̃_{pq} / (1 - λ_p λ_q)
+    λ = compressed_eigenvalues
+    @inbounds for j in 1:n₃ˢ, i in 1:n₃ˢ
+        C_tilde[i, j] /= (1 - λ[i] * λ[j])
+    end
+
+    # Back-transform: X = P Ỹ Pᵀ
+    X = P * C_tilde * transpose(P)
+
+    return real.(X)
+end
+
+
+# Block-triangular Lyapunov solver for third-order pruned state covariance.
+# ŝ_to_ŝ₃ is block-lower-triangular: [A_UU 0; A_LU A_LL]
+# where A_UU is the second-order subsystem (already solved → Σ̂ᶻ₂).
+# Reuses Σ̂ᶻ₂ for the upper block; Sylvester for the cross-block; eigenspace/Lyapunov for the lower block.
+function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
+                                          C::AbstractMatrix{T},
+                                          N_upper::Int,
+                                          Σᶻ₂_upper::AbstractMatrix{T},
+                                          𝓂_workspaces::workspaces,
+                                          opts::CalculationOptions;
+                                          s_to_s₁::Union{Nothing, AbstractMatrix{T}} = nothing,
+                                          L₃ˢ::Union{Nothing, AbstractSparseMatrix} = nothing,
+                                          D₃ˢ::Union{Nothing, AbstractSparseMatrix} = nothing,
+                                          n₃ˢ::Int = 0) where T <: Real
+    N = size(ŝ_to_ŝ₃, 1)
+    N_lower = N - N_upper
+    ru = 1:N_upper
+    rl = (N_upper+1):N
+
+    A_UU = ŝ_to_ŝ₃[ru, ru]
+    A_LU = ŝ_to_ŝ₃[rl, ru]
+    A_LL = ŝ_to_ŝ₃[rl, rl]
+
+    C_LU = C[rl, ru]
+    C_LL = C[rl, rl]
+
+    # Step 1: X_UU = Σ̂ᶻ₂ (already solved)
+    X_UU = collect(Σᶻ₂_upper)
+
+    # Step 2: X_LU via discrete Sylvester  (A_LL X_LU A_UU' + RHS = X_LU)
+    A_UU_dense = collect(A_UU)
+    A_LL_dense = collect(A_LL)
+    A_LU_dense = collect(A_LU)
+
+    RHS_LU = A_LU_dense * X_UU * A_UU_dense' + collect(C_LU)
+    
+    sylv_ws = 𝓂_workspaces.sylvester_block
+    X_LU, sylv_solved = solve_sylvester_equation(A_LL_dense, A_UU_dense', RHS_LU, sylv_ws,
+                                                  sylvester_algorithm = :bartels_stewart,
+                                                  tol = opts.tol.lyapunov_tol,
+                                                  acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                  verbose = opts.verbose)
+    X_LU = collect(X_LU)
+
+    # Step 3: X_LL via Lyapunov with modified RHS
+    C_LL_mod = collect(C_LL) +
+               A_LU_dense * X_UU  * A_LU_dense' +
+               A_LL_dense * X_LU  * A_LU_dense' +
+               A_LU_dense * X_LU' * A_LL_dense'
+
+    use_eigenspace = (s_to_s₁ !== nothing && L₃ˢ !== nothing && D₃ˢ !== nothing && n₃ˢ > 0)
+
+    if use_eigenspace && N_lower == n₃ˢ
+        # A_LL is entirely block 6
+        X_LL = try
+            X_candidate = solve_compressed_kron3_lyapunov(collect(s_to_s₁), L₃ˢ, D₃ˢ, C_LL_mod)
+            sym_err = maximum(abs, X_candidate .- X_candidate')
+            if sym_err > 1e-8 * max(1.0, maximum(abs, X_candidate))
+                lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, N_lower, :block)
+                X_fb, _ = solve_lyapunov_equation(A_LL_dense, C_LL_mod, lyap_ws,
+                                                   lyapunov_algorithm = opts.lyapunov_algorithm,
+                                                   tol = opts.tol.lyapunov_tol,
+                                                   acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                   verbose = opts.verbose)
+                collect(X_fb)
+            else
+                X_candidate
+            end
+        catch
+            lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, N_lower, :block)
+            X_fb, _ = solve_lyapunov_equation(A_LL_dense, C_LL_mod, lyap_ws,
+                                               lyapunov_algorithm = opts.lyapunov_algorithm,
+                                               tol = opts.tol.lyapunov_tol,
+                                               acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                               verbose = opts.verbose)
+            collect(X_fb)
+        end
+
+    elseif use_eigenspace && N_lower > n₃ˢ
+        # A_LL is upper-block-triangular with A₆₆ in the lower-right n₃ˢ×n₃ˢ
+        n_upper_LL = N_lower - n₃ˢ
+        ru_ll = 1:n_upper_LL
+        rl_ll = (n_upper_LL+1):N_lower
+
+        A_LL_UU = A_LL_dense[ru_ll, ru_ll]
+        A_LL_UL = A_LL_dense[ru_ll, rl_ll]
+        A_LL_LL = A_LL_dense[rl_ll, rl_ll]
+
+        C_mod_UU = C_LL_mod[ru_ll, ru_ll]
+        C_mod_UL = C_LL_mod[ru_ll, rl_ll]
+        C_mod_LL = C_LL_mod[rl_ll, rl_ll]
+
+        # Step 3a: X₆₆ via eigenspace (with fallback)
+        X_66 = try
+            X_candidate = solve_compressed_kron3_lyapunov(collect(s_to_s₁), L₃ˢ, D₃ˢ, C_mod_LL)
+            sym_err = maximum(abs, X_candidate .- X_candidate')
+            if sym_err > 1e-8 * max(1.0, maximum(abs, X_candidate))
+                lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, n₃ˢ, :block)
+                X_fb, _ = solve_lyapunov_equation(A_LL_LL, C_mod_LL, lyap_ws,
+                                                   lyapunov_algorithm = opts.lyapunov_algorithm,
+                                                   tol = opts.tol.lyapunov_tol,
+                                                   acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                   verbose = opts.verbose)
+                collect(X_fb)
+            else
+                X_candidate
+            end
+        catch
+            lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, n₃ˢ, :block)
+            X_fb, _ = solve_lyapunov_equation(A_LL_LL, C_mod_LL, lyap_ws,
+                                               lyapunov_algorithm = opts.lyapunov_algorithm,
+                                               tol = opts.tol.lyapunov_tol,
+                                               acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                               verbose = opts.verbose)
+            collect(X_fb)
+        end
+
+        # Step 3b: X_{upper,6} via Sylvester
+        RHS_UL6 = A_LL_UL * X_66 * A_LL_LL' + C_mod_UL
+        X_UL6, _ = solve_sylvester_equation(A_LL_UU, A_LL_LL', RHS_UL6, sylv_ws,
+                                             sylvester_algorithm = :bartels_stewart,
+                                             tol = opts.tol.lyapunov_tol,
+                                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                             verbose = opts.verbose)
+        X_UL6 = collect(X_UL6)
+
+        # Step 3c: X_{upper,upper} via Lyapunov
+        C_UU_mod2 = C_mod_UU +
+                     A_LL_UL * X_66 * A_LL_UL' +
+                     A_LL_UU * X_UL6 * A_LL_UL' +
+                     A_LL_UL * X_UL6' * A_LL_UU'
+
+        lyap_ws_inner = ensure_lyapunov_workspace!(𝓂_workspaces, n_upper_LL, :block)
+        X_UU_LL, _ = solve_lyapunov_equation(A_LL_UU, C_UU_mod2, lyap_ws_inner,
+                                              lyapunov_algorithm = opts.lyapunov_algorithm,
+                                              tol = opts.tol.lyapunov_tol,
+                                              acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                              verbose = opts.verbose)
+        X_UU_LL = collect(X_UU_LL)
+
+        X_LL = zeros(T, N_lower, N_lower)
+        X_LL[ru_ll, ru_ll] = X_UU_LL
+        X_LL[ru_ll, rl_ll] = X_UL6
+        X_LL[rl_ll, ru_ll] = X_UL6'
+        X_LL[rl_ll, rl_ll] = X_66
+    else
+        # Fallback: standard Lyapunov on full lower block
+        lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, N_lower, :block)
+        X_LL_result, _ = solve_lyapunov_equation(A_LL_dense, C_LL_mod, lyap_ws,
+                                                  lyapunov_algorithm = opts.lyapunov_algorithm,
+                                                  tol = opts.tol.lyapunov_tol,
+                                                  acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                  verbose = opts.verbose)
+        X_LL = collect(X_LL_result)
+    end
+
+    # Reassemble full solution
+    Σᶻ₃ = Matrix{T}(undef, N, N)
+    Σᶻ₃[ru, ru] = X_UU
+    Σᶻ₃[ru, rl] = X_LU'
+    Σᶻ₃[rl, ru] = X_LU
+    Σᶻ₃[rl, rl] = X_LL
+
+    return Σᶻ₃, sylv_solved
+end
 
 
 function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T}, 
@@ -665,14 +918,18 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+        # Block-triangular Lyapunov: reuse second-order covariance
+        N_upper = 2 * nˢ + n₂ˢ
+        E₂_comp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, nˢ^2)
+                    spzeros(n₂ˢ, 2*nˢ)       L₂ˢ]
+        Σ̂ᶻ₂_compressed = E₂_comp * Σ̂ᶻ₂ * E₂_comp'
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+        Σᶻ₃, info = solve_block_triangular_lyapunov(ŝ_to_ŝ₃, C, N_upper, Σ̂ᶻ₂_compressed,
+                                                      𝓂.workspaces, opts,
+                                                      s_to_s₁ = s_to_s₁,
+                                                      L₃ˢ = L₃ˢ,
+                                                      D₃ˢ = D₃ˢ,
+                                                      n₃ˢ = n₃ˢ)
 
         if !info
             return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
@@ -935,14 +1192,18 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+        # Block-triangular Lyapunov: reuse second-order covariance
+        N_upper = 2 * nˢ + n₂ˢ
+        E₂_comp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, nˢ^2)
+                    spzeros(n₂ˢ, 2*nˢ)       L₂ˢ]
+        Σ̂ᶻ₂_compressed = E₂_comp * Σ̂ᶻ₂ * E₂_comp'
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+        Σᶻ₃, info = solve_block_triangular_lyapunov(ŝ_to_ŝ₃, C, N_upper, Σ̂ᶻ₂_compressed,
+                                                      𝓂.workspaces, opts,
+                                                      s_to_s₁ = s_to_s₁,
+                                                      L₃ˢ = L₃ˢ,
+                                                      D₃ˢ = D₃ˢ,
+                                                      n₃ˢ = n₃ˢ)
 
         if !info
             return zeros(T,0,0), zeros(T,0), zeros(T,0), false
