@@ -1701,7 +1701,51 @@ function ensure_moments_substate_indices!(𝓂, nˢ::Int)
         e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        to.substate_indices[nˢ] = moments_substate_indices(I_plus_s_s, e_es, e_ss, ss_s, s_s)
+
+        # Second-order duplication/elimination matrices (D₂ˢ: nˢ² × nˢ(nˢ+1)/2, L₂ˢ: nˢ(nˢ+1)/2 × nˢ²)
+        # D₂ˢ * vech(M) = vec(M) for symmetric M; L₂ˢ * vec(M) = vech(M)
+        # vech ordering: (1,1), (1,2), (2,2), (1,3), (2,3), (3,3), ... (upper triangle, col-major)
+        canonical2 = [nˢ * (i-1) + k for i in 1:nˢ for k in 1:i]  # canonical vec positions
+        rows2 = Int[]; cols2 = Int[]
+        col_idx = 0
+        for i in 1:nˢ
+            for k in 1:i
+                col_idx += 1
+                push!(rows2, nˢ * (i-1) + k)  # M_{k,i} position
+                push!(cols2, col_idx)
+                if i != k
+                    push!(rows2, nˢ * (k-1) + i)  # M_{i,k} symmetric duplicate
+                    push!(cols2, col_idx)
+                end
+            end
+        end
+        D₂ˢ = sparse(rows2, cols2, 1.0, nˢ^2, col_idx)
+        L₂ˢ = sparse(1:length(canonical2), canonical2, 1.0, length(canonical2), nˢ^2)
+
+        # Third-order duplication/elimination matrices (D₃ˢ: nˢ³ × nˢ(nˢ+1)(nˢ+2)/6, L₃ˢ: inverse)
+        # D₃ˢ * vech₃(T) = vec(T) for symmetric 3-tensor T; L₃ˢ * vec(T) = vech₃(T)
+        canonical3 = [nˢ^2 * (i-1) + nˢ * (k-1) + l for i in 1:nˢ for k in 1:i for l in 1:k]
+        rows3 = Int[]; cols3 = Int[]
+        col_idx = 0
+        for i in 1:nˢ
+            for k in 1:i
+                for l in 1:k
+                    col_idx += 1
+                    perms = Set{Tuple{Int,Int,Int}}()
+                    for p in ((i,k,l), (i,l,k), (k,i,l), (k,l,i), (l,i,k), (l,k,i))
+                        push!(perms, p)
+                    end
+                    for (a, b, c) in perms
+                        push!(rows3, nˢ^2 * (a-1) + nˢ * (b-1) + c)
+                        push!(cols3, col_idx)
+                    end
+                end
+            end
+        end
+        D₃ˢ = sparse(rows3, cols3, 1.0, nˢ^3, col_idx)
+        L₃ˢ = sparse(1:length(canonical3), canonical3, 1.0, length(canonical3), nˢ^3)
+
+        to.substate_indices[nˢ] = moments_substate_indices(I_plus_s_s, e_es, e_ss, ss_s, s_s, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ)
     end
     return to.substate_indices[nˢ]
 end

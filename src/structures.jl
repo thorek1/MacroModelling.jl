@@ -241,6 +241,11 @@ struct moments_substate_indices
     e_ss::SparseMatrixCSC{Float64, Int}
     ss_s::SparseMatrixCSC{Float64, Int}
     s_s::SparseMatrixCSC{Float64, Int}
+    # Duplication/elimination matrices for symmetric Kronecker compression
+    D₂ˢ::SparseMatrixCSC{Float64, Int}   # nˢ² × nˢ(nˢ+1)/2 duplication
+    L₂ˢ::SparseMatrixCSC{Float64, Int}   # nˢ(nˢ+1)/2 × nˢ² elimination
+    D₃ˢ::SparseMatrixCSC{Float64, Int}   # nˢ³ × nˢ(nˢ+1)(nˢ+2)/6 duplication
+    L₃ˢ::SparseMatrixCSC{Float64, Int}   # nˢ(nˢ+1)(nˢ+2)/6 × nˢ³ elimination
 end
 
 struct moments_dependency_kron_indices
