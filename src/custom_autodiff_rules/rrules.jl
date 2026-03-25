@@ -7553,9 +7553,10 @@ function rrule(::typeof(solve_lyapunov_equation),
                 tol::AbstractFloat = 1e-14,
                 acceptance_tol::AbstractFloat = 1e-12,
                 # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
+                verbose::Bool = false,
+                symmetric_rhs::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose, symmetric_rhs = symmetric_rhs)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
@@ -7568,6 +7569,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     function solve_lyapunov_equation_pullback(∂P)
         if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
+        # Adjoint Lyapunov: ∂P is generally not symmetric, so symmetric_rhs=false
         ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], workspace, lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
     
         solved = solved && slvd

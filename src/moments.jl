@@ -43,7 +43,8 @@ function calculate_covariance(parameters::Vector{R},
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
                             tol = opts.tol.lyapunov_tol,
                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                            verbose = opts.verbose)
+                            verbose = opts.verbose,
+                            symmetric_rhs = false)
 
     covar_stable = copy(covar_raw)
 
@@ -391,7 +392,8 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+                                    verbose = opts.verbose,
+                                    symmetric_rhs = false)
 
             if info
                 Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
@@ -592,7 +594,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                                    lyapunov_algorithm = opts.lyapunov_algorithm,
                                                    tol = opts.tol.lyapunov_tol,
                                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                   verbose = opts.verbose)
+                                                   verbose = opts.verbose,
+                                                   symmetric_rhs = false)
                 collect(X_fb)
             else
                 X_candidate
@@ -603,7 +606,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                                lyapunov_algorithm = opts.lyapunov_algorithm,
                                                tol = opts.tol.lyapunov_tol,
                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                               verbose = opts.verbose)
+                                               verbose = opts.verbose,
+                                               symmetric_rhs = false)
             collect(X_fb)
         end
 
@@ -631,7 +635,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                                    lyapunov_algorithm = opts.lyapunov_algorithm,
                                                    tol = opts.tol.lyapunov_tol,
                                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                   verbose = opts.verbose)
+                                                   verbose = opts.verbose,
+                                                   symmetric_rhs = false)
                 collect(X_fb)
             else
                 X_candidate
@@ -642,7 +647,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                                lyapunov_algorithm = opts.lyapunov_algorithm,
                                                tol = opts.tol.lyapunov_tol,
                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                               verbose = opts.verbose)
+                                               verbose = opts.verbose,
+                                               symmetric_rhs = false)
             collect(X_fb)
         end
 
@@ -666,7 +672,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                               lyapunov_algorithm = opts.lyapunov_algorithm,
                                               tol = opts.tol.lyapunov_tol,
                                               acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                              verbose = opts.verbose)
+                                              verbose = opts.verbose,
+                                              symmetric_rhs = false)
         X_UU_LL = collect(X_UU_LL)
 
         X_LL = zeros(T, N_lower, N_lower)
@@ -681,7 +688,8 @@ function solve_block_triangular_lyapunov(ŝ_to_ŝ₃::AbstractMatrix{T},
                                                   lyapunov_algorithm = opts.lyapunov_algorithm,
                                                   tol = opts.tol.lyapunov_tol,
                                                   acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                  verbose = opts.verbose)
+                                                  verbose = opts.verbose,
+                                                  symmetric_rhs = false)
         X_LL = collect(X_LL_result)
     end
 

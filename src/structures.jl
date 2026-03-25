@@ -711,6 +711,11 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     bicgstab::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres::Krylov.GmresWorkspace{T, T, Vector{T}}
     
+    # vech-space Krylov buffers (for symmetric_rhs, dimension n(n+1)/2)
+    b_vech::Vector{T}
+    bicgstab_vech::Krylov.BicgstabWorkspace{T, T, Vector{T}}
+    gmres_vech::Krylov.GmresWorkspace{T, T, Vector{T}}
+    
     # ForwardDiff partials buffers (for forward-mode AD)
     P::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
     P̃::Matrix{R}       # For lyapunov equation partials
