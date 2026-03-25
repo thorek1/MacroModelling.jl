@@ -1659,28 +1659,31 @@ function compute_e4(nᵉ::Int)
     if nᵉ == 0
         return Float64[]
     end
-    E_e4 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
-    quadrup = multiplicate(nᵉ, 4)
-    comb4 = reduce(vcat, generateSumVectors(nᵉ, 4))
-    comb4 = comb4 isa Int64 ? reshape([comb4], 1, 1) : comb4
-    for j = 1:size(comb4, 1)
-        E_e4[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb4[j, :])
+    # Isserlis' theorem for i.i.d. standard normal shocks:
+    # E[ε_a ε_b ε_c ε_d] = δ_ab δ_cd + δ_ac δ_bd + δ_ad δ_bc
+    e4 = zeros(nᵉ^4)
+    for d in 1:nᵉ, c in 1:nᵉ, b in 1:nᵉ, a in 1:nᵉ
+        e4[a + nᵉ*(b-1) + nᵉ^2*(c-1) + nᵉ^3*(d-1)] = Float64((a==b)*(c==d) + (a==c)*(b==d) + (a==d)*(b==c))
     end
-    return quadrup * E_e4
+    return e4
 end
 
 function compute_e6(nᵉ::Int)
     if nᵉ == 0
         return Float64[]
     end
-    E_e6 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
-    sextup = multiplicate(nᵉ, 6)
-    comb6 = reduce(vcat, generateSumVectors(nᵉ, 6))
-    comb6 = comb6 isa Int64 ? reshape([comb6], 1, 1) : comb6
-    for j = 1:size(comb6, 1)
-        E_e6[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb6[j, :])
+    # Isserlis' theorem for i.i.d. standard normal shocks:
+    # E[ε_a ε_b ε_c ε_d ε_e ε_f] = sum over all 15 perfect matchings
+    e6 = zeros(nᵉ^6)
+    for f in 1:nᵉ, e in 1:nᵉ, d in 1:nᵉ, c in 1:nᵉ, b in 1:nᵉ, a in 1:nᵉ
+        e6[a + nᵉ*(b-1) + nᵉ^2*(c-1) + nᵉ^3*(d-1) + nᵉ^4*(e-1) + nᵉ^5*(f-1)] = Float64(
+            (a==b)*((c==d)*(e==f) + (c==e)*(d==f) + (c==f)*(d==e)) +
+            (a==c)*((b==d)*(e==f) + (b==e)*(d==f) + (b==f)*(d==e)) +
+            (a==d)*((b==c)*(e==f) + (b==e)*(c==f) + (b==f)*(c==e)) +
+            (a==e)*((b==c)*(d==f) + (b==d)*(c==f) + (b==f)*(c==d)) +
+            (a==f)*((b==c)*(d==e) + (b==d)*(c==e) + (b==e)*(c==d)))
     end
-    return sextup * E_e6
+    return e6
 end
 
 function ensure_moments_constants!(constants::constants)
