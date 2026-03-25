@@ -2155,7 +2155,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                     tol = opts.tol.lyapunov_tol,
                                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    symmetric_rhs = false)
 
             var_container[:,i,indexin(Inf,periods)] = ℒ.diag(covar_raw) # numerically more stable
         end
@@ -2308,7 +2309,8 @@ function get_variance_decomposition(𝓂::ℳ;
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
                                                 tol = opts.tol.lyapunov_tol,
                                                 acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                verbose = opts.verbose)
+                                                verbose = opts.verbose,
+                                                symmetric_rhs = false)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end

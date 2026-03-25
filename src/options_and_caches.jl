@@ -445,6 +445,9 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
         Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
+        zeros(T, 0),            # b_vech (vech-space Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_vech
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_vech
         zeros(T, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
@@ -520,6 +523,37 @@ function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Sy
         end
     else
         error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")
+    end
+
+    return ws
+end
+
+"""
+    ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+
+Ensure vech-space Krylov buffers and solver workspace are allocated for symmetric Lyapunov equations.
+The vech dimension is n(n+1)/2 instead of n².
+"""
+function ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if n == 0
+        return ws
+    end
+    n_vech = n * (n + 1) ÷ 2
+
+    if length(ws.b_vech) != n_vech
+        ws.b_vech = zeros(T, n_vech)
+    end
+
+    if algorithm == :bicgstab
+        if length(ws.bicgstab_vech.x) != n_vech
+            ws.bicgstab_vech = Krylov.BicgstabWorkspace(n_vech, n_vech, Vector{T})
+        end
+    elseif algorithm == :gmres
+        if length(ws.gmres_vech.x) != n_vech
+            ws.gmres_vech = Krylov.GmresWorkspace(n_vech, n_vech, Vector{T}; memory = 20)
+        end
     end
 
     return ws

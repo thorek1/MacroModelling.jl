@@ -43,7 +43,8 @@ function calculate_covariance(parameters::Vector{R},
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
                             tol = opts.tol.lyapunov_tol,
                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                            verbose = opts.verbose)
+                            verbose = opts.verbose,
+                            symmetric_rhs = false)
 
     covar_stable = copy(covar_raw)
 
@@ -391,7 +392,8 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+                                    verbose = opts.verbose,
+                                    symmetric_rhs = false)
 
             if info
                 Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
