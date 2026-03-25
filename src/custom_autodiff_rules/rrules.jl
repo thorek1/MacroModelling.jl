@@ -3170,6 +3170,12 @@ function rrule(::typeof(calculate_third_order_moments),
         e_ss = substate_indices.e_ss
         ss_s = substate_indices.ss_s
         s_s = substate_indices.s_s
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
 
         # first order slices
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -3195,6 +3201,7 @@ function rrule(::typeof(calculate_third_order_moments),
         s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
         e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
         s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
 
         # third order slices
         kron_s_v = dep_kron.kron_s_v
@@ -3220,22 +3227,30 @@ function rrule(::typeof(calculate_third_order_moments),
         s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
         e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up pruned state transition sub-blocks (compressed)
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
+
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                         ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                        zeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -3259,26 +3274,27 @@ function rrule(::typeof(calculate_third_order_moments),
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
 
-        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
         droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
 
-        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A_mat, eps())
+        # ── Standard Lyapunov solve (compressed) ──
+        ŝ_to_ŝ₃ = collect(Float64, [A_UU spzeros(N_upper, N_lower); A_LU A_LL])
 
-        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
-        droptol!(C_mat, eps())
+        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
+        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-
+        N_total = N_upper + N_lower
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, N_total, :third_order)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
+                                    ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -3345,18 +3361,25 @@ function rrule(::typeof(calculate_third_order_moments),
             e_e_e_to_s₃ = e_e_e_to_s₃,
             s_v_v_to_s₃ = s_v_v_to_s₃,
             e_v_v_to_s₃ = e_v_v_to_s₃,
-            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
             ê_to_ŝ₃ = ê_to_ŝ₃,
             ŝ_to_y₃ = ŝ_to_y₃,
             ê_to_y₃ = ê_to_y₃,
             Γ₃ = Γ₃,
             Eᴸᶻ = Eᴸᶻ,
-            A_mat = A_mat,
-            C_mat = C_mat,
+            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
             Σᶻ₃ = Σᶻ₃,
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
             lyap_pb = lyap_pb_iter,
+            N_upper = N_upper,
+            N_lower = N_lower,
+            D₂ˢ = D₂ˢ,
+            L₂ˢ = L₂ˢ,
+            D₃ˢ = D₃ˢ,
+            L₃ˢ = L₃ˢ,
+            n₂ˢ = n₂ˢ,
+            n₃ˢ = n₃ˢ,
+            s_to_s₁_by_s_to_s₁_c = s_to_s₁_by_s_to_s₁_c,
             I_plus_s_s = I_plus_s_s,
             ss_s = ss_s,
             s_s = s_s,
@@ -3395,6 +3418,8 @@ function rrule(::typeof(calculate_third_order_moments),
         for iter_idx in n_iters:-1:1
             d = iter_data[iter_idx]
             nˢ_i = d.nˢ
+            n₂ˢ_i = d.n₂ˢ
+            n₃ˢ_i = d.n₃ˢ
 
             # ── Gather ∂Σʸ₃tmp from ∂Σʸ₃ (reverse of scatter) ──
             nObs_iter = length(d.variance_observable)
@@ -3418,35 +3443,50 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Γ₃_iter   = d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
             ∂Eᴸᶻ_iter  = d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
 
-            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            # ── Standard Lyapunov adjoint ──
+            Nu = d.N_upper;  Nl = d.N_lower
+            ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
+
             lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
             ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
-            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[3])
 
-            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
-            # ê_s * Γ₃ * ê_s' is AXA': ∂ê += (∂C+∂C') * ê * Γ₃,  ∂Γ₃ += ê' * ∂C * ê
-            # A + A' with cotangent ∂C: ∂A = ∂C + ∂C'
-            ∂C_sym = ∂C_mat + ∂C_mat'
+            # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂C_sym = ∂C_lyap + ∂C_lyap'
+            ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
+            EL_d = Matrix{T}(d.Eᴸᶻ)
+            Γ₃_d = Matrix{T}(d.Γ₃)
 
-            ∂ê_to_ŝ₃  = ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
-            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
-            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
-            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+            # Term 1: ê * Γ₃ * ê'
+            ∂Γ₃_iter .+= ê_d' * ∂C_lyap * ê_d
+            ∂ê_to_ŝ₃ = ∂C_sym * ê_d * Γ₃_d
+
+            # Terms 2+3: M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂ê_to_ŝ₃ .+= ∂C_sym * ŝ_d * EL_d'
+            ∂Eᴸᶻ_iter .+= ê_d' * ∂C_sym * ŝ_d
+            ∂ŝ_to_ŝ₃ .+= ∂C_sym' * ê_d * EL_d
+
+            # Extract ∂A_UU, ∂A_LU, ∂A_LL from ∂ŝ_to_ŝ₃
+            ∂A_UU = ∂ŝ_to_ŝ₃[ru_i, ru_i]
+            ∂A_LU = ∂ŝ_to_ŝ₃[rl_i, ru_i]
+            ∂A_LL = ∂ŝ_to_ŝ₃[rl_i, rl_i]
+
 
             # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             # ŝ_to_y₃ = [s_to_y₁+svv/2 | s_to_y₁ | ss_to_y₂/2 | s_to_y₁ | ss_to_y₂ | sss_to_y₃/6]
             c = 0
             ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
-            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+n₂ˢ_i];     c += n₂ˢ_i   # compressed
             ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
             ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
 
             ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4     # ∂s_to_y₁
-            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5           # ∂s_s_to_y₂
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= (∂blk3 * Matrix(d.D₂ˢ)') ./ 2 .+ ∂blk5           # ∂s_s_to_y₂ (decompress blk3)
             ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2                     # ∂s_v_v_to_y₃
-            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6                     # ∂s_s_s_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= (∂blk6 * Matrix(d.D₃ˢ)') ./ 6  # ∂s_s_s_to_y₃ (decompress blk6)
 
             # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             # ê_to_y₃ = [e_to_y₁+evv/2 | ee_to_y₂/2 | se_to_y₂ | se_to_y₂ | sse_to_y₃/2 | see_to_y₃/2 | eee_to_y₃/6]
@@ -3497,44 +3537,56 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Δ̂μˢ₂_l = zeros(T, n)
 
             # Block boundary arrays
-            sb = cumsum([0, n, n, n^2, n, n^2, n^3])          # ŝ_to_ŝ₃ row/col
+            sb = cumsum([0, n, n, n₂ˢ_i, n, n^2, n₃ˢ_i])          # ŝ_to_ŝ₃ row/col (compressed)
             eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])  # ê_to_ŝ₃ cols
             gb = eb  # Γ₃ row/col (same block sizes)
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
 
-            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
-            ∂ŝ₃ = ∂ŝ_to_ŝ₃   # already dense Matrix{T}
+            # ── 2a: A_UU, A_LU, A_LL disaggregation ──
+            # Block boundaries within sub-matrices
+            bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
+            bl = cumsum([0, n, n^2, n₃ˢ_i])               # A_LL row/col blocks (also A_LU rows)
 
-            # Direct s₁ blocks: (1,1), (2,2), (4,4)
-            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
-                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
-                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
-            # (2,3) ss₂/2
-            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
-            # (4,5) ss₂
-            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
-            # (4,1) s_vv₃/2
-            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
-            # (4,6) sss₃/6
-            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
-            # (3,3) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
+            # ── From ∂A_UU ──
+            # (1,1) s₁, (2,2) s₁
+            ∂s₁_l .+= ∂A_UU[bu[1]+1:bu[2], bu[1]+1:bu[2]] .+
+                       ∂A_UU[bu[2]+1:bu[3], bu[2]+1:bu[3]]
+            # (2,3) ss₂/2 * D₂ˢ — decompress cols
+            ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
+            # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
+            ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
+            tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
+
+            # ── From ∂A_LU ──
+            # (1,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
+            # (2,1) kron(s₁, vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
             ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
-            # (5,5) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
+
+            # ── From ∂A_LL ──
+            # (1,1) s₁
+            ∂s₁_l .+= ∂A_LL[bl[1]+1:bl[2], bl[1]+1:bl[2]]
+            # (1,2) ss₂
+            ∂ss₂_l .+= ∂A_LL[bl[1]+1:bl[2], bl[2]+1:bl[3]]
+            # (1,3) sss₃/6 * D₃ˢ — decompress cols
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
+            # (2,2) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,6) kron(s₁, ss₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
+            # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
+            ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner56, s₁, ssh)
             ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
-            # (6,6) kron(s₁, kron(s₁,s₁))
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
+            # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
+            ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner66, s₁, s₁²)
             ∂s₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
+
 
             # ── 2b: ê_to_ŝ₃ disaggregation ──
             ∂ê₃ = Matrix{T}(∂ê_to_ŝ₃)
@@ -3545,11 +3597,11 @@ function rrule(::typeof(calculate_third_order_moments),
             # Row 2: (2,2) ee₂/2; (2,3) se₂
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
-            # Row 3: (3,2) kron(e₁,e₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
+            tmpL, tmpR = _kron_vjp(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
             ∂e₁_l .+= tmpL .+ tmpR
-            # (3,3) I_plus_s_s * kron(s₁,e₁)
-            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
             tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
             ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
             # Row 4: direct S₃ slices
@@ -3582,8 +3634,8 @@ function rrule(::typeof(calculate_third_order_moments),
             # (5,7) kron(e₁, ee₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
             ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
-            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
-            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
+            ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
             tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)                    # Term 1
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
@@ -3595,8 +3647,8 @@ function rrule(::typeof(calculate_third_order_moments),
             tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
-            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
+            ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
             tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)                  # Term 1
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
@@ -3608,8 +3660,8 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂e₁_l .+= tmpA
             tmpC = Matrix(d.s_s') * tmpB
             tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            # (6,7) kron(e₁, e₁²)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
+            tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
 
@@ -3682,10 +3734,12 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
-            # Col 6: kron(C₅, vec_Ie)
+            # Col 6: kron(C₅ * L₃ˢ', vec_Ie) — compress C₅ cols
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
-            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            C5m_c = C5m * Matrix(d.L₃ˢ)'
+            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
             ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
@@ -3982,22 +4036,39 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
         e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up compression matrices
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
+
+        # Set up pruned state transition sub-blocks (compressed)
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
+
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                         ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                        zeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -4021,30 +4092,30 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
 
-        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
         droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
 
-        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A_mat, eps())
+        # ── Standard Lyapunov solve (compressed) ──
+        N_total = N_upper + N_lower
+        ŝ_to_ŝ₃ = collect(Float64, [A_UU spzeros(N_upper, N_lower); A_LU A_LL])
+        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
+        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
-        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
-        droptol!(C_mat, eps())
-
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-
+        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, N_total, :third_order)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+                                       ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
+                                       lyapunov_algorithm = opts.lyapunov_algorithm,
+                                       tol = opts.tol.lyapunov_tol,
+                                       acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                       verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
 
@@ -4087,9 +4158,9 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             s_to_s₁ⁱ = s_to_s₁ⁱ * Matrix{T}(s_to_s₁)
 
             # Step 3: rebuild Eᴸᶻ with s_to_s₁ⁱ prefix
-            Eᴸᶻⁱ = [ spzeros(T, nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 + nˢ^3)
-                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁, vec_Iₑ)   zeros(T, nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁', vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ, 2*nˢ + 1:end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2*nˢ + 1:end, 2*nˢ + 1:end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(T, nᵉ^3, 3*nˢ + 2*nˢ^2 + nˢ^3)]
+            Eᴸᶻⁱ = [ spzeros(T, nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁, vec_Iₑ)   zeros(T, nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁', vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ, 2*nˢ + 1:end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2*nˢ + 1:end, 2*nˢ + 1:end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(T, nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
             Eᴸᶻ_cur = Eᴸᶻⁱ
 
             # Step 4: compute autocorrelation
@@ -4175,12 +4246,19 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ê_to_y₃ = ê_to_y₃,
             Γ₃ = Γ₃,
             Eᴸᶻ = Eᴸᶻ_orig,
-            A_mat = A_mat,
-            C_mat = C_mat,
+            N_upper = N_upper,
+            N_lower = N_lower,
+            lyap_pb = lyap_pb_iter,
+            D₂ˢ = D₂ˢ,
+            L₂ˢ = L₂ˢ,
+            D₃ˢ = D₃ˢ,
+            L₃ˢ = L₃ˢ,
+            n₂ˢ = n₂ˢ,
+            n₃ˢ = n₃ˢ,
+            s_to_s₁_by_s_to_s₁_c = s_to_s₁_by_s_to_s₁_c,
             Σᶻ₃ = Σᶻ₃,
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
-            lyap_pb = lyap_pb_iter,
             I_plus_s_s = I_plus_s_s,
             ss_s = ss_s,
             s_s = s_s,
@@ -4257,7 +4335,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ss_s_M = Matrix(d.ss_s)
             vΣ_ac = vec(d.Σ̂ᶻ₁)
             n = nˢ_i; ne = nᵉ
-            sb_ac = cumsum([0, n, n, n^2, n, n^2, n^3])
+            sb_ac = cumsum([0, n, n, d.n₂ˢ, n, n^2, d.n₃ˢ])
             eb_ac = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
 
             # Reverse loop over autocorrelation periods
@@ -4342,13 +4420,15 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     ∂Δ̂μˢ₂_ac .+= ∂iC4_i * vΣ_ac
                     ∂Σ̂ᶻ₁_ac .+= reshape(∂iC4_i' * d.Δ̂μˢ₂, n, n)
 
-                    # Col 6: kron(s₁ⁱ * C5m, vec_Ie)
+                    # Col 6: kron(s₁ⁱ * C5m * L₃ˢ', vec_Ie)
                     inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
                     C5m = reshape(Matrix{T}(inner_C5), n, n^3)
-                    A_c6 = s₁ⁱ * C5m
+                    C5m_c = C5m * Matrix(d.L₃ˢ)'
+                    A_c6 = s₁ⁱ * C5m_c
                     ∂A_c6 = _kron_vjp(∂ELⁱ6[:, sb_ac[6]+1:sb_ac[7]], A_c6, vec_Ie_col)[1]
-                    ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m'
-                    ∂C5_i = s₁ⁱ' * ∂A_c6
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m_c'
+                    ∂C5m_c_i = s₁ⁱ' * ∂A_c6
+                    ∂C5_i = ∂C5m_c_i * Matrix(d.L₃ˢ)
                     ∂iC5_i = reshape(∂C5_i, n^2, n^2)
                     ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5_i
                     ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5_i + ∂iC5_i') * vΣ_ac, n, n)
@@ -4401,10 +4481,12 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     # Col 6
                     inner_C5p = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
                     C5mp = reshape(Matrix{T}(inner_C5p), n, n^3)
-                    A_pc6 = s₁ⁱ_prev * C5mp
+                    C5mp_c = C5mp * Matrix(d.L₃ˢ)'
+                    A_pc6 = s₁ⁱ_prev * C5mp_c
                     ∂A_pc6 = _kron_vjp(∂ELprev6[:, sb_ac[6]+1:sb_ac[7]], A_pc6, vec_Ie_col)[1]
-                    ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp'
-                    ∂C5p = s₁ⁱ_prev' * ∂A_pc6
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp_c'
+                    ∂C5m_c_p = s₁ⁱ_prev' * ∂A_pc6
+                    ∂C5p = ∂C5m_c_p * Matrix(d.L₃ˢ)
                     ∂iC5p = reshape(∂C5p, n^2, n^2)
                     ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5p
                     ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5p + ∂iC5p') * vΣ_ac, n, n)
@@ -4460,32 +4542,52 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Γ₃_iter   = ∂Γ₃_ac  .+ d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
             ∂Eᴸᶻ_iter  = ∂Eᴸᶻ_ac .+ d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
 
-            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            # ── Standard Lyapunov adjoint ──
+            Nu = d.N_upper;  Nl = d.N_lower
+            ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
+
             lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
-            ∂ŝ_to_ŝ₃ = ∂ŝ_to_ŝ₃_ac .+ (lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2]))
-            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+            ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
+            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[3])
 
-            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
-            ∂C_sym = ∂C_mat + ∂C_mat'
+            # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂C_sym = ∂C_lyap + ∂C_lyap'
+            ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
+            EL_d = Matrix{T}(d.Eᴸᶻ)
+            Γ₃_d = Matrix{T}(d.Γ₃)
 
-            ∂ê_to_ŝ₃  = ∂ê_to_ŝ₃_ac .+ ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
-            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
-            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
-            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+            # Term 1: ê * Γ₃ * ê'
+            ∂Γ₃_iter .+= ê_d' * ∂C_lyap * ê_d
+            ∂ê_to_ŝ₃ = ∂ê_to_ŝ₃_ac .+ ∂C_sym * ê_d * Γ₃_d
+
+            # Terms 2+3: M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂ê_to_ŝ₃ .+= ∂C_sym * ŝ_d * EL_d'
+            ∂Eᴸᶻ_iter .+= ê_d' * ∂C_sym * ŝ_d
+            ∂ŝ_to_ŝ₃ .+= ∂C_sym' * ê_d * EL_d
+
+            # Add autocorrelation contributions
+            ∂ŝ_to_ŝ₃ .+= ∂ŝ_to_ŝ₃_ac
+
+            # Extract ∂A_UU, ∂A_LU, ∂A_LL from ∂ŝ_to_ŝ₃
+            ∂A_UU = ∂ŝ_to_ŝ₃[ru_i, ru_i]
+            ∂A_LU = ∂ŝ_to_ŝ₃[rl_i, ru_i]
+            ∂A_LL = ∂ŝ_to_ŝ₃[rl_i, rl_i]
 
             # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            n₂ˢ_i = d.n₂ˢ;  n₃ˢ_i = d.n₃ˢ
             c = 0
             ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
-            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+n₂ˢ_i];     c += n₂ˢ_i   # compressed
             ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
             ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
 
             ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4
-            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= (∂blk3 * Matrix(d.D₂ˢ)') ./ 2 .+ ∂blk5  # decompress blk3
             ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2
-            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= (∂blk6 * Matrix(d.D₃ˢ)') ./ 6  # decompress blk6
 
             # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             c = 0
@@ -4533,41 +4635,52 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Δ̂μˢ₂_l = ∂Δ̂μˢ₂_ac  # start with autocorrelation contribution
 
             # Block boundary arrays
-            sb = cumsum([0, n, n, n^2, n, n^2, n^3])
+            sb = cumsum([0, n, n, n₂ˢ_i, n, n^2, n₃ˢ_i])          # ŝ_to_ŝ₃ row/col (compressed)
             eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
             gb = eb
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
 
-            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
-            ∂ŝ₃ = ∂ŝ_to_ŝ₃
+            # ── 2a: A_UU, A_LU, A_LL disaggregation ──
+            # Block boundaries within sub-matrices
+            bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
+            bl = cumsum([0, n, n^2, n₃ˢ_i])               # A_LL row/col blocks (also A_LU rows)
 
-            # Direct s₁ blocks: (1,1), (2,2), (4,4)
-            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
-                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
-                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
-            # (2,3) ss₂/2
-            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
-            # (4,5) ss₂
-            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
-            # (4,1) s_vv₃/2
-            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
-            # (4,6) sss₃/6
-            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
-            # (3,3) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
+            # ── From ∂A_UU ──
+            # (1,1) s₁, (2,2) s₁
+            ∂s₁_l .+= ∂A_UU[bu[1]+1:bu[2], bu[1]+1:bu[2]] .+
+                       ∂A_UU[bu[2]+1:bu[3], bu[2]+1:bu[3]]
+            # (2,3) ss₂/2 * D₂ˢ — decompress cols
+            ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
+            # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
+            ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
+            tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
+
+            # ── From ∂A_LU ──
+            # (1,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
+            # (2,1) kron(s₁, vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
             ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
-            # (5,5) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
+
+            # ── From ∂A_LL ──
+            # (1,1) s₁
+            ∂s₁_l .+= ∂A_LL[bl[1]+1:bl[2], bl[1]+1:bl[2]]
+            # (1,2) ss₂
+            ∂ss₂_l .+= ∂A_LL[bl[1]+1:bl[2], bl[2]+1:bl[3]]
+            # (1,3) sss₃/6 * D₃ˢ — decompress cols
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
+            # (2,2) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,6) kron(s₁, ss₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
+            # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
+            ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner56, s₁, ssh)
             ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
-            # (6,6) kron(s₁, kron(s₁,s₁))
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
+            # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
+            ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner66, s₁, s₁²)
             ∂s₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
@@ -4581,11 +4694,11 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # Row 2: (2,2) ee₂/2; (2,3) se₂
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
-            # Row 3: (3,2) kron(e₁,e₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
+            tmpL, tmpR = _kron_vjp(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
             ∂e₁_l .+= tmpL .+ tmpR
-            # (3,3) I_plus_s_s * kron(s₁,e₁)
-            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
             tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
             ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
             # Row 4: direct S₃ slices
@@ -4618,8 +4731,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # (5,7) kron(e₁, ee₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
             ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
-            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
-            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
+            ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
             tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
@@ -4631,8 +4744,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
-            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
+            ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
             tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
@@ -4644,8 +4757,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂e₁_l .+= tmpA
             tmpC = Matrix(d.s_s') * tmpB
             tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            # (6,7) kron(e₁, e₁²)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
+            tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
 
@@ -4717,10 +4830,12 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
-            # Col 6: kron(C₅, vec_Ie)
+            # Col 6: kron(C₅ * L₃ˢ', vec_Ie) — compress col 6
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
-            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            C5m_c = C5m * Matrix(d.L₃ˢ)'
+            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
             ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
@@ -7530,14 +7645,11 @@ function rrule(::typeof(solve_sylvester_equation),
 
         solved = solved && slvd
 
-        tmp_n = 𝕊ℂ.𝐀
-        tmp_m = 𝕊ℂ.𝐁
-
-        ℒ.mul!(tmp_n, ∂C, B')
-        ∂A = tmp_n * P_cached'
-
-        ℒ.mul!(tmp_m, P_cached', A')
-        ∂B = tmp_m * ∂C
+        # ∂C is n×m, B' is m×m, P_cached is n×m, A is n×n
+        # Intermediate products are n×m and m×n — not n×n or m×m,
+        # so workspace buffers 𝐀 (n×n) / 𝐁 (m×m) are wrong shape when n ≠ m.
+        ∂A = (∂C * B') * P_cached'
+        ∂B = (P_cached' * A') * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
