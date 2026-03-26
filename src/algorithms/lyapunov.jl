@@ -145,20 +145,22 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns owned dense matrix from MatrixEquations.lyapd.
-    # Note: workspace is unused by bartels_stewart but accepted for API consistency
     𝐂 = try 
         MatrixEquations.lyapd(A, C)::Matrix{T}
     catch
         return C, 0, 1.0
     end
     
-    # 𝐂¹ = A * 𝐂 * A' + C
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom   
+    # Allocation-free residual: use doubling workspace buffers as scratch
+    ensure_lyapunov_doubling_buffers!(workspace)
+    𝐂A_tmp = workspace.𝐂A
+    𝐂¹_tmp = workspace.𝐂¹
+    ℒ.mul!(𝐂A_tmp, 𝐂, A')
+    ℒ.mul!(𝐂¹_tmp, A, 𝐂A_tmp)
+    ℒ.axpy!(1, C, 𝐂¹_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹_tmp)
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+    reached_tol = ℒ.norm(𝐂¹_tmp) / ℒ.norm(𝐂)
 
     # if reached_tol > tol
     #     println("Lyapunov: lyapunov $reached_tol")
@@ -303,7 +305,9 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         droptol!(𝐀, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂A, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂A)
+            normdiff = ℒ.norm(𝐂A)
             maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
             if !isfinite(normdiff) || normdiff / maxnorm < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -316,21 +320,12 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         # 𝐂 = 𝐂¹
     end
 
-    # ℒ.mul!(𝐂A, 𝐂, A')
-    # ℒ.mul!(𝐂¹, A, 𝐂A)
-    # ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: doubling $reached_tol")
-    # end
+    reached_tol = ℒ.norm(𝐂¹) / ℒ.norm(𝐂)
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -372,7 +367,9 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         copyto!(𝐀, 𝐀²)
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            copyto!(𝐂A, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂A)
+            normdiff = ℒ.norm(𝐂A)
             maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
             if !isfinite(normdiff) || normdiff / maxnorm < tol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -384,21 +381,12 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         copyto!(𝐂, 𝐂¹)
     end
 
-    # ℒ.mul!(𝐂A, 𝐂, A')
-    # ℒ.mul!(𝐂¹, A, 𝐂A)
-    # ℒ.axpy!(1, C, 𝐂¹)
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: doubling $reached_tol")
-    # end
+    reached_tol = ℒ.norm(𝐂¹) / ℒ.norm(𝐂)
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -438,7 +426,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         fill_symmetric_from_vech!(𝐗, workspace.bicgstab_vech.x)
 
-        reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
+        # Allocation-free residual: reuse tmp̄ for intermediate, 𝐗 is the solution
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
 
         return 𝐗, workspace.bicgstab_vech.stats.niter, reached_tol
     else
@@ -461,7 +455,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         Krylov.bicgstab!(workspace.bicgstab, lyapunov_op, b, rtol = tol, atol = tol)
         copyto!(𝐗, workspace.bicgstab.x)
 
-        reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
 
         return 𝐗, workspace.bicgstab.stats.niter, reached_tol
     end
@@ -500,7 +500,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         fill_symmetric_from_vech!(𝐗, workspace.gmres_vech.x)
 
-        reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
 
         return 𝐗, workspace.gmres_vech.stats.niter, reached_tol
     else
@@ -523,7 +529,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         Krylov.gmres!(workspace.gmres, lyapunov_op, b, rtol = tol, atol = tol)
         copyto!(𝐗, workspace.gmres.x)
 
-        reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
 
         return 𝐗, workspace.gmres.stats.niter, reached_tol
     end
