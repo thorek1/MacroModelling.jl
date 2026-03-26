@@ -3543,6 +3543,14 @@ function rrule(::typeof(calculate_third_order_moments),
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
 
+            # Reusable buffers for in-place kron adjoint operations
+            ∂s₁²_buf = zeros(T, n^2, n^2)
+            ∂e₁²_buf = zeros(T, n^2, ne^2)
+            ∂kron_buf = zeros(T, n^2, n * ne)
+            ∂vvh_buf = zeros(T, size(vvh))
+            ∂ssh_buf = zeros(T, size(ssh))
+            ∂eeh_buf = zeros(T, size(eeh))
+
             # ── 2a: A_UU, A_LU, A_LL disaggregation ──
             # Block boundaries within sub-matrices
             bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
@@ -3556,15 +3564,15 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
             # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
             ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
-            tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂inner33, s₁, s₁)
 
             # ── From ∂A_LU ──
             # (1,1) s_vv₃/2
             ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
             # (2,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
-            ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            ∂vvh_buf .= 0
+            fill_kron_adjoint!(∂vvh_buf, ∂s₁_l, Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), vvh, s₁)
+            ∂vv₂_l .+= ∂vvh_buf ./ 2
 
             # ── From ∂A_LL ──
             # (1,1) s₁
@@ -3574,18 +3582,17 @@ function rrule(::typeof(calculate_third_order_moments),
             # (1,3) sss₃/6 * D₃ˢ — decompress cols
             ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
             # (2,2) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
             # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
             ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
-            tmpA, tmpB = _kron_vjp(∂inner56, s₁, ssh)
-            ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
+            ∂ssh_buf .= 0
+            fill_kron_adjoint!(∂ssh_buf, ∂s₁_l, ∂inner56, ssh, s₁)
+            ∂ss₂_l .+= ∂ssh_buf ./ 2
             # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
             ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
-            tmpA, tmpB = _kron_vjp(∂inner66, s₁, s₁²)
-            ∂s₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
+            ∂s₁²_buf .= 0
+            fill_kron_adjoint!(∂s₁²_buf, ∂s₁_l, ∂inner66, s₁², s₁)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
 
 
             # ── 2b: ê_to_ŝ₃ disaggregation ──
@@ -3598,12 +3605,10 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
             # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
-            tmpL, tmpR = _kron_vjp(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
-            ∂e₁_l .+= tmpL .+ tmpR
+            fill_kron_adjoint!(∂e₁_l, ∂e₁_l, Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
             # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
             ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
-            tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
-            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂k33, e₁, s₁)
             # Row 4: direct S₃ slices
             ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂ê₃[sb[4]+1:sb[5], eb[1]+1:eb[2]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[4]+1:sb[5], eb[4]+1:eb[5]]
@@ -3611,59 +3616,60 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
             ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
             # Row 5: (5,1) kron(e₁,vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
-            ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            ∂vvh_buf .= 0
+            fill_kron_adjoint!(∂vvh_buf, ∂e₁_l, Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), vvh, e₁)
+            ∂vv₂_l .+= ∂vvh_buf ./ 2
             # (5,4) s_s * kron(s₁,e₁)
             ∂k54 = Matrix(d.s_s') * Matrix(∂ê₃[sb[5]+1:sb[6], eb[4]+1:eb[5]])
-            tmpA, tmpB = _kron_vjp(∂k54, s₁, e₁)
-            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂k54, e₁, s₁)
             # (5,5) kron(s₁,se₂) + s_s * kron(ss₂/2, e₁)
             ∂b55 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b55, s₁, se₂)
-            ∂s₁_l .+= tmpA;  ∂se₂_l .+= tmpB
+            fill_kron_adjoint!(∂se₂_l, ∂s₁_l, ∂b55, se₂, s₁)
             ∂k55b = Matrix(d.s_s') * ∂b55
-            tmpA, tmpB = _kron_vjp(∂k55b, ssh, e₁)
-            ∂ss₂_l .+= tmpA ./ 2;  ∂e₁_l .+= tmpB
+            ∂ssh_buf .= 0
+            fill_kron_adjoint!(∂e₁_l, ∂ssh_buf, ∂k55b, e₁, ssh)
+            ∂ss₂_l .+= ∂ssh_buf ./ 2
             # (5,6) kron(s₁,ee₂/2) + s_s * kron(se₂, e₁)
             ∂b56 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b56, s₁, eeh)
-            ∂s₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            ∂eeh_buf .= 0
+            fill_kron_adjoint!(∂eeh_buf, ∂s₁_l, ∂b56, eeh, s₁)
+            ∂ee₂_l .+= ∂eeh_buf ./ 2
             ∂k56b = Matrix(d.s_s') * ∂b56
-            tmpA, tmpB = _kron_vjp(∂k56b, se₂, e₁)
-            ∂se₂_l .+= tmpA;  ∂e₁_l .+= tmpB
+            fill_kron_adjoint!(∂e₁_l, ∂se₂_l, ∂k56b, e₁, se₂)
             # (5,7) kron(e₁, ee₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
-            ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            ∂eeh_buf .= 0
+            fill_kron_adjoint!(∂eeh_buf, ∂e₁_l, Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), eeh, e₁)
+            ∂ee₂_l .+= ∂eeh_buf ./ 2
             # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
             ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)                    # Term 1
-            ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            tmpA, tmpB = _kron_vjp(∂b65, s₁, ss_s1e1)                # Term 2
-            ∂s₁_l .+= tmpA
-            tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            ∂k65c = ∂b65 * Matrix(d.e_ss')                           # Term 3
-            tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            ∂s₁²_buf .= 0                                            # Term 1: kron(s₁², e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁²_buf, ∂b65, e₁, s₁²)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
+            ∂kron_buf .= 0                                            # Term 2: kron(s₁, ss_s1e1)
+            fill_kron_adjoint!(∂kron_buf, ∂s₁_l, ∂b65, ss_s1e1, s₁)
+            tmpC = Matrix(d.s_s') * ∂kron_buf
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, tmpC, e₁, s₁)
+            ∂k65c = ∂b65 * Matrix(d.e_ss')                           # Term 3: kron(e₁, s₁²) * e_ss
+            ∂s₁²_buf .= 0
+            fill_kron_adjoint!(∂s₁²_buf, ∂e₁_l, ∂k65c, s₁², e₁)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
             # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
             ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)                  # Term 1
-            ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂kron_buf .= 0                                            # Term 1: kron(s₁e₁, e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂kron_buf, ∂b66, e₁, s₁e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂kron_buf, e₁, s₁)
             ∂pre = ∂b66 * Matrix(d.e_es')                            # shared for Terms 2+3
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, s₁e₁)                  # Term 2
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, ss_s1e1)                # Term 3
-            ∂e₁_l .+= tmpA
-            tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂kron_buf .= 0                                            # Term 2: kron(e₁, s₁e₁)
+            fill_kron_adjoint!(∂kron_buf, ∂e₁_l, ∂pre, s₁e₁, e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂kron_buf, e₁, s₁)
+            ∂kron_buf .= 0                                            # Term 3: kron(e₁, ss_s1e1)
+            fill_kron_adjoint!(∂kron_buf, ∂e₁_l, ∂pre, ss_s1e1, e₁)
+            tmpC = Matrix(d.s_s') * ∂kron_buf
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, tmpC, e₁, s₁)
             # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
-            tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
+            ∂e₁²_buf .= 0
+            fill_kron_adjoint!(∂e₁²_buf, ∂e₁_l, Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁², e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂e₁_l, ∂e₁²_buf, e₁, e₁)
 
             # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
             ∂Γ = Matrix{T}(∂Γ₃_iter)
@@ -3751,7 +3757,7 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂b_μ = I_m_s₁²' \ ∂x_μ
             # ∂(kron(s₁,s₁)) = ∂b * vec(μ)'
             ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
-            tmpL, tmpR = _kron_vjp(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_from_μ, s₁, s₁)
 
             # Decompose ∂RHS:  RHS = L₁ * s₁' + L₂ * e₁'
             ∂RHS = reshape(∂b_μ, n, n)
@@ -7687,7 +7693,6 @@ function rrule(::typeof(solve_lyapunov_equation),
         ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
         ∂C = ∂C_result
         slvd = adj_tol < acceptance_tol
-        println("  adjoint Lyapunov: iters=$adj_iters, tol=$adj_tol, N=$(size(A_dense,1)), Nu=$Nu, Nl=$Nl")
     
         solved = solved && slvd
 
