@@ -872,7 +872,7 @@ function calculate_loglikelihood(::Val{:kalman},
         end
 
         v = data_in_deviations[:, t] - z
-        F = C * P * C'
+        F = Matrix(C * P * C')
 
         luF = ℒ.lu(F, check = false)
         if !ℒ.issuccess(luF)
