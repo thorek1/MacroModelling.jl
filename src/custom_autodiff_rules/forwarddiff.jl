@@ -759,13 +759,12 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-14,
                                     acceptance_tol::AbstractFloat = 1e-12,
-                                    verbose::Bool = false,
-                                    symmetric_rhs::Bool = true)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose, symmetric_rhs = symmetric_rhs)
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     if size(workspace.P) != size(P̂)
         workspace.P = zeros(eltype(P̂), size(P̂)...)
@@ -806,7 +805,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         if ℒ.norm(X) < eps() continue end
 
         # X = Ã*P̂*Â' + Â*P̂*Ã' + C̃ is symmetric when C is symmetric (P̂ is always symmetric)
-        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose, symmetric_rhs = symmetric_rhs)
+        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
         
         solved = solved && slvd
 

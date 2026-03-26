@@ -3298,8 +3298,7 @@ function rrule(::typeof(calculate_third_order_moments),
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
                                     tol = opts.tol.lyapunov_tol,
                                     acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose,
-                                    symmetric_rhs = true)
+                                    verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
 
@@ -4116,8 +4115,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                                        lyapunov_algorithm = opts.lyapunov_algorithm,
                                        tol = opts.tol.lyapunov_tol,
                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                       verbose = opts.verbose,
-                                       symmetric_rhs = true)
+                                       verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
 
@@ -7667,10 +7665,9 @@ function rrule(::typeof(solve_lyapunov_equation),
                 tol::AbstractFloat = 1e-14,
                 acceptance_tol::AbstractFloat = 1e-12,
                 # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false,
-                symmetric_rhs::Bool = false)
+                verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose, symmetric_rhs = symmetric_rhs)
+    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
@@ -7684,7 +7681,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     function solve_lyapunov_equation_pullback(∂P)
         if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
-        # Adjoint Lyapunov: ∂P is generally not symmetric, so symmetric_rhs=false
+        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
         # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
         # (the dispatcher's choose_matrix_format would convert back to sparse)
         ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
