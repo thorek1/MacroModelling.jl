@@ -760,7 +760,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     tol::AbstractFloat = 1e-14,
                                     acceptance_tol::AbstractFloat = 1e-12,
                                     verbose::Bool = false,
-                                    symmetric_rhs::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                    symmetric_rhs::Bool = true)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
