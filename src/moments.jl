@@ -373,7 +373,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
+            μˢ⁺₂ = collect(ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
             Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
             μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
