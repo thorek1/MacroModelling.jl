@@ -279,43 +279,43 @@ end
 
 Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function First_order_workspace(; T::Type = Float64, S::Type = Float64)
-    empty_qr_factors = zeros(T, 0, 0)
+function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+    empty_qr_factors = zeros(TT, 0, 0)
     empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
-    empty_qr_rhs = zeros(T, 0, 0)
+    empty_qr_rhs = zeros(TT, 0, 0)
     empty_qr_orm_ws::FastLapackInterface.QROrmWs = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
-    empty_lu_factors = zeros(T, 0, 0)
+    empty_lu_factors = zeros(TT, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
-    empty_sparse = spzeros(T, 0, 0)
-    empty_sparse_rhs = zeros(T, 0)
+    empty_sparse = spzeros(TT, 0, 0)
+    empty_sparse_rhs = zeros(TT, 0)
     empty_sparse_prob = 𝒮.LinearProblem(empty_sparse, empty_sparse_rhs)
-    empty_sparse_lu = 𝒮.init(empty_sparse_prob,
-                             𝒮.LUFactorization(),
-                             verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    empty_sparse_lu::𝒮.LinearCache = 𝒮.init(empty_sparse_prob,
+                                            𝒮.LUFactorization(),
+                                            verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
-                    Sylvester_workspace(S = T, T = S),  # sylvester
+                    Sylvester_workspace(S = TT, T = SS),  # sylvester
                     # ForwardDiff partials buffers
-                    zeros(S, 0, 0),  # X̃_first_order
-                    zeros(S, 0, 0),  # p_tmp
-                    zeros(S, 0, 0),  # ∂SS_and_pars
-                    zeros(T, 0),     # ∂∇₁_vec
+                    zeros(SS, 0, 0),  # X̃_first_order
+                    zeros(SS, 0, 0),  # p_tmp
+                    zeros(SS, 0, 0),  # ∂SS_and_pars
+                    zeros(TT, 0),     # ∂∇₁_vec
                     # First-order perturbation workspaces (primal)
-                    zeros(T, 0, 0),  # 𝐧ₚ₋
-                    zeros(T, 0, 0),  # 𝐌
-                    zeros(T, 0, 0),  # 𝐀₊
-                    zeros(T, 0, 0),  # 𝐀₀
-                    zeros(T, 0, 0),  # 𝐀₋
-                    zeros(T, 0, 0),  # 𝐀̃₊
-                    zeros(T, 0, 0),  # 𝐀̃₀
-                    zeros(T, 0, 0),  # 𝐀̃₋
-                    zeros(T, 0, 0),  # 𝐀̄₀ᵤ
-                    zeros(T, 0, 0),  # 𝐀₊ᵤ
-                    zeros(T, 0, 0),  # 𝐀̃₀ᵤ
-                    zeros(T, 0, 0),  # 𝐀₋ᵤ
-                    zeros(T, 0, 0),  # 𝐀
-                    zeros(T, 0, 0),  # ∇₀
-                    zeros(T, 0, 0),  # ∇ₑ
+                    zeros(TT, 0, 0),  # 𝐧ₚ₋
+                    zeros(TT, 0, 0),  # 𝐌
+                    zeros(TT, 0, 0),  # 𝐀₊
+                    zeros(TT, 0, 0),  # 𝐀₀
+                    zeros(TT, 0, 0),  # 𝐀₋
+                    zeros(TT, 0, 0),  # 𝐀̃₊
+                    zeros(TT, 0, 0),  # 𝐀̃₀
+                    zeros(TT, 0, 0),  # 𝐀̃₋
+                    zeros(TT, 0, 0),  # 𝐀̄₀ᵤ
+                    zeros(TT, 0, 0),  # 𝐀₊ᵤ
+                    zeros(TT, 0, 0),  # 𝐀̃₀ᵤ
+                    zeros(TT, 0, 0),  # 𝐀₋ᵤ
+                    zeros(TT, 0, 0),  # 𝐀
+                    zeros(TT, 0, 0),  # ∇₀
+                    zeros(TT, 0, 0),  # ∇ₑ
                     # FastLapackInterface QR workspaces
                     empty_qr_factors,
                     empty_qr_ws,
@@ -334,8 +334,8 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                     empty_lu_ws,
                     (0, 0),
                     empty_sparse_lu,
-                    zeros(T, 0),
-                    zeros(T, 0, 0))
+                    zeros(TT, 0),
+                    zeros(TT, 0, 0))
 end
 
 """
@@ -855,7 +855,7 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
 end
 
 
-function Workspaces(;T::Type = Float64, S::Type = Float64)
+function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
