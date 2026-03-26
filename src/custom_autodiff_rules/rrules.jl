@@ -3454,8 +3454,8 @@ function rrule(::typeof(calculate_third_order_moments),
 
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
-            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             EL_d = Matrix{T}(d.Eᴸᶻ)
             Γ₃_d = Matrix{T}(d.Γ₃)
 
@@ -4560,8 +4560,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
-            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             EL_d = Matrix{T}(d.Eᴸᶻ)
             Γ₃_d = Matrix{T}(d.Γ₃)
 
