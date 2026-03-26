@@ -3393,8 +3393,6 @@ function rrule(::typeof(calculate_third_order_moments),
 
     # ── Pullback ──
     function calculate_third_order_moments_pullback(∂out)
-      @timeit TIMER "pb_total" begin
-        @timeit TIMER "pb_init" begin
         ∂Σʸ₃_in, ∂μʸ₂_in, ∂SS_in, _ = ∂out
 
         ∂Σʸ₃_in = unthunk(∂Σʸ₃_in)
@@ -3416,7 +3414,6 @@ function rrule(::typeof(calculate_third_order_moments),
         ∂∇₃_acc   = zeros(T, size(∇₃))
 
         if !(∂SS_in isa AbstractZero); ∂SS_acc .+= ∂SS_in; end
-        end # pb_init
 
         # ──── Reverse loop over iterations ────
         for iter_idx in n_iters:-1:1
@@ -3425,7 +3422,6 @@ function rrule(::typeof(calculate_third_order_moments),
             n₂ˢ_i = d.n₂ˢ
             n₃ˢ_i = d.n₃ˢ
 
-            @timeit TIMER "Σʸ₃_adjoint" begin
             # ── Gather ∂Σʸ₃tmp from ∂Σʸ₃ (reverse of scatter) ──
             nObs_iter = length(d.variance_observable)
             ∂Σʸ₃tmp = zeros(T, nObs_iter, nObs_iter)
@@ -3447,24 +3443,19 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Σᶻ₃      = d.ŝ_to_y₃' * ∂Σʸ₃tmp * d.ŝ_to_y₃
             ∂Γ₃_iter   = d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
             ∂Eᴸᶻ_iter  = d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
-            end # Σʸ₃_adjoint
 
-            @timeit TIMER "lyapunov_adjoint" begin
             # ── Standard Lyapunov adjoint ──
             Nu = d.N_upper;  Nl = d.N_lower
             ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
 
-            @timeit TIMER "lyap_solve" begin
             lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
             ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
             ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[3])
-            end # lyap_solve
 
-            @timeit TIMER "C_backprop" begin
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
-            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             EL_d = Matrix{T}(d.Eᴸᶻ)
             Γ₃_d = Matrix{T}(d.Γ₃)
 
@@ -3476,16 +3467,13 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂ê_to_ŝ₃ .+= ∂C_sym * ŝ_d * EL_d'
             ∂Eᴸᶻ_iter .+= ê_d' * ∂C_sym * ŝ_d
             ∂ŝ_to_ŝ₃ .+= ∂C_sym' * ê_d * EL_d
-            end # C_backprop
 
             # Extract ∂A_UU, ∂A_LU, ∂A_LL from ∂ŝ_to_ŝ₃
             ∂A_UU = ∂ŝ_to_ŝ₃[ru_i, ru_i]
             ∂A_LU = ∂ŝ_to_ŝ₃[rl_i, ru_i]
             ∂A_LL = ∂ŝ_to_ŝ₃[rl_i, rl_i]
-            end # lyapunov_adjoint
 
 
-            @timeit TIMER "disagg_output_maps" begin
             # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             # ŝ_to_y₃ = [s_to_y₁+svv/2 | s_to_y₁ | ss_to_y₂/2 | s_to_y₁ | ss_to_y₂ | sss_to_y₃/6]
             c = 0
@@ -3519,9 +3507,7 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂S3f_acc[d.obs_in_y, d.kron_s_s_e] .+= ∂eblk5 ./ 2            # ∂s_s_e_to_y₃
             ∂S3f_acc[d.obs_in_y, d.kron_s_e_e] .+= ∂eblk6 ./ 2            # ∂s_e_e_to_y₃
             ∂S3f_acc[d.obs_in_y, d.kron_e_e_e] .+= ∂eblk7 ./ 6            # ∂e_e_e_to_y₃
-            end # disagg_output_maps
 
-            @timeit TIMER "dense_copies_setup" begin
             # ════════════════════════════════════════════════════════════════════
             # Stage 2+3: Disaggregate block matrices → slice & data cotangents
             # ════════════════════════════════════════════════════════════════════
@@ -3557,15 +3543,12 @@ function rrule(::typeof(calculate_third_order_moments),
             gb = eb  # Γ₃ row/col (same block sizes)
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
-            end # dense_copies_setup
 
-            @timeit TIMER "disagg_A_blocks" begin
             # ── 2a: A_UU, A_LU, A_LL disaggregation ──
             # Block boundaries within sub-matrices
             bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
             bl = cumsum([0, n, n^2, n₃ˢ_i])               # A_LL row/col blocks (also A_LU rows)
 
-            @timeit TIMER "∂A_UU" begin
             # ── From ∂A_UU ──
             # (1,1) s₁, (2,2) s₁
             ∂s₁_l .+= ∂A_UU[bu[1]+1:bu[2], bu[1]+1:bu[2]] .+
@@ -3576,18 +3559,14 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
             tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            end # ∂A_UU
 
-            @timeit TIMER "∂A_LU" begin
             # ── From ∂A_LU ──
             # (1,1) s_vv₃/2
             ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
             # (2,1) kron(s₁, vv₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
             ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
-            end # ∂A_LU
 
-            @timeit TIMER "∂A_LL" begin
             # ── From ∂A_LL ──
             # (1,1) s₁
             ∂s₁_l .+= ∂A_LL[bl[1]+1:bl[2], bl[1]+1:bl[2]]
@@ -3608,16 +3587,12 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂s₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            end # ∂A_LL
-            end # disagg_A_blocks
 
 
-            @timeit TIMER "disagg_ê_to_ŝ₃" begin
             # ── 2b: ê_to_ŝ₃ disaggregation ──
             ∂ê₃ = Matrix{T}(∂ê_to_ŝ₃)
             ss_s1e1 = Matrix(d.s_s) * s₁e₁   # pre-compute
 
-            @timeit TIMER "ê_rows1-4" begin
             # Row 1: (1,1) e₁
             ∂e₁_l .+= ∂ê₃[sb[1]+1:sb[2], eb[1]+1:eb[2]]
             # Row 2: (2,2) ee₂/2; (2,3) se₂
@@ -3636,8 +3611,6 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂S3f_acc[d.iˢ, d.kron_s_s_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[5]+1:eb[6]] ./ 2
             ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
             ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
-            end # ê_rows1-4
-            @timeit TIMER "ê_row5" begin
             # Row 5: (5,1) kron(e₁,vv₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
             ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
@@ -3662,8 +3635,6 @@ function rrule(::typeof(calculate_third_order_moments),
             # (5,7) kron(e₁, ee₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
             ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
-            end # ê_row5
-            @timeit TIMER "ê_row6" begin
             # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
             ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
             tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)                    # Term 1
@@ -3694,10 +3665,7 @@ function rrule(::typeof(calculate_third_order_moments),
             tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
-            end # ê_row6
-            end # disagg_ê_to_ŝ₃
 
-            @timeit TIMER "Γ₃_EL_μ_scatter" begin
             # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
             ∂Γ = Matrix{T}(∂Γ₃_iter)
             vΣ = vec(d.Σ̂ᶻ₁)
@@ -3853,16 +3821,13 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Σʸ₁_acc[d.iˢ, d.iˢ]       .+= ∂Σ̂ᶻ₁
             ∂Σᶻ₂_acc[d.dependencies_extended_idx, d.dependencies_extended_idx] .+= ∂Σ̂ᶻ₂
             ∂Δμˢ₂_acc[d.dependencies_in_states_idx] .+= ∂Δ̂μˢ₂_l
-            end # Γ₃_EL_μ_scatter
         end
 
-        @timeit TIMER "sub_rrule_chain" begin
         # ── Sub-rrule pullback chain ──
 
         # S₃_full = S₃ * 𝐔₃  →  ∂S₃ = ∂S₃_full * 𝐔₃'
         ∂𝐒₃_compressed = ∂S3f_acc * 𝐔₃'
 
-        @timeit TIMER "so3_pb" begin
         # Third-order solution pullback: returns (NoTangent, ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NT, NT, NT)
         so3_grad = so3_pb((∂𝐒₃_compressed, NoTangent()))
         if !(so3_grad[2] isa AbstractZero); ∂∇₁_acc .+= so3_grad[2]; end
@@ -3870,20 +3835,16 @@ function rrule(::typeof(calculate_third_order_moments),
         if !(so3_grad[4] isa AbstractZero); ∂∇₃_acc .+= so3_grad[4]; end
         if !(so3_grad[5] isa AbstractZero); ∂𝐒₁_acc .+= so3_grad[5]; end
         # so3_grad[6] is now compressed ∂𝐒₂_raw — kept separate
-        end # so3_pb
 
-        @timeit TIMER "∇₃_pb" begin
         # Third-order derivatives pullback: returns (NoTangent, ∂params, ∂SS, NT, NT)
         ∇₃_grad = ∇₃_pb(∂∇₃_acc)
         ∂params_∇₃  = ∇₃_grad[2] isa AbstractZero ? zeros(T, np) : ∇₃_grad[2]
         if !(∇₃_grad[3] isa AbstractZero); ∂SS_acc .+= ∇₃_grad[3]; end
-        end # ∇₃_pb
 
         # Convert full-space ∂S2f_acc to compressed and add compressed so3 gradient
         ∂S2_raw_acc = ∂S2f_acc * 𝐔₂'
         if !(so3_grad[6] isa AbstractZero); ∂S2_raw_acc .+= so3_grad[6]; end
 
-        @timeit TIMER "som2_pb" begin
         # Second-order moments pullback: cotangent tuple for 15-element output
         # (Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr, ŝŝ₂, ŝy₂, Σʸ₁, Σᶻ₁, SS, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd)
         ∂som2 = (
@@ -3906,13 +3867,10 @@ function rrule(::typeof(calculate_third_order_moments),
 
         som2_grad = som2_pb(∂som2)
         ∂params_som2 = som2_grad[2] isa AbstractZero ? zeros(T, np) : som2_grad[2]
-        end # som2_pb
 
         ∂parameters_total = ∂params_som2 .+ ∂params_∇₃
-        end # sub_rrule_chain
 
         return NoTangent(), ∂parameters_total, NoTangent(), NoTangent()
-      end # pb_total
     end
 
     return result, calculate_third_order_moments_pullback
@@ -4596,8 +4554,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
-            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
             EL_d = Matrix{T}(d.Eᴸᶻ)
             Γ₃_d = Matrix{T}(d.Γ₃)
 
