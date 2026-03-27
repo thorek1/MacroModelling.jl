@@ -7673,7 +7673,7 @@ function rrule(::typeof(solve_lyapunov_equation),
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, acceptance_tol = acceptance_tol, verbose = verbose)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
