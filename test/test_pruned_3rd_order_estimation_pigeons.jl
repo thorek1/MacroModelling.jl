@@ -118,7 +118,7 @@ end
 
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 2,
+            n_chains = 4,
             n_rounds = 8,
             seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
