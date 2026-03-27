@@ -51,7 +51,7 @@ end
 
 Random.seed!(30)
 
-n_samples = 500
+n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
