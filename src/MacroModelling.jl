@@ -1201,11 +1201,21 @@ function choose_matrix_format(A::ℒ.Adjoint{S, M};
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real, M <: AbstractMatrix{S}}
-    choose_matrix_format(convert(typeof(transpose(A)),A), 
-                        density_threshold = density_threshold, 
-                        min_length = min_length, 
-                        multithreaded = multithreaded,
-                        tol = tol)
+    if A.parent isa AbstractSparseMatrix || A.parent isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # Materialise sparse adjoints as SparseMatrixCSC to avoid unsupported
+        # ThreadedSparseMatrixCSC(::Adjoint{<:ThreadedSparseMatrixCSC}) conversion.
+        return choose_matrix_format(sparse(A),
+                                    density_threshold = density_threshold,
+                                    min_length = min_length,
+                                    multithreaded = multithreaded,
+                                    tol = tol)
+    else
+        return choose_matrix_format(Matrix(A),
+                                    density_threshold = density_threshold,
+                                    min_length = min_length,
+                                    multithreaded = multithreaded,
+                                    tol = tol)
+    end
 end
 
 # function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
