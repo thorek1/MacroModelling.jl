@@ -533,8 +533,6 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
         ℒ.rmul!(CC, -1)
 
-        fill!(initial_guess, zero(eltype(initial_guess)))
-
         dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
@@ -553,9 +551,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         #     end
         # end
     
-        # copyto!(initial_guess, dX)
-
-        # X̃[:,i] = vec(initial_guess[:,T.past_not_future_and_mixed_idx])
+        initial_guess = dX
 
         @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
     end
