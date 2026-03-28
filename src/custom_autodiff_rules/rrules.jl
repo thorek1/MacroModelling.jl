@@ -3292,7 +3292,7 @@ function rrule(::typeof(calculate_third_order_moments),
         C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
         N_total = N_upper + N_lower
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, N_total, :third_order)
+        lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
                                     ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
@@ -4115,7 +4115,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
         C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, N_total, :third_order)
+        lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
                                        ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                        lyapunov_algorithm = opts.lyapunov_algorithm,
