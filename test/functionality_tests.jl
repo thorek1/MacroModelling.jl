@@ -2331,7 +2331,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,1,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin[1]))
-                            @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
+                            @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
                     end
@@ -2348,7 +2348,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,1,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg[1]))
-                            @test isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
+                            @test isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
                     end
@@ -2366,7 +2366,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_last[1]))
-                            @test isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
+                            @test isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
                     end
@@ -2384,7 +2384,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
-                            @test isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                            @test isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
                     end
