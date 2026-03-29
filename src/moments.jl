@@ -803,10 +803,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
             A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-            droptol!(A, eps())
 
             C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
-            droptol!(C, eps())
 
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
@@ -1110,10 +1108,8 @@ function calculate_third_order_moments(parameters::Vector{T},
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
             A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-            droptol!(A, eps())
 
             C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
-            droptol!(C, eps())
 
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
