@@ -1969,7 +1969,7 @@ function solve_nsss_wrapper(
     ;
     continuation_cache_capacity::Int = 500,
     continuation_max_iters::Int = 500,
-    stall_tolerance::Float64 = 1e-2,
+    stall_tolerance::Float64 = 1e-8,
     cache_push_distance_tol::Float64 = 1e-8,
     scale_snap_threshold::Float64 = 0.95,
     scale_success_weight::Float64 = 0.4,
