@@ -5913,6 +5913,7 @@ function solve!(𝓂::ℳ;
                 resize!(cache_ss, length(SS_and_pars))
             end
             copyto!(cache_ss, SS_and_pars)
+            𝓂.caches.valid_for.first_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
 
         if  ((:second_order  == algorithm) && second_order_needs_recalc) ||

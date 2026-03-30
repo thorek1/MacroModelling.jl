@@ -3721,7 +3721,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
             combined_values[key] = value
         end
     elseif isa(values, KeyedArray)
-        for (key, value) in Dict(axiskeys(values, 1) .=> collect(values))
+        for (key, value) in zip(axiskeys(values, 1), collect(values))
             if key isa String
                 key = replace_indices(key)
             end
