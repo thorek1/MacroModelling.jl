@@ -140,7 +140,7 @@ function solve_sylvester_equation(A::M,
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
-                                                            tol = tol, 
+                                                            tol = solver_tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -163,7 +163,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:gmres), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
-                                                            tol = tol, 
+                                                            tol = solver_tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -183,7 +183,7 @@ function solve_sylvester_equation(A::M,
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
-                                                            tol = tol, 
+                                                            tol = solver_tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -206,7 +206,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:doubling), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
-                                                            tol = tol, 
+                                                            tol = solver_tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
 
