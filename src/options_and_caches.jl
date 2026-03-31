@@ -1879,7 +1879,7 @@ function Tolerances(;NSSS_acceptance_tol::Float64 = 1e-12,
                     sylvester_acceptance_tol::Float64 = 1e-10,
 
                     lyapunov_tol::Float64 = 1e-14,
-                    lyapunov_acceptance_tol::Float64 = 1e-10,
+                    lyapunov_acceptance_tol::Float64 = 1e-12,
 
                     droptol::Float64 = 1e-14,
 
