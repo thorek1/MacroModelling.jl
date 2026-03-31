@@ -10,8 +10,8 @@ function calculate_covariance(parameters::Vector{R},
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if solution_error > opts.tol.NSSS_acceptance_tol
-        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
+        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.nsss.acceptance_tol
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) 
@@ -41,8 +41,7 @@ function calculate_covariance(parameters::Vector{R},
 
     covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
-                            tol = opts.tol.lyapunov_tol,
-                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                            tol = opts.tol.first_order.lyapunov,
                             verbose = opts.verbose)
 
     covar_stable = copy(covar_raw)
@@ -69,7 +68,7 @@ function calculate_mean(parameters::Vector{R},
     if algorithm == :first_order
         mean_of_variables = SS_and_pars[1:T.nVars]
 
-        solved = solution_error < opts.tol.NSSS_acceptance_tol
+        solved = solution_error < opts.tol.nsss.acceptance_tol
     else
         ensure_moments_constants!(constants)
         so = constants.second_order
@@ -389,8 +388,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
             Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyap_ws_2nd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    tol = opts.tol.second_order.lyapunov,
                                     verbose = opts.verbose)
 
             if info
@@ -466,8 +464,7 @@ function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
     
     sylv_ws = 𝓂_workspaces.sylvester_block
     X_LU, sylv_solved = solve_sylvester_equation(A_LL, A_UU', RHS_LU, sylv_ws,
-                                                  tol = opts.tol.lyapunov_tol,
-                                                  acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                  tol = opts.tol.third_order.sylvester,
                                                   verbose = opts.verbose)
 
     # Step 3: X_LL via Lyapunov with modified RHS
@@ -493,16 +490,14 @@ function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
         # Step 3a: X₆₆ via standard Lyapunov
         lyap_ws_66 = ensure_lyapunov_workspace!(𝓂_workspaces, n₃ˢ, :block)
         X_66, _ = solve_lyapunov_equation(A_LL_LL, C_mod_LL, lyap_ws_66,
-                                                  tol = opts.tol.lyapunov_tol,
-                                                  acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                  verbose = opts.verbose)
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
 
         # Step 3b: X_{upper,6} via Sylvester
         RHS_UL6 = A_LL_UL * X_66 * A_LL_LL' + C_mod_UL
         X_UL6, _ = solve_sylvester_equation(A_LL_UU, A_LL_LL', RHS_UL6, sylv_ws,
-                                             tol = opts.tol.lyapunov_tol,
-                                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                             verbose = opts.verbose)
+                             tol = opts.tol.third_order.sylvester,
+                             verbose = opts.verbose)
 
         # Step 3c: X_{upper,upper} via Lyapunov
         C_UU_mod2 = C_mod_UU +
@@ -512,9 +507,8 @@ function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
 
         lyap_ws_inner = ensure_lyapunov_workspace!(𝓂_workspaces, n_upper_LL, :block)
         X_UU_LL, _ = solve_lyapunov_equation(A_LL_UU, C_UU_mod2, lyap_ws_inner,
-                                              tol = opts.tol.lyapunov_tol,
-                                              acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                              verbose = opts.verbose)
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
 
         X_LL = zeros(T, N_lower, N_lower)
         X_LL[ru_ll, ru_ll] = X_UU_LL
@@ -525,9 +519,8 @@ function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
         # Standard Lyapunov on full lower block
         lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, N_lower, :block)
         X_LL_result, _ = solve_lyapunov_equation(A_LL, C_LL_mod, lyap_ws,
-                                                  tol = opts.tol.lyapunov_tol,
-                                                  acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                                  verbose = opts.verbose)
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
         X_LL = X_LL_result
     end
 
@@ -587,7 +580,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
@@ -811,8 +804,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                         lyapunov_algorithm = opts.lyapunov_algorithm,
-                                        tol = opts.tol.lyapunov_tol,
-                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                        tol = opts.tol.third_order.lyapunov,
                                         verbose = opts.verbose)
         end
 
@@ -849,7 +841,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             for obs in variance_observable
                 autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i] .= ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃')[indexin([obs], variance_observable)] ./ max.(ℒ.diag(Σʸ₃tmp), eps(Float64))[indexin([obs], variance_observable)]
 
-                autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.lyapunov_acceptance_tol] .= 0
+                autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.third_order.lyapunov.acceptance_tol] .= 0
             end
 
             ŝ_to_ŝ₃ⁱ *= ŝ_to_ŝ₃
@@ -899,7 +891,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
@@ -1118,8 +1110,7 @@ function calculate_third_order_moments(parameters::Vector{T},
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                         lyapunov_algorithm = opts.lyapunov_algorithm,
-                                        tol = opts.tol.lyapunov_tol,
-                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                        tol = opts.tol.third_order.lyapunov,
                                         verbose = opts.verbose)
         end
 

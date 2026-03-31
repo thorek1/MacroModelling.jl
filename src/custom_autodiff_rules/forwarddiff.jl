@@ -247,8 +247,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # if !isfinite(solution_error) || solution_error > opts.tol.nsss.acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.nsss.acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
@@ -266,7 +266,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end
     ∂SS_and_pars = qme_ws.∂SS_and_pars
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
 
         # Update failed counter
@@ -536,8 +536,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         # if !solved
@@ -588,7 +587,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, 
+                                        tol::AdTolerances = AdTolerances(), 
                                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                         verbose::Bool = false) where {Z,S,N}
     T = constants.post_model_macro
@@ -612,7 +611,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 constants,
                                                 workspaces,
                                                 cache;
-                                                tol = tol,
+                                                tol = tol.qme,
                                                 initial_guess = initial_guess_value,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 verbose = verbose)
@@ -649,7 +648,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester, sylvester_algorithm = :doubling)
+        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester,
+                            sylvester_algorithm = :doubling,
+                            tol = tol.sylvester)
 
         solved = Bool(solved) && Bool(slvd)
 
@@ -667,8 +668,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
@@ -752,15 +752,29 @@ end
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     workspace::lyapunov_workspace;
+                                    initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
+                                    tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                              initial_guess_acceptance_tol = 1e-12,
+                                                                              acceptance_tol = 1e-12),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    initial_guess_value = if length(initial_guess) == 0
+        zeros(eltype(Â), 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{eltype(Â)} ? initial_guess : Matrix{eltype(Â)}(initial_guess)
+    else
+        ℱ.value.(initial_guess)
+    end
+
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        initial_guess = initial_guess_value,
+                                        tol = tol,
+                                        verbose = verbose)
 
     if size(workspace.P) != size(P̂)
         workspace.P = zeros(eltype(P̂), size(P̂)...)
@@ -801,7 +815,10 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         if ℒ.norm(X) < eps() continue end
 
         # X = Ã*P̂*Â' + Â*P̂*Ã' + C̃ is symmetric when C is symmetric (P̂ is always symmetric)
-        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        P, slvd = solve_lyapunov_equation(Â, X, workspace,
+                        lyapunov_algorithm = lyapunov_algorithm,
+                        tol = tol,
+                        verbose = verbose)
         
         solved = solved && slvd
 

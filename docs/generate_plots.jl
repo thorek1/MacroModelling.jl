@@ -624,7 +624,11 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, parameters = :β => 0.9
 
 ### tol
 using MacroModelling: Tolerances
-custom_tol = Tolerances(qme_acceptance_tol = 1e-12, sylvester_acceptance_tol = 1e-12)
+custom_tol = Tolerances(
+    first_order = MacroModelling.FirstOrderTolerances(qme = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12))
+)
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, algorithm = :second_order, parameters = :β => 0.9555,verbose = true)
 
 ### quadratic_matrix_equation_algorithm

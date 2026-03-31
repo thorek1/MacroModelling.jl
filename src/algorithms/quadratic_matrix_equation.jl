@@ -18,8 +18,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        tol::AbstractFloat = 1e-14,
-                                        acceptance_tol::AbstractFloat = 1e-8,
+                                        tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                                initial_guess_acceptance_tol = 1e-8,
+                                                                                acceptance_tol = 1e-8),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
     T = constants.post_model_macro
     n = T.nVars - T.nPresent_only
@@ -31,6 +32,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                             T.nMixed,
                             nPfm,
                             T.nFuture_not_past_and_mixed)
+
+    solver_tol = tol.tol
+    initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
+    acceptance_tol = tol.acceptance_tol
     
 
     if length(initial_guess) > 0
@@ -52,7 +57,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
         reached_tol = ℒ.norm(qme_ws.AXX) / AXXnorm
 
-        if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
+        if reached_tol < (initial_guess_acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
             _existing_sol = cache.qme_solution
@@ -75,7 +80,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         initial_guess = initial_guess,
                                                         use_fastlapack_schur = use_fastlapack_schur,
                                                         use_fastlapack_lu = use_fastlapack_lu,
-                                                        tol = tol,
+                                                        tol = solver_tol,
                                                         # timer = timer,
                                                         verbose = verbose)
 
@@ -91,7 +96,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                tol = tol,
+                                                                tol = solver_tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 
@@ -105,7 +110,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                tol = tol,
+                                                                tol = solver_tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 

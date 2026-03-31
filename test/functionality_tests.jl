@@ -187,7 +187,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                             clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
@@ -222,7 +222,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                        for tol in [MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14)), MacroModelling.Tolerances()]
                             if i % 4 == 0
                                 plot_model_estimates(m, data_in_levels, 
                                                         algorithm = algorithm, 
@@ -469,7 +469,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
             
             for variables in vars
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
@@ -725,7 +725,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             shock_mat3 = KeyedArray(randn(m.constants.post_model_macro.nExo,10),Shocks = string.(m.constants.post_model_macro.exo), Periods = 1:10)
 
             for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
@@ -749,7 +749,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             i  = 1
 
             for parameters in params
-                for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                for tol in [MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14)), MacroModelling.Tolerances()]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
@@ -921,7 +921,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             
 
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     # for lyapunov_algorithm in lyapunov_algorithms
                        clear_solution_caches!(m, algorithm)
@@ -1146,7 +1146,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # end
 
             
-            for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     # for lyapunov_algorithm in lyapunov_algorithms
                         for sylvester_algorithm in sylvester_algorithms
@@ -1181,7 +1181,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             i = 1
 
-            for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+            for tol in [MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14)), MacroModelling.Tolerances()]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     # for lyapunov_algorithm in lyapunov_algorithms
                         for sylvester_algorithm in sylvester_algorithms
@@ -1590,7 +1590,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     get_shock_decomposition(m, data, 
                                             parameters = parameters,
                                             algorithm = algorithm, 
@@ -1679,7 +1679,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     get_estimated_variable_standard_deviations(m, data, 
                                                                 parameters = parameters,
                                                                 data_in_levels = false, 
@@ -1699,7 +1699,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
                         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
-                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                                 llh = get_loglikelihood(m, data_in_levels, parameter_values,
                                                         algorithm = algorithm,
                                                         filter = filter,
@@ -1878,7 +1878,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for variables in vars
                 for levels in [true, false]
                     for verbose in [false] # [true, false]
-                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                             for quadratic_matrix_equation_algorithm in qme_algorithms
                                 # for lyapunov_algorithm in lyapunov_algorithms
                                     for sylvester_algorithm in sylvester_algorithms
@@ -2050,7 +2050,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             
 
             for verbose in [false] # [true, false]
-                for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             
@@ -2133,7 +2133,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         
 
         for verbose in [false] # [true, false]
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         clear_solution_caches!(m, algorithm)
@@ -2201,7 +2201,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
             end
 
-            for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14), MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         clear_solution_caches!(m, algorithm)
@@ -2389,7 +2389,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         end
                     end
 
-                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             clear_solution_caches!(m, algorithm)
                                         
@@ -2453,7 +2453,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             clear_solution_caches!(m, algorithm)
 
             stats = get_statistics(m, parameter_values, algorithm = algorithm,
-                                    # tol = MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14),
+                                    # tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                     non_stochastic_steady_state = :all,
                                     mean = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
@@ -2461,7 +2461,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                     covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]))
 
-            for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14,NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
@@ -2619,14 +2619,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             clear_solution_caches!(m, algorithm)
 
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                            sylvester_acceptance_tol = 1e-14),
+                                                            tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                                sylvester_acceptance_tol = 1e-14),
+                                                                tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                                                 covariance = :all_excluding_obc)[:covariance], old_params)
             end         
 
@@ -2636,8 +2634,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                     clear_solution_caches!(m, algorithm)
                                                                     
                                                                     get_statistics(m, x, algorithm = algorithm, 
-                                                                                    tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                                                    sylvester_acceptance_tol = 1e-14),
+                                                                                    tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                                                                     covariance = :all_excluding_obc)[:covariance]
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
@@ -2705,7 +2702,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         
 
-            for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
@@ -2988,7 +2985,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                     covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                                     derivatives = derivatives)
                             
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for sylvester_algorithm in sylvester_algorithms
                             for lyapunov_algorithm in lyapunov_algorithms
@@ -3084,7 +3081,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # Covariance derivatives
             clear_solution_caches!(m, algorithm)
             mom_cov = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, covariance = true,
-                                  tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),
+                                  tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                   derivatives = true)
             cov_ka = collect(mom_cov[:covariance])
             n_cv = size(cov_ka, 1)
@@ -3098,7 +3095,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         vec(collect(get_moments(m,
                             parameters = m.constants.post_complete_parameters.parameters .=> x,
                             algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, covariance = true,
-                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),
+                            tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                             derivatives = false)[:covariance]))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
@@ -3195,7 +3192,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 ignore_obc = true, 
                                 initial_state = initial_state)
                 
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
@@ -3244,7 +3241,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         
         
 
-        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
             for parameters in params 
                 clear_solution_caches!(m, algorithm)
 
@@ -3348,7 +3345,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         for parameter_derivatives in param_derivs
             for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                     clear_solution_caches!(m, algorithm)
     
                     nsss = get_steady_state(m, 

@@ -12,9 +12,9 @@ function levenberg_marquardt(
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
-    xtol = tol.NSSS_xtol
-    ftol = tol.NSSS_ftol
-    rel_xtol = tol.NSSS_rel_xtol
+    xtol = tol.nsss.xtol
+    ftol = tol.nsss.ftol
+    rel_xtol = tol.nsss.rel_xtol
 
     iterations = 250
     
@@ -421,9 +421,9 @@ function newton(
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
-    xtol = tol.NSSS_xtol
-    ftol = tol.NSSS_ftol
-    rel_xtol = tol.NSSS_rel_xtol
+    xtol = tol.nsss.xtol
+    ftol = tol.nsss.ftol
+    rel_xtol = tol.nsss.rel_xtol
 
     iterations = 250
     transformation_level = 0 # parameters.transformation_level

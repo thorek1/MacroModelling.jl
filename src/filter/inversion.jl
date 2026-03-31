@@ -1408,7 +1408,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         @error "No solution for these parameters."
         return variables, shocks, zeros(0,0), decomposition
     end
@@ -1545,7 +1545,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find 2nd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -1767,7 +1767,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find pruned 2nd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -2038,7 +2038,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find 3rd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -2353,7 +2353,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find pruned 3rd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end

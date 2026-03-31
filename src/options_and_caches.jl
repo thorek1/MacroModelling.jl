@@ -1811,24 +1811,180 @@ function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symb
 end
 
 
-struct Tolerances
-    NSSS_acceptance_tol::Float64
-    NSSS_xtol::Float64
-    NSSS_ftol::Float64
-    NSSS_rel_xtol::Float64
+"""
+    SolverTolerances
 
-    qme_tol::Float64
-    qme_acceptance_tol::Float64
+Tolerance settings for a single numerical equation solver (Sylvester, Lyapunov, or QME).
 
-    sylvester_tol::Float64
-    sylvester_acceptance_tol::Float64
+# Fields
+- `tol::Float64`: iterative solver convergence tolerance (residual norm threshold).
+- `initial_guess_acceptance_tol::Float64`: if an initial guess achieves a relative
+  residual below this threshold it is accepted immediately, skipping the full solve.
+- `acceptance_tol::Float64`: result is accepted when the relative residual falls below
+  this threshold; otherwise the dispatcher retries with a fallback algorithm.
 
-    lyapunov_tol::Float64
-    lyapunov_acceptance_tol::Float64
+Construct via `SolverTolerances(; tol, initial_guess_acceptance_tol, acceptance_tol)`.
+Default values differ by solver type and are set by the enclosing tolerance hierarchy;
+see [`Tolerances`](@ref) and [`FirstOrderTolerances`](@ref) / [`HigherOrderTolerances`](@ref).
+"""
+struct SolverTolerances
+    tol::Float64
+    initial_guess_acceptance_tol::Float64
+    acceptance_tol::Float64
+end
 
+function SolverTolerances(; tol::Float64 = 1e-14,
+                          initial_guess_acceptance_tol::Float64 = 1e-10,
+                          acceptance_tol::Float64 = 1e-10)
+    return SolverTolerances(tol, initial_guess_acceptance_tol, acceptance_tol)
+end
+
+"""
+    NsssTolerances
+
+Tolerance settings for the non-stochastic steady state (NSSS) solver.
+
+# Fields
+- `acceptance_tol::Float64` [Default: `1e-12`]: solution is accepted when the residual
+  norm falls below this value.
+- `initial_guess_acceptance_tol::Float64` [Default: `1e-12`]: an initial guess is reused
+  when its residual is below this threshold.
+- `xtol::Float64` [Default: `1e-12`]: absolute step-size tolerance.
+- `ftol::Float64` [Default: `1e-14`]: absolute function-value tolerance.
+- `rel_xtol::Float64` [Default: `eps()`]: relative step-size tolerance.
+
+Construct via `NsssTolerances(; acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)`.
+"""
+struct NsssTolerances
+    acceptance_tol::Float64
+    initial_guess_acceptance_tol::Float64
+    xtol::Float64
+    ftol::Float64
+    rel_xtol::Float64
+end
+
+function NsssTolerances(; acceptance_tol::Float64 = 1e-12,
+                        initial_guess_acceptance_tol::Float64 = 1e-12,
+                        xtol::Float64 = 1e-12,
+                        ftol::Float64 = 1e-14,
+                        rel_xtol::Float64 = eps())
+    return NsssTolerances(acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)
+end
+
+"""
+    AdTolerances
+
+Tolerance settings passed to the automatic differentiation (AD) paths of each equation
+solver. Each field is a [`SolverTolerances`](@ref) that controls the corresponding solver
+when it is called inside a ForwardDiff dual-number overload or a ChainRulesCore rrule.
+
+# Fields
+- `qme::SolverTolerances`: tolerances for the quadratic matrix equation (QME) derivative solve.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+- `sylvester::SolverTolerances`: tolerances for the Sylvester equation derivative solve.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation derivative solve.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+
+Construct via `AdTolerances(; qme, sylvester, lyapunov)`.
+"""
+struct AdTolerances
+    qme::SolverTolerances
+    sylvester::SolverTolerances
+    lyapunov::SolverTolerances
+end
+
+function AdTolerances(; qme::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                  initial_guess_acceptance_tol = 1e-8,
+                                                                  acceptance_tol = 1e-8),
+                      sylvester::SolverTolerances = SolverTolerances(),
+                      lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                     initial_guess_acceptance_tol = 1e-12,
+                                                                     acceptance_tol = 1e-12))
+    return AdTolerances(qme, sylvester, lyapunov)
+end
+
+"""
+    FirstOrderTolerances
+
+Tolerance settings for the first-order perturbation solution and its AD pathways.
+
+# Fields
+- `qme::SolverTolerances`: tolerances for the quadratic matrix equation solver.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
+  compute first-order covariance matrices.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+- `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
+  matrices are dropped (set to zero) to reduce sparsity fill-in.
+- `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
+  dependencies when isolating subsystems for covariance statistics.
+- `ad::AdTolerances`: tolerances used in the AD derivative evaluation paths.
+
+Construct via `FirstOrderTolerances(; qme, lyapunov, droptol, dependencies_tol, ad)`.
+"""
+struct FirstOrderTolerances
+    qme::SolverTolerances
+    lyapunov::SolverTolerances
     droptol::Float64
-
     dependencies_tol::Float64
+    ad::AdTolerances
+end
+
+function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                          initial_guess_acceptance_tol = 1e-8,
+                                                                          acceptance_tol = 1e-8),
+                              lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                             initial_guess_acceptance_tol = 1e-12,
+                                                                             acceptance_tol = 1e-12),
+                              droptol::Float64 = 1e-14,
+                              dependencies_tol::Float64 = 1e-12,
+                              ad::AdTolerances = AdTolerances())
+    return FirstOrderTolerances(qme, lyapunov, droptol, dependencies_tol, ad)
+end
+
+"""
+    HigherOrderTolerances
+
+Tolerance settings for second- and third-order perturbation solutions and their AD pathways.
+
+# Fields
+- `sylvester::SolverTolerances`: tolerances for the Sylvester equation solver.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
+  compute higher-order covariance matrices.
+  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+- `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
+  matrices are dropped (set to zero) to reduce sparsity fill-in.
+- `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
+  dependencies when isolating subsystems for covariance statistics.
+- `ad::AdTolerances`: tolerances used in the AD derivative evaluation paths.
+
+Construct via `HigherOrderTolerances(; sylvester, lyapunov, droptol, dependencies_tol, ad)`.
+"""
+struct HigherOrderTolerances
+    sylvester::SolverTolerances
+    lyapunov::SolverTolerances
+    droptol::Float64
+    dependencies_tol::Float64
+    ad::AdTolerances
+end
+
+function HigherOrderTolerances(; sylvester::SolverTolerances = SolverTolerances(),
+                               lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                              initial_guess_acceptance_tol = 1e-12,
+                                                                              acceptance_tol = 1e-12),
+                               droptol::Float64 = 1e-14,
+                               dependencies_tol::Float64 = 1e-12,
+                               ad::AdTolerances = AdTolerances())
+    return HigherOrderTolerances(sylvester, lyapunov, droptol, dependencies_tol, ad)
+end
+
+struct Tolerances
+    nsss::NsssTolerances
+    first_order::FirstOrderTolerances
+    second_order::HigherOrderTolerances
+    third_order::HigherOrderTolerances
 end
 
 struct CalculationOptions
@@ -1846,57 +2002,69 @@ end
 @stable default_mode = "disable" begin
 """
 $(SIGNATURES)
-Function to manually define tolerances for the solvers of various problems: non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme).
+
+Define tolerances for the numerical solvers used throughout model solution and estimation.
+Tolerances are organised in a two-level hierarchy:
+
+```
+Tolerances
+├── nsss          :: NsssTolerances          — non-stochastic steady state solver
+├── first_order   :: FirstOrderTolerances    — first-order perturbation solution
+│   ├── qme       :: SolverTolerances        — quadratic matrix equation (QME)
+│   ├── lyapunov  :: SolverTolerances        — Lyapunov equation
+│   ├── droptol                              — zero-threshold for solution matrices
+│   ├── dependencies_tol                     — subsystem isolation threshold
+│   └── ad        :: AdTolerances            — AD derivative paths
+│       ├── qme      :: SolverTolerances
+│       ├── sylvester:: SolverTolerances
+│       └── lyapunov :: SolverTolerances
+├── second_order  :: HigherOrderTolerances   — second-order perturbation solution
+│   ├── sylvester :: SolverTolerances        — Sylvester equation
+│   ├── lyapunov  :: SolverTolerances        — Lyapunov equation
+│   ├── droptol / dependencies_tol
+│   └── ad        :: AdTolerances
+└── third_order   :: HigherOrderTolerances   — third-order perturbation solution
+    └── (same structure as second_order)
+```
+
+Each [`SolverTolerances`](@ref) carries three values:
+- `tol`: iterative solver convergence threshold.
+- `initial_guess_acceptance_tol`: accept an initial guess without re-solving if its
+  residual is already below this threshold.
+- `acceptance_tol`: accept the final result when the residual falls below this threshold;
+  otherwise the dispatcher retries with a fallback algorithm.
 
 # Keyword Arguments
-- `NSSS_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for non-stochastic steady state solver.
-- `NSSS_xtol` [Default: `1e-12`, Type: `Float64`]: Absolute tolerance for solver steps for non-stochastic steady state solver.
-- `NSSS_ftol` [Default: `1e-14`, Type: `Float64`]: Absolute tolerance for solver function values for non-stochastic steady state solver.
-- `NSSS_rel_xtol` [Default: `eps()`, Type: `Float64`]: Relative tolerance for solver steps for non-stochastic steady state solver.
+- `nsss` [Default: `NsssTolerances()`]: tolerances for the non-stochastic steady state
+  solver. See [`NsssTolerances`](@ref).
+- `first_order` [Default: `FirstOrderTolerances()`]: tolerances for the first-order
+  solution and its AD paths. See [`FirstOrderTolerances`](@ref).
+- `second_order` [Default: `HigherOrderTolerances()`]: tolerances for the second-order
+  solution and its AD paths. See [`HigherOrderTolerances`](@ref).
+- `third_order` [Default: `HigherOrderTolerances()`]: tolerances for the third-order
+  solution and its AD paths. See [`HigherOrderTolerances`](@ref).
 
-- `qme_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for quadratic matrix equation solver.
-- `qme_acceptance_tol` [Default: `1e-8`, Type: `Float64`]: Acceptance tolerance for quadratic matrix equation solver.
+# Examples
+```julia
+# use defaults
+tol = Tolerances()
 
-- `sylvester_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Sylvester equation solver.
-- `sylvester_acceptance_tol` [Default: `1e-10`, Type: `Float64`]: Acceptance tolerance for Sylvester equation solver.
+# tighten the NSSS solver
+tol = Tolerances(nsss = NsssTolerances(xtol = 1e-14))
 
-- `lyapunov_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Lyapunov equation solver.
-- `lyapunov_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for Lyapunov equation solver.
-
-- `droptol` [Default: `1e-14`, Type: `Float64`]: Tolerance below which matrix entries are considered 0.
-
-- `dependencies_tol` [Default: `1e-12`, Type: `Float64`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
+# tighten second- and third-order Sylvester/Lyapunov solvers
+tight = SolverTolerances(acceptance_tol = 1e-14)
+tol = Tolerances(
+    second_order = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+    third_order  = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+)
+```
 """
-function Tolerances(;NSSS_acceptance_tol::Float64 = 1e-12,
-                    NSSS_xtol::Float64 = 1e-12,
-                    NSSS_ftol::Float64 = 1e-14,
-                    NSSS_rel_xtol::Float64 = eps(),
-                    
-                    qme_tol::Float64 = 1e-14,
-                    qme_acceptance_tol::Float64 = 1e-8,
-
-                    sylvester_tol::Float64 = 1e-14,
-                    sylvester_acceptance_tol::Float64 = 1e-10,
-
-                    lyapunov_tol::Float64 = 1e-14,
-                    lyapunov_acceptance_tol::Float64 = 1e-12,
-
-                    droptol::Float64 = 1e-14,
-
-                    dependencies_tol::Float64 = 1e-12)
-    
-    return Tolerances(NSSS_acceptance_tol,
-                        NSSS_xtol,
-                        NSSS_ftol,
-                        NSSS_rel_xtol, 
-                        qme_tol,
-                        qme_acceptance_tol,
-                        sylvester_tol,
-                        sylvester_acceptance_tol,
-                        lyapunov_tol,
-                        lyapunov_acceptance_tol,
-                        droptol,
-                        dependencies_tol)
+function Tolerances(; nsss::NsssTolerances = NsssTolerances(),
+                    first_order::FirstOrderTolerances = FirstOrderTolerances(),
+                    second_order::HigherOrderTolerances = HigherOrderTolerances(),
+                    third_order::HigherOrderTolerances = HigherOrderTolerances())
+    return Tolerances(nsss, first_order, second_order, third_order)
 end
 
 

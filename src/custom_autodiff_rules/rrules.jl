@@ -431,8 +431,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # if !isfinite(solution_error) || solution_error > opts.tol.nsss.acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.nsss.acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
@@ -444,7 +444,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # end # timeit_debug
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         # Update failed counter
         update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -600,7 +600,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     state = zeros(S, 𝓂.constants.post_model_macro.nVars)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
 
         pullback = function (ȳ)
@@ -709,7 +709,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     (SS_and_pars, (solution_error, iters)), nsss_pullback =
         rrule(get_NSSS_and_parameters, 𝓂, parameters, opts = opts, estimation = estimation)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         common = (false,
                   zeros(Float64, nVars),
                   SS_and_pars,
@@ -1506,7 +1506,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₁ = ss_out[7]
     𝐒₂ = ss_out[8]
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1579,7 +1579,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₂ = ss_out[8]
     nVars = 𝓂.constants.post_model_macro.nVars
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, nVars), zeros(S, nVars)], converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1652,7 +1652,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₂ = ss_out[9]
     𝐒₃ = ss_out[10]
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1729,7 +1729,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₃ = ss_out[10]
     nVars = 𝓂.constants.post_model_macro.nVars
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)], converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1962,7 +1962,7 @@ function rrule(::typeof(get_irf),
     reference_steady_state = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
+    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
         return zero_result(), zero_pullback
     end
 
@@ -2132,7 +2132,7 @@ function rrule(::typeof(calculate_covariance),
     SS_and_pars = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         return (zeros(S, 0, 0), zeros(S, 0, 0), zeros(S, 0, 0), SS_and_pars, false), zero_pb
     end
 
@@ -2166,8 +2166,7 @@ function rrule(::typeof(calculate_covariance),
 
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
                                 lyapunov_algorithm = opts.lyapunov_algorithm,
-                                tol = opts.tol.lyapunov_tol,
-                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                tol = opts.tol.first_order.ad.lyapunov,
                                 verbose = opts.verbose)
     covar_raw = lyap_out[1]
     solved_lyap = lyap_out[2]
@@ -2286,7 +2285,7 @@ function rrule(::typeof(calculate_mean),
 
     # ── First-order path (mean = steady state) ──
     if algorithm == :first_order
-        solved = solution_error < opts.tol.NSSS_acceptance_tol
+        solved = solution_error < opts.tol.nsss.acceptance_tol
         mean_of_variables = SS_and_pars[1:nVars]
 
         function first_order_mean_pullback(∂out)
@@ -2305,7 +2304,7 @@ function rrule(::typeof(calculate_mean),
     end
 
     # ── Higher-order path: early exit on NSSS failure ──
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         return (SS_and_pars[1:nVars], false), zero_pb
     end
 
@@ -2852,8 +2851,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation,
                               Float64.(ŝ_to_ŝ₂), Float64.(CC), lyap_ws_2nd;
                               lyapunov_algorithm = opts.lyapunov_algorithm,
-                              tol = opts.tol.lyapunov_tol,
-                              acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                              tol = opts.tol.second_order.ad.lyapunov,
                               verbose = opts.verbose)
     Σᶻ₂ = lyap_out[1]
     info = lyap_out[2]
@@ -3113,7 +3111,7 @@ function rrule(::typeof(calculate_third_order_moments),
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
-                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+                                       covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     kron_e_e = so.kron_e_e
     kron_v_v = so.kron_v_v
@@ -3296,8 +3294,7 @@ function rrule(::typeof(calculate_third_order_moments),
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
                                     ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    tol = opts.tol.third_order.ad.lyapunov,
                                     verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
@@ -3934,7 +3931,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
-                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+                                       covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     kron_e_e = so.kron_e_e
     kron_v_v = so.kron_v_v
@@ -4119,8 +4116,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
                                        ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                        lyapunov_algorithm = opts.lyapunov_algorithm,
-                                       tol = opts.tol.lyapunov_tol,
-                                       acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                       tol = opts.tol.third_order.ad.lyapunov,
                                        verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
@@ -4175,7 +4171,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             num_diag_i = ℒ.diag(num_mat)
             ac_val = num_diag_i ./ norm_diag
             diag_Σ = ℒ.diag(Σʸ₃tmp)
-            zero_mask_i = diag_Σ .< opts.tol.lyapunov_acceptance_tol
+            zero_mask_i = diag_Σ .< opts.tol.third_order.ad.lyapunov.acceptance_tol
             ac_val[zero_mask_i] .= 0
 
             for obs in variance_observable
@@ -5060,8 +5056,7 @@ function rrule(::typeof(calculate_first_order_solution),
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, workspaces, cache;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
+                                                    tol = opts.tol.first_order.ad.qme,
                                                     verbose = opts.verbose)
 
     if !solved
@@ -5223,8 +5218,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         if !solved
@@ -5376,8 +5370,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.second_order.ad.sylvester,
                                             verbose = opts.verbose)
     𝐒₂_stable = copy(𝐒₂)
 
@@ -5457,14 +5450,13 @@ function rrule(::typeof(calculate_second_order_solution),
         end
 
         # @timeit_debug timer "Sylvester" begin
-        if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
+        if ℒ.norm(∂𝐒₂) < opts.tol.second_order.ad.sylvester.tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.second_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         if !solved
@@ -5528,7 +5520,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 2" begin
 
         compressed_kron²_pullback!(∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎,
-                        tol = opts.tol.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
+                        tol = opts.tol.second_order.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                         colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask)
         
         # end # timeit_debug
@@ -5538,7 +5530,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 3" begin
 
         compressed_kron²_pullback!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                        tol = opts.tol.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
+                        tol = opts.tol.second_order.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
 
         # end # timeit_debug
 
@@ -7188,14 +7180,14 @@ function rrule(::typeof(calculate_third_order_solution),
     copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
     fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
     @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
                                 ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]]
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋)]
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
@@ -7218,13 +7210,13 @@ function rrule(::typeof(calculate_third_order_solution),
     B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
                                        sparse_preallocation = ℂ.tmp_sparse_prealloc7)
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
                                           𝐒₂
                                           zeros(n₋ + nₑ, nₑ₋^2)]
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋^2)]
 
@@ -7235,14 +7227,14 @@ function rrule(::typeof(calculate_third_order_solution),
                                                S1p0_kron_sigma,
                                                sparse_preallocation = ℂ.tmp_sparse_prealloc6)
 
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
     # Terms (a)+(b): ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * [tmpkron2 + 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ] * 𝐏𝐂₃
-    tmpkron2 = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol))
+    tmpkron2 = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol))
     D_ab = (tmpkron2 + M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ) * M₃.𝐏𝐂₃
     𝐗₃ = mat_mult_kron(∇₂, collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎), D_ab, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
@@ -7254,7 +7246,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(S2p0_sigma), M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
 
     # Term (e): ∇₁₊ * 𝐒₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) * 𝐏𝐂₃
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol)
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
     𝐗₃ += ∇₁₊ * mm_𝐒₂_kron * M₃.𝐏𝐂₃
 
@@ -7263,7 +7255,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
-    ck3_aux_mat = compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    ck3_aux_mat = compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
     ck3_aux = ∇₃ * ck3_aux_mat
     𝐗₃ += ck3_aux
     
@@ -7273,11 +7265,10 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.third_order.ad.sylvester,
                                             verbose = opts.verbose)
 
-    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.droptol)
+    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
 
     if !solved
@@ -7337,15 +7328,14 @@ function rrule(::typeof(calculate_third_order_solution),
     function third_order_solution_pullback(∂𝐒₃_solved)
         ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
 
-        if ℒ.norm(∂𝐒₃) < opts.tol.sylvester_tol
+        if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
         ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
                                                   sylvester_algorithm = opts.sylvester_algorithm³,
-                                                  tol = opts.tol.sylvester_tol,
-                                                  acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                  tol = opts.tol.third_order.ad.sylvester,
                                                   verbose = opts.verbose)
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -7454,7 +7444,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- term (c): through ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 ---
         # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — avoids materializing ∇₂t_∂out2
-        mul_fill_kron_adjoint!(∂R_c, ∂L_c, ∇₂t, ∂out2, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.droptol)
+        mul_fill_kron_adjoint!(∂R_c, ∂L_c, ∇₂t, ∂out2, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.third_order.droptol)
 
         # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [ (𝐒₂·kron𝐒₁₋╱𝟏ₑ + 𝐒₁·[𝐒₂[i₋,:];0])[i₊,:] ; 𝐒₂ ; 0 ]
         # Top block (rows 1:n₊): depends on 𝐒₂ through 𝐒₂·kron𝐒₁₋╱𝟏ₑ and 𝐒₁·[𝐒₂[i₋,:];0]
@@ -7474,7 +7464,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- term (d): through kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔) ---
         # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — same pattern, different kron factors
-        mul_fill_kron_adjoint!(∂R_d, ∂L_d, ∇₂t, ∂out2, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.droptol)
+        mul_fill_kron_adjoint!(∂R_d, ∂L_d, ∇₂t, ∂out2, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.third_order.droptol)
 
         # 𝐒₂₊╱𝟎·𝛔  →  ∂𝐒₂₊╱𝟎_d = ∂R_d · 𝛔ᵀ
         ∂𝐒₂₊╱𝟎_d = ∂R_d * 𝛔t
@@ -7488,7 +7478,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
         # Fused: (∇₁₊·𝐒₂)ᵀ · ∂out2 with fill_kron_adjoint! in one pass
-        mul_fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∇₁₊_𝐒₂_t, ∂out2, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol)
+        mul_fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∇₁₊_𝐒₂_t, ∂out2, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol)
 
         # 𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; 0]  →  ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
         @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂₋╱𝟎[1:n₋,:]
@@ -7536,7 +7526,7 @@ function rrule(::typeof(calculate_third_order_solution),
                              ∇₃t, ∂𝐗₃,
                              ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
                              S1p0_kron_sigma;
-                             tol = opts.tol.droptol)
+                             tol = opts.tol.third_order.droptol)
 
         # Sparsify ∂S1p0_kron_sigma: structurally bounded by σ's support, so very sparse.
         # sparse × sparse matmul avoids dense intermediate; downstream fill_kron_adjoint!
@@ -7554,17 +7544,17 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
         # Fused: compute g_col = ∇₃ᵀ * ∂𝐗₃[:, col] lazily per (i2,j2,k2) triple
-        mul_compressed_kron³_pullback!(∂aux, ∇₃t, ∂𝐗₃, aux; tol = opts.tol.droptol)
+        mul_compressed_kron³_pullback!(∂aux, ∇₃t, ∂𝐗₃, aux; tol = opts.tol.third_order.droptol)
         ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
-        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.droptol)
+        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.droptol)
+        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
         # Fused: nabla2_kron_S1S2_t * ∂out2 in blocks + identity/(2,1,3) permuted ∂A
@@ -7621,8 +7611,7 @@ function rrule(::typeof(solve_sylvester_equation),
     𝕊ℂ::sylvester_workspace;
     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
     sylvester_algorithm::Symbol = :doubling,
-    acceptance_tol::AbstractFloat = 1e-10,
-    tol::AbstractFloat = 1e-14,
+    tol::SolverTolerances = SolverTolerances(),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
@@ -7642,7 +7631,7 @@ function rrule(::typeof(solve_sylvester_equation),
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
@@ -7667,13 +7656,19 @@ function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64},
                 workspace::lyapunov_workspace;
+                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                 lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
+                tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                          initial_guess_acceptance_tol = 1e-12,
+                                                          acceptance_tol = 1e-12),
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, acceptance_tol = acceptance_tol, verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, workspace,
+                                        initial_guess = initial_guess,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        tol = tol,
+                                        verbose = verbose)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
@@ -7685,14 +7680,14 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
         # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
         # (the dispatcher's choose_matrix_format would convert back to sparse)
-        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
+        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol.tol)
         ∂C = ∂C_result
-        slvd = adj_tol < acceptance_tol
+        slvd = adj_tol < tol.acceptance_tol
     
         solved = solved && slvd
 
@@ -10097,8 +10092,7 @@ function rrule(::typeof(calculate_loglikelihood),
                                                         𝐁,
                                                         lyap_ws,
                                                         lyapunov_algorithm = opts.lyapunov_algorithm,
-                                                        tol = opts.tol.lyapunov_tol,
-                                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                        tol = opts.tol.first_order.ad.lyapunov,
                                                         verbose = opts.verbose)
         lyap_pullback = lyap_pullback_local
         lyap_rrule_result[1]
@@ -10472,7 +10466,7 @@ function rrule(::typeof(get_statistics),
         SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
         ret = Dict{Symbol,AbstractArray{T}}()
-        ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+        ret[:non_stochastic_steady_state] = solution_error < opts.tol.nsss.acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
         function nsss_only_pullback(Δret)
             Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
@@ -10592,7 +10586,7 @@ function rrule(::typeof(get_statistics),
                 P_i = P_i * ŝ_to_ŝ₂
             end
 
-            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.second_order.lyapunov.acceptance_tol
             autocorr[second_order_mask, :] .= 0
         elseif !(run_algorithm == :pruned_third_order)
             first_order_P = ℒ.diagm(ones(T, 𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, :]
@@ -10613,7 +10607,7 @@ function rrule(::typeof(get_statistics),
                 autocorr[:, i] .= ℒ.diag(first_order_R_seq[i]) .* d_inv
             end
 
-            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol
             autocorr[first_order_mask, :] .= 0
         end
     end
@@ -10942,7 +10936,7 @@ function rrule(::typeof(get_solution),
     SS_and_pars = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if algorithm in [:second_order, :pruned_second_order]
             result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
         elseif algorithm in [:third_order, :pruned_third_order]

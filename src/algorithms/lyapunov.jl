@@ -59,9 +59,11 @@ end
 function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
+                                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                 lyapunov_algorithm::Symbol = :doubling,
-                                tol::AbstractFloat = 1e-14,
-                                acceptance_tol::AbstractFloat = 1e-12,
+                                tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                                                          initial_guess_acceptance_tol = 1e-12,
+                                                                          acceptance_tol = 1e-12),
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
     # Ownership: low-level methods below are mixed. Bartels-Stewart and sparse
@@ -87,11 +89,35 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
     # C = choose_matrix_format(C, density_threshold = 0.0)
     C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
+
+    solver_tol = tol.tol
+    initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
+    acceptance_tol = tol.acceptance_tol
+
+    if length(initial_guess) > 0
+        guess = initial_guess
+        if size(guess) == size(C)
+            ensure_lyapunov_doubling_buffers!(workspace)
+            _tmp = workspace.𝐂A
+            _res = workspace.𝐂¹
+            ℒ.mul!(_tmp, guess, A')
+            ℒ.mul!(_res, A, _tmp)
+            ℒ.axpy!(1, C, _res)
+            ℒ.axpy!(-1, guess, _res)
+
+            denom = max(ℒ.norm(guess), ℒ.norm(C))
+            reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
+            if reached_tol < initial_guess_acceptance_tol
+                if verbose println("Lyapunov equation - initial guess achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
+                return choose_matrix_format(guess), true
+            end
+        end
+    end
  
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
 
-    X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = tol) # timer = timer)
+    X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = solver_tol) # timer = timer)
 
     if verbose
         println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
@@ -100,7 +126,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :doubling
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), workspace; tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), workspace; tol = solver_tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
@@ -110,7 +136,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :bicgstab
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), workspace; tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), workspace; tol = solver_tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
@@ -122,7 +148,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         C = collect(C)
 
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = tol) # timer = timer)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = solver_tol) # timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")

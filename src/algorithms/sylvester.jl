@@ -16,8 +16,7 @@ function solve_sylvester_equation(A::M,
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # Ownership: low-level methods below are mixed. Some return freshly allocated
@@ -66,6 +65,10 @@ function solve_sylvester_equation(A::M,
     # end # timeit_debug
     # @timeit_debug timer "Check if guess solves it already" begin
 
+    solver_tol = tol.tol
+    initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
+    acceptance_tol = tol.acceptance_tol
+
     if length(initial_guess) > 0 || length(C) > 0
         n = size(A, 1)
         m = size(B, 2)
@@ -84,8 +87,8 @@ function solve_sylvester_equation(A::M,
         denom = max(ℒ.norm(guess), ℒ.norm(c))
         reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
 
-        if reached_tol < acceptance_tol
-            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol") end
+        if reached_tol < initial_guess_acceptance_tol
+            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
 
             return choose_matrix_format(guess), true
         end
@@ -96,7 +99,7 @@ function solve_sylvester_equation(A::M,
 
     x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 𝕊ℂ,
                                                         initial_guess = initial_guess, 
-                                                        tol = tol,
+                                                        tol = solver_tol,
                                                         # timer = timer, 
                                                         verbose = verbose)
 
@@ -117,7 +120,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
                                                             Val(:bartels_stewart), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
-                                                            tol = tol, 
+                                                            tol = solver_tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
 

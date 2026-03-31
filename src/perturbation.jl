@@ -83,8 +83,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     use_fastlapack_lu = use_fastlapack_lu,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
+                                                    tol = opts.tol.first_order.qme,
                                                     verbose = opts.verbose)
 
     if !solved
@@ -333,8 +332,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.second_order.sylvester,
                                             verbose = opts.verbose)
 
     # end # timeit_debug
@@ -438,7 +436,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
     @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
 
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
@@ -446,7 +444,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
@@ -477,7 +475,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
     # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
     # B *= M₃.𝐂₃
-    # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
+    # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.third_order.droptol, multithreaded = false)
         # println("size(𝐒₁₋╱𝟏ₑ) = ",size(𝐒₁₋╱𝟏ₑ))
     B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
                                        sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
@@ -486,7 +484,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -497,7 +495,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
             
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.third_order.droptol)
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
@@ -529,15 +527,15 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "∇₂ & ∇₁₊" begin
 
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
     # Terms (a)+(b): ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * [tmpkron2 + 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ] * 𝐏𝐂₃
     # Compute D_ab to avoid materializing kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    tmpkron2_sp = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol))
+    tmpkron2_sp = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol))
     D_ab = (tmpkron2_sp + M₃.𝐏₁ₗ * tmpkron2_sp * M₃.𝐏₁ᵣ) * M₃.𝐏𝐂₃
 
     𝐗₃ = mat_mult_kron(∇₂, collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎), D_ab, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
@@ -549,7 +547,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
 
     # Term (e): ∇₁₊ * 𝐒₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) * 𝐏𝐂₃
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol)
     
     𝐗₃ += mat_mult_kron(∇₁₊ * 𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, M₃.𝐏𝐂₃, sparse = true)
 
@@ -570,7 +568,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += mul_compressed_kron³(∇₃, aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
+    𝐗₃ += mul_compressed_kron³(∇₃, aux, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
@@ -584,8 +582,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.third_order.sylvester,
                                             verbose = opts.verbose)
     
     # end # timeit_debug
@@ -609,7 +606,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # 𝐒₃ *= M₃.𝐔₃
 
-    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.droptol)
+    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
 
     # end # timeit_debug
     # end # timeit_debug
