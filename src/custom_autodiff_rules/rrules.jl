@@ -5452,7 +5452,7 @@ function rrule(::typeof(calculate_second_order_solution),
         end
 
         # @timeit_debug timer "Sylvester" begin
-        if ℒ.norm(∂𝐒₂) < opts.tol.second_order.ad.sylvester.tol
+        if ℒ.norm(∂𝐒₂) < opts.tol.second_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
@@ -7334,7 +7334,7 @@ function rrule(::typeof(calculate_third_order_solution),
     function third_order_solution_pullback(∂𝐒₃_solved)
         ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
 
-        if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.tol
+        if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
