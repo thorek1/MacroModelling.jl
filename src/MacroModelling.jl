@@ -1050,6 +1050,9 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.caches.third_order_stochastic_steady_state = Float64[]
     𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
 
+    resize!(𝓂.caches.non_stochastic_steady_state, 0)
+    𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+
     𝓂.caches.valid_for.first_order_solution = Float64[]
     𝓂.caches.valid_for.second_order_solution = Float64[]
     𝓂.caches.valid_for.pruned_second_order_solution = Float64[]
@@ -4809,6 +4812,8 @@ function solve_steady_state!(𝓂::ℳ,
     
     if found_solution
         𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
+    else
+        𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
     end
     
     return SS_and_pars, solution_error, found_solution
@@ -5941,6 +5946,7 @@ function solve!(𝓂::ℳ;
                 resize!(cache_ss, length(SS_and_pars))
             end
             copyto!(cache_ss, SS_and_pars)
+            𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
 
         if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
@@ -5994,6 +6000,9 @@ function solve!(𝓂::ℳ;
         # call calculate_*_solution which invalidates lower-order stamps.
         _valid_stamp = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
 
+        if !isempty(𝓂.caches.non_stochastic_steady_state)
+            𝓂.caches.valid_for.non_stochastic_steady_state = copy(_valid_stamp)
+        end
         if !isempty(𝓂.caches.first_order_solution_matrix)
             𝓂.caches.valid_for.first_order_solution = copy(_valid_stamp)
         end

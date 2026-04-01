@@ -1818,7 +1818,7 @@ function get_solution(𝓂::ℳ;
         end
 
         n_vars = length(𝓂.constants.post_model_macro.var)
-        nsss = if length(𝓂.caches.non_stochastic_steady_state) >= n_vars
+        nsss = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && length(𝓂.caches.non_stochastic_steady_state) >= n_vars
             𝓂.caches.non_stochastic_steady_state[1:n_vars]
         else
             get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]

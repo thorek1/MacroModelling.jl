@@ -584,6 +584,15 @@ get_calibrated_parameters(RBC)
 """
 function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
+        if !cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) || length(𝓂.caches.non_stochastic_steady_state) < 𝓂.constants.post_model_macro.nVars + 1
+            SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
+            cache_ss = 𝓂.caches.non_stochastic_steady_state
+            if length(cache_ss) != length(SS_and_pars)
+                resize!(cache_ss, length(SS_and_pars))
+            end
+            copyto!(cache_ss, SS_and_pars)
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64.(𝓂.parameter_values)
+        end
         return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.caches.non_stochastic_steady_state[𝓂.constants.post_model_macro.nVars + 1:end]
     else
         return replace.(string.(𝓂.equations.calibration_parameters), "◖" => "{", "◗" => "}")# |> sort
