@@ -61,7 +61,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
                                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                 lyapunov_algorithm::Symbol = :doubling,
-                                tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                          rtol = 1e-14,
                                                                           initial_guess_acceptance_tol = 1e-12,
                                                                           acceptance_tol = 1e-12),
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
@@ -220,7 +221,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -273,7 +274,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -334,7 +335,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
             ℒ.axpy!(-1, 𝐂, 𝐂A)
             normdiff = ℒ.norm(𝐂A)
             maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-            if !isfinite(normdiff) || normdiff / maxnorm < tol.tol
+            if !isfinite(normdiff) || normdiff / maxnorm < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -396,7 +397,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
             ℒ.axpy!(-1, 𝐂, 𝐂A)
             normdiff = ℒ.norm(𝐂A)
             maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-            if !isfinite(normdiff) || normdiff / maxnorm < tol.tol
+            if !isfinite(normdiff) || normdiff / maxnorm < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -447,7 +448,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         vech!(b_vech, C)
 
-        Krylov.bicgstab!(workspace.bicgstab_vech, lyapunov_op, b_vech, rtol = tol.tol, atol = tol.tol)
+        Krylov.bicgstab!(workspace.bicgstab_vech, lyapunov_op, b_vech, rtol = tol.rtol, atol = tol.atol)
 
         fill_symmetric_from_vech!(𝐗, workspace.bicgstab_vech.x)
 
@@ -477,7 +478,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         lyapunov_op = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov_bicgstab!)
 
         copyto!(b, vec(C))
-        Krylov.bicgstab!(workspace.bicgstab, lyapunov_op, b, rtol = tol.tol, atol = tol.tol)
+        Krylov.bicgstab!(workspace.bicgstab, lyapunov_op, b, rtol = tol.rtol, atol = tol.atol)
         copyto!(𝐗, workspace.bicgstab.x)
 
         # Allocation-free residual
@@ -521,7 +522,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
         vech!(b_vech, C)
 
-        Krylov.gmres!(workspace.gmres_vech, lyapunov_op, b_vech, rtol = tol.tol, atol = tol.tol)
+        Krylov.gmres!(workspace.gmres_vech, lyapunov_op, b_vech, rtol = tol.rtol, atol = tol.atol)
 
         fill_symmetric_from_vech!(𝐗, workspace.gmres_vech.x)
 
@@ -551,7 +552,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         lyapunov_op = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov_gmres!)
 
         copyto!(b, vec(C))
-        Krylov.gmres!(workspace.gmres, lyapunov_op, b, rtol = tol.tol, atol = tol.tol)
+        Krylov.gmres!(workspace.gmres, lyapunov_op, b, rtol = tol.rtol, atol = tol.atol)
         copyto!(𝐗, workspace.gmres.x)
 
         # Allocation-free residual

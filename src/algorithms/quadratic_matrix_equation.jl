@@ -18,7 +18,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                        tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                                rtol = 1e-14,
                                                                                 initial_guess_acceptance_tol = 1e-8,
                                                                                 acceptance_tol = 1e-8),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
@@ -503,7 +504,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # println("Iter: $i; xtol: $Xtol; ytol: $Ytol; rel ytol: $relYtol; rel xtol: $relXtol")
 
         # Check for convergence
-        if Xtol < tol.tol # && Yreltol < tol # i % 2 == 0 && 
+        if Xtol < tol.atol # && Yreltol < tol # i % 2 == 0 && 
             solved = true
             iter = i
             break

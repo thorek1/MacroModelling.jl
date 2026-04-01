@@ -1817,26 +1817,29 @@ end
 Tolerance settings for a single numerical equation solver (Sylvester, Lyapunov, or QME).
 
 # Fields
-- `tol::Float64`: iterative solver convergence tolerance (residual norm threshold).
+- `atol::Float64`: absolute convergence tolerance (used by Krylov solvers).
+- `rtol::Float64`: relative convergence tolerance (used by iterative stopping checks).
 - `initial_guess_acceptance_tol::Float64`: if an initial guess achieves a relative
   residual below this threshold it is accepted immediately, skipping the full solve.
 - `acceptance_tol::Float64`: result is accepted when the relative residual falls below
   this threshold; otherwise the dispatcher retries with a fallback algorithm.
 
-Construct via `SolverTolerances(; tol, initial_guess_acceptance_tol, acceptance_tol)`.
+Construct via `SolverTolerances(; atol, rtol, initial_guess_acceptance_tol, acceptance_tol)`.
 Default values differ by solver type and are set by the enclosing tolerance hierarchy;
 see [`Tolerances`](@ref) and [`FirstOrderTolerances`](@ref) / [`HigherOrderTolerances`](@ref).
 """
 struct SolverTolerances
-    tol::Float64
+    atol::Float64
+    rtol::Float64
     initial_guess_acceptance_tol::Float64
     acceptance_tol::Float64
 end
 
-function SolverTolerances(; tol::Float64 = 1e-14,
+function SolverTolerances(; atol::Float64 = 1e-14,
+                          rtol::Float64 = 1e-14,
                           initial_guess_acceptance_tol::Float64 = 1e-10,
                           acceptance_tol::Float64 = 1e-10)
-    return SolverTolerances(tol, initial_guess_acceptance_tol, acceptance_tol)
+    return SolverTolerances(atol, rtol, initial_guess_acceptance_tol, acceptance_tol)
 end
 
 """
@@ -1880,11 +1883,11 @@ when it is called inside a ForwardDiff dual-number overload or a ChainRulesCore 
 
 # Fields
 - `qme::SolverTolerances`: tolerances for the quadratic matrix equation (QME) derivative solve.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
 - `sylvester::SolverTolerances`: tolerances for the Sylvester equation derivative solve.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation derivative solve.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
 
 Construct via `AdTolerances(; qme, sylvester, lyapunov)`.
 """
@@ -1894,11 +1897,13 @@ struct AdTolerances
     lyapunov::SolverTolerances
 end
 
-function AdTolerances(; qme::SolverTolerances = SolverTolerances(tol = 1e-14,
+function AdTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                  rtol = 1e-14,
                                                                   initial_guess_acceptance_tol = 1e-8,
                                                                   acceptance_tol = 1e-8),
                       sylvester::SolverTolerances = SolverTolerances(),
-                      lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                      lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                     rtol = 1e-14,
                                                                      initial_guess_acceptance_tol = 1e-12,
                                                                      acceptance_tol = 1e-12))
     return AdTolerances(qme, sylvester, lyapunov)
@@ -1911,10 +1916,10 @@ Tolerance settings for the first-order perturbation solution and its AD pathways
 
 # Fields
 - `qme::SolverTolerances`: tolerances for the quadratic matrix equation solver.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
   compute first-order covariance matrices.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
 - `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
   matrices are dropped (set to zero) to reduce sparsity fill-in.
 - `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
@@ -1931,10 +1936,12 @@ struct FirstOrderTolerances
     ad::AdTolerances
 end
 
-function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(tol = 1e-14,
+function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                          rtol = 1e-14,
                                                                           initial_guess_acceptance_tol = 1e-8,
                                                                           acceptance_tol = 1e-8),
-                              lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                              lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                             rtol = 1e-14,
                                                                              initial_guess_acceptance_tol = 1e-12,
                                                                              acceptance_tol = 1e-12),
                               droptol::Float64 = 1e-14,
@@ -1950,10 +1957,10 @@ Tolerance settings for second- and third-order perturbation solutions and their 
 
 # Fields
 - `sylvester::SolverTolerances`: tolerances for the Sylvester equation solver.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
   compute higher-order covariance matrices.
-  Default: `tol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
 - `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
   matrices are dropped (set to zero) to reduce sparsity fill-in.
 - `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
@@ -1971,7 +1978,8 @@ struct HigherOrderTolerances
 end
 
 function HigherOrderTolerances(; sylvester::SolverTolerances = SolverTolerances(),
-                               lyapunov::SolverTolerances = SolverTolerances(tol = 1e-14,
+                               lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                              rtol = 1e-14,
                                                                               initial_guess_acceptance_tol = 1e-12,
                                                                               acceptance_tol = 1e-12),
                                droptol::Float64 = 1e-14,
@@ -2027,8 +2035,9 @@ Tolerances
     └── (same structure as second_order)
 ```
 
-Each [`SolverTolerances`](@ref) carries three values:
-- `tol`: iterative solver convergence threshold.
+Each [`SolverTolerances`](@ref) carries four values:
+- `atol`: absolute convergence tolerance used by Krylov solvers.
+- `rtol`: relative convergence tolerance used by iterative stopping checks.
 - `initial_guess_acceptance_tol`: accept an initial guess without re-solving if its
   residual is already below this threshold.
 - `acceptance_tol`: accept the final result when the residual falls below this threshold;

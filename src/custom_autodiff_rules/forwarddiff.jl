@@ -754,7 +754,8 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     workspace::lyapunov_workspace;
                                     initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                                    tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                                rtol = 1e-14,
                                                                               initial_guess_acceptance_tol = 1e-12,
                                                                               acceptance_tol = 1e-12),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}

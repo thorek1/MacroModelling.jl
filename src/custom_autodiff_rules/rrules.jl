@@ -7631,7 +7631,7 @@ function rrule(::typeof(solve_sylvester_equation),
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
@@ -7658,7 +7658,8 @@ function rrule(::typeof(solve_lyapunov_equation),
                 workspace::lyapunov_workspace;
                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                 lyapunov_algorithm::Symbol = :doubling,
-                tol::SolverTolerances = SolverTolerances(tol = 1e-14,
+                tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                                rtol = 1e-14,
                                                           initial_guess_acceptance_tol = 1e-12,
                                                           acceptance_tol = 1e-12),
                 # timer::TimerOutput = TimerOutput(),
@@ -7680,7 +7681,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
         # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path

@@ -320,7 +320,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -409,7 +409,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -511,7 +511,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -596,7 +596,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -677,7 +677,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -760,7 +760,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -842,7 +842,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -943,7 +943,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -1148,8 +1148,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                             # [vec(initial_guess);], 
                             itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                             timemax = 10.0,
-                            rtol = tol.tol, 
-                            atol = tol.tol)#, M = precond)
+                            rtol = tol.rtol, 
+                            atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1301,8 +1301,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
-                        rtol = tol.tol, 
-                        atol = tol.tol)#, M = precond)
+                        rtol = tol.rtol, 
+                        atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.dqgmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1454,8 +1454,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
-                        rtol = tol.tol, 
-                        atol = tol.tol)#, M = precond)
+                        rtol = tol.rtol, 
+                        atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
