@@ -381,7 +381,26 @@ check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋�
 
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
-    @assert N ≥ 2 "Need at least two dictionaries to compare"
+
+    if N ≤ 1
+        # Single entry: nothing to compare.  Return every non-skipped key so
+        # downstream code (e.g. diffdict[:label]) works uniformly.
+        # Dict values are recursed into so the result shape matches the N≥2
+        # case (nested Dicts with leaf vectors) expected by flatten_tol_diff.
+        diffs = Dict{Symbol,Any}()
+        if N == 1
+            for k in keys(dicts[1])
+                k in (:plot_data, :plot_type) && continue
+                v = dicts[1][k]
+                if v isa Dict
+                    diffs[k] = compare_args_and_kwargs([v])
+                else
+                    diffs[k] = [v]
+                end
+            end
+        end
+        return diffs
+    end
 
     diffs = Dict{Symbol,Any}()
 
