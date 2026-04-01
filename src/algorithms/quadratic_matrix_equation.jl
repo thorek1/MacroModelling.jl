@@ -33,7 +33,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                             nPfm,
                             T.nFuture_not_past_and_mixed)
 
-    solver_tol = tol.tol
     initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
     acceptance_tol = tol.acceptance_tol
     
@@ -80,7 +79,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         initial_guess = initial_guess,
                                                         use_fastlapack_schur = use_fastlapack_schur,
                                                         use_fastlapack_lu = use_fastlapack_lu,
-                                                        tol = solver_tol,
+                                                        tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
 
@@ -96,7 +95,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                tol = solver_tol,
+                                                                tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 
@@ -110,7 +109,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 initial_guess = initial_guess,
                                                                 use_fastlapack_schur = use_fastlapack_schur,
                                                                 use_fastlapack_lu = use_fastlapack_lu,
-                                                                tol = solver_tol,
+                                                                tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 
@@ -133,7 +132,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        tol::AbstractFloat = 1e-14,
+                                        tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
     
@@ -320,7 +319,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         use_fastlapack_schur::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        tol::AbstractFloat = 1e-14,
+                                        tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
@@ -504,7 +503,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # println("Iter: $i; xtol: $Xtol; ytol: $Ytol; rel ytol: $relYtol; rel xtol: $relXtol")
 
         # Check for convergence
-        if Xtol < tol # && Yreltol < tol # i % 2 == 0 && 
+        if Xtol < tol.tol # && Yreltol < tol # i % 2 == 0 && 
             solved = true
             iter = i
             break

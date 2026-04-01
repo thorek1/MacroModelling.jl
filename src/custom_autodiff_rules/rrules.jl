@@ -7685,7 +7685,7 @@ function rrule(::typeof(solve_lyapunov_equation),
         # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
         # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
         # (the dispatcher's choose_matrix_format would convert back to sparse)
-        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol.tol)
+        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
         ∂C = ∂C_result
         slvd = adj_tol < tol.acceptance_tol
     
