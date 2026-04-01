@@ -202,6 +202,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
         cache.first_order_solution_matrix = S₁
     end
 
+    # Invalidate validity stamp — only solve! should re-stamp after
+    # computing with 𝓂.parameter_values. Other callers (estimation,
+    # moments) may have written data for different parameters.
+    empty!(cache.valid_for.first_order_solution)
+
     return S₁, sol, true
 end
 
@@ -370,6 +375,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
         else
             cache.second_order_solution = copy(𝐒₂)
         end
+        empty!(cache.valid_for.second_order_solution)
+        empty!(cache.valid_for.pruned_second_order_solution)
     end
 
     return 𝐒₂, solved
@@ -622,6 +629,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         else
             cache.third_order_solution = copy(𝐒₃)
         end
+        empty!(cache.valid_for.third_order_solution)
+        empty!(cache.valid_for.pruned_third_order_solution)
     end
 
     return 𝐒₃, solved

@@ -5253,6 +5253,8 @@ function rrule(::typeof(calculate_first_order_solution),
         cache.first_order_solution_matrix = 𝐒₁
     end
 
+    empty!(cache.valid_for.first_order_solution)
+
     return (𝐒₁, sol, solved), first_order_solution_pullback
 end
 
@@ -5583,6 +5585,8 @@ function rrule(::typeof(calculate_second_order_solution),
         else
             cache.second_order_solution = 𝐒₂
         end
+        empty!(cache.valid_for.second_order_solution)
+        empty!(cache.valid_for.pruned_second_order_solution)
     end
 
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
@@ -7286,6 +7290,8 @@ function rrule(::typeof(calculate_third_order_solution),
     else
         cache.third_order_solution = 𝐒₃_stable
     end
+    empty!(cache.valid_for.third_order_solution)
+    empty!(cache.valid_for.pruned_third_order_solution)
 
     # --- precompute transposed constants for pullback -----------------------------
     # Use pre-cached transposes from constants (computed once at model compile time)

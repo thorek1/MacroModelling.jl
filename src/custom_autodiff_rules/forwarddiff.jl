@@ -577,6 +577,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         cache.first_order_solution_matrix = S₁_value
     end
 
+    empty!(cache.valid_for.first_order_solution)
+
     return S₁, qme_sol, solved
 end
 

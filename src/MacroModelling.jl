@@ -5941,7 +5941,6 @@ function solve!(𝓂::ℳ;
                 resize!(cache_ss, length(SS_and_pars))
             end
             copyto!(cache_ss, SS_and_pars)
-            𝓂.caches.valid_for.first_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
         end
 
         if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
@@ -5988,6 +5987,27 @@ function solve!(𝓂::ℳ;
             𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
 
             𝓂.caches.valid_for.pruned_third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
+        end
+
+        # Re-stamp all populated solution caches as valid for current
+        # parameter values.  The stochastic-SS blocks above internally
+        # call calculate_*_solution which invalidates lower-order stamps.
+        _valid_stamp = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
+
+        if !isempty(𝓂.caches.first_order_solution_matrix)
+            𝓂.caches.valid_for.first_order_solution = copy(_valid_stamp)
+        end
+        if size(𝓂.caches.second_order_solution, 2) > 0
+            𝓂.caches.valid_for.second_order_solution = copy(_valid_stamp)
+        end
+        if !isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
+            𝓂.caches.valid_for.pruned_second_order_solution = copy(_valid_stamp)
+        end
+        if size(𝓂.caches.third_order_solution, 2) > 0
+            𝓂.caches.valid_for.third_order_solution = copy(_valid_stamp)
+        end
+        if !isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
+            𝓂.caches.valid_for.pruned_third_order_solution = copy(_valid_stamp)
         end
 
     end
