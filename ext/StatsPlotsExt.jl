@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step, SteadyStateFunctionType, normalize_superscript, apply_custom_name
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, tol_to_dict, warn_irrelevant_tol, flatten_tol_diff, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step, SteadyStateFunctionType, normalize_superscript, apply_custom_name
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -164,6 +164,7 @@ function plot_model_estimates(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -340,18 +341,7 @@ function plot_model_estimates(𝓂::ℳ,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
                            
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :lyapunov_tol => tol.first_order.lyapunov.tol,
-                           :lyapunov_acceptance_tol => tol.first_order.lyapunov.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = filter == :kalman),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -818,6 +808,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -988,18 +979,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
                            
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :lyapunov_tol => tol.first_order.lyapunov.tol,
-                           :lyapunov_acceptance_tol => tol.first_order.lyapunov.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = filter == :kalman),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -1200,6 +1180,10 @@ function plot_model_estimates!(𝓂::ℳ,
         if haskey(diffdict, k)
             push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
         end
+    end
+
+    if haskey(diffdict, :tol)
+        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
     end
     
     if haskey(diffdict, :shock_names)
@@ -1773,6 +1757,7 @@ function plot_irf(𝓂::ℳ;
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = false)
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -1933,16 +1918,7 @@ function plot_irf(𝓂::ℳ;
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = false),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -2467,6 +2443,7 @@ function plot_irf!(𝓂::ℳ;
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = false)
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -2618,16 +2595,7 @@ function plot_irf!(𝓂::ℳ;
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = false),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -2817,6 +2785,10 @@ function plot_irf!(𝓂::ℳ;
                 same_shock_direction = false
             end
         end
+    end
+
+    if haskey(diffdict, :tol)
+        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
     end
 
 
@@ -3781,6 +3753,7 @@ function plot_solution(𝓂::ℳ,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -3924,6 +3897,7 @@ function plot_solution(𝓂::ℳ,
                            :σ => σ,
                            :parameters => Dict(𝓂.constants.post_complete_parameters.parameters .=> 𝓂.parameter_values),
                            :ignore_obc => ignore_obc,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
@@ -4107,6 +4081,10 @@ function _plot_solution_from_container(;
     # Add ignore_obc if different
     if haskey(diffdict, :ignore_obc)
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
+    end
+
+    if haskey(diffdict, :tol)
+        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
     end
 
     # Determine legend labels based on what differs
@@ -4509,6 +4487,7 @@ function plot_solution!(𝓂::ℳ,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -4647,6 +4626,7 @@ function plot_solution!(𝓂::ℳ,
                            :σ => σ,
                            :parameters => Dict(𝓂.constants.post_complete_parameters.parameters .=> 𝓂.parameter_values),
                            :ignore_obc => ignore_obc,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
@@ -4824,6 +4804,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 sylvester_algorithm = sylvester_algorithm,
                                 tol = tol,
                                 verbose = verbose)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
@@ -4981,16 +4962,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :var_idx => var_idx,
                            :algorithm => algorithm,
 
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -5288,6 +5260,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 tol = tol,
                                 verbose = verbose)
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = vcat(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.post_model_macro.exo))
@@ -5448,16 +5421,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :var_idx => var_idx,
                            :algorithm => algorithm,
 
-                           :NSSS_acceptance_tol => tol.nsss.acceptance_tol,
-                           :NSSS_xtol => tol.nsss.xtol,
-                           :NSSS_ftol => tol.nsss.ftol,
-                           :NSSS_rel_xtol => tol.nsss.rel_xtol,
-                           :qme_tol => tol.first_order.qme.tol,
-                           :qme_acceptance_tol => tol.first_order.qme.acceptance_tol,
-                           :sylvester_tol => tol.second_order.sylvester.tol,
-                           :sylvester_acceptance_tol => tol.second_order.sylvester.acceptance_tol,
-                           :droptol => tol.third_order.droptol,
-                           :dependencies_tol => tol.third_order.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -5704,6 +5668,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
                 same_shock_direction = false
             end
         end
+    end
+
+    if haskey(diffdict, :tol)
+        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
     end
 
     if haskey(diffdict, :shock_names)

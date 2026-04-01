@@ -430,6 +430,34 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
 end
 
 
+"""
+    flatten_tol_diff(diff; names = DEFAULT_ARGS_AND_KWARGS_NAMES, prefix = "") -> Vector{Pair{String,Any}}
+
+Recursively walk a nested tolerance diff `Dict` (as returned by
+`compare_args_and_kwargs` on `tol_to_dict` outputs) and produce a flat vector
+of `"human-readable path" => values` pairs suitable for plot annotations.
+
+Path segments are translated through `names` (defaults to
+`DEFAULT_ARGS_AND_KWARGS_NAMES`).  For example a diff at
+`:first_order => :qme => :atol` becomes `"1st order QME atol"`.
+"""
+function flatten_tol_diff(diff::Dict;
+                          names::Dict{Symbol,String} = DEFAULT_ARGS_AND_KWARGS_NAMES,
+                          prefix::String = "")
+    result = Pair{String,Any}[]
+    for (k, v) in sort(collect(diff), by = first)
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            append!(result, flatten_tol_diff(v; names = names, prefix = label))
+        else
+            push!(result, label => reduce(vcat, v))
+        end
+    end
+    return result
+end
+
+
 function mul_reverse_AD!(   C::Matrix{S},
                             A::AbstractMatrix{M},
                             B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
