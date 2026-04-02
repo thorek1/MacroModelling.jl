@@ -404,10 +404,20 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
 
     diffs = Dict{Symbol,Any}()
 
-    # assume all dictionaries share the same set of keys
-    for k in keys(dicts[1])
+    # use the union of all keys so dicts with different key sets
+    # (e.g. tol sub-dicts that conditionally include :dependencies_tol)
+    # are compared correctly
+    all_keys = reduce(union, keys.(dicts))
+
+    for k in all_keys
         if k in [:plot_data, :plot_type]
             # skip keys that are not relevant for comparison
+            continue
+        end
+
+        # when a key is missing from some dicts, the values differ by definition
+        if !all(haskey(d, k) for d in dicts)
+            diffs[k] = [get(d, k, missing) for d in dicts]
             continue
         end
 
@@ -5479,6 +5489,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5494,6 +5505,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
 
     if !converged
         if opts.verbose println("SSS not found") end
+        if caching 𝓂.caches.second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5518,6 +5530,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.pruned_second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5617,6 +5630,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5640,6 +5654,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5664,6 +5679,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     if !converged
         if opts.verbose println("SSS not found") end
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5690,6 +5706,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.pruned_third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5711,6 +5728,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
+        if caching 𝓂.caches.pruned_third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
