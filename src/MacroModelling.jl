@@ -5896,9 +5896,9 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.first_order_solution_matrix)
-        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0
+        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0 || isempty(𝓂.caches.second_order_stochastic_steady_state)
         pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
-        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0
+        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0 || isempty(𝓂.caches.third_order_stochastic_steady_state)
         pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
 
         obc_not_solved = isempty(𝓂.caches.first_order_obc_solution_matrix)
@@ -6025,13 +6025,13 @@ function solve!(𝓂::ℳ;
         if !isempty(𝓂.caches.first_order_solution_matrix)
             𝓂.caches.valid_for.first_order_solution = copy(_valid_stamp)
         end
-        if size(𝓂.caches.second_order_solution, 2) > 0
+        if size(𝓂.caches.second_order_solution, 2) > 0 && !isempty(𝓂.caches.second_order_stochastic_steady_state)
             𝓂.caches.valid_for.second_order_solution = copy(_valid_stamp)
         end
         if !isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
             𝓂.caches.valid_for.pruned_second_order_solution = copy(_valid_stamp)
         end
-        if size(𝓂.caches.third_order_solution, 2) > 0
+        if size(𝓂.caches.third_order_solution, 2) > 0 && !isempty(𝓂.caches.third_order_stochastic_steady_state)
             𝓂.caches.valid_for.third_order_solution = copy(_valid_stamp)
         end
         if !isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)

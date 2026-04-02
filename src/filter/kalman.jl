@@ -234,7 +234,11 @@ function filter_and_smooth(𝓂::ℳ,
 
     parameters = 𝓂.parameter_values
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameters) && !isempty(𝓂.caches.non_stochastic_steady_state)
+        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(parameters)), 0))
+    else
+        get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    end
     
     @assert solution_error < opts.tol.nsss.acceptance_tol "Could not solve non-stochastic steady state." 
 

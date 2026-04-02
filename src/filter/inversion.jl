@@ -1406,7 +1406,11 @@ function filter_data_with_model(𝓂::ℳ,
     
     decomposition = zeros(T.nVars, T.nExo + 2, size(data_in_deviations, 2))
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+    SS_and_pars, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
+        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
+    else
+        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+    end
 
     if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         @error "No solution for these parameters."
