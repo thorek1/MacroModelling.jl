@@ -1098,7 +1098,8 @@ function get_irf(𝓂::ℳ,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameters)
     
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1959,7 +1960,8 @@ function get_solution(𝓂::ℳ,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameters)
     
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1978,7 +1980,7 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -1988,7 +1990,7 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
     
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -2000,7 +2002,7 @@ function get_solution(𝓂::ℳ,
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.third_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -2133,7 +2135,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = 𝓂.parameter_values)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -2299,7 +2302,8 @@ function get_variance_decomposition(𝓂::ℳ;
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = 𝓂.parameter_values)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
     

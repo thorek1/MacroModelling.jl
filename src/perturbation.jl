@@ -7,7 +7,18 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_qr::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        parameter_values::AbstractVector{<:Real} = Float64[],
+                                        caching::Bool = true)::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat}
+    # Cache hit: return cached first-order solution if valid for current parameters
+    if caching && R === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.first_order_solution, parameter_values)
+        S₁_cached = cache.first_order_solution_matrix
+        qme_cached = cache.qme_solution
+        if S₁_cached isa Matrix{R} && !isempty(S₁_cached) && qme_cached isa Matrix{R} && !isempty(qme_cached)
+            return S₁_cached, qme_cached, true
+        end
+    end
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -192,20 +203,25 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     n_cols_ϵ = size(∇ₑ, 2)
     total_cols = n_cols_A + n_cols_ϵ
 
-    S₁_existing = cache.first_order_solution_matrix
-    if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
-        copyto!(@view(S₁_existing[:, 1:n_cols_A]), A)
-        copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇ₑ)
-        S₁ = S₁_existing
+    S₁ = if caching
+        S₁_existing = cache.first_order_solution_matrix
+        if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
+            copyto!(@view(S₁_existing[:, 1:n_cols_A]), A)
+            copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇ₑ)
+            S₁_existing
+        else
+            S₁_tmp = hcat(A, ∇ₑ)
+            cache.first_order_solution_matrix = S₁_tmp
+            S₁_tmp
+        end
     else
-        S₁ = hcat(A, ∇ₑ)
-        cache.first_order_solution_matrix = S₁
+        hcat(A, ∇ₑ)
     end
 
-    # Invalidate validity stamp — only solve! should re-stamp after
-    # computing with 𝓂.parameter_values. Other callers (estimation,
-    # moments) may have written data for different parameters.
-    empty!(cache.valid_for.first_order_solution)
+    # Stamp cache validity for current parameters
+    if caching && !isempty(parameter_values)
+        cache.valid_for.first_order_solution = Float64.(parameter_values)
+    end
 
     return S₁, sol, true
 end
@@ -218,7 +234,17 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             workspaces::workspaces,
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            parameter_values::AbstractVector{<:Real} = Float64[],
+                                            caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+    # Cache hit: return cached second-order solution if valid for current parameters
+    if caching && S === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.second_order_solution, parameter_values)
+        cached = cache.second_order_solution
+        if cached isa Matrix{S} && !isempty(cached)
+            return cached, true
+        end
+    end
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -364,7 +390,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved
+    if solved && caching
         if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
             copyto!(cache.second_order_solution, 𝐒₂)
         elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
@@ -375,8 +401,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
         else
             cache.second_order_solution = copy(𝐒₂)
         end
-        empty!(cache.valid_for.second_order_solution)
-        empty!(cache.valid_for.pruned_second_order_solution)
+        if !isempty(parameter_values)
+            cache.valid_for.second_order_solution = Float64.(parameter_values)
+            cache.valid_for.pruned_second_order_solution = Float64[]
+        end
     end
 
     return 𝐒₂, solved
@@ -392,7 +420,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             workspaces::workspaces,
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            parameter_values::AbstractVector{<:Real} = Float64[],
+                                            caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    # Cache hit: return cached third-order solution if valid for current parameters
+    if caching && S === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.third_order_solution, parameter_values)
+        cached = cache.third_order_solution
+        if cached isa Matrix{S} && !isempty(cached)
+            return cached, true
+        end
+    end
     if !(eltype(workspaces.third_order.Ŝ) == S)
         workspaces.third_order = Higher_order_workspace(T = S)
     end
@@ -618,7 +656,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved
+    if solved && caching
         if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
             copyto!(cache.third_order_solution, 𝐒₃)
         elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
@@ -629,8 +667,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         else
             cache.third_order_solution = copy(𝐒₃)
         end
-        empty!(cache.valid_for.third_order_solution)
-        empty!(cache.valid_for.pruned_third_order_solution)
+        if !isempty(parameter_values)
+            cache.valid_for.third_order_solution = Float64.(parameter_values)
+            cache.valid_for.pruned_third_order_solution = Float64[]
+        end
     end
 
     return 𝐒₃, solved

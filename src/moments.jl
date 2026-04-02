@@ -27,7 +27,8 @@ function calculate_covariance(parameters::Vector{R},
                                                             𝓂.workspaces,
                                                             𝓂.caches;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -91,7 +92,8 @@ function calculate_mean(parameters::Vector{R},
                                                             𝓂.workspaces,
                                                             𝓂.caches;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            parameter_values = parameters)
         
         update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -101,7 +103,7 @@ function calculate_mean(parameters::Vector{R},
             ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                                        opts = opts)
+                                                        opts = opts, parameter_values = parameters)
 
             update_perturbation_counter!(𝓂.counters, solved, order = 2)
 
@@ -196,7 +198,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
         
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
@@ -322,7 +324,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
@@ -580,7 +582,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                                 𝓂.workspaces,
                                                 𝓂.caches;
                                                 initial_guess = 𝓂.caches.third_order_solution,
-                                                opts = opts)
+                                                opts = opts, parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
@@ -891,7 +893,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 𝓂.workspaces,
                                                 𝓂.caches;
                                                 initial_guess = 𝓂.caches.third_order_solution,
-                                                opts = opts)
+                                                opts = opts, parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
     

@@ -1490,7 +1490,8 @@ function filter_data_with_model(𝓂::ℳ,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        parameter_values = 𝓂.parameter_values)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 

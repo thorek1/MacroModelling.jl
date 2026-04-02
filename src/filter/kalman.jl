@@ -248,7 +248,8 @@ function filter_and_smooth(𝓂::ℳ,
                                                             constants,
                                                             𝓂.workspaces,
                                                             𝓂.caches;
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            parameter_values = parameters)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 

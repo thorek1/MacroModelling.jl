@@ -22,7 +22,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                                 rtol = 1e-14,
                                                                                 initial_guess_acceptance_tol = 1e-8,
                                                                                 acceptance_tol = 1e-8),
-                                        verbose::Bool = false)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
+                                        verbose::Bool = false,
+                                        caching::Bool = true)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
     T = constants.post_model_macro
     n = T.nVars - T.nPresent_only
     nPfm = T.nPast_not_future_and_mixed
@@ -38,7 +39,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     acceptance_tol = tol.acceptance_tol
     
 
-    if length(initial_guess) > 0
+    if caching && length(initial_guess) > 0
         X = initial_guess
         X² = qme_ws.temp3
 
@@ -82,7 +83,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         use_fastlapack_lu = use_fastlapack_lu,
                                                         tol = tol,
                                                         # timer = timer,
-                                                        verbose = verbose)
+                                                        verbose = verbose,
+                                                        caching = caching)
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
 
@@ -98,7 +100,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 use_fastlapack_lu = use_fastlapack_lu,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose,
+                                                                caching = caching)
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_algorithm ≠ :doubling
@@ -112,7 +115,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 use_fastlapack_lu = use_fastlapack_lu,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose,
+                                                                caching = caching)
 
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         end
@@ -135,7 +139,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         use_fastlapack_lu::Bool = true,
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+                                        verbose::Bool = false,
+                                        caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
     
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
@@ -282,11 +287,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Final reordering: X = sol[dynamic_order,:] * Ir[past_not_future_and_mixed_in_comb,:]
     # n == n_comb (= nFnpm + nPfm - nMixed) so the result is (n, n), same as doubling.
     # Prefer cache-backed storage to avoid extra allocations.
-    _existing_sol = cache.qme_solution
-    X = if _existing_sol isa Matrix{R} && size(_existing_sol) == (n, n)
-        _existing_sol
+    X = if caching
+        _existing_sol = cache.qme_solution
+        if _existing_sol isa Matrix{R} && size(_existing_sol) == (n, n)
+            _existing_sol
+        else
+            cache.qme_solution = zeros(R, n, n)
+        end
     else
-        cache.qme_solution = zeros(R, n, n)
+        zeros(R, n, n)
     end
 
     ℒ.mul!(X, @view(sol[T.dynamic_order, :]), idx_constants.Ir_past_selector)
@@ -323,7 +332,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
+                                        max_iter::Int = 100,
+                                        caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
     workspace = ensure_qme_doubling_workspace!(workspaces, size(A, 1))
@@ -541,11 +551,15 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     #     println("QME: doubling $reached_tol")
     # end
 
-    _existing_sol = cache.qme_solution
-    X_cache = if _existing_sol isa Matrix{R} && size(_existing_sol) == size(X_new)
-        _existing_sol
+    X_cache = if caching
+        _existing_sol = cache.qme_solution
+        if _existing_sol isa Matrix{R} && size(_existing_sol) == size(X_new)
+            _existing_sol
+        else
+            cache.qme_solution = zeros(R, size(X_new, 1), size(X_new, 2))
+        end
     else
-        cache.qme_solution = zeros(R, size(X_new, 1), size(X_new, 2))
+        zeros(R, size(X_new, 1), size(X_new, 2))
     end
     copyto!(X_cache, X_new)
 

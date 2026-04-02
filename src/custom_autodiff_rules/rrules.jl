@@ -4977,7 +4977,9 @@ function rrule(::typeof(calculate_first_order_solution),
                 opts::CalculationOptions = merge_calculation_options(),
                 use_fastlapack_qr::Bool = true,
                 use_fastlapack_lu::Bool = true,
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat}
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                parameter_values::AbstractVector{<:Real} = Float64[],
+                caching::Bool = true) where {R <: AbstractFloat}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -5057,7 +5059,8 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.first_order.ad.qme,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    caching = caching)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -5266,7 +5269,9 @@ function rrule(::typeof(calculate_second_order_solution),
                     workspaces::workspaces,
                     cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+                    opts::CalculationOptions = merge_calculation_options(),
+                    parameter_values::AbstractVector{<:Real} = Float64[],
+                    caching::Bool = true) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -7139,7 +7144,9 @@ function rrule(::typeof(calculate_third_order_solution),
                     workspaces::workspaces,
                     cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+                    opts::CalculationOptions = merge_calculation_options(),
+                    parameter_values::AbstractVector{<:Real} = Float64[],
+                    caching::Bool = true) where {S <: Real, R <: Real}
 
     # --- workspace / constants ---------------------------------------------------
     if !(eltype(workspaces.third_order.Ŝ) == S)

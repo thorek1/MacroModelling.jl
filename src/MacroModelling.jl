@@ -1072,6 +1072,9 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     resize!(𝓂.caches.non_stochastic_steady_state, 0)
     𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
 
+    𝓂.caches.valid_for.jacobian = Float64[]
+    𝓂.caches.valid_for.hessian = Float64[]
+    𝓂.caches.valid_for.third_order_derivatives = Float64[]
     𝓂.caches.valid_for.first_order_solution = Float64[]
     𝓂.caches.valid_for.second_order_solution = Float64[]
     𝓂.caches.valid_for.pruned_second_order_solution = Float64[]
@@ -1084,6 +1087,9 @@ end
 
 const CACHE_VALIDITY_FIELDS = (
     :non_stochastic_steady_state,
+    :jacobian,
+    :hessian,
+    :third_order_derivatives,
     :first_order_solution,
     :second_order_solution,
     :pruned_second_order_solution,
@@ -4798,6 +4804,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+    SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
     
     found_solution = true
     
@@ -4821,18 +4828,6 @@ function solve_steady_state!(𝓂::ℳ,
     
     if !found_solution
         @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-    end
-    
-    cache_ss = 𝓂.caches.non_stochastic_steady_state
-    if length(cache_ss) != length(SS_and_pars)
-        resize!(cache_ss, length(SS_and_pars))
-    end
-    copyto!(cache_ss, SS_and_pars)
-    
-    if found_solution
-        𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-    else
-        𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
     end
     
     return SS_and_pars, solution_error, found_solution
@@ -5364,11 +5359,12 @@ end
 function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
                                                      opts::CalculationOptions = merge_calculation_options(),
-                                                     estimation::Bool = false) where M
+                                                     estimation::Bool = false,
+                                                     caching::Bool = true) where M
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation, caching = caching)
 
     if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         return (false,
@@ -5386,14 +5382,16 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
     ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = caching)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                          constants,
                                                          𝓂.workspaces,
                                                          𝓂.caches;
                                                          opts = opts,
-                                                         initial_guess = 𝓂.caches.qme_solution)
+                                                         initial_guess = 𝓂.caches.qme_solution,
+                                                         parameter_values = parameters,
+                                                         caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -5411,11 +5409,13 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces, caching = caching)
 
     𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
-                                                  opts = opts)
+                                                  opts = opts,
+                                                  parameter_values = parameters,
+                                                  caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -5473,8 +5473,9 @@ function calculate_stochastic_steady_state(::Val{:second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -5497,15 +5498,23 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     end
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
-    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.second_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.second_order_solution = Float64.(parameters)
+    end
+
+    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -5518,7 +5527,14 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
     state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates +
             𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
 
-    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.pruned_second_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.pruned_second_order_solution = Float64.(parameters)
+    end
+
+    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
@@ -5595,8 +5611,9 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M <: Real
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M <: Real
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -5606,7 +5623,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5615,7 +5632,9 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                                  𝓂.workspaces,
                                                  𝓂.caches;
                                                  initial_guess = 𝓂.caches.third_order_solution,
-                                                 opts = opts)
+                                                 opts = opts,
+                                                 parameter_values = parameters,
+                                                 caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -5650,15 +5669,24 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1), ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
 
-    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.third_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.third_order_solution = Float64.(parameters)
+    end
+
+    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M <: Real
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M <: Real
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -5668,7 +5696,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5677,7 +5705,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                                  𝓂.workspaces,
                                                  𝓂.caches;
                                                  initial_guess = 𝓂.caches.third_order_solution,
-                                                 opts = opts)
+                                                 opts = opts, parameter_values = parameters, caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -5698,7 +5726,14 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
     state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
-    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.pruned_third_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.pruned_third_order_solution = Float64.(parameters)
+    end
+
+    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
@@ -5895,147 +5930,66 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.first_order_solution_matrix)
-        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0 || isempty(𝓂.caches.second_order_stochastic_steady_state)
-        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
-        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0 || isempty(𝓂.caches.third_order_stochastic_steady_state)
-        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
-
-        obc_not_solved = isempty(𝓂.caches.first_order_obc_solution_matrix)
-
-        if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:second_order        == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:pruned_second_order == algorithm) && (pruned_second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:third_order         == algorithm) && (third_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && (pruned_third_order_needs_recalc || (obc && obc_not_solved)))
-
-            # @timeit_debug timer "Solve for NSSS (if necessary)" begin
-
+        if algorithm == :first_order
             SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-            # end # timeit_debug
-
             @assert solution_error < opts.tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
-            
-            # @timeit_debug timer "Calculate Jacobian" begin
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
-            
-            # end # timeit_debug
-
-            # @timeit_debug timer "Calculate first order solution" begin
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 𝓂.workspaces,
                                                                 𝓂.caches;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.caches.qme_solution)
+                                                                initial_guess = 𝓂.caches.qme_solution,
+                                                                parameter_values = 𝓂.parameter_values)
 
             update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
-            # end # timeit_debug
-
             @assert solved "Could not find stable first order solution."
 
-            if obc
+        elseif algorithm == :second_order
+            sss_result = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+
+        elseif algorithm == :pruned_second_order
+            sss_result = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+
+        elseif algorithm == :third_order
+            calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            sss_result = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+
+        elseif algorithm == :pruned_third_order
+            calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            sss_result = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
+        end
+
+        if obc
+            if isempty(𝓂.caches.first_order_obc_solution_matrix)
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
-            
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, copy(𝓂.caches.non_stochastic_steady_state), 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = false)
+
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
                                                                     𝓂.workspaces,
                                                                     𝓂.caches;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.caches.qme_solution)
-                
+                                                                    initial_guess = 𝓂.caches.qme_solution,
+                                                                    caching = false)
+
                 update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
                 𝓂.caches.first_order_obc_solution_matrix = Ŝ₁
-            else
-                𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
             end
-            
-            𝓂.caches.first_order_solution_matrix = S₁
-            cache_ss = 𝓂.caches.non_stochastic_steady_state
-            if length(cache_ss) != length(SS_and_pars)
-                resize!(cache_ss, length(SS_and_pars))
-            end
-            copyto!(cache_ss, SS_and_pars)
-            𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-
-        if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
-            ((:third_order  == algorithm) && third_order_needs_recalc)
-            
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
-            
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.second_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-        
-        if  ((:pruned_second_order  == algorithm) && pruned_second_order_needs_recalc) ||
-            ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.pruned_second_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.pruned_second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-        
-        if  ((:third_order  == algorithm) && third_order_needs_recalc)
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.third_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-
-        if ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.pruned_third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-
-        # Re-stamp all populated solution caches as valid for current
-        # parameter values.  The stochastic-SS blocks above internally
-        # call calculate_*_solution which invalidates lower-order stamps.
-        _valid_stamp = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-
-        if !isempty(𝓂.caches.non_stochastic_steady_state)
-            𝓂.caches.valid_for.non_stochastic_steady_state = copy(_valid_stamp)
-        end
-        if !isempty(𝓂.caches.first_order_solution_matrix)
-            𝓂.caches.valid_for.first_order_solution = copy(_valid_stamp)
-        end
-        if size(𝓂.caches.second_order_solution, 2) > 0 && !isempty(𝓂.caches.second_order_stochastic_steady_state)
-            𝓂.caches.valid_for.second_order_solution = copy(_valid_stamp)
-        end
-        if !isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
-            𝓂.caches.valid_for.pruned_second_order_solution = copy(_valid_stamp)
-        end
-        if size(𝓂.caches.third_order_solution, 2) > 0 && !isempty(𝓂.caches.third_order_stochastic_steady_state)
-            𝓂.caches.valid_for.third_order_solution = copy(_valid_stamp)
-        end
-        if !isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
-            𝓂.caches.valid_for.pruned_third_order_solution = copy(_valid_stamp)
+        else
+            𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
         end
 
     end
@@ -7444,7 +7398,13 @@ function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
                             jacobian_funcs::jacobian_functions,
-                            workspaces::workspaces)::Matrix{M} where {M,N}
+                            workspaces::workspaces;
+                            caching::Bool = true)::Matrix{M} where {M,N}
+    # Cache hit: return cached jacobian if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.jacobian, parameters) && caches_obj.jacobian isa Matrix{M} && !isempty(caches_obj.jacobian)
+        return caches_obj.jacobian
+    end
+
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -7458,8 +7418,9 @@ function calculate_jacobian(parameters::Vector{M},
     
     jacobian_funcs.f(jac_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.jacobian = jac_buffer
+        caches_obj.valid_for.jacobian = Float64.(parameters)
     end
     
     return jac_buffer
@@ -7469,7 +7430,13 @@ function calculate_hessian(parameters::Vector{M},
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
                             hessian_funcs::hessian_functions,
-                            workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
+                            workspaces::workspaces;
+                            caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
+    # Cache hit: return cached hessian if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.hessian, parameters) && caches_obj.hessian isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.hessian)
+        return caches_obj.hessian
+    end
+
     S = promote_type(M, N)
     if eltype(workspaces.second_order.Ŝ) != S
         workspaces.second_order = Higher_order_workspace(T = S)
@@ -7488,8 +7455,9 @@ function calculate_hessian(parameters::Vector{M},
 
     hessian_funcs.f(hes_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.hessian = hes_buffer
+        caches_obj.valid_for.hessian = Float64.(parameters)
     end
     
     return hes_buffer
@@ -7500,7 +7468,13 @@ function calculate_third_order_derivatives(parameters::Vector{M},
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
                                             third_order_derivatives_funcs::third_order_derivatives_functions,
-                                            workspaces::workspaces)::SparseMatrixCSC{M, Int} where {M,N}
+                                            workspaces::workspaces;
+                                            caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
+    # Cache hit: return cached third order derivatives if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.third_order_derivatives, parameters) && caches_obj.third_order_derivatives isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.third_order_derivatives)
+        return caches_obj.third_order_derivatives
+    end
+
     S = promote_type(M, N)
     if eltype(workspaces.third_order.Ŝ) != S
         workspaces.third_order = Higher_order_workspace(T = S)
@@ -7519,8 +7493,9 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     third_order_derivatives_funcs.f(third_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.third_order_derivatives = third_buffer
+        caches_obj.valid_for.third_order_derivatives = Float64.(parameters)
     end
     
     return third_buffer
@@ -8831,8 +8806,10 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
                                     cold_start::Bool = false,
-                                    estimation::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    estimation::Bool = false,
+                                    caching::Bool = true)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
+
     # @timeit_debug timer "Calculate NSSS" begin
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
@@ -8880,6 +8857,21 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end
 
     # end # timeit_debug
+
+    # Cache write: store NSSS result and stamp
+    if caching
+        cache_ss = 𝓂.caches.non_stochastic_steady_state
+        if length(cache_ss) != length(SS_and_pars)
+            resize!(cache_ss, length(SS_and_pars))
+        end
+        copyto!(cache_ss, SS_and_pars)
+        if solved
+            𝓂.caches.valid_for.non_stochastic_steady_state = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+        else
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+        end
+    end
+
     return SS_and_pars, (solution_error, iters)
 end
 
@@ -9016,7 +9008,8 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameter_values)
 
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)

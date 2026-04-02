@@ -221,7 +221,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 opts::CalculationOptions = merge_calculation_options(),
                                 cold_start::Bool = false,
-                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                estimation::Bool = false,
+                                caching::Bool = true)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -402,6 +403,21 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         end
     end
     
+    # Cache write: store NSSS result and stamp (using Float64 values)
+    if caching
+        cache_ss = 𝓂.caches.non_stochastic_steady_state
+        if length(cache_ss) != length(SS_and_pars)
+            resize!(cache_ss, length(SS_and_pars))
+        end
+        copyto!(cache_ss, SS_and_pars)
+        solved = !(solution_error > opts.tol.nsss.acceptance_tol)
+        if solved
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64.(parameter_values)
+        else
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+        end
+    end
+
     return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(SS_and_pars)), (solution_error, iters)
@@ -413,7 +429,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_lu::Bool = true,
-                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
+                                        parameter_values::AbstractVector{<:Real} = Float64[],
+                                        caching::Bool = true)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
     qme_ws = workspaces.first_order
@@ -463,7 +481,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, workspaces, cache; opts = opts, initial_guess = initial_guess_value)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, workspaces, cache; opts = opts, initial_guess = initial_guess_value, caching = caching)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -592,7 +610,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AdTolerances = AdTolerances(), 
                                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                        verbose::Bool = false) where {Z,S,N}
+                                        verbose::Bool = false,
+                                        caching::Bool = true) where {Z,S,N}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
@@ -617,7 +636,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 tol = tol.qme,
                                                 initial_guess = initial_guess_value,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                verbose = verbose)
+                                                verbose = verbose,
+                                                caching = caching)
 
     AXB = Â * X + B̂
     
