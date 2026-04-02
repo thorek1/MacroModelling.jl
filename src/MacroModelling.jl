@@ -7021,6 +7021,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         end
     end
 
+    # Invalidate derivative stamps since buffers were replaced with fresh (zeroed) content.
+    # Without this, calculate_jacobian/hessian/third_order_derivatives would return stale
+    # zero-filled buffers on a cache hit, causing downstream DimensionMismatch errors.
+    𝓂.caches.valid_for.jacobian = Float64[]
+
     return nothing
 end
 
