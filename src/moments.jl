@@ -8,11 +8,7 @@ function calculate_covariance(parameters::Vector{R},
     idx_constants = constants.post_complete_parameters
     T = constants.post_model_macro
     
-    _nsss_result = if R === Float64 && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameters) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(R), 0))
-    else
-        get_NSSS_and_parameters(𝓂, parameters, opts = opts)
-    end
+    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     SS_and_pars = _nsss_result[1]::Vector{R}
     solution_error = _nsss_result[2][1]
     
@@ -70,11 +66,7 @@ function calculate_mean(parameters::Vector{R},
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
     
-    _nsss_result = if R === Float64 && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameters) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(R), 0))
-    else
-        get_NSSS_and_parameters(𝓂, parameters, opts = opts)
-    end
+    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     SS_and_pars = _nsss_result[1]::Vector{R}
     solution_error = _nsss_result[2][1]
     

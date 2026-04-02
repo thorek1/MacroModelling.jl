@@ -1494,11 +1494,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
-    else
-        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
-    end
+    SS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     if solution_error > tol.nsss.acceptance_tol
         @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $(tol.nsss.acceptance_tol)"
@@ -1823,11 +1819,7 @@ function get_solution(𝓂::ℳ;
         end
 
         n_vars = length(𝓂.constants.post_model_macro.var)
-        nsss = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && length(𝓂.caches.non_stochastic_steady_state) >= n_vars
-            𝓂.caches.non_stochastic_steady_state[1:n_vars]
-        else
-            get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
-        end
+        nsss = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
 
         return KeyedArray([nsss solution_matrix]';
                             Steady_state__States__Shocks = axis1,
@@ -2122,11 +2114,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
-    else
-        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
-    end
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
@@ -2289,11 +2277,7 @@ function get_variance_decomposition(𝓂::ℳ;
             steady_state_function = steady_state_function, 
             parameters = parameters)
 
-    SS_and_pars, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
-    else
-        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
-    end
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
@@ -2746,11 +2730,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
-    else
-        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
-    end
+    NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     @assert solution_error < tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
 
@@ -3716,11 +3696,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
             steady_state_function = steady_state_function, 
             opts = opts)
 
-    SS_and_pars, _ = if cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, 𝓂.parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
-        (Vector{Float64}(𝓂.caches.non_stochastic_steady_state), (zero(eltype(𝓂.parameter_values)), 0))
-    else
-        get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
-    end
+    SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     axis1 = vcat(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters)
 

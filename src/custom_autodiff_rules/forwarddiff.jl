@@ -596,7 +596,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         cache.first_order_solution_matrix = S₁_value
     end
 
-    empty!(cache.valid_for.first_order_solution)
+    if !isempty(parameter_values)
+        cache.valid_for.first_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+    end
 
     return S₁, qme_sol, solved
 end

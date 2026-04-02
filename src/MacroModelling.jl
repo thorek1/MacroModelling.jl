@@ -5514,7 +5514,6 @@ function calculate_stochastic_steady_state(::Val{:second_order},
 
     if caching
         𝓂.caches.second_order_stochastic_steady_state = result
-        𝓂.caches.valid_for.second_order_solution = Float64.(parameters)
     end
 
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
@@ -5690,7 +5689,6 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     if caching
         𝓂.caches.third_order_stochastic_steady_state = result
-        𝓂.caches.valid_for.third_order_solution = Float64.(parameters)
     end
 
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
@@ -8831,6 +8829,11 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     # @timeit_debug timer "Calculate NSSS" begin
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
+    # Cache hit: return cached NSSS if valid for current parameters
+    if caching && S === Float64 && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
+        return (copy(𝓂.caches.non_stochastic_steady_state), (zero(S), 0))::Tuple{Vector{S}, Tuple{S, Int}}
+    end
+
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
