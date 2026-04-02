@@ -820,6 +820,7 @@ mutable struct NSSSSolverWorkspace
     scaled_parameters_buffer::Vector{Float64} # continuation interpolation scratch
     continuation::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
     continuation_capacity::Int
+    check_residual::Vector{Float64}  # for NSSS_check in get_NSSS_and_parameters (n_equations + n_calibration)
 end
 
 
@@ -851,6 +852,7 @@ NSSSSolverWorkspace() = NSSSSolverWorkspace(
     [Float64[], Float64[Inf]],
     Float64[], Float64[], Float64[],
     Float64[], CircularBuffer{Vector{Vector{Float64}}}(1), 1,
+    Float64[],
 )
 
 mutable struct valid_for_caches
@@ -1025,6 +1027,24 @@ mutable struct inversion_workspace{T <: Real}
     state_vol::Vector{T}             # n_past+1
     aug_state₁::Vector{T}            # n_past+1+n_exo
     aug_state₂::Vector{T}            # n_past+1+n_exo
+    
+    # Estimation loop temporaries (lazily allocated via ensure_inversion_estimation_buffers!)
+    n_cond_var::Int                   # number of conditioning variables (observables)
+    shock_independent::Vector{T}     # n_cond_var - shock-independent residual
+    init_guess::Vector{T}            # n_exo - initial guess for find_shocks
+    Si_buffer::Matrix{T}             # (n_cond_var, n_exo) - effective Jacobian 𝐒ⁱ workspace
+    jacc_buffer::Matrix{T}           # (n_cond_var, n_exo) - Jacobian for logdet
+    Si2e_buffer::Matrix{T}           # (n_cond_var, n_exo^2) - 𝐒ⁱ²ᵉ workspace for 3rd order
+    # First-order inversion filter buffers
+    y_obs::Vector{T}                 # n_cond_var - observation prediction
+    x_shocks::Vector{T}              # n_exo - recovered shocks
+    state_concat::Vector{T}          # n_past + n_exo - for vcat-free concatenation in 1st order
+    # Pruned third-order augmented state buffers
+    aug_state₃::Vector{T}            # n_past+1+n_exo - third state component
+    aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
+    state²⁻_vol::Vector{T}           # n_past+1 - second-order state with volatility slot
+    # Third-order state kron buffers
+    kronstate_vol³::Vector{T}        # (n_past+1)^3 - triple kron of state_vol
     
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)

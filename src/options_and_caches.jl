@@ -687,6 +687,20 @@ function Inversion_workspace(;T::Type = Float64)
         zeros(T, 0),            # state_vol (n_past+1)
         zeros(T, 0),            # aug_state₁ (n_past+1+n_exo)
         zeros(T, 0),            # aug_state₂ (n_past+1+n_exo)
+        # Estimation loop temporaries
+        0,                      # n_cond_var
+        zeros(T, 0),            # shock_independent (n_cond_var)
+        zeros(T, 0),            # init_guess (n_exo)
+        zeros(T, 0, 0),         # Si_buffer (n_cond_var × n_exo)
+        zeros(T, 0, 0),         # jacc_buffer (n_cond_var × n_exo)
+        zeros(T, 0, 0),         # Si2e_buffer (n_cond_var × n_exo^2)
+        zeros(T, 0),            # y_obs (n_cond_var)
+        zeros(T, 0),            # x_shocks (n_exo)
+        zeros(T, 0),            # state_concat (n_past + n_exo)
+        zeros(T, 0),            # aug_state₃ (n_past+1+n_exo)
+        zeros(T, 0),            # aug_state₁̂ (n_past+1+n_exo)
+        zeros(T, 0),            # state²⁻_vol (n_past+1)
+        zeros(T, 0),            # kronstate_vol³ ((n_past+1)^3)
         # Pullback buffers (for reverse-mode AD)
         zeros(T, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
         zeros(T, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
@@ -763,6 +777,70 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
     end
     if length(ws.aug_state₂) != n_aug
         ws.aug_state₂ = zeros(T, n_aug)
+    end
+    
+    # Estimation loop temporaries (init_guess depends only on n_exo)
+    if length(ws.init_guess) != n_exo
+        ws.init_guess = zeros(T, n_exo)
+    end
+    if length(ws.x_shocks) != n_exo
+        ws.x_shocks = zeros(T, n_exo)
+    end
+    if length(ws.state_concat) != n_past + n_exo
+        ws.state_concat = zeros(T, n_past + n_exo)
+    end
+    
+    # Augmented state buffers for pruned third-order
+    if third_order
+        if length(ws.aug_state₃) != n_aug
+            ws.aug_state₃ = zeros(T, n_aug)
+        end
+        if length(ws.aug_state₁̂) != n_aug
+            ws.aug_state₁̂ = zeros(T, n_aug)
+        end
+        if length(ws.state²⁻_vol) != n_state_vol
+            ws.state²⁻_vol = zeros(T, n_state_vol)
+        end
+        if length(ws.kronstate_vol³) != n_state_vol^3
+            ws.kronstate_vol³ = zeros(T, n_state_vol^3)
+        end
+    end
+    
+    return ws
+end
+
+
+"""
+    ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int) where T
+
+Ensure observation-dimension-dependent estimation buffers are allocated.
+Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
+"""
+function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
+    if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
+       size(ws.Si_buffer) == (n_cond_var, n_exo)
+        return ws
+    end
+    
+    ws.n_cond_var = n_cond_var
+    
+    if length(ws.shock_independent) != n_cond_var
+        ws.shock_independent = zeros(T, n_cond_var)
+    end
+    if length(ws.y_obs) != n_cond_var
+        ws.y_obs = zeros(T, n_cond_var)
+    end
+    if size(ws.Si_buffer) != (n_cond_var, n_exo)
+        ws.Si_buffer = zeros(T, n_cond_var, n_exo)
+    end
+    if size(ws.jacc_buffer) != (n_cond_var, n_exo)
+        ws.jacc_buffer = zeros(T, n_cond_var, n_exo)
+    end
+    if third_order
+        n_exo² = n_exo^2
+        if size(ws.Si2e_buffer) != (n_cond_var, n_exo²)
+            ws.Si2e_buffer = zeros(T, n_cond_var, n_exo²)
+        end
     end
     
     return ws

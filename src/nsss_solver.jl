@@ -228,6 +228,7 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         Float64[],
         CircularBuffer{Vector{Vector{Float64}}}(1),
         1,
+        zeros(Float64, length(𝓂.equations.steady_state) + length(𝓂.equations.calibration)),
     )
     return nothing
 end

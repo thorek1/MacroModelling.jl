@@ -239,7 +239,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = 𝓂.workspaces.nsss_solver.check_residual
+        fill!(residual, 0.0)
         
         𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
@@ -880,16 +881,33 @@ function calculate_loglikelihood(::Val{:kalman},
     z = C * u
     loglik = zero(eltype(A))
 
+    # Pre-allocate Dual-typed loop buffers to avoid per-iteration allocations
+    DT = eltype(A)
+    ns = size(A, 1)    # n_obs_and_states
+    no = size(C, 1)    # n_obs
+    v = zeros(DT, no)
+    CP = zeros(DT, no, ns)
+    F_buf = zeros(DT, no, no)
+    PCt = zeros(DT, ns, no)
+    K = zeros(DT, ns, no)
+    KC = zeros(DT, ns, ns)
+    PmKCP = zeros(DT, ns, ns)
+    AP = zeros(DT, ns, ns)
+    Kv = zeros(DT, ns)
+    uKv = zeros(DT, ns)
+    w = zeros(DT, no)
+
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z))
             if opts.verbose println("KF not finite at step $t") end
             return on_failure_loglikelihood
         end
 
-        v = data_in_deviations[:, t] - z
-        F = Matrix(C * P * C')
+        @views v .= data_in_deviations[:, t] .- z
+        ℒ.mul!(CP, C, P)
+        ℒ.mul!(F_buf, CP, C')
 
-        luF = ℒ.lu(F, check = false)
+        luF = ℒ.lu(F_buf, check = false)
         if !ℒ.issuccess(luF)
             if opts.verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
@@ -901,16 +919,29 @@ function calculate_loglikelihood(::Val{:kalman},
             return on_failure_loglikelihood
         end
 
-        invF = inv(luF)
-
         if t > presample_periods
-            loglik += log(Fdet) + ℒ.dot(v, invF, v)
+            ℒ.ldiv!(w, luF, v)
+            loglik += log(Fdet) + ℒ.dot(v, w)
         end
 
-        K = P * C' * invF
-        P = A * (P - K * C * P) * A' + 𝐁
-        u = A * (u + K * v)
-        z = C * u
+        invF = inv(luF)
+        ℒ.mul!(PCt, P, C')
+        ℒ.mul!(K, PCt, invF)
+
+        # P = A * (P - K * C * P) * A' + 𝐁
+        ℒ.mul!(KC, K, C)
+        ℒ.mul!(PmKCP, KC, P)
+        ℒ.axpby!(1, P, -1, PmKCP)      # PmKCP = P - K*C*P
+        ℒ.mul!(AP, A, PmKCP)
+        ℒ.mul!(P, AP, A')
+        ℒ.axpy!(1, 𝐁, P)               # P += 𝐁
+
+        # u = A * (u + K * v)
+        ℒ.mul!(Kv, K, v)
+        copyto!(uKv, u)
+        ℒ.axpy!(1, Kv, uKv)            # uKv = u + K*v
+        ℒ.mul!(u, A, uKv)              # u = A*(u + K*v)
+        ℒ.mul!(z, C, u)
     end
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2

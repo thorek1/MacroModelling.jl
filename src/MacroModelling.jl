@@ -8848,7 +8848,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = 𝓂.workspaces.nsss_solver.check_residual
+        fill!(residual, 0.0)
         
         𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
