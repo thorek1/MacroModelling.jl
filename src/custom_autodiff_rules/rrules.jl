@@ -632,7 +632,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameter_values)
 
     𝐒₁ = first_out[1]
     solved = first_out[3]
@@ -734,7 +735,8 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
 
     (𝐒₁_raw, qme_sol, solved), first_order_pullback =
         rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
-              opts = opts, initial_guess = 𝓂.caches.qme_solution)
+              opts = opts, initial_guess = 𝓂.caches.qme_solution,
+              parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -760,7 +762,8 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
 
     (𝐒₂_raw, solved2), second_order_pullback =
         rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-              initial_guess = 𝓂.caches.second_order_solution, opts = opts)
+              initial_guess = 𝓂.caches.second_order_solution, opts = opts,
+              parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -1165,7 +1168,8 @@ function rrule(::typeof(calculate_stochastic_steady_state),
               𝓂.workspaces,
               𝓂.caches;
               initial_guess = 𝓂.caches.third_order_solution,
-              opts = opts)
+              opts = opts,
+              parameter_values = parameters)
 
     if !solved3
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1371,7 +1375,8 @@ function rrule(::typeof(calculate_stochastic_steady_state),
               𝓂.workspaces,
               𝓂.caches;
               initial_guess = 𝓂.caches.third_order_solution,
-              opts = opts)
+              opts = opts,
+              parameter_values = parameters)
 
     if !solved3
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1981,7 +1986,8 @@ function rrule(::typeof(get_irf),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameters)
 
     sol_mat = first_out[1]
     solved  = first_out[3]
@@ -2146,7 +2152,8 @@ function rrule(::typeof(calculate_covariance),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.qme_solution,
-                                opts = opts)
+                                opts = opts,
+                                parameter_values = parameters)
     sol = first_out[1]
     solved_first = first_out[3]
 
@@ -2327,7 +2334,8 @@ function rrule(::typeof(calculate_mean),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.qme_solution,
-                                opts = opts)
+                                opts = opts,
+                                parameter_values = parameters)
     𝐒₁ = first_out[1]
     solved_first = first_out[3]
 
@@ -2341,7 +2349,7 @@ function rrule(::typeof(calculate_mean),
     ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 5: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
@@ -2535,7 +2543,7 @@ function rrule(::typeof(calculate_second_order_moments),
     ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
@@ -2772,7 +2780,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw, solved2 = so2_out
 
     update_perturbation_counter!(𝓂.counters, solved2, order = 2)
@@ -3096,7 +3104,8 @@ function rrule(::typeof(calculate_third_order_moments),
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+                            opts = opts,
+                            parameter_values = parameters)
     𝐒₃, solved3 = so3_out
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
@@ -3916,7 +3925,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+                            opts = opts,
+                            parameter_values = parameters)
     𝐒₃, solved3 = so3_out
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
@@ -5256,7 +5266,9 @@ function rrule(::typeof(calculate_first_order_solution),
         cache.first_order_solution_matrix = 𝐒₁
     end
 
-    empty!(cache.valid_for.first_order_solution)
+    if !isempty(parameter_values)
+        cache.valid_for.first_order_solution = Float64.(parameter_values)
+    end
 
     return (𝐒₁, sol, solved), first_order_solution_pullback
 end
@@ -5590,7 +5602,9 @@ function rrule(::typeof(calculate_second_order_solution),
         else
             cache.second_order_solution = 𝐒₂
         end
-        empty!(cache.valid_for.second_order_solution)
+        if !isempty(parameter_values)
+            cache.valid_for.second_order_solution = Float64.(parameter_values)
+        end
         empty!(cache.valid_for.pruned_second_order_solution)
     end
 
@@ -7297,7 +7311,9 @@ function rrule(::typeof(calculate_third_order_solution),
     else
         cache.third_order_solution = 𝐒₃_stable
     end
-    empty!(cache.valid_for.third_order_solution)
+    if !isempty(parameter_values)
+        cache.valid_for.third_order_solution = Float64.(parameter_values)
+    end
     empty!(cache.valid_for.pruned_third_order_solution)
 
     # --- precompute transposed constants for pullback -----------------------------
@@ -10976,7 +10992,8 @@ function rrule(::typeof(get_solution),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameters)
 
     𝐒₁ = first_out[1]
     solved = first_out[3]
@@ -11011,7 +11028,8 @@ function rrule(::typeof(get_solution),
                                       𝓂.workspaces,
                                       𝓂.caches;
                                       initial_guess = 𝓂.caches.second_order_solution,
-                                      opts = opts)
+                                      opts = opts,
+                                      parameter_values = parameters)
 
         𝐒₂_raw = second_out[1]
         solved2 = second_out[2]
@@ -11104,7 +11122,8 @@ function rrule(::typeof(get_solution),
                                       𝓂.workspaces,
                                       𝓂.caches;
                                       initial_guess = 𝓂.caches.second_order_solution,
-                                      opts = opts)
+                                      opts = opts,
+                                      parameter_values = parameters)
 
         𝐒₂_raw = second_out[1]
         solved2 = second_out[2]
@@ -11128,7 +11147,8 @@ function rrule(::typeof(get_solution),
                                     𝓂.workspaces,
                                     𝓂.caches;
                                     initial_guess = 𝓂.caches.third_order_solution,
-                                    opts = opts)
+                                    opts = opts,
+                                    parameter_values = parameters)
 
         𝐒₃_raw = third_out[1]
         solved3 = third_out[2]
