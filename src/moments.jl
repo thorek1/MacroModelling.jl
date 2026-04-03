@@ -8,20 +8,23 @@ function calculate_covariance(parameters::Vector{R},
     idx_constants = constants.post_complete_parameters
     T = constants.post_model_macro
     
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars = _nsss_result[1]::Vector{R}
+    solution_error = _nsss_result[2][1]
     
-    if solution_error > opts.tol.NSSS_acceptance_tol
-        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
+        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.nsss.acceptance_tol
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) 
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             𝓂.workspaces,
                                                             𝓂.caches;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -41,11 +44,12 @@ function calculate_covariance(parameters::Vector{R},
 
     covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
-                            tol = opts.tol.lyapunov_tol,
-                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                            tol = opts.tol.first_order.lyapunov,
                             verbose = opts.verbose)
 
-    return covar_raw, sol , ∇₁, SS_and_pars, solved
+    covar_stable = covar_raw
+
+    return covar_stable, sol , ∇₁, SS_and_pars, solved
 end
 
 
@@ -62,38 +66,41 @@ function calculate_mean(parameters::Vector{R},
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
     
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars = _nsss_result[1]::Vector{R}
+    solution_error = _nsss_result[2][1]
     
     if algorithm == :first_order
         mean_of_variables = SS_and_pars[1:T.nVars]
 
-        solved = solution_error < opts.tol.NSSS_acceptance_tol
+        solved = solution_error < opts.tol.nsss.acceptance_tol
     else
         ensure_moments_constants!(constants)
         so = constants.second_order
-        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
                                                             𝓂.workspaces,
                                                             𝓂.caches;
                                                             initial_guess = 𝓂.caches.qme_solution,
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            parameter_values = parameters)
         
         update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
         if !solved 
-            mean_of_variables = SS_and_pars[1:T.nVars]
+            mean_of_variables = fill(R(NaN), T.nVars)
         else
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                                        opts = opts)
+                                                        opts = opts, parameter_values = parameters)
 
             update_perturbation_counter!(𝓂.counters, solved, order = 2)
 
             if !solved 
-                mean_of_variables = SS_and_pars[1:T.nVars]
+                mean_of_variables = fill(R(NaN), T.nVars)
             else
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -180,10 +187,10 @@ function calculate_second_order_moments(parameters::Vector{R},
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
         
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
 
@@ -216,27 +223,33 @@ function calculate_second_order_moments(parameters::Vector{R},
             v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
             s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
 
-            s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+            # Compression matrices
+            sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+            D₂ˢ = sub_idx.D₂ˢ
+            L₂ˢ = sub_idx.L₂ˢ
+            n₂ˢ = size(D₂ˢ, 2)  # nˢ(nˢ+1)/2
+
+            s_to_s₁_by_s_to_s₁ = L₂ˢ * ℒ.kron(s_to_s₁, s_to_s₁) * D₂ˢ
             e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
             s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
 
-            # # Set up in pruned state transition matrices
-            ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
-                        zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
-                        zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
+            # # Set up in pruned state transition matrices (block 3 compressed: nˢ² → n₂ˢ)
+            ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + n₂ˢ)
+                        zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2 * D₂ˢ
+                        zeros(n₂ˢ, 2*nˢ)    s_to_s₁_by_s_to_s₁                  ]
 
-            ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
+            ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
                         zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
-                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
+                        zeros(n₂ˢ,nᵉ)   L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁]
 
-            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
+            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2 * D₂ˢ]
 
-            ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+            ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
 
             vec_Iₑ = so.vec_Iₑ
             ŝv₂ = [ zeros(nˢ) 
                     vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec_Iₑ
-                    e_to_s₁_by_e_to_s₁ * vec_Iₑ]
+                    L₂ˢ * e_to_s₁_by_e_to_s₁ * vec_Iₑ]
 
             yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
@@ -300,10 +313,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
@@ -314,6 +327,12 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             kron_e_e = so.kron_e_e
             kron_v_v = so.kron_v_v
             kron_s_e = so.kron_s_e
+
+            # Substate duplication/elimination matrices for symmetric Kronecker compression
+            sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+            D₂ˢ = sub_idx.D₂ˢ
+            L₂ˢ = sub_idx.L₂ˢ
+            n₂ˢ = size(D₂ˢ, 2)  # nˢ(nˢ+1)/2
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -334,32 +353,32 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
             s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
 
-            s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+            s_to_s₁_by_s_to_s₁ = L₂ˢ * ℒ.kron(s_to_s₁, s_to_s₁) * D₂ˢ
             e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
             s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
 
-            # # Set up in pruned state transition matrices
-            ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
-                        zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
-                        zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
+            # # Set up in pruned state transition matrices (block 3 compressed: nˢ² → n₂ˢ)
+            ŝ_to_ŝ₂ = [ s_to_s₁             spzeros(nˢ, nˢ + n₂ˢ)
+                        spzeros(nˢ, nˢ)     s_to_s₁             s_s_to_s₂ / 2 * D₂ˢ
+                        spzeros(n₂ˢ, 2*nˢ)  s_to_s₁_by_s_to_s₁                  ]
 
-            ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
-                        zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
-                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
+            ê_to_ŝ₂ = [ e_to_s₁         spzeros(nˢ, nᵉ^2 + nᵉ * nˢ)
+                        spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2       s_e_to_s₂
+                        spzeros(n₂ˢ,nᵉ) L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁]
 
-            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
+            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2 * D₂ˢ]
 
             ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
 
             vec_Iₑ = so.vec_Iₑ
             ŝv₂ = [ zeros(nˢ) 
                     vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec_Iₑ
-                    e_to_s₁_by_e_to_s₁ * vec_Iₑ]
+                    L₂ˢ * e_to_s₁_by_e_to_s₁ * vec_Iₑ]
 
             yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
+            μˢ⁺₂ = collect(ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
             Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
             μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
@@ -375,8 +394,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
             Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyap_ws_2nd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    tol = opts.tol.second_order.lyapunov,
                                     verbose = opts.verbose)
 
             if info
@@ -386,9 +404,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
                 slvd = solved && solved2 && info
             else
-                Σʸ₂ = zeros(R,0,0)
+                nVars = 𝓂.constants.post_model_macro.nVars
+                Σʸ₂ = fill(R(NaN), nVars, nVars)
                 Σᶻ₂ = zeros(R,0,0)
-                μʸ₂ = zeros(R,0)
+                μʸ₂ = fill(R(NaN), nVars)
                 Δμˢ₂ = zeros(R,0)
                 autocorr_tmp = zeros(R,0,0)
                 ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -396,9 +415,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 slvd = info
             end
         else
-            Σʸ₂ = zeros(R,0,0)
+            nVars = 𝓂.constants.post_model_macro.nVars
+            Σʸ₂ = fill(R(NaN), nVars, nVars)
             Σᶻ₂ = zeros(R,0,0)
-            μʸ₂ = zeros(R,0)
+            μʸ₂ = fill(R(NaN), nVars)
             Δμˢ₂ = zeros(R,0)
             autocorr_tmp = zeros(R,0,0)
             ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -406,9 +426,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             slvd = solved2
         end
     else
-        Σʸ₂ = zeros(R,0,0)
+        nVars = 𝓂.constants.post_model_macro.nVars
+        Σʸ₂ = fill(R(NaN), nVars, nVars)
         Σᶻ₂ = zeros(R,0,0)
-        μʸ₂ = zeros(R,0)
+        μʸ₂ = fill(R(NaN), nVars)
         Δμˢ₂ = zeros(R,0)
         autocorr_tmp = zeros(R,0,0)
         ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -427,12 +448,110 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 end
 
 
+# Block-triangular Lyapunov solver for third-order pruned state covariance.
+# Solves the block-triangular Lyapunov equation for the third-order pruned state covariance.
+# Accepts pre-sliced sub-blocks of the transition matrix [A_UU 0; A_LU A_LL]
+# and RHS matrix C (only C_LU and C_LL blocks needed).
+# Reuses Σ̂ᶻ₂ for the upper block; Sylvester for the cross-block; Lyapunov for the lower block.
+function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
+                                          A_LU::AbstractMatrix{T},
+                                          A_LL::AbstractMatrix{T},
+                                          C_LU::AbstractMatrix{T},
+                                          C_LL::AbstractMatrix{T},
+                                          Σᶻ₂_upper::AbstractMatrix{T},
+                                          𝓂_workspaces::workspaces,
+                                          opts::CalculationOptions;
+                                          n₃ˢ::Int = 0) where T <: Real
+    N_upper = size(A_UU, 1)
+    N_lower = size(A_LL, 1)
+
+    # Step 1: X_UU = Σ̂ᶻ₂ (already solved)
+    X_UU = Σᶻ₂_upper
+
+    # Step 2: X_LU via discrete Sylvester  (A_LL X_LU A_UU' + RHS = X_LU)
+    RHS_LU = A_LU * X_UU * A_UU' + C_LU
+    
+    sylv_ws = 𝓂_workspaces.sylvester_block
+    X_LU, sylv_solved = solve_sylvester_equation(A_LL, A_UU', RHS_LU, sylv_ws,
+                                                  tol = opts.tol.third_order.sylvester,
+                                                  verbose = opts.verbose)
+
+    # Step 3: X_LL via Lyapunov with modified RHS
+    C_LL_mod = C_LL +
+               A_LU * X_UU  * A_LU' +
+               A_LL * X_LU  * A_LU' +
+               A_LU * X_LU' * A_LL'
+
+    if n₃ˢ > 0 && N_lower > n₃ˢ
+        # A_LL has sub-block structure: decompose into A₆₆ (lower-right n₃ˢ×n₃ˢ) and upper blocks
+        n_upper_LL = N_lower - n₃ˢ
+        ru_ll = 1:n_upper_LL
+        rl_ll = (n_upper_LL+1):N_lower
+
+        A_LL_UU = A_LL[ru_ll, ru_ll]
+        A_LL_UL = A_LL[ru_ll, rl_ll]
+        A_LL_LL = A_LL[rl_ll, rl_ll]
+
+        C_mod_UU = C_LL_mod[ru_ll, ru_ll]
+        C_mod_UL = C_LL_mod[ru_ll, rl_ll]
+        C_mod_LL = C_LL_mod[rl_ll, rl_ll]
+
+        # Step 3a: X₆₆ via standard Lyapunov
+        lyap_ws_66 = ensure_lyapunov_workspace!(𝓂_workspaces, n₃ˢ, :block)
+        X_66, _ = solve_lyapunov_equation(A_LL_LL, C_mod_LL, lyap_ws_66,
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
+
+        # Step 3b: X_{upper,6} via Sylvester
+        RHS_UL6 = A_LL_UL * X_66 * A_LL_LL' + C_mod_UL
+        X_UL6, _ = solve_sylvester_equation(A_LL_UU, A_LL_LL', RHS_UL6, sylv_ws,
+                             tol = opts.tol.third_order.sylvester,
+                             verbose = opts.verbose)
+
+        # Step 3c: X_{upper,upper} via Lyapunov
+        C_UU_mod2 = C_mod_UU +
+                     A_LL_UL * X_66 * A_LL_UL' +
+                     A_LL_UU * X_UL6 * A_LL_UL' +
+                     A_LL_UL * X_UL6' * A_LL_UU'
+
+        lyap_ws_inner = ensure_lyapunov_workspace!(𝓂_workspaces, n_upper_LL, :block)
+        X_UU_LL, _ = solve_lyapunov_equation(A_LL_UU, C_UU_mod2, lyap_ws_inner,
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
+
+        X_LL = zeros(T, N_lower, N_lower)
+        X_LL[ru_ll, ru_ll] = X_UU_LL
+        X_LL[ru_ll, rl_ll] = X_UL6
+        X_LL[rl_ll, ru_ll] = X_UL6'
+        X_LL[rl_ll, rl_ll] = X_66
+    else
+        # Standard Lyapunov on full lower block
+        lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, N_lower, :block)
+        X_LL_result, _ = solve_lyapunov_equation(A_LL, C_LL_mod, lyap_ws,
+                              tol = opts.tol.third_order.lyapunov,
+                              verbose = opts.verbose)
+        X_LL = X_LL_result
+    end
+
+    # Reassemble full solution
+    N = N_upper + N_lower
+    ru = 1:N_upper
+    rl = (N_upper+1):N
+    Σᶻ₃ = Matrix{T}(undef, N, N)
+    Σᶻ₃[ru, ru] = X_UU
+    Σᶻ₃[ru, rl] = X_LU'
+    Σᶻ₃[rl, ru] = X_LU
+    Σᶻ₃[rl, rl] = X_LL
+
+    return Σᶻ₃, sylv_solved
+end
 
 
 function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
                                             autocorrelation_periods::U = 1:5,
+                                            third_order_block_lyapunov_method::Bool = false,
                                             covariance::Union{Symbol_input,String_input} = Symbol[],
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Matrix{T}, Vector{T}, Bool} where {U, T <: Real}
 
@@ -451,14 +570,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)# * 𝓂.constants.third_order.𝐔∇₃
 
-	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
-	                                                𝓂.constants,
-                                                    𝓂.workspaces,
-                                                    𝓂.caches;
-	                                                initial_guess = 𝓂.caches.third_order_solution,
-                                                    opts = opts)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
+                                                𝓂.constants,
+                                                𝓂.workspaces,
+                                                𝓂.caches;
+                                                initial_guess = 𝓂.caches.third_order_solution,
+                                                opts = opts, parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
 
@@ -470,7 +589,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
@@ -493,6 +612,15 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
     e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
     e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    # Expand compressed Σᶻ₂ (block 3 is vech-compressed) back to full form for third-order indexing
+    nˢ_full = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    sub_idx_full = ensure_moments_substate_indices!(𝓂, nˢ_full)
+    D₂ˢ_full = sub_idx_full.D₂ˢ
+    n₂ˢ_full = size(D₂ˢ_full, 2)
+    E₂_exp = [sparse(ℒ.I, 2*nˢ_full, 2*nˢ_full)  spzeros(2*nˢ_full, n₂ˢ_full)
+              spzeros(nˢ_full^2, 2*nˢ_full)        D₂ˢ_full]
+    Σᶻ₂ = E₂_exp * Σᶻ₂ * E₂_exp'
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
@@ -538,6 +666,12 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         e_ss = substate_indices.e_ss
         ss_s = substate_indices.ss_s
         s_s = substate_indices.s_s
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -563,6 +697,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
         e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
         s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
 
         # third order
         kron_s_v = dep_kron.kron_s_v
@@ -581,22 +716,30 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
         e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up pruned state transition sub-blocks
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
 
-        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
-                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+
+        ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                            ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -620,29 +763,59 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   spzeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
         
-        droptol!(ŝ_to_ŝ₃, eps())
-        droptol!(ê_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
+        droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
-        
-        A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A, eps())
 
-        C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
-        droptol!(C, eps())
+        # Third-order Lyapunov solve
+        if third_order_block_lyapunov_method
+            # Block-triangular: reuse second-order covariance
+            E₂_comp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, nˢ^2)
+                        spzeros(n₂ˢ, 2*nˢ)       L₂ˢ]
+            Σ̂ᶻ₂_compressed = E₂_comp * Σ̂ᶻ₂ * E₂_comp'
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+            # Compute C sub-blocks directly (avoid building full N×N matrix)
+            ê_U = ê_to_ŝ₃[1:N_upper, :]
+            ê_L = ê_to_ŝ₃[(N_upper+1):end, :]
+            E_cU = Eᴸᶻ[:, 1:N_upper]
+            E_cL = Eᴸᶻ[:, (N_upper+1):end]
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+            Q = E_cU * A_LU' + E_cL * A_LL'
+            R = E_cU * A_UU'
+            C_LU = ê_L * (Γ₃ * ê_U' + R) + Q' * ê_U'
+            C_LL = ê_L * (Γ₃ * ê_L' + Q) + Q' * ê_L'
+            droptol!(C_LU, eps())
+            droptol!(C_LL, eps())
+
+            Σᶻ₃, info = solve_block_triangular_lyapunov(A_UU, A_LU, A_LL, C_LU, C_LL,
+                                                          Σ̂ᶻ₂_compressed,
+                                                          𝓂.workspaces, opts,
+                                                          n₃ˢ = n₃ˢ)
+
+            # Assemble full ŝ_to_ŝ₃ (needed for autocorrelation)
+            ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+        else
+            ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+
+            A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+            droptol!(A, eps())
+
+            C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+            droptol!(C, eps())
+
+            lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+            Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                        lyapunov_algorithm = opts.lyapunov_algorithm,
+                                        tol = opts.tol.third_order.lyapunov,
+                                        verbose = opts.verbose)
+        end
 
         if !info
             return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
@@ -650,7 +823,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.constants.post_model_macro.var), indexin(variance_observable, 𝓂.constants.post_model_macro.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
@@ -670,14 +843,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             Σᶻ₃ⁱ .= ŝ_to_ŝ₃ * Σᶻ₃ⁱ + ê_to_ŝ₃ * Eᴸᶻ
             s_to_s₁ⁱ *= s_to_s₁
 
-            Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-            ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-            spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+            Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+            ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁,vec_Iₑ)   spzeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+            spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
 
             for obs in variance_observable
                 autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i] .= ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃')[indexin([obs], variance_observable)] ./ max.(ℒ.diag(Σʸ₃tmp), eps(Float64))[indexin([obs], variance_observable)]
 
-                autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.lyapunov_acceptance_tol] .= 0
+                autocorr[indexin([obs], 𝓂.constants.post_model_macro.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.third_order.lyapunov.acceptance_tol] .= 0
             end
 
             ŝ_to_ŝ₃ⁱ *= ŝ_to_ŝ₃
@@ -691,13 +864,15 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ;
                                             covariance::Union{Symbol_input,String_input} = Symbol[],
+                                            third_order_block_lyapunov_method::Bool = false,
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Vector{T}, Bool} where T <: Real
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = second_order_moments
 
     if !solved
-        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+        nVars = 𝓂.constants.post_model_macro.nVars
+        return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
@@ -707,26 +882,27 @@ function calculate_third_order_moments(parameters::Vector{T},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
                                                 𝓂.constants,
                                                 𝓂.workspaces,
                                                 𝓂.caches;
                                                 initial_guess = 𝓂.caches.third_order_solution,
-                                                opts = opts)
+                                                opts = opts, parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
     
     if !solved3
-        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+        nVars = 𝓂.constants.post_model_macro.nVars
+        return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
     end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
 
     𝐒₃ = sparse(𝐒₃) # ensure stable sparse type
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.constants, observables, covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
@@ -749,6 +925,15 @@ function calculate_third_order_moments(parameters::Vector{T},
     e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
     e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
     e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    # Expand compressed Σᶻ₂ (block 3 is vech-compressed) back to full form for third-order indexing
+    nˢ_full = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    sub_idx_full = ensure_moments_substate_indices!(𝓂, nˢ_full)
+    D₂ˢ_full = sub_idx_full.D₂ˢ
+    n₂ˢ_full = size(D₂ˢ_full, 2)
+    E₂_exp = [sparse(ℒ.I, 2*nˢ_full, 2*nˢ_full)  spzeros(2*nˢ_full, n₂ˢ_full)
+              spzeros(nˢ_full^2, 2*nˢ_full)        D₂ˢ_full]
+    Σᶻ₂ = E₂_exp * Σᶻ₂ * E₂_exp'
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
@@ -792,6 +977,12 @@ function calculate_third_order_moments(parameters::Vector{T},
         e_ss = substate_indices.e_ss
         ss_s = substate_indices.ss_s
         s_s = substate_indices.s_s
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -817,6 +1008,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
         e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
         s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
 
         # third order
         kron_s_v = dep_kron.kron_s_v
@@ -835,22 +1027,30 @@ function calculate_third_order_moments(parameters::Vector{T},
         s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
         e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up pruned state transition sub-blocks
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
 
-        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
-                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+
+        ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                            e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                            ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -874,38 +1074,65 @@ function calculate_third_order_moments(parameters::Vector{T},
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   spzeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
         
-        droptol!(ŝ_to_ŝ₃, eps())
-        droptol!(ê_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
+        droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
-        
-        A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A, eps())
 
-        C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
-        droptol!(C, eps())
+        # Third-order Lyapunov solve
+        if third_order_block_lyapunov_method
+            # Block-triangular: reuse second-order covariance
+            E₂_comp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, nˢ^2)
+                        spzeros(n₂ˢ, 2*nˢ)       L₂ˢ]
+            Σ̂ᶻ₂_compressed = E₂_comp * Σ̂ᶻ₂ * E₂_comp'
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+            # Compute C sub-blocks directly (avoid building full N×N matrix)
+            ê_U = ê_to_ŝ₃[1:N_upper, :]
+            ê_L = ê_to_ŝ₃[(N_upper+1):end, :]
+            E_cU = Eᴸᶻ[:, 1:N_upper]
+            E_cL = Eᴸᶻ[:, (N_upper+1):end]
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+            Q = E_cU * A_LU' + E_cL * A_LL'
+            R = E_cU * A_UU'
+            C_LU = ê_L * (Γ₃ * ê_U' + R) + Q' * ê_U'
+            C_LL = ê_L * (Γ₃ * ê_L' + Q) + Q' * ê_L'
+            droptol!(C_LU, eps())
+            droptol!(C_LL, eps())
+
+            Σᶻ₃, info = solve_block_triangular_lyapunov(A_UU, A_LU, A_LL, C_LU, C_LL,
+                                                          Σ̂ᶻ₂_compressed,
+                                                          𝓂.workspaces, opts,
+                                                          n₃ˢ = n₃ˢ)
+        else
+            ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+
+            A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+            droptol!(A, eps())
+
+            C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+            droptol!(C, eps())
+
+            lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+            Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                        lyapunov_algorithm = opts.lyapunov_algorithm,
+                                        tol = opts.tol.third_order.lyapunov,
+                                        verbose = opts.verbose)
+        end
 
         if !info
-            return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+            nVars = 𝓂.constants.post_model_macro.nVars
+            return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
         end
     
         solved_lyapunov = solved_lyapunov && info
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
-
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.constants.post_model_macro.var), indexin(variance_observable, 𝓂.constants.post_model_macro.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
         end

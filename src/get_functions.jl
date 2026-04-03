@@ -1087,18 +1087,19 @@ function get_irf(𝓂::ℳ,
 
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
     
-    if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
+    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-    ∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameters)
     
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1495,8 +1496,8 @@ function get_steady_state(𝓂::ℳ;
 
     SS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    if solution_error > tol.NSSS_acceptance_tol
-        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $(tol.NSSS_acceptance_tol)"
+    if solution_error > tol.nsss.acceptance_tol
+        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $(tol.nsss.acceptance_tol)"
     end
 
     if stochastic
@@ -1549,7 +1550,8 @@ function get_steady_state(𝓂::ℳ;
         if stochastic
                 n_tuple = algorithm ∈ (:third_order, :pruned_third_order) ? 10 : 8
                 SSS_result, SSS_pb = rrule(calculate_stochastic_steady_state, Val(algorithm), 𝓂.parameter_values, 𝓂, opts = opts)
-                n_sss = length(SSS_result[1])
+                SSS = SSS_result[1]
+                n_sss = length(SSS)
                 n_ss = length(SSS_result[3])
                 nv = length(var_idx)
                 nc = length(calib_idx)
@@ -1569,7 +1571,9 @@ function get_steady_state(𝓂::ℳ;
                 end
                 dSSS = dSSS[:, param_idx]
 
-                return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+                SS_and_pars = SSS_result[3]
+                steady_state_column = vcat(SSS[var_idx], SS_and_pars[calib_idx])
+                return KeyedArray(hcat(steady_state_column, dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
             (nsss_result, nsss_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
             out_idx = [var_idx..., calib_idx...]
@@ -1815,11 +1819,7 @@ function get_solution(𝓂::ℳ;
         end
 
         n_vars = length(𝓂.constants.post_model_macro.var)
-        nsss = if length(𝓂.caches.non_stochastic_steady_state) >= n_vars
-            𝓂.caches.non_stochastic_steady_state[1:n_vars]
-        else
-            get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
-        end
+        nsss = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
 
         return KeyedArray([nsss solution_matrix]';
                             Steady_state__States__Shocks = axis1,
@@ -1935,7 +1935,7 @@ function get_solution(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
-    if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         elseif algorithm in [:third_order, :pruned_third_order]
@@ -1945,14 +1945,15 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameters)
     
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -1967,25 +1968,25 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm in [:second_order, :pruned_second_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm in [:third_order, :pruned_third_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
     
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
                 
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
                                 𝐒₁, 𝐒₂,
@@ -1993,7 +1994,7 @@ function get_solution(𝓂::ℳ,
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.third_order_solution,
-                                opts = opts)
+                                opts = opts, parameter_values = parameters)
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
@@ -2115,14 +2116,15 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = 𝓂.parameter_values)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -2150,8 +2152,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
             covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                    tol = opts.tol.lyapunov_tol,
-                                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                    tol = opts.tol.first_order.lyapunov,
                                                     verbose = opts.verbose)
 
             var_container[:,i,indexin(Inf,periods)] = ℒ.diag(covar_raw) # numerically more stable
@@ -2160,7 +2161,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     sum_var_container = max.(sum(var_container, dims=2),eps())
     
-    var_container[var_container .< opts.tol.lyapunov_acceptance_tol] .= 0
+    var_container[var_container .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
     
     cond_var_decomp = var_container ./ sum_var_container
 
@@ -2278,14 +2279,15 @@ function get_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = 𝓂.parameter_values)
 
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
     
@@ -2303,8 +2305,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
         covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                tol = opts.tol.lyapunov_tol,
-                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                tol = opts.tol.first_order.lyapunov,
                                                 verbose = opts.verbose)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
@@ -2312,7 +2313,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     sum_variances_by_shock = max.(sum(variances_by_shock, dims=2), eps())
     
-    variances_by_shock[variances_by_shock .< opts.tol.lyapunov_acceptance_tol] .= 0
+    variances_by_shock[variances_by_shock .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
     
     var_decomp = variances_by_shock ./ sum_variances_by_shock
     
@@ -2423,7 +2424,7 @@ function get_correlation(𝓂::ℳ;
         @assert solved "Could not find covariance matrix."
     end
 
-    covar_dcmp[abs.(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol] .= 0
+    covar_dcmp[abs.(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
 
     std = sqrt.(max.(ℒ.diag(covar_dcmp),eps(Float64)))
     
@@ -2536,7 +2537,7 @@ function get_autocorrelation(𝓂::ℳ;
                                                                                             opts = opts, 
                                                                                             autocorrelation_periods = autocorrelation_periods)
 
-        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
     elseif algorithm == :pruned_second_order
         covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
@@ -2544,14 +2545,14 @@ function get_autocorrelation(𝓂::ℳ;
 
         autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
 
-        covar_dcmp[abs.(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol] .= 0
+        covar_dcmp[abs.(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
 
         for i in autocorrelation_periods
             autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
 
-        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
     else
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
@@ -2561,7 +2562,7 @@ function get_autocorrelation(𝓂::ℳ;
     
         autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
 
-        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
     end
 
     
@@ -2731,7 +2732,7 @@ function get_moments(𝓂::ℳ;
 
     NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
+    @assert solution_error < tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
 
     if length_par * length(NSSS) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -2956,7 +2957,9 @@ function get_moments(𝓂::ℳ;
         if mean && !(variance || standard_deviation || covariance)
             state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
 
-            @assert solved "Mean not found."
+            if !solved
+                @warn "Mean not found."
+            end
 
             var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
         end
@@ -2974,18 +2977,18 @@ function get_moments(𝓂::ℳ;
                 end
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-                
-                @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
                 end
             end
 
+            if !solved
+                @warn "Could not find covariance matrix."
+            end
+
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
-
             varrs = KeyedArray(varr[var_idx];  Variables = axis1)
-
             if standard_deviation
                 st_dev = KeyedArray(sqrt.(varr)[var_idx];  Variables = axis1)
             end
@@ -3004,13 +3007,16 @@ function get_moments(𝓂::ℳ;
                 end
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-                
-                @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
                 end
             end
+
+            if !solved
+                @warn "Could not find covariance matrix."
+            end
+
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
         end
 
@@ -3027,11 +3033,13 @@ function get_moments(𝓂::ℳ;
                 end
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-                
-                @assert solved "Could not find covariance matrix."
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                end
+
+                if !solved
+                    @warn "Could not find covariance matrix."
                 end
             end
         end
@@ -3324,7 +3332,7 @@ function get_statistics(𝓂::ℳ,
 
         ret = Dict{Symbol,AbstractArray{T}}()
 
-        ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+        ret[:non_stochastic_steady_state] = solution_error < opts.tol.nsss.acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
         return ret
     end
@@ -3377,13 +3385,13 @@ function get_statistics(𝓂::ℳ,
                 ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
             end
             
-            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
         elseif !(algorithm == :pruned_third_order)
             A = @views sol[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
         
             autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ max.(ℒ.diag(covar_dcmp),eps(Float64))) for i in autocorrelation_periods])
 
-            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
         end
     end
 
@@ -3718,7 +3726,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
             combined_values[key] = value
         end
     elseif isa(values, KeyedArray)
-        for (key, value) in Dict(axiskeys(values, 1) .=> collect(values))
+        for (key, value) in zip(axiskeys(values, 1), collect(values))
             if key isa String
                 key = replace_indices(key)
             end

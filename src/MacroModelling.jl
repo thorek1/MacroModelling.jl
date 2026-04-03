@@ -207,7 +207,7 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_model_estimates, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
-export Tolerances
+export Tolerances, SolverTolerances, NsssTolerances, AdTolerances, FirstOrderTolerances, HigherOrderTolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
@@ -381,14 +381,43 @@ check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋�
 
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
-    @assert N ≥ 2 "Need at least two dictionaries to compare"
+
+    if N ≤ 1
+        # Single entry: nothing to compare.  Return every non-skipped key so
+        # downstream code (e.g. diffdict[:label]) works uniformly.
+        # Dict values are recursed into so the result shape matches the N≥2
+        # case (nested Dicts with leaf vectors) expected by flatten_tol_diff.
+        diffs = Dict{Symbol,Any}()
+        if N == 1
+            for k in keys(dicts[1])
+                k in (:plot_data, :plot_type) && continue
+                v = dicts[1][k]
+                if v isa Dict
+                    diffs[k] = compare_args_and_kwargs([v])
+                else
+                    diffs[k] = [v]
+                end
+            end
+        end
+        return diffs
+    end
 
     diffs = Dict{Symbol,Any}()
 
-    # assume all dictionaries share the same set of keys
-    for k in keys(dicts[1])
+    # use the union of all keys so dicts with different key sets
+    # (e.g. tol sub-dicts that conditionally include :dependencies_tol)
+    # are compared correctly
+    all_keys = reduce(union, keys.(dicts))
+
+    for k in all_keys
         if k in [:plot_data, :plot_type]
             # skip keys that are not relevant for comparison
+            continue
+        end
+
+        # when a key is missing from some dicts, the values differ by definition
+        if !all(haskey(d, k) for d in dicts)
+            diffs[k] = [get(d, k, missing) for d in dicts]
             continue
         end
 
@@ -427,6 +456,34 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     end
 
     return diffs
+end
+
+
+"""
+    flatten_tol_diff(diff; names = DEFAULT_ARGS_AND_KWARGS_NAMES, prefix = "") -> Vector{Pair{String,Any}}
+
+Recursively walk a nested tolerance diff `Dict` (as returned by
+`compare_args_and_kwargs` on `tol_to_dict` outputs) and produce a flat vector
+of `"human-readable path" => values` pairs suitable for plot annotations.
+
+Path segments are translated through `names` (defaults to
+`DEFAULT_ARGS_AND_KWARGS_NAMES`).  For example a diff at
+`:first_order => :qme => :atol` becomes `"1st order QME atol"`.
+"""
+function flatten_tol_diff(diff::Dict;
+                          names::Dict{Symbol,String} = DEFAULT_ARGS_AND_KWARGS_NAMES,
+                          prefix::String = "")
+    result = Pair{String,Any}[]
+    for (k, v) in sort(collect(diff), by = first)
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            append!(result, flatten_tol_diff(v; names = names, prefix = label))
+        else
+            push!(result, label => reduce(vcat, v))
+        end
+    end
+    return result
 end
 
 
@@ -1022,11 +1079,22 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.caches.third_order_stochastic_steady_state = Float64[]
     𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
 
+    resize!(𝓂.caches.non_stochastic_steady_state, 0)
+    𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+
+    𝓂.caches.valid_for.jacobian = Float64[]
+    𝓂.caches.valid_for.hessian = Float64[]
+    𝓂.caches.valid_for.third_order_derivatives = Float64[]
     𝓂.caches.valid_for.first_order_solution = Float64[]
+    𝓂.caches.valid_for.first_order_obc_solution = Float64[]
     𝓂.caches.valid_for.second_order_solution = Float64[]
     𝓂.caches.valid_for.pruned_second_order_solution = Float64[]
+    𝓂.caches.valid_for.second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.valid_for.pruned_second_order_stochastic_steady_state = Float64[]
     𝓂.caches.valid_for.third_order_solution = Float64[]
     𝓂.caches.valid_for.pruned_third_order_solution = Float64[]
+    𝓂.caches.valid_for.third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state = Float64[]
 
     return nothing
 end
@@ -1034,11 +1102,19 @@ end
 
 const CACHE_VALIDITY_FIELDS = (
     :non_stochastic_steady_state,
+    :jacobian,
+    :hessian,
+    :third_order_derivatives,
     :first_order_solution,
+    :first_order_obc_solution,
     :second_order_solution,
     :pruned_second_order_solution,
+    :second_order_stochastic_steady_state,
+    :pruned_second_order_stochastic_steady_state,
     :third_order_solution,
     :pruned_third_order_solution,
+    :third_order_stochastic_steady_state,
+    :pruned_third_order_stochastic_steady_state,
 )
 
 
@@ -1175,254 +1251,6 @@ function infer_step(x_axis::AbstractVector{T}) where {T<:Dates.TimeType}
     return d2 - d1
 end
 
-function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
-                            ∂B::AbstractMatrix{R}, 
-                            ∂X::AbstractSparseMatrix{R}, 
-                            A::AbstractMatrix{R}, 
-                            B::AbstractMatrix{R}) where R <: Real
-    @assert size(∂A) == size(A)
-    @assert size(∂B) == size(B)
-    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
-    
-    n1, m1 = size(B)
-    n2 = size(A,1)
-    
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    const_n1n2m1 = n1 * n2 * m1
-
-    # Access the sparse matrix internal representation
-    if ∂X isa SparseMatrixCSC
-        colptr = ∂X.colptr  # Column pointers
-        rowval = ∂X.rowval  # Row indices of non-zeros
-        nzval  = ∂X.nzval   # Non-zero values
-    else
-        colptr = ∂X.A.colptr  # Column pointers
-        rowval = ∂X.A.rowval  # Row indices of non-zeros
-        nzval  = ∂X.A.nzval   # Non-zero values
-    end
-    
-    # Iterate over columns of ∂X
-    for col in 1:size(∂X, 2)
-        # Iterate over the non-zeros in this column
-        for idx in colptr[col]:(colptr[col + 1] - 1)
-            row = rowval[idx]
-            val = nzval[idx]
-
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
-            @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
-                
-                # Update ∂B and ∂A
-                ∂A[k,l] += B[i,j] * val
-                ∂B[i,j] += A[k,l] * val
-            end
-        end
-    end
-end
-
-
-function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
-                            ∂B::AbstractMatrix{R}, 
-                            ∂X::DenseMatrix{R}, 
-                            A::AbstractMatrix{R}, 
-                            B::AbstractMatrix{R}) where R <: Real
-    @assert size(∂A) == size(A)
-    @assert size(∂B) == size(B)
-    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
-    
-    re∂X = reshape(∂X, 
-                    size(A,1), 
-                    size(B,1), 
-                    size(A,2), 
-                    size(B,2))
-
-    ei = 1
-    for e in eachslice(re∂X; dims = (1,3))
-        @inbounds ∂A[ei] += ℒ.dot(B,e)
-        ei += 1
-    end
-
-    ei = 1
-    for e in eachslice(re∂X; dims = (2,4))
-        @inbounds ∂B[ei] += ℒ.dot(A,e)
-        ei += 1
-    end
-end
-
-
-
-function fill_kron_adjoint!(∂A::V, ∂B::V, ∂X::V, A::V, B::V) where V <: Vector{<: Real}
-    @assert size(∂A) == size(A)
-    @assert size(∂B) == size(B)
-    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
-    
-    re∂X = reshape(∂X, 
-                    length(A), 
-                    length(B))
-
-    ei = 1
-    for e in eachslice(re∂X; dims = 1)
-        @inbounds ∂A[ei] += ℒ.dot(B,e)
-        ei += 1
-    end
-
-    ei = 1
-    for e in eachslice(re∂X; dims = 2)
-        @inbounds ∂B[ei] += ℒ.dot(A,e)
-        ei += 1
-    end
-end
-
-
-function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractArray{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
-    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
-    
-    n1, m1 = size(∂B)
-    n2 = size(A,1)
-    
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    const_n1n2m1 = n1 * n2 * m1
-    
-    # Access the sparse matrix internal representation
-    colptr = ∂X.colptr  # Column pointers
-    rowval = ∂X.rowval  # Row indices of non-zeros
-    nzval  = ∂X.nzval   # Non-zero values
-    
-    # Iterate over columns of ∂X
-    for col in 1:size(∂X, 2)
-        # Iterate over the non-zeros in this column
-        for idx in colptr[col]:(colptr[col + 1] - 1)
-            row = rowval[idx]
-            val = nzval[idx]
-
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
-            @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
-                
-                # Update ∂B and ∂A
-                ∂B[i,j] += A[k,l] * val
-            end
-        end
-    end
-end
-
-
-
-function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
-    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
-    
-    n1 = length(∂B)
-    n2 = size(A,1)
-    # println("hello")
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    
-    # Access the sparse matrix internal representation
-    colptr = ∂X.colptr  # Column pointers
-    rowval = ∂X.rowval  # Row indices of non-zeros
-    nzval  = ∂X.nzval   # Non-zero values
-    
-    # Iterate over columns of ∂X
-    for col in 1:size(∂X, 2)
-        # Iterate over the non-zeros in this column
-        for idx in colptr[col]:(colptr[col + 1] - 1)
-            row = rowval[idx]
-            val = nzval[idx]
-
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
-            @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2) + 1
-                
-                # Update ∂B and ∂A
-                ∂B[i] += A[k,l] * val
-            end
-        end
-    end
-end
-
-
-
-function fill_kron_adjoint_∂B!(∂X::DenseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
-    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
-        
-    re∂X = reshape(∂X, 
-                    size(A,1), 
-                    length(∂B), 
-                    size(A,2))
-
-    ei = 1
-    for e in eachslice(re∂X; dims = 2)
-        @inbounds ∂B[ei] += ℒ.dot(A,e)
-        ei += 1
-    end
-end
-
-
-function fill_kron_adjoint_∂A!(∂X::DenseMatrix{R}, ∂A::Vector{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
-    @assert length(∂X) == length(∂A) * length(B) "∂X must have the same length as kron(B,A)"
-        
-    re∂X = reshape(∂X, 
-                    length(∂A), 
-                    size(B,1), 
-                    size(B,2))
-
-    ei = 1
-    for e in eachslice(re∂X; dims = 1)
-        @inbounds ∂A[ei] += ℒ.dot(B,e)
-        ei += 1
-    end
-end
-
-
-function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMatrix{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
-    @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
-    
-    n1, m1 = size(B)
-    n2 = size(∂A,1)
-    
-    # Precompute constants
-    const_n1n2 = n1 * n2
-    const_n1n2m1 = n1 * n2 * m1
-    
-    # Access the sparse matrix internal representation
-    colptr = ∂X.colptr  # Column pointers
-    rowval = ∂X.rowval  # Row indices of non-zeros
-    nzval  = ∂X.nzval   # Non-zero values
-    
-    # Iterate over columns of ∂X
-    for col in 1:size(∂X, 2)
-        # Iterate over the non-zeros in this column
-        for idx in colptr[col]:(colptr[col + 1] - 1)
-            row = rowval[idx]
-            val = nzval[idx]
-
-            linear_idx = (col - 1) * size(∂X, 1) + row
-
-            @inbounds begin
-                i = (linear_idx - 1) % n1 + 1
-                k = ((linear_idx - 1) ÷ n1) % n2 + 1
-                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
-                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
-                
-                # Update ∂B and ∂A
-                ∂A[k,l] += B[i,j] * val
-            end
-        end
-    end
-end
 
 
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
@@ -1449,11 +1277,21 @@ function choose_matrix_format(A::ℒ.Adjoint{S, M};
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real, M <: AbstractMatrix{S}}
-    choose_matrix_format(convert(typeof(transpose(A)),A), 
-                        density_threshold = density_threshold, 
-                        min_length = min_length, 
-                        multithreaded = multithreaded,
-                        tol = tol)
+    if A.parent isa AbstractSparseMatrix || A.parent isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # Materialise sparse adjoints as SparseMatrixCSC to avoid unsupported
+        # ThreadedSparseMatrixCSC(::Adjoint{<:ThreadedSparseMatrixCSC}) conversion.
+        return choose_matrix_format(sparse(A),
+                                    density_threshold = density_threshold,
+                                    min_length = min_length,
+                                    multithreaded = multithreaded,
+                                    tol = tol)
+    else
+        return choose_matrix_format(Matrix(A),
+                                    density_threshold = density_threshold,
+                                    min_length = min_length,
+                                    multithreaded = multithreaded,
+                                    tol = tol)
+    end
 end
 
 # function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
@@ -1492,7 +1330,7 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
-    if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
+    if count(x -> abs(x) > tol, A) / length(A) < density_threshold && length(A) > min_length
         # Use dense_to_sparse to avoid Julia 1.12 SparseArrays bug in SparseMatrixCSC(::Matrix)
         a = dense_to_sparse(A, tol)
         if multithreaded
@@ -1560,7 +1398,7 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         nnzC = sum(abs.(C) .> eps())
         nnzD = sum(abs.(D) .> eps())
 
-        p = nnzA * nnzB * nnzC * nnzD / (length(A) * length(B) * length(C) * length(D))
+        p = Float64(nnzA) * Float64(nnzB) * Float64(nnzC) * Float64(nnzD) / (Float64(length(A)) * Float64(length(B)) * Float64(length(C)) * Float64(length(D)))
 
         if length(sparse_preallocation[1]) == 0
             estimated_nnz = Int(ceil((1 - (1 - p)^size(A,1)) * size(A,1) * size(D,2)))
@@ -1658,9 +1496,9 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         else
             out = SparseArrays.sparse(I, J, V, size(A, 1), size(D,2))
         end
-        if reused_sparse_buffers
-            out = copy(out)
-        end
+        # if reused_sparse_buffers
+        #     out = copy(out)
+        # end
     else
         out = choose_matrix_format(X)
     end
@@ -1833,9 +1671,9 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         else
             out = SparseArrays.sparse(I, J, V, size(A, 1), n_colB * n_colC)
         end
-        if reused_sparse_buffers
-            out = copy(out)
-        end
+        # if reused_sparse_buffers
+        #     out = copy(out)
+        # end
         # out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
     else
         out = choose_matrix_format(X)
@@ -1943,6 +1781,623 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H}
     resize!(csrnzval, idx_redux)
 
     out = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+
+    return out
+end
+
+
+# Loop-based compressed permuted mixed Kronecker product.
+# Computes  U₃ * (kron(A,σ) + P₁ₗ̄*kron(A,σ)*P₁ᵣ̃ + P₂ₗ̄*kron(A,σ)*P₂ᵣ̃) * C₃
+# directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
+#
+# A is nr×nc (may be rectangular),  σ is nr²×nc².
+# Output is mr₃×mc₃ sparse where mr₃ = nr(nr+1)(nr+2)/6, mc₃ = nc(nc+1)(nc+2)/6.
+#
+# The uncompressed entry at row (i,j,k) col (a,b,c) of the sum is:
+#   A[i,a]*σ[(j-1)*nr+k,(b-1)*nc+c]                   (identity)
+# + A[j,b]*σ[(i-1)*nr+k,(a-1)*nc+c]                   (P₁: swap i↔j rows, a↔b cols)
+# + A[j,b]*σ[(k-1)*nr+i,(c-1)*nc+a]                   (P₂: cycle (i,j,k)→(j,k,i), (a,b,c)→(b,c,a))
+#
+# Compression: U₃ sums over all row permutations that sort to (i₁≥j₁≥k₁);
+#              C₃ selects the sorted column representative (α≥β≥γ).
+function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix;
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
+
+    nr = size(A, 1)
+    nc = size(A, 2)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    # Sparse copies for support-aware iteration.
+    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
+    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
+    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
+
+    # --- sparse buffer management (same pattern as compressed_kron³) ---
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = max(min(mr₃, mc₃), 10000)
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    end
+
+    II = sparse_preallocation[1]
+    JJ = sparse_preallocation[2]
+    VV = sparse_preallocation[3]
+
+    cnt = 0   # non-zero counter
+
+    # Iterate sorted output columns first (α ≥ β ≥ γ). For each column triple,
+    # only traverse non-zero supports from the relevant A and σ columns.
+    for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                # term 1: A[p, α] * σ[(q, r), (β, γ)]
+                if has_t1
+                    @inbounds for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
+                            end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
+                        end
+                    end
+                end
+
+                # term 2: A[q, β] * σ[(p, r), (α, γ)]
+                if has_t2
+                    @inbounds for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
+                            end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
+                        end
+                    end
+                end
+
+                # term 3: A[r, γ] * σ[(p, q), (α, β)]
+                if has_t3
+                    @inbounds for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                            cnt += 1
+                            if cnt > estimated_nnz
+                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
+                                resize!(II, estimated_nnz)
+                                resize!(JJ, estimated_nnz)
+                                resize!(VV, estimated_nnz)
+                            end
+
+                            II[cnt] = row
+                            JJ[cnt] = col
+                            VV[cnt] = val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
+
+    # Assemble sparse matrix using preallocated CSR workspace
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
+
+    resize!(klasttouch, mc₃)
+    resize!(csrrowptr, mr₃ + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
+
+    out = if length(II) >= mc₃ + 1
+        sparse!(II, JJ, VV, mr₃, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    else
+        SparseArrays.sparse(II, JJ, VV, mr₃, mc₃)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+# Fused  M * compressed_permuted_mixed_kron(A, σ)
+# Computes the product without materializing the large mr₃×mc₃ intermediate.
+# M is m × mr₃ sparse, A is nr × nc, σ is nr² × nc².  Output: m × mc₃ sparse.
+function mul_compressed_permuted_mixed_kron(M::SparseMatrixCSC, A::AbstractMatrix{T}, σ::AbstractMatrix;
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
+
+    nr = size(A, 1)
+    nc = size(A, 2)
+    m  = size(M, 1)
+    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
+    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
+
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+    size(M, 2) == mr₃ || throw(DimensionMismatch("M must have $mr₃ columns, got $(size(M, 2))"))
+
+    # Sparse copies for support-aware iteration
+    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
+    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+    rv_M = SparseArrays.rowvals(M)
+    nzv_M = nonzeros(M)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    # Small result buffer (size m, not mr₃)
+    result_col = zeros(T, m)
+
+    # --- sparse IJV buffer management ---
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = max(min(m * mc₃ ÷ 4, m * mc₃), 10000)
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    end
+
+    II = sparse_preallocation[1]
+    JJ = sparse_preallocation[2]
+    VV = sparse_preallocation[3]
+    cnt = 0
+
+    for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                fill!(result_col, zero(T))
+
+                # term 1: A[p, α] * σ[(q,r), (β,γ)] — scatter through M
+                if has_t1
+                    @inbounds for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # term 2: A[q, β] * σ[(p,r), (α,γ)] — scatter through M
+                if has_t2
+                    @inbounds for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # term 3: A[r, γ] * σ[(p,q), (α,β)] — scatter through M
+                if has_t3
+                    @inbounds for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+                            val = a_val * nzv_σ[is]
+                            abs(val) > tol || continue
+                            i1 = p; j1 = q; k1 = r
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            if j1 < k1; j1, k1 = k1, j1; end
+                            if i1 < j1; i1, j1 = j1, i1; end
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            rng_M = SparseArrays.nzrange(M, row)
+                            for p_M in rng_M
+                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
+                            end
+                        end
+                    end
+                end
+
+                # Extract nonzeros into IJV
+                @inbounds for i in 1:m
+                    v = result_col[i]
+                    if abs(v) > tol
+                        cnt += 1
+                        if cnt > estimated_nnz
+                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                            estimated_nnz = min(m * mc₃, estimated_nnz)
+                            resize!(II, estimated_nnz)
+                            resize!(JJ, estimated_nnz)
+                            resize!(VV, estimated_nnz)
+                        end
+                        II[cnt] = i
+                        JJ[cnt] = col
+                        VV[cnt] = v
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
+
+    # Sparse assembly
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
+
+    resize!(klasttouch, mc₃)
+    resize!(csrrowptr, m + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
+
+    out = if length(II) >= mc₃ + 1
+        sparse!(II, JJ, VV, m, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    else
+        SparseArrays.sparse(II, JJ, VV, m, mc₃)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
+
+    return out
+end
+
+# 2-arg overload: compressed_kron(A, σ)
+# Computes  𝐔∇₃ * kron(A, σ) * 𝐂₃
+# directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
+#
+# A is nᵣ × nᶜ (may be rectangular),  σ is nᵣ² × nᶜ².
+# Output is m₃ᵣ × m₃ᶜ sparse where m₃ᵣ = nᵣ(nᵣ+1)(nᵣ+2)/6, m₃ᶜ = nᶜ(nᶜ+1)(nᶜ+2)/6.
+#
+# kron(A,σ) at row (i,j,k) col (a,b,c) equals A[i,a]*σ[(j-1)*nᵣ+k, (b-1)*nᶜ+c].
+# 𝐔∇₃ sums all row triples that sort to (i₁≥j₁≥k₁); 𝐂₃ selects the sorted column (α≥β≥γ).
+function compressed_kron(A::AbstractMatrix{TA},
+                         σ::AbstractMatrix{Tσ};
+                         tol::AbstractFloat = eps(),
+                         sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, Tσ <: Real}
+
+    T = promote_type(TA, Tσ)
+
+    nᵣ, nᶜ = size(A)
+    size(σ) == (nᵣ^2, nᶜ^2) || throw(DimensionMismatch("σ must be $(nᵣ^2)×$(nᶜ^2), got $(size(σ))"))
+
+    m₃ᵣ = nᵣ * (nᵣ + 1) * (nᵣ + 2) ÷ 6
+    m₃ᶜ = nᶜ * (nᶜ + 1) * (nᶜ + 2) ÷ 6
+
+    # Convert to sparse for CSC iteration
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    # --- sparse buffer management ---
+    spI = sparse_preallocation[1]
+    spJ = sparse_preallocation[2]
+    spV_untyped = sparse_preallocation[3]
+    spV = if eltype(spV_untyped) == T
+        spV_untyped
+    else
+        Vector{T}(undef, length(spV_untyped))
+    end
+
+    lennz_A = nnz(As)
+    lennz_σ = nnz(σs)
+    len_A = length(A)
+    len_σ = length(σ)
+
+    avg_density = sqrt((lennz_A / max(len_A, 1)) * (lennz_σ / max(len_σ, 1)))
+
+    if length(spI) == 0
+        estimated_nnz = floor(Int, max(m₃ᵣ * m₃ᶜ * avg_density ^ 3, 10000))
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    else
+        estimated_nnz = length(spV)
+        resize!(spI, estimated_nnz)
+        resize!(spJ, estimated_nnz)
+        resize!(spV, estimated_nnz)
+    end
+
+    II = spI
+    JJ = spJ
+    VV = spV
+
+    cnt = 0
+
+    # Iterate sorted column triples (α ≥ β ≥ γ) where α indexes A's columns
+    # and (β, γ) index σ's columns via σ_col = (β-1)*nᶜ + γ.
+    for α in 1:nᶜ
+        rng_A = SparseArrays.nzrange(As, α)
+        isempty(rng_A) && continue
+
+        for β in 1:α
+            for γ in 1:β
+                σ_col = (β - 1) * nᶜ + γ
+                rng_σ = SparseArrays.nzrange(σs, σ_col)
+                isempty(rng_σ) && continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                @inbounds for pA in rng_A
+                    i = rv_A[pA]
+                    a_val = nzv_A[pA]
+
+                    for pσ in rng_σ
+                        s = rv_σ[pσ]
+                        σ_val = nzv_σ[pσ]
+
+                        val = a_val * σ_val
+                        abs(val) > tol || continue
+
+                        # Decompose σ row: s = (j-1)*nᵣ + k
+                        j = (s - 1) ÷ nᵣ + 1
+                        k = (s - 1) % nᵣ + 1
+
+                        # Sort row triple (i, j, k) → (i₁ ≥ j₁ ≥ k₁)
+                        i₁ = i; j₁ = j; k₁ = k
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+                        if j₁ < k₁; j₁, k₁ = k₁, j₁; end
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+
+                        row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
+
+                        cnt += 1
+
+                        if cnt > estimated_nnz
+                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
+                            estimated_nnz = min(m₃ᵣ * m₃ᶜ, estimated_nnz)
+                            resize!(II, estimated_nnz)
+                            resize!(JJ, estimated_nnz)
+                            resize!(VV, estimated_nnz)
+                        end
+
+                        II[cnt] = row
+                        JJ[cnt] = col
+                        VV[cnt] = val
+                    end
+                end
+            end
+        end
+    end
+
+    resize!(II, cnt)
+    resize!(JJ, cnt)
+    resize!(VV, cnt)
+
+    # Sparse assembly with preallocation buffers
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval_untyped = sparse_preallocation[7]
+    csrnzval = if eltype(csrnzval_untyped) == T
+        csrnzval_untyped
+    else
+        Vector{T}(undef, length(csrnzval_untyped))
+    end
+
+    resize!(klasttouch, m₃ᶜ)
+    resize!(csrrowptr, m₃ᵣ + 1)
+    resize!(csrcolval, length(II))
+    resize!(csrnzval, length(II))
+
+    out = if cnt >= m₃ᶜ + 1
+        sparse!(II, JJ, VV, m₃ᵣ, m₃ᶜ, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
+    else
+        SparseArrays.sparse(II, JJ, VV, m₃ᵣ, m₃ᶜ)
+    end
+
+    if tol > 0
+        droptol!(out, tol)
+    end
 
     return out
 end
@@ -2207,130 +2662,129 @@ function compressed_kron³(a::AbstractMatrix{T};
         # out = sparse!(I, J, V, m3_rows, m3_cols)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     return out
 end
 
+# Fused  M * compressed_kron³(a)
+# Computes the product without materializing the large mr₃×mc₃ intermediate.
+# M is m × mr₃ sparse, a is n_rows × n_cols.  Output: m × mc₃ sparse.
+# Row-outer / col-inner with sorted bounded ranges + direct IJV scatter.
+# nzrange(M, row) checked once per row triple — skips ALL col iterations.
+# Duplicate (I,J) entries resolved by sparse!(+).
+function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
+                    tol::AbstractFloat = eps(),
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
 
-function compressed_permuted_mixed_kron3(S::AbstractMatrix{TS},
-                                         σ::AbstractMatrix{Tσ},
-                                         L₀::AbstractSparseMatrix,
-                                         R₀::AbstractSparseMatrix,
-                                         L₁::AbstractSparseMatrix,
-                                         R₁::AbstractSparseMatrix,
-                                         L₂::AbstractSparseMatrix,
-                                         R₂::AbstractSparseMatrix;
-                                         tol::AbstractFloat = eps(),
-                                         sparse_preallocation::Union{Nothing, Tuple} = nothing) where {TS <: Real, Tσ <: Real}
-
-    T = promote_type(TS, Tσ)
-
-    Ŝ = TS == T ? S : T.(S)
-    σ̂ = Tσ == T ? σ : T.(σ)
-
-    n_rows = size(L₀, 1)
-    n_cols = size(R₀, 2)
-
-    if size(L₁, 1) != n_rows || size(L₂, 1) != n_rows ||
-       size(R₁, 2) != n_cols || size(R₂, 2) != n_cols
-        throw(DimensionMismatch("All Lᵢ must have equal row count and all Rᵢ must have equal column count"))
-    end
-
-    reused_sparse_buffers = sparse_preallocation !== nothing && length(sparse_preallocation[1]) > 0
-    spalloc = if sparse_preallocation === nothing
-        (Int[], Int[], T[], Int[], Int[], Int[], T[])
+    if typeof(a) <: DenseMatrix{T}
+        â = a
+        a_sp = sparse(a)
     else
-        sparse_preallocation
+        â = convert(Matrix, a)
+        a_sp = a isa SparseMatrixCSC ? a : sparse(a)
     end
 
-    nnzS = sum(abs.(Ŝ) .> eps())
-    nnzσ = sum(abs.(σ̂) .> eps())
-    nnzL = nnz(L₀) + nnz(L₁) + nnz(L₂)
-    nnzR = nnz(R₀) + nnz(R₁) + nnz(R₂)
+    n_rows, n_cols = size(a_sp)
+    m = size(M, 1)
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
 
-    p = nnzL * nnzS * nnzσ * nnzR / (max(length(L₀), 1) * length(Ŝ) * length(σ̂) * max(length(R₀), 1) * 9)
-    estimated_nnz = max(Int(ceil((1 - (1 - p)^n_rows) * n_rows * n_cols)), 10000)
+    size(M, 2) == m3_rows || throw(DimensionMismatch("M must have $m3_rows columns, got $(size(M, 2))"))
 
-    resize!(spalloc[1], estimated_nnz)
-    resize!(spalloc[2], estimated_nnz)
-    resize!(spalloc[3], estimated_nnz)
+    rv_M = SparseArrays.rowvals(M)
+    nzv_M = nonzeros(M)
 
-    I = spalloc[1]
-    J = spalloc[2]
-    V = spalloc[3]
+    # Find unique non-zero row and column indices (sorted for bounded iteration)
+    rowinds, colinds, _ = findnz(a_sp)
+    ui = sort!(unique(rowinds))
+    uj = sort!(unique(colinds))
+    n_ui = length(ui)
+    n_uj = length(uj)
 
-    n_rowB = size(Ŝ, 1)
-    n_colB = size(Ŝ, 2)
-    n_rowC = size(σ̂, 1)
-    n_colC = size(σ̂, 2)
-
-    Ā = zeros(T, n_rowC, n_rowB)
-    ĀB = zeros(T, n_rowC, n_colB)
-    CĀB = zeros(T, n_colC, n_colB)
-    vCĀB = zeros(T, n_colB * n_colC)
-    vCĀBD = zeros(T, n_cols)
-    row_accum = zeros(T, n_cols)
-
-    rowmask = falses(n_rows)
-    rowmask₀ = falses(n_rows)
-    rowmask₁ = falses(n_rows)
-    rowmask₂ = falses(n_rows)
-
-    rv₀ = L₀ isa SparseMatrixCSC ? L₀.rowval : L₀.A.rowval
-    rv₁ = L₁ isa SparseMatrixCSC ? L₁.rowval : L₁.A.rowval
-    rv₂ = L₂ isa SparseMatrixCSC ? L₂.rowval : L₂.A.rowval
-
-    @inbounds for r in rv₀
-        rowmask[r] = true
-        rowmask₀[r] = true
-    end
-    @inbounds for r in rv₁
-        rowmask[r] = true
-        rowmask₁[r] = true
-    end
-    @inbounds for r in rv₂
-        rowmask[r] = true
-        rowmask₂[r] = true
+    # --- sparse IJV buffer management ---
+    if length(sparse_preallocation[1]) == 0
+        lennz = nnz(a_sp)
+        estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(a)) ^ 4, 10000))
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
     end
 
-    α = .7
+    I = sparse_preallocation[1]
+    J = sparse_preallocation[2]
+    V = sparse_preallocation[3]
     k = 0
 
-    @inline function accumulate_term!(L::AbstractSparseMatrix, R::AbstractSparseMatrix, row::Int)
-        @views copyto!(Ā, L[row, :])
-        ℒ.mul!(ĀB, Ā, Ŝ)
-        ℒ.mul!(CĀB, σ̂', ĀB)
-        copyto!(vCĀB, CĀB)
-        ℒ.mul!(vCĀBD, R', vCĀB)
-        @. row_accum = row_accum + vCĀBD
-        return nothing
-    end
+    # Row-outer loop: row triples (i1 ≥ j1 ≥ k1) with bounded index ranges
+    for idx_i1 in 1:n_ui
+        @inbounds i1 = ui[idx_i1]
+        for idx_j1 in 1:idx_i1                 # j1 ≤ i1 by construction
+            @inbounds j1 = ui[idx_j1]
+            for idx_k1 in 1:idx_j1             # k1 ≤ j1 by construction
+                @inbounds k1 = ui[idx_k1]
 
-    @inbounds for row in eachindex(rowmask)
-        rowmask[row] || continue
+                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
 
-        fill!(row_accum, zero(T))
+                # nzrange checked ONCE per row triple — skips ALL col iterations
+                rng_M = SparseArrays.nzrange(M, row)
+                isempty(rng_M) && continue
 
-        rowmask₀[row] && accumulate_term!(L₀, R₀, row)
-        rowmask₁[row] && accumulate_term!(L₁, R₁, row)
-        rowmask₂[row] && accumulate_term!(L₂, R₂, row)
-
-        for (j, v) in enumerate(row_accum)
-            if abs(v) > eps(T)
-                k += 1
-                if k > estimated_nnz
-                    increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * n_rows * n_cols)))
-                    estimated_nnz += min(n_rows * n_cols, increment)
-                    resize!(I, estimated_nnz)
-                    resize!(J, estimated_nnz)
-                    resize!(V, estimated_nnz)
+                # Divisor depends only on row triple
+                if i1 == j1
+                    divisor = i1 == k1 ? 6 : 2
+                else
+                    divisor = (i1 ≠ k1 && j1 ≠ k1) ? 1 : 2
                 end
-                I[k] = row
-                J[k] = j
-                V[k] = v
+
+                # Col-inner loop: column triples (i2 ≥ j2 ≥ k2) with bounded ranges
+                for idx_i2 in 1:n_uj
+                    @inbounds i2 = uj[idx_i2]
+                    for idx_j2 in 1:idx_i2     # j2 ≤ i2 by construction
+                        @inbounds j2 = uj[idx_j2]
+                        for idx_k2 in 1:idx_j2 # k2 ≤ j2 by construction
+                            @inbounds k2 = uj[idx_k2]
+
+                            @inbounds aii = â[i1, i2]
+                            @inbounds aij = â[i1, j2]
+                            @inbounds aik = â[i1, k2]
+                            @inbounds aji = â[j1, i2]
+                            @inbounds ajj = â[j1, j2]
+                            @inbounds ajk = â[j1, k2]
+                            @inbounds aki = â[k1, i2]
+                            @inbounds akj = â[k1, j2]
+                            @inbounds akk = â[k1, k2]
+
+                            val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
+
+                            if abs(val) > tol
+                                scaled_val = val / divisor
+                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+                                # Direct IJV scatter through M[:, row]
+                                for p_M in rng_M
+                                    k += 1
+                                    if k > estimated_nnz
+                                        estimated_nnz = k + max(1000, k ÷ 10)
+                                        resize!(I, estimated_nnz)
+                                        resize!(J, estimated_nnz)
+                                        resize!(V, estimated_nnz)
+                                    end
+                                    I[k] = @inbounds rv_M[p_M]
+                                    J[k] = col
+                                    V[k] = @inbounds(nzv_M[p_M]) * scaled_val
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -2339,24 +2793,21 @@ function compressed_permuted_mixed_kron3(S::AbstractMatrix{TS},
     resize!(J, k)
     resize!(V, k)
 
-    klasttouch = spalloc[4]
-    csrrowptr  = spalloc[5]
-    csrcolval  = spalloc[6]
-    csrnzval   = spalloc[7]
+    # Sparse assembly — sparse!(+) resolves duplicate (I,J) entries
+    klasttouch = sparse_preallocation[4]
+    csrrowptr  = sparse_preallocation[5]
+    csrcolval  = sparse_preallocation[6]
+    csrnzval   = sparse_preallocation[7]
 
-    resize!(klasttouch, n_cols)
-    resize!(csrrowptr, n_rows + 1)
+    resize!(klasttouch, m3_cols)
+    resize!(csrrowptr, m + 1)
     resize!(csrcolval, length(I))
     resize!(csrnzval, length(I))
 
-    out = if length(I) >= n_cols + 1
-        sparse!(I, J, V, n_rows, n_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    out = if length(I) >= m3_cols + 1
+        sparse!(I, J, V, m, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
     else
-        SparseArrays.sparse(I, J, V, n_rows, n_cols)
-    end
-
-    if reused_sparse_buffers
-        out = copy(out)
+        SparseArrays.sparse(I, J, V, m, m3_cols)
     end
 
     if tol > 0
@@ -2365,7 +2816,6 @@ function compressed_permuted_mixed_kron3(S::AbstractMatrix{TS},
 
     return out
 end
-
 
 function compressed_kron²(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
@@ -2541,304 +2991,12 @@ function compressed_kron²(a::AbstractMatrix{T};
         out = sparse!(I, J, V, m2_rows, m2_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
     end
 
-    if reused_sparse_buffers
-        out = copy(out)
-    end
+    # if reused_sparse_buffers
+    #     out = copy(out)
+    # end
 
     return out
 end
-
-
-"""
-    compressed_mixed_kron(A, B; tol, rowmask, colmask, sparse_preallocation)
-
-Compute `𝐔₃ * kron(A, B) * 𝐂₃` directly in compressed third-order space,
-where one input is `n × n` and the other is `n² × n²`.  The function
-auto-detects which argument lives in second-order space by comparing
-dimensions: the matrix whose side length equals the square of the other's
-side length is treated as the "big" (second-order-space) matrix.
-
-Returns a sparse matrix of size `m₃ × m₃` where `m₃ = n(n+1)(n+2)/6`.
-
-The algorithm iterates over non-empty columns of the big (n²×n²) matrix,
-and for each column determines the canonical (sorted) column triple in the
-compressed space.  Only columns whose pair index `(d₁, d₂)` satisfies
-`d₁ ≥ d₂` contribute canonical triples.  The free index from the small
-matrix completes the sorted triple.  Row triples are sorted and accumulated
-via the `+` combiner in the sparse assembly, which naturally performs the
-𝐔₃ row-summation over all permutations mapping to the same sorted triple.
-"""
-function compressed_mixed_kron(A::AbstractMatrix{TA},
-                               B::AbstractMatrix{TB};
-                               tol::AbstractFloat = eps(),
-                               rowmask::Vector{Int} = Int[],
-                               colmask::Vector{Int} = Int[],
-                               sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{<:Real}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{<:Real}} = (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[])) where {TA <: Real, TB <: Real}
-
-    T = promote_type(TA, TB)
-
-    nA = size(A, 1)
-    nB = size(B, 1)
-
-    # Both inputs must be square
-    size(A, 2) == nA || throw(DimensionMismatch("A must be square, got size $(size(A))"))
-    size(B, 2) == nB || throw(DimensionMismatch("B must be square, got size $(size(B))"))
-
-    # Detect which is the small (n×n) and which is the big (n²×n²) matrix
-    # Invariant: kron(first_arg, second_arg) is preserved
-    if nA * nA == nB
-        # A is small (n×n), B is big (n²×n²)  → kron(A, B)
-        n = nA
-        small = A
-        big_mat = B
-        kron_order = :small_first   # kron(small, big)
-    elseif nB * nB == nA
-        # B is small (n×n), A is big (n²×n²)  → kron(A, B)
-        n = nB
-        small = B
-        big_mat = A
-        kron_order = :big_first     # kron(big, small)
-    else
-        throw(DimensionMismatch(
-            "One matrix must be n×n and the other n²×n², got sizes $(size(A)) and $(size(B))"))
-    end
-
-    m3 = n * (n + 1) * (n + 2) ÷ 6
-
-    # Convert to working formats
-    small_dense = small isa Matrix{T} ? small : Matrix{T}(small)
-    big_sparse  = big_mat isa SparseMatrixCSC ? (eltype(big_mat) == T ? big_mat : SparseMatrixCSC{T}(big_mat)) : SparseMatrixCSC{T}(sparse(big_mat))
-
-    # Setup sparse preallocation buffers
-    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
-
-    spI, spJ, spV_untyped = sparse_preallocation[1], sparse_preallocation[2], sparse_preallocation[3]
-    # Ensure value buffer has correct element type
-    spV = if eltype(spV_untyped) == T
-        spV_untyped
-    else
-        T[]
-    end
-
-    nnz_big = nnz(big_sparse)
-    nnz_small = count(x -> abs(x) > tol, small_dense)
-    estimated_nnz = max(nnz_big * nnz_small, 10000)
-
-    if length(spI) == 0
-        resize!(spI, estimated_nnz)
-        resize!(spJ, estimated_nnz)
-        resize!(spV, estimated_nnz)
-    else
-        estimated_nnz = length(spV)
-        resize!(spI, estimated_nnz)
-        resize!(spJ, estimated_nnz)
-        resize!(spV, estimated_nnz)
-    end
-
-    # Masks
-    norowmask = length(rowmask) == 0
-    nocolmask = length(colmask) == 0
-
-    if rowmask == Int[0] || colmask == Int[0]
-        return spzeros(T, m3, m3)
-    end
-
-    rowmask_lookup = norowmask ? BitVector() : falses(m3)
-    colmask_lookup = nocolmask ? BitVector() : falses(m3)
-
-    if !norowmask
-        @inbounds for r in rowmask
-            if 1 <= r <= m3
-                rowmask_lookup[r] = true
-            end
-        end
-    end
-    if !nocolmask
-        @inbounds for c in colmask
-            if 1 <= c <= m3
-                colmask_lookup[c] = true
-            end
-        end
-    end
-
-    # Precompute colptr references
-    big_colptr = big_sparse.colptr
-    big_rowval = big_sparse.rowval
-    big_nzval  = big_sparse.nzval
-    n² = n * n
-
-    k = 0  # COO entry counter
-
-    # Helper: compressed index for sorted triple (i ≥ j ≥ kk) → 1-based
-    @inline function comp_idx(i, j, kk)
-        return (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + kk
-    end
-
-    # Helper: sort 3 values descending → (max, mid, min)
-    @inline function sort3_desc(a, b, c)
-        a, b = a >= b ? (a, b) : (b, a)
-        a, c = a >= c ? (a, c) : (c, a)
-        b, c = b >= c ? (b, c) : (c, b)
-        return a, b, c
-    end
-
-    # ---------------------------------------------------------------------------
-    # Core iteration: iterate over non-empty columns of big_sparse and determine
-    # canonical (sorted) column triples for the compressed output.
-    #
-    # The canonical flat column in n³ space for sorted triple (i₂ ≥ k₂ ≥ l₂) is
-    #   f_col = n²*(i₂-1) + n*(k₂-1) + l₂
-    #
-    # For kron(small, big):  f_col = (γ-1)*n² + col_big  ⟹  γ = i₂,
-    #   col_big = n*(k₂-1) + l₂.  The pair (k₂, l₂) = decompose(col_big) must
-    #   satisfy k₂ ≥ l₂.  The free index γ = i₂ ranges over k₂:n (so i₂ ≥ k₂).
-    #
-    # For kron(big, small):  f_col = (col_big-1)*n + γ  ⟹  γ = l₂,
-    #   col_big = n*(i₂-1) + k₂.  The pair (i₂, k₂) = decompose(col_big) must
-    #   satisfy i₂ ≥ k₂.  The free index γ = l₂ ranges over 1:k₂ (so k₂ ≥ l₂).
-    # ---------------------------------------------------------------------------
-
-    for col_big in 1:n²
-        @inbounds nz_start = big_colptr[col_big]
-        @inbounds nz_end   = big_colptr[col_big + 1] - 1
-        nz_start > nz_end && continue
-
-        # Decompose big column: flat = (d₁-1)*n + d₂,  d₁ = ⌈col_big/n⌉, d₂ = rem
-        d₁ = (col_big - 1) ÷ n + 1
-        d₂ = (col_big - 1) % n + 1
-
-        if kron_order === :small_first
-            # big supplies pair (k₂, l₂) = (d₁, d₂); need k₂ ≥ l₂
-            d₁ < d₂ && continue
-            k₂ = d₁
-            l₂ = d₂
-
-            # free index i₂ = γ (column of small), ranges k₂:n
-            for i₂ in k₂:n
-                comp_c = comp_idx(i₂, k₂, l₂)
-                if nocolmask || colmask_lookup[comp_c]
-                    small_col = i₂
-
-                    for idx in nz_start:nz_end
-                        @inbounds row_big = big_rowval[idx]
-                        @inbounds val_big = big_nzval[idx]
-
-                        r₁ = (row_big - 1) ÷ n + 1
-                        r₂ = (row_big - 1) % n + 1
-
-                        for α in 1:n
-                            @inbounds val_small = small_dense[α, small_col]
-                            v = T(val_small) * T(val_big)
-                            abs(v) <= tol && continue
-
-                            # Row triple for kron(small, big): (α, r₁, r₂)
-                            ri, rj, rk = sort3_desc(α, r₁, r₂)
-                            comp_r = comp_idx(ri, rj, rk)
-
-                            if norowmask || rowmask_lookup[comp_r]
-                                k += 1
-                                if k > estimated_nnz
-                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                    estimated_nnz = min(m3 * m3, estimated_nnz)
-                                    resize!(spI, estimated_nnz)
-                                    resize!(spJ, estimated_nnz)
-                                    resize!(spV, estimated_nnz)
-                                end
-                                @inbounds spI[k] = comp_r
-                                @inbounds spJ[k] = comp_c
-                                @inbounds spV[k] = v
-                            end
-                        end
-                    end
-                end
-            end
-
-        else  # kron_order === :big_first
-            # big supplies pair (i₂, k₂) = (d₁, d₂); need i₂ ≥ k₂
-            d₁ < d₂ && continue
-            i₂ = d₁
-            k₂ = d₂
-
-            # free index l₂ = γ (column of small), ranges 1:k₂
-            for l₂ in 1:k₂
-                comp_c = comp_idx(i₂, k₂, l₂)
-                if nocolmask || colmask_lookup[comp_c]
-                    small_col = l₂
-
-                    for idx in nz_start:nz_end
-                        @inbounds row_big = big_rowval[idx]
-                        @inbounds val_big = big_nzval[idx]
-
-                        r₁ = (row_big - 1) ÷ n + 1
-                        r₂ = (row_big - 1) % n + 1
-
-                        for α in 1:n
-                            @inbounds val_small = small_dense[α, small_col]
-                            v = T(val_big) * T(val_small)
-                            abs(v) <= tol && continue
-
-                            # Row triple for kron(big, small): (r₁, r₂, α)
-                            ri, rj, rk = sort3_desc(r₁, r₂, α)
-                            comp_r = comp_idx(ri, rj, rk)
-
-                            if norowmask || rowmask_lookup[comp_r]
-                                k += 1
-                                if k > estimated_nnz
-                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                    estimated_nnz = min(m3 * m3, estimated_nnz)
-                                    resize!(spI, estimated_nnz)
-                                    resize!(spJ, estimated_nnz)
-                                    resize!(spV, estimated_nnz)
-                                end
-                                @inbounds spI[k] = comp_r
-                                @inbounds spJ[k] = comp_c
-                                @inbounds spV[k] = v
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    resize!(spI, k)
-    resize!(spJ, k)
-    resize!(spV, k)
-
-    # Assemble sparse matrix
-    klasttouch = sparse_preallocation[4]
-    csrrowptr  = sparse_preallocation[5]
-    csrcolval  = sparse_preallocation[6]
-    csrnzval_untyped = sparse_preallocation[7]
-    csrnzval = if eltype(csrnzval_untyped) == T
-        csrnzval_untyped
-    else
-        T[]
-    end
-
-    resize!(klasttouch, m3)
-    resize!(csrrowptr, m3 + 1)
-    resize!(csrcolval, length(spI))
-    resize!(csrnzval, length(spI))
-
-    out = if length(spI) >= m3 + 1
-        sparse!(spI, spJ, spV, m3, m3, +, klasttouch, csrrowptr, csrcolval, csrnzval, spI, spJ, spV)
-    else
-        SparseArrays.sparse(spI, spJ, spV, m3, m3)
-    end
-
-    if reused_sparse_buffers
-        out = copy(out)
-    end
-
-    if tol > 0
-        droptol!(out, tol)
-    end
-
-    return out
-end
-
-
 # function kron³(A::AbstractSparseMatrix{T}, M₃::third_order) where T <: Real
 #     rows, cols, vals = findnz(A)
 
@@ -4550,6 +4708,14 @@ function write_ss_check_function!(𝓂::ℳ;
 
     𝓂.functions.NSSS_check = func_exprs
 
+    # Ensure check_residual buffer is sized for the NSSS_check function
+    nres = length(ss_equations)
+    cr = 𝓂.workspaces.nsss_solver.check_residual
+    if length(cr) != nres
+        resize!(cr, nres)
+        fill!(cr, 0.0)
+    end
+
 
     # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.calibration_equations_parameters))
 
@@ -4644,6 +4810,36 @@ end
 
 
 
+function calculate_first_order_obc_solution!(𝓂::ℳ, constants, opts::CalculationOptions)
+    # Cache hit: return if valid for current parameters
+    if cache_valid_for_parameters(𝓂.caches.valid_for.first_order_obc_solution, 𝓂.parameter_values) &&
+       !isempty(𝓂.caches.first_order_obc_solution_matrix)
+        return nothing
+    end
+
+    write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+
+    ∇̂₁ = calculate_jacobian(𝓂.parameter_values, 𝓂.caches.non_stochastic_steady_state, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = false)
+
+    Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
+                                                        constants,
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
+                                                        opts = opts,
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        caching = false)
+
+    update_perturbation_counter!(𝓂.counters, solved, order = 1)
+
+    write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+
+    # Cache write + stamp
+    𝓂.caches.first_order_obc_solution_matrix = Ŝ₁
+    𝓂.caches.valid_for.first_order_obc_solution = Float64.(𝓂.parameter_values)
+
+    return nothing
+end
+
 function solve_steady_state!(𝓂::ℳ, 
                             opts::CalculationOptions,
                             ss_solver_parameters_algorithm::Symbol,
@@ -4666,13 +4862,14 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+    SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
     
     found_solution = true
     
     if !(𝓂.functions.NSSS_custom isa Function)
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
-        if solution_error > opts.tol.NSSS_acceptance_tol
+        if solution_error > opts.tol.nsss.acceptance_tol
             found_solution = find_SS_solver_parameters!(Val(ss_solver_parameters_algorithm), 𝓂, tol = opts.tol, verbosity = 0, maxtime = ss_solver_parameters_maxtime, maxiter = 1000000000)
             
             if found_solution
@@ -4689,16 +4886,6 @@ function solve_steady_state!(𝓂::ℳ,
     
     if !found_solution
         @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-    end
-    
-    cache_ss = 𝓂.caches.non_stochastic_steady_state
-    if length(cache_ss) != length(SS_and_pars)
-        resize!(cache_ss, length(SS_and_pars))
-    end
-    copyto!(cache_ss, SS_and_pars)
-    
-    if found_solution
-        𝓂.caches.valid_for.non_stochastic_steady_state = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
     end
     
     return SS_and_pars, solution_error, found_solution
@@ -4747,7 +4934,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     runtime = @elapsed outmodel = try solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
-                    (outmodel[2][1] > tol.NSSS_acceptance_tol) || !isfinite(outmodel[2][1]) ? 
+                    (outmodel[2][1] > tol.nsss.acceptance_tol) || !isfinite(outmodel[2][1]) ? 
                         10 : 
                     runtime : 
                 10
@@ -4802,7 +4989,7 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Real = 120
 
     SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
-    if solution_error < tol.NSSS_acceptance_tol
+    if solution_error < tol.nsss.acceptance_tol
         push!(DEFAULT_SOLVER_PARAMETERS, par_inputs)
         𝓂.constants.post_complete_parameters = update_post_complete_parameters(
             𝓂.constants.post_complete_parameters;
@@ -4845,7 +5032,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
 
             times[i] = elapsed_time
 
-            if solution_error > tol.NSSS_acceptance_tol
+            if solution_error > tol.nsss.acceptance_tol
                 valid = false
                 break
             end
@@ -4915,7 +5102,7 @@ function solve_ss(SS_optimizer::Function,
                     solver_params::solver_parameters,
                     extended_problem::Bool,
                     separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
-    ftol = tol.NSSS_ftol
+    ftol = tol.nsss.ftol
     n_guess = length(guess)
     init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
     use_ssv = separate_starting_value isa Float64
@@ -5058,7 +5245,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
-        if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol
+        if !isfinite(sol_minimum) || sol_minimum > tol.nsss.acceptance_tol
             # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
             # ∇̂ = ℒ.lu!(∇, check = false)
@@ -5092,7 +5279,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         rel_sol_minimum = 1.0
     end
     
-    if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+    if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
         solved_yet = true
 
         if verbose
@@ -5116,7 +5303,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                 p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
                 for ext in ext_candidates # try first the system where values and parameters can vary, next try the system where only values can vary
                     for s in start_vals
-                        if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
+                        if !isfinite(sol_minimum) || sol_minimum > tol.nsss.acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
 
                             sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
@@ -5126,7 +5313,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                                                 ext,
                                                                 s)
                                                                 
-                            if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+                            if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
                                 solved_yet = true
                             end
                         end
@@ -5153,7 +5340,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             start_vals[2] = T(p.starting_value)
             for s in s_candidates
                 for algo in algo_candidates
-                    if sol_minimum > tol.NSSS_acceptance_tol || !isfinite(sol_minimum) # || rel_sol_minimum > rtol
+                    if sol_minimum > tol.nsss.acceptance_tol || !isfinite(sol_minimum) # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
@@ -5167,7 +5354,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                                                             false, # ext
                                                                             # false)
                                                                             s) 
-                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol)
+                        if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol # || rel_sol_minimum > rtol)
                             solved_yet = true
 
                             if verbose
@@ -5230,15 +5417,16 @@ end
 function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
                                                      opts::CalculationOptions = merge_calculation_options(),
-                                                     estimation::Bool = false) where M
+                                                     estimation::Bool = false,
+                                                     caching::Bool = true) where M
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation, caching = caching)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         return (false,
-            zeros(M, T.nVars),
+            zeros(T.nVars),
             SS_and_pars,
             solution_error,
             zeros(M,0,0),
@@ -5252,14 +5440,16 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
     ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = caching)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                          constants,
                                                          𝓂.workspaces,
                                                          𝓂.caches;
                                                          opts = opts,
-                                                         initial_guess = 𝓂.caches.qme_solution)
+                                                         initial_guess = 𝓂.caches.qme_solution,
+                                                         parameter_values = parameters,
+                                                         caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -5277,11 +5467,13 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces, caching = caching)
 
     𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
-                                                  opts = opts)
+                                                  opts = opts,
+                                                  parameter_values = parameters,
+                                                  caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -5339,11 +5531,29 @@ function calculate_stochastic_steady_state(::Val{:second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M
+    # Cache hit: return cached SSS if valid for current parameters
+    if caching && M === Float64 && !isempty(parameters) &&
+       cache_valid_for_parameters(𝓂.caches.valid_for.second_order_stochastic_steady_state, parameters)
+        cached_sss = 𝓂.caches.second_order_stochastic_steady_state::Vector{M}
+        if !isempty(cached_sss)
+            T = 𝓂.constants.post_model_macro
+            SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
+            ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
+            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
+            𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
+            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
+        end
+    end
+
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5359,22 +5569,48 @@ function calculate_stochastic_steady_state(::Val{:second_order},
 
     if !converged
         if opts.verbose println("SSS not found") end
+        if caching 𝓂.caches.second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
-    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.second_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.second_order_stochastic_steady_state = Float64.(parameters)
+    end
+
+    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M
+    # Cache hit: return cached pruned SSS if valid for current parameters
+    if caching && M === Float64 && !isempty(parameters) &&
+       cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_stochastic_steady_state, parameters)
+        cached_sss = 𝓂.caches.pruned_second_order_stochastic_steady_state::Vector{M}
+        if !isempty(cached_sss)
+            T = 𝓂.constants.post_model_macro
+            SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
+            ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
+            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
+            𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
+            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
+        end
+    end
+
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.pruned_second_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5384,7 +5620,14 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
     state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates +
             𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
 
-    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.pruned_second_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.pruned_second_order_stochastic_steady_state = Float64.(parameters)
+    end
+
+    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
@@ -5461,18 +5704,38 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M <: Real
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M <: Real
+    # Cache hit: return cached SSS if valid for current parameters
+    if caching && M === Float64 && !isempty(parameters) &&
+       cache_valid_for_parameters(𝓂.caches.valid_for.third_order_stochastic_steady_state, parameters)
+        cached_sss = 𝓂.caches.third_order_stochastic_steady_state::Vector{M}
+        if !isempty(cached_sss)
+            T = 𝓂.constants.post_model_macro
+            SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
+            ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
+            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
+            𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
+            𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
+            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = sparse(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
+        end
+    end
+
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5481,12 +5744,15 @@ function calculate_stochastic_steady_state(::Val{:third_order},
                                                  𝓂.workspaces,
                                                  𝓂.caches;
                                                  initial_guess = 𝓂.caches.third_order_solution,
-                                                 opts = opts)
+                                                 opts = opts,
+                                                 parameter_values = parameters,
+                                                 caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5511,30 +5777,59 @@ function calculate_stochastic_steady_state(::Val{:third_order},
 
     if !converged
         if opts.verbose println("SSS not found") end
+        if caching 𝓂.caches.third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1), ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
 
-    return all_SS + Vector{M}(state), converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.third_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.third_order_stochastic_steady_state = Float64.(parameters)
+    end
+
+    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
-                                           estimation::Bool = false) where M <: Real
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation)
+                                           estimation::Bool = false,
+                                           caching::Bool = true) where M <: Real
+    # Cache hit: return cached pruned SSS if valid for current parameters
+    if caching && M === Float64 && !isempty(parameters) &&
+       cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state, parameters)
+        cached_sss = 𝓂.caches.pruned_third_order_stochastic_steady_state::Vector{M}
+        if !isempty(cached_sss)
+            T = 𝓂.constants.post_model_macro
+            SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
+            ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
+            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
+            𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
+            𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
+            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = sparse(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
+        end
+    end
+
+    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
+        if caching 𝓂.caches.pruned_third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -5543,12 +5838,13 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                                  𝓂.workspaces,
                                                  𝓂.caches;
                                                  initial_guess = 𝓂.caches.third_order_solution,
-                                                 opts = opts)
+                                                 opts = opts, parameter_values = parameters, caching = caching)
 
     update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
     if !solved3
         if opts.verbose println("3rd order solution not found") end
+        if caching 𝓂.caches.pruned_third_order_stochastic_steady_state = all_SS end
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
@@ -5564,7 +5860,14 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
     state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
-    return all_SS + Vector{M}(state), true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    result = all_SS + Vector{M}(state)
+
+    if caching
+        𝓂.caches.pruned_third_order_stochastic_steady_state = result
+        𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state = Float64.(parameters)
+    end
+
+    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
@@ -5761,122 +6064,46 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        first_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.first_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.first_order_solution_matrix)
-        second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.second_order_solution, 𝓂.parameter_values) || size(𝓂.caches.second_order_solution, 2) == 0
-        pruned_second_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_second_order_stochastic_steady_state)
-        third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.third_order_solution, 𝓂.parameter_values) || size(𝓂.caches.third_order_solution, 2) == 0
-        pruned_third_order_needs_recalc = !cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_solution, 𝓂.parameter_values) || isempty(𝓂.caches.pruned_third_order_stochastic_steady_state)
-
-        obc_not_solved = isempty(𝓂.caches.first_order_obc_solution_matrix)
-
-        if  ((:first_order         == algorithm) && (first_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:second_order        == algorithm) && (second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:pruned_second_order == algorithm) && (pruned_second_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:third_order         == algorithm) && (third_order_needs_recalc || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && (pruned_third_order_needs_recalc || (obc && obc_not_solved)))
-
-            # @timeit_debug timer "Solve for NSSS (if necessary)" begin
-
+        if algorithm == :first_order
             SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-            # end # timeit_debug
+            @assert solution_error < opts.tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
 
-            @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
-            
-            # @timeit_debug timer "Calculate Jacobian" begin
-
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
-            
-            # end # timeit_debug
-
-            # @timeit_debug timer "Calculate first order solution" begin
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
                                                                 𝓂.workspaces,
                                                                 𝓂.caches;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.caches.qme_solution)
+                                                                initial_guess = 𝓂.caches.qme_solution,
+                                                                parameter_values = 𝓂.parameter_values)
 
             update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
-            # end # timeit_debug
-
             @assert solved "Could not find stable first order solution."
 
-            if obc
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+        elseif algorithm == :second_order
+            sss_result = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
-            
-                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
-                                                                    constants,
-                                                                    𝓂.workspaces,
-                                                                    𝓂.caches;
-                                                                    opts = opts,
-                                                                    initial_guess = 𝓂.caches.qme_solution)
-                
-                update_perturbation_counter!(𝓂.counters, solved, order = 1)
+        elseif algorithm == :pruned_second_order
+            sss_result = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+        elseif algorithm == :third_order
+            calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            sss_result = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
-                𝓂.caches.first_order_obc_solution_matrix = Ŝ₁
-            else
-                𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
-            end
-            
-            𝓂.caches.first_order_solution_matrix = S₁
-            cache_ss = 𝓂.caches.non_stochastic_steady_state
-            if length(cache_ss) != length(SS_and_pars)
-                resize!(cache_ss, length(SS_and_pars))
-            end
-            copyto!(cache_ss, SS_and_pars)
+        elseif algorithm == :pruned_third_order
+            calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            sss_result = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts)
+            if !sss_result[2]  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
         end
 
-        if  ((:second_order  == algorithm) && second_order_needs_recalc) ||
-            ((:third_order  == algorithm) && third_order_needs_recalc)
-            
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
-            
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.second_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-        
-        if  ((:pruned_second_order  == algorithm) && pruned_second_order_needs_recalc) ||
-            ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts) # , timer = timer)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.pruned_second_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.pruned_second_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-        
-        if  ((:third_order  == algorithm) && third_order_needs_recalc)
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.third_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
-        end
-
-        if ((:pruned_third_order  == algorithm) && pruned_third_order_needs_recalc)
-
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts)
-
-            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
-
-            𝓂.caches.pruned_third_order_stochastic_steady_state = stochastic_steady_state
-
-            𝓂.caches.valid_for.pruned_third_order_solution = eltype(𝓂.parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(𝓂.parameter_values)) : Float64.(𝓂.parameter_values)
+        if obc
+            calculate_first_order_obc_solution!(𝓂, constants, opts)
         end
 
     end
@@ -5893,6 +6120,7 @@ function create_second_order_auxiliary_matrices(constants::constants)
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
+    n = T.nVars
     nₑ = T.nExo
 
     # setup compression matrices for hessian matrix
@@ -5906,25 +6134,44 @@ function create_second_order_auxiliary_matrices(constants::constants)
     redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
     redu_idxs = findnz(ℒ.kron(redu, redu))[1]
     𝛔 = @views sparse(redu_idxs[Int.(range(1,nₑ^2,nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1, nₑ₋^2, nₑ₋^2)
-    
     # setup compression matrices for transition matrix
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
     𝐂₂ = sparse(colls2, 1:length(colls2), 1)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
+    # Build symmetrised volatility: 𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+    # P_swap is the commutation matrix swapping axes 1 and 2 in nₑ₋² space
+    swap_rows = Vector{Int}(undef, nₑ₋^2)
+    swap_cols = Vector{Int}(undef, nₑ₋^2)
+    @inbounds for a in 1:nₑ₋, b in 1:nₑ₋
+        idx = (a - 1) * nₑ₋ + b
+        swap_rows[idx] = idx
+        swap_cols[idx] = (b - 1) * nₑ₋ + a
+    end
+    P_swap = sparse(swap_rows, swap_cols, ones(Int, nₑ₋^2), nₑ₋^2, nₑ₋^2)
+    𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+
     so = constants.second_order
     so.𝛔 = 𝛔
+    so.𝛔_sym = 𝛔_sym
     so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
     so.𝛔𝐂₂ = 𝛔 * 𝐂₂
     so.𝐂₂ = 𝐂₂
     so.𝐔₂ = 𝐔₂
     so.𝐔∇₂ = 𝐔∇₂
-    so.𝐔₂_nonempty_col_as_kron_rowmask = Int[]
+    so.𝐈ₙ₊ = sparse(1:T.nFuture_not_past_and_mixed, T.future_not_past_and_mixed_idx, 1, T.nFuture_not_past_and_mixed, n)
+    so.𝐈ₙ₋ = sparse(1:T.nPast_not_future_and_mixed, T.past_not_future_and_mixed_idx, 1, T.nPast_not_future_and_mixed, n)
+    so.∇₂_nonempty_col_as_kron_rowmask = Int[]
     sigma_row_lookup = falses(size(so.𝛔c₂, 1))
     @inbounds for r in so.𝛔c₂.rowval
         sigma_row_lookup[r] = true
     end
     so.𝛔𝐂₂_nonempty_row_as_kron_colmask = findall(sigma_row_lookup)
+    # Pre-transposed constants for rrule pullback (computed once)
+    so.𝛔ᵀ = sparse(𝛔')
+    so.𝐂₂ᵀ = sparse(𝐂₂')
+    so.𝐔₂ᵀ = sparse(𝐔₂')
+    so.𝐔∇₂ᵀ = sparse(𝐔∇₂')
     return so
 end
 
@@ -6046,7 +6293,9 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐈₃ = 𝐈₃
     to.𝐂∇₃ = 𝐂∇₃
     to.𝐔∇₃ = 𝐔∇₃
+    to.∇₃_rowmask = sort!(unique(∇₃_col_indices))
     to.𝐏 = 𝐏
+    to.𝐏𝐂₃ = 𝐏 * 𝐂₃
     to.𝐏₁ₗ = 𝐏₁ₗ
     to.𝐏₁ᵣ = 𝐏₁ᵣ
     to.𝐏₁ₗ̂ = 𝐏₁ₗ̂
@@ -6056,6 +6305,16 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     to.𝐏₁ᵣ̃ = 𝐏₁ᵣ̃
     to.𝐏₂ᵣ̃ = 𝐏₂ᵣ̃
     to.𝐒𝐏 = 𝐒𝐏
+    # Pre-transposed constants for rrule pullback (computed once)
+    to.𝐂₃ᵀ = sparse(𝐂₃')
+    to.𝐔₃ᵀ = sparse(𝐔₃')
+    to.𝐏𝐂₃ᵀ = sparse((to.𝐏𝐂₃)')
+    to.𝐏₁ₗᵀ = sparse(𝐏₁ₗ')
+    to.𝐏₁ᵣᵀ = sparse(𝐏₁ᵣ')
+    to.𝐏₁ₗ̄ᵀ = sparse(𝐏₁ₗ̄')
+    to.𝐏₂ₗ̄ᵀ = sparse(𝐏₂ₗ̄')
+    to.𝐏₁ᵣ̃ᵀ = sparse(𝐏₁ᵣ̃')
+    to.𝐏₂ᵣ̃ᵀ = sparse(𝐏₂ᵣ̃')
     return to
 end
 
@@ -6528,17 +6787,27 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
 
+    function prepare_sensitivity_buffer(derivative_sensitivities)
+        transposed = derivative_sensitivities isa SparseMatrixCSC ? sparse(transpose(derivative_sensitivities)) : permutedims(derivative_sensitivities)
+        lennz = nnz(transposed)
+
+        if (lennz / length(transposed) > density_threshold) || (length(transposed) < min_length)
+            return convert(Matrix, transposed), zeros(Float64, size(transposed)), lennz
+        end
+
+        buffer = similar(transposed, Float64)
+        buffer.nzval .= 0
+        return transposed, buffer, lennz
+    end
+
 
     ∇₁_dyn = derivatives[1][1]
 
     lennz = nnz(∇₁_dyn)
 
     jacobian_dense_by_heuristic = (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
-    # NOTE: Keep Jacobian generation and cache buffer dense for allocation/perf profiling consistency.
     # Re-enable `jacobian_dense_by_heuristic` directly to restore sparse Jacobian path switching.
-    force_dense_jacobian = true
-
-    if force_dense_jacobian || jacobian_dense_by_heuristic
+    if jacobian_dense_by_heuristic
         derivatives_mat = convert(Matrix, ∇₁_dyn)
         buffer = zeros(Float64, size(∇₁_dyn))
     else
@@ -6564,18 +6833,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.caches.jacobian = buffer
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:nps]
-
-    lennz = nnz(∇₁_parameters)
-
-    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
-        ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
-        buffer_parameters = zeros(Float64, size(∇₁_parameters))
-    else
-        ∇₁_parameters_mat = ∇₁_parameters
-        buffer_parameters = similar(∇₁_parameters, Float64)
-        buffer_parameters.nzval .= 0
-    end
+    ∇₁_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,1:nps])
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -6594,18 +6852,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.caches.jacobian_parameters = buffer_parameters
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
-
-    lennz = nnz(∇₁_SS_and_pars)
-
-    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
-        ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
-        buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
-    else
-        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
-        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
-        buffer_SS_and_pars.nzval .= 0
-    end
+    ∇₁_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,nps+1:end])
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -6721,7 +6968,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             ∇₂_dyn = derivatives[2][1]
 
             𝓂.constants.second_order = create_second_order_auxiliary_matrices(𝓂.constants)
-            𝓂.constants.second_order.𝐔₂_nonempty_col_as_kron_rowmask = findall(@view(∇₂_dyn.colptr[1:end-1]) .< @view(∇₂_dyn.colptr[2:end]))
+            𝓂.constants.second_order.∇₂_nonempty_col_as_kron_rowmask = findall(@view(∇₂_dyn.colptr[1:end-1]) .< @view(∇₂_dyn.colptr[2:end]))
 
             lennz = nnz(∇₂_dyn)
 
@@ -6751,18 +6998,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.hessian = buffer
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:nps]
-
-            lennz = nnz(∇₂_parameters)
-
-            if (lennz / length(∇₂_parameters) > density_threshold) || (length(∇₂_parameters) < min_length)
-                ∇₂_parameters_mat = convert(Matrix, ∇₂_parameters)
-                buffer_parameters = zeros(Float64, size(∇₂_parameters))
-            else
-                ∇₂_parameters_mat = ∇₂_parameters
-                buffer_parameters = similar(∇₂_parameters, Float64)
-                buffer_parameters.nzval .= 0
-            end
+            ∇₂_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,1:nps])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6781,18 +7017,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.hessian_parameters = buffer_parameters
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
-
-            lennz = nnz(∇₂_SS_and_pars)
-
-            if (lennz / length(∇₂_SS_and_pars) > density_threshold) || (length(∇₂_SS_and_pars) < min_length)
-                ∇₂_SS_and_pars_mat = convert(Matrix, ∇₂_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₂_SS_and_pars))
-            else
-                ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
-                buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
-            end
+            ∇₂_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,nps+1:end])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6852,18 +7077,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.third_order_derivatives = buffer
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:nps]
-
-            lennz = nnz(∇₃_parameters)
-
-            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
-                ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
-                buffer_parameters = zeros(Float64, size(∇₃_parameters))
-            else
-                ∇₃_parameters_mat = ∇₃_parameters
-                buffer_parameters = similar(∇₃_parameters, Float64)
-                buffer_parameters.nzval .= 0
-            end
+            ∇₃_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,1:nps])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6882,18 +7096,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.caches.third_order_derivatives_parameters = buffer_parameters
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
-
-            lennz = nnz(∇₃_SS_and_pars)
-
-            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
-                ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
-            else
-                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
-                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
-            end
+            ∇₃_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,nps+1:end])
 
             if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
@@ -6915,6 +7118,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.functions.third_order_derivatives = third_order_derivatives_functions(func_exprs, func_∇₃_parameters, func_∇₃_SS_and_pars)
         end
     end
+
+    # Invalidate derivative stamps since buffers were replaced with fresh (zeroed) content.
+    # Without this, calculate_jacobian/hessian/third_order_derivatives would return stale
+    # zero-filled buffers on a cache hit, causing downstream DimensionMismatch errors.
+    𝓂.caches.valid_for.jacobian = Float64[]
 
     return nothing
 end
@@ -7308,7 +7516,14 @@ end
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             caches_obj::caches,
-                            jacobian_funcs::jacobian_functions)::Matrix{M} where {M,N}
+                            jacobian_funcs::jacobian_functions,
+                            workspaces::workspaces;
+                            caching::Bool = true)::Matrix{M} where {M,N}
+    # Cache hit: return cached jacobian if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.jacobian, parameters) && caches_obj.jacobian isa Matrix{M} && !isempty(caches_obj.jacobian)
+        return caches_obj.jacobian
+    end
+
     if eltype(caches_obj.jacobian) != M
         if caches_obj.jacobian isa SparseMatrixCSC
             jac_buffer = similar(caches_obj.jacobian,M)
@@ -7322,8 +7537,9 @@ function calculate_jacobian(parameters::Vector{M},
     
     jacobian_funcs.f(jac_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.jacobian = jac_buffer
+        caches_obj.valid_for.jacobian = Float64.(parameters)
     end
     
     return jac_buffer
@@ -7332,7 +7548,19 @@ end
 function calculate_hessian(parameters::Vector{M}, 
                             SS_and_pars::Vector{N}, 
                             caches_obj::caches,
-                            hessian_funcs::hessian_functions)::SparseMatrixCSC{M, Int} where {M,N}
+                            hessian_funcs::hessian_functions,
+                            workspaces::workspaces;
+                            caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
+    # Cache hit: return cached hessian if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.hessian, parameters) && caches_obj.hessian isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.hessian)
+        return caches_obj.hessian
+    end
+
+    S = promote_type(M, N)
+    if eltype(workspaces.second_order.Ŝ) != S
+        workspaces.second_order = Higher_order_workspace(T = S)
+    end
+
     if eltype(caches_obj.hessian) != M
         if caches_obj.hessian isa SparseMatrixCSC
             hes_buffer = similar(caches_obj.hessian,M)
@@ -7346,8 +7574,9 @@ function calculate_hessian(parameters::Vector{M},
 
     hessian_funcs.f(hes_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.hessian = hes_buffer
+        caches_obj.valid_for.hessian = Float64.(parameters)
     end
     
     return hes_buffer
@@ -7357,7 +7586,19 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             caches_obj::caches,
-                                            third_order_derivatives_funcs::third_order_derivatives_functions)::SparseMatrixCSC{M, Int} where {M,N}
+                                            third_order_derivatives_funcs::third_order_derivatives_functions,
+                                            workspaces::workspaces;
+                                            caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
+    # Cache hit: return cached third order derivatives if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.third_order_derivatives, parameters) && caches_obj.third_order_derivatives isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.third_order_derivatives)
+        return caches_obj.third_order_derivatives
+    end
+
+    S = promote_type(M, N)
+    if eltype(workspaces.third_order.Ŝ) != S
+        workspaces.third_order = Higher_order_workspace(T = S)
+    end
+
     if eltype(caches_obj.third_order_derivatives) != M
         if caches_obj.third_order_derivatives isa SparseMatrixCSC
             third_buffer = similar(caches_obj.third_order_derivatives,M)
@@ -7371,8 +7612,9 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     third_order_derivatives_funcs.f(third_buffer, parameters, SS_and_pars)
 
-    if M === Float64
+    if caching && M === Float64
         caches_obj.third_order_derivatives = third_buffer
+        caches_obj.valid_for.third_order_derivatives = Float64.(parameters)
     end
     
     return third_buffer
@@ -8405,7 +8647,39 @@ end
 
 end # dispatch_doctor
 
-noop_state_update(::Float64, ::Float64) = nothing
+noop_state_update(state::AbstractVector{<:Real}, ::AbstractVector{<:Real}) = state
+noop_state_update(state::AbstractVector{<:AbstractVector{<:Real}}, ::AbstractVector{<:Real}) = state
+
+function initialize_pruned_state(state::AbstractVector{T}, n_states::Int) where T <: Real
+    return [Vector{T}(state), zeros(T, n_states)]
+end
+
+function initialize_pruned_state(state::AbstractVector{T}, n_states::Int, ::Val{3}) where T <: Real
+    return [Vector{T}(state), zeros(T, n_states), zeros(T, n_states)]
+end
+
+function pruned_second_order_state_update(pruned_states::AbstractVector{<:AbstractVector{T}}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
+    aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+    aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+end
+
+function pruned_second_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
+    return pruned_second_order_state_update(initialize_pruned_state(state, n_states), shock, past_idx, n_states, 𝐒₁, 𝐒₂)
+end
+
+function pruned_third_order_state_update(pruned_states::AbstractVector{<:AbstractVector{T}}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂, 𝐒₃) where {T <: Real, S <: Real}
+    aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
+    aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
+    aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
+    aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
+    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+end
+
+function pruned_third_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂, 𝐒₃) where {T <: Real, S <: Real}
+    return pruned_third_order_state_update(initialize_pruned_state(state, n_states, Val(3)), shock, past_idx, n_states, 𝐒₁, 𝐒₂, 𝐒₃)
+end
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update
@@ -8442,25 +8716,12 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif algorithm == :pruned_second_order
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
-            end
+            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂)
         elseif algorithm == :pruned_third_order
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-            end
+            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂, 𝐒₃)
         end
     else
         if algorithm == :first_order
@@ -8490,26 +8751,13 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
-            end
+            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂)
         elseif algorithm == :pruned_third_order
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-            end
+            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
         end
     end
 
@@ -8677,11 +8925,18 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
                                     cold_start::Bool = false,
-                                    estimation::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    estimation::Bool = false,
+                                    caching::Bool = true)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
+
     # @timeit_debug timer "Calculate NSSS" begin
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     
+    # Cache hit: return cached NSSS if valid for current parameters
+    if caching && S === Float64 && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)
+        return (copy(𝓂.caches.non_stochastic_steady_state), (zero(S), 0))::Tuple{Vector{S}, Tuple{S, Int}}
+    end
+
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
         vars_in_ss_equations = ms.vars_in_ss_equations
@@ -8694,7 +8949,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = 𝓂.workspaces.nsss_solver.check_residual
+        fill!(residual, 0.0)
         
         𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
@@ -8702,8 +8958,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # if !isfinite(solution_error) || solution_error > opts.tol.nsss.acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.nsss.acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
@@ -8714,7 +8970,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end
 
     # Update counters
-    solved = !(solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error))
+    solved = !(solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error))
     update_ss_counter!(𝓂.counters, solved, estimation = estimation)
     
     if !solved
@@ -8725,6 +8981,21 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end
 
     # end # timeit_debug
+
+    # Cache write: store NSSS result and stamp
+    if caching
+        cache_ss = 𝓂.caches.non_stochastic_steady_state
+        if length(cache_ss) != length(SS_and_pars)
+            resize!(cache_ss, length(SS_and_pars))
+        end
+        copyto!(cache_ss, SS_and_pars)
+        if solved
+            𝓂.caches.valid_for.non_stochastic_steady_state = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+        else
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+        end
+    end
+
     return SS_and_pars, (solution_error, iters)
 end
 
@@ -8753,7 +9024,7 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
     
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
@@ -8776,7 +9047,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
@@ -8799,7 +9070,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer,  
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
@@ -8822,7 +9093,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
     end
@@ -8849,19 +9120,20 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     state = zeros(𝓂.constants.post_model_macro.nVars)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
+    if solution_error > opts.tol.nsss.acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
         # println("NSSS not found")
-        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.nsss.acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution)
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameter_values)
 
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)

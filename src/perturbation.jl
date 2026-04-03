@@ -7,7 +7,18 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_qr::Bool = true,
                                         use_fastlapack_lu::Bool = true,
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        parameter_values::AbstractVector{<:Real} = Float64[],
+                                        caching::Bool = true)::Tuple{Matrix{R}, Matrix{R}, Bool} where {R <: AbstractFloat}
+    # Cache hit: return cached first-order solution if valid for current parameters
+    if caching && R === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.first_order_solution, parameter_values)
+        S₁_cached = cache.first_order_solution_matrix
+        qme_cached = cache.qme_solution
+        if S₁_cached isa Matrix{R} && !isempty(S₁_cached) && qme_cached isa Matrix{R} && !isempty(qme_cached)
+            return S₁_cached, qme_cached, true
+        end
+    end
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -83,13 +94,12 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     use_fastlapack_lu = use_fastlapack_lu,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
+                                                    tol = opts.tol.first_order.qme,
                                                     verbose = opts.verbose)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # end # timeit_debug
@@ -125,7 +135,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved_Ā₀ᵤ
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -178,7 +188,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved_∇₀
         if opts.verbose println("Factorisation of ∇₀ failed") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     solve_lu_left!(∇₀, ∇ₑ, qme_ws.fast_lu_ws_nabla0, C;
@@ -193,14 +203,24 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     n_cols_ϵ = size(∇ₑ, 2)
     total_cols = n_cols_A + n_cols_ϵ
 
-    S₁_existing = cache.first_order_solution_matrix
-    if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
-        copyto!(@view(S₁_existing[:, 1:n_cols_A]), A)
-        copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇ₑ)
-        S₁ = S₁_existing
+    S₁ = if caching
+        S₁_existing = cache.first_order_solution_matrix
+        if S₁_existing isa Matrix{R} && size(S₁_existing) == (n_rows, total_cols)
+            copyto!(@view(S₁_existing[:, 1:n_cols_A]), A)
+            copyto!(@view(S₁_existing[:, n_cols_A+1:total_cols]), ∇ₑ)
+            S₁_existing
+        else
+            S₁_tmp = hcat(A, ∇ₑ)
+            cache.first_order_solution_matrix = S₁_tmp
+            S₁_tmp
+        end
     else
-        S₁ = hcat(A, ∇ₑ)
-        cache.first_order_solution_matrix = S₁
+        hcat(A, ∇ₑ)
+    end
+
+    # Stamp cache validity for current parameters
+    if caching && !isempty(parameter_values)
+        cache.valid_for.first_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
     end
 
     return S₁, sol, true
@@ -214,7 +234,17 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             workspaces::workspaces,
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            parameter_values::AbstractVector{<:Real} = Float64[],
+                                            caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+    # Cache hit: return cached second-order solution if valid for current parameters
+    if caching && S === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.second_order_solution, parameter_values)
+        cached = cache.second_order_solution
+        if cached isa Matrix{S} && !isempty(cached)
+            return cached, true
+        end
+    end
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -235,6 +265,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     initial_guess_sylv = if length(initial_guess) == 0
         zeros(S, 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -246,10 +278,16 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
     # droptol!(𝐒₁,tol)
     
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]# |> sparse
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
     # droptol!(𝐒₁₋╱𝟏ₑ,tol)
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0)
 
@@ -262,7 +300,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     # droptol!(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,tol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
 
@@ -279,11 +317,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # spinv = choose_matrix_format(spinv)
 
     # end # timeit_debug
-
     # @timeit_debug timer "Setup second order matrices" begin
     # @timeit_debug timer "A" begin
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
     
@@ -294,7 +331,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     #   ∇₂ * compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
     # This skips explicit right-compression by M₂.𝐂₂ for this term.
     kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                         sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
     term1 = ∇₂ * kron_compressed
@@ -302,7 +339,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # Build second forcing term in compressed Hessian space with extra pruning.
     # We only keep compressed-kron columns that can survive right multiplication by σc₂.
     kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
-                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                             colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
                                             sparse_preallocation = ℂ.tmp_sparse_prealloc3)
 
@@ -326,8 +363,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.second_order.sylvester,
                                             verbose = opts.verbose)
 
     # end # timeit_debug
@@ -354,7 +390,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved
+    if solved && caching
         if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
             copyto!(cache.second_order_solution, 𝐒₂)
         elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
@@ -364,6 +400,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
             copyto!(cache.second_order_solution.nzval, 𝐒₂.nzval)
         else
             cache.second_order_solution = copy(𝐒₂)
+        end
+        if !isempty(parameter_values)
+            cache.valid_for.second_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+            cache.valid_for.pruned_second_order_solution = Float64[]
         end
     end
 
@@ -380,7 +420,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             workspaces::workspaces,
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+                                            opts::CalculationOptions = merge_calculation_options(),
+                                            parameter_values::AbstractVector{<:Real} = Float64[],
+                                            caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    # Cache hit: return cached third-order solution if valid for current parameters
+    if caching && S === Float64 && !isempty(parameter_values) &&
+       cache_valid_for_parameters(cache.valid_for.third_order_solution, parameter_values)
+        cached = cache.third_order_solution
+        if cached isa Matrix{S} && !isempty(cached)
+            return cached, true
+        end
+    end
     if !(eltype(workspaces.third_order.Ŝ) == S)
         workspaces.third_order = Higher_order_workspace(T = S)
     end
@@ -408,6 +458,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     n = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     initial_guess_sylv = if length(initial_guess) == 0
         zeros(S, 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -419,11 +471,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
     
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
 
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
@@ -431,7 +489,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
@@ -450,7 +508,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # end # timeit_debug
     
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
 
@@ -458,16 +516,20 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Add tmpkron" begin
 
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
+    # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    # B *= M₃.𝐂₃
+    # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.third_order.droptol, multithreaded = false)
+        # println("size(𝐒₁₋╱𝟏ₑ) = ",size(𝐒₁₋╱𝟏ₑ))
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
+    # println("size(B) = ",size(B))
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -478,7 +540,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
             
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.third_order.droptol)
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
@@ -489,86 +551,69 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "∇₃" begin   
 
+    # if length(ℂ.tmpkron0) > 0 && eltype(ℂ.tmpkron0) == S
+    #     ℒ.kron!(ℂ.tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+    # else
+    #     ℂ.tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+    # end
+    
+    # if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
+    #     ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
+    # else
+    #     ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
+    # end
+
+    # # tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
+
+    # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    # 𝐗₃ = 𝐔∇₃ * ℂ.tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₂ᵣ̃
+
+    # end # timeit_debug
+    # @timeit_debug timer "∇₂ & ∇₁₊" begin
+
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
+
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
+
+    𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
+
+    # Terms (a)+(b): ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * [tmpkron2 + 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ] * 𝐏𝐂₃
+    # Compute D_ab to avoid materializing kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    tmpkron2_sp = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol))
+    D_ab = (tmpkron2_sp + M₃.𝐏₁ₗ * tmpkron2_sp * M₃.𝐏₁ᵣ) * M₃.𝐏𝐂₃
+
+    𝐗₃ = mat_mult_kron(∇₂, collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎), D_ab, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
+
+    # Term (c): ∇₂ * kron(⎸𝐒₁..⎹, ⎸𝐒₂k..⎹) * 𝐏𝐂₃
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+
+    # Term (d): ∇₂ * kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎*𝛔) * 𝐏𝐂₃
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
+
+    # Term (e): ∇₁₊ * 𝐒₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) * 𝐏𝐂₃
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol)
+    
+    𝐗₃ += mat_mult_kron(∇₁₊ * 𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, M₃.𝐏𝐂₃, sparse = true)
+
     if length(ℂ.tmpkron0) > 0 && eltype(ℂ.tmpkron0) == S
         ℒ.kron!(ℂ.tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
     else
         ℂ.tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
     end
-    
-    if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
-        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    else
-        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    end
 
-    # tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
+    ℂ.tmpkron0 *= M₂.𝛔
+    # ℒ.rmul!(ℂ.tmpkron0, M₂.𝛔)
 
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
-    𝐗₃ = 𝐔∇₃ * ℂ.tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₂ᵣ̃
-    
-    # end # timeit_debug
-    # @timeit_debug timer "∇₂ & ∇₁₊" begin
-
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    if length(ℂ.tmpkron1) > 0 && eltype(ℂ.tmpkron1) == S
-        ℒ.kron!(ℂ.tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    else
-        ℂ.tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    end
-
-    if length(ℂ.tmpkron2) > 0 && eltype(ℂ.tmpkron2) == S
-        ℒ.kron!(ℂ.tmpkron2, M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-    else
-        ℂ.tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-    end
-    
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
-
-    # @timeit_debug timer "Step 1" begin
-    out2 = ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2 # this help
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 2" begin
-
-    # end # timeit_debug  
-    # @timeit_debug timer "Step 3" begin
-
-    out2 += ∇₂ * ℂ.tmpkron1 * M₃.𝐏₁ₗ * ℂ.tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 4" begin
-
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
-
-    # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)# |> findnz
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 5" begin
-        # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
-        # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
-        # out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
-    out2 += ∇₁₊ * mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
-    
-    # end # timeit_debug
-    # @timeit_debug timer "Mult" begin
-    # ℒ.mul!(𝐗₃, out2, M₃.𝐏, 1, 1) # less memory but way slower; .+= also more memory and slower
-    𝐗₃ += out2 * M₃.𝐏
-
-    𝐗₃ *= M₃.𝐂₃
-
+    𝐗₃ += mul_compressed_permuted_mixed_kron(∇₃, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                                ℂ.tmpkron0,
+                                                sparse_preallocation = ℂ.tmp_sparse_prealloc6)
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
+    𝐗₃ += mul_compressed_kron³(∇₃, aux, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
@@ -582,8 +627,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.third_order.sylvester,
                                             verbose = opts.verbose)
     
     # end # timeit_debug
@@ -607,12 +651,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # 𝐒₃ *= M₃.𝐔₃
 
-    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.droptol)
+    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
 
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved
+    if solved && caching
         if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
             copyto!(cache.third_order_solution, 𝐒₃)
         elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&
@@ -622,6 +666,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
             copyto!(cache.third_order_solution.nzval, 𝐒₃.nzval)
         else
             cache.third_order_solution = copy(𝐒₃)
+        end
+        if !isempty(parameter_values)
+            cache.valid_for.third_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+            cache.valid_for.pruned_third_order_solution = Float64[]
         end
     end
 

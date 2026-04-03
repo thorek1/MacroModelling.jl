@@ -10,14 +10,68 @@
 # solves: A * X * A' + C = X
 @stable default_mode = "disable" begin
 
+# Pack upper triangle of a symmetric matrix into a vech vector (in-place).
+function vech!(vech_vector::AbstractVector, symmetric_matrix::AbstractMatrix)
+    matrix_size = size(symmetric_matrix, 1)
+    @inbounds for column in 1:matrix_size
+        offset = div(column * (column - 1), 2)
+        @simd for row in 1:column
+            vech_vector[offset + row] = symmetric_matrix[row, column]
+        end
+    end
+    return vech_vector
+end
+
+# Unpack a vech vector into a full symmetric matrix (in-place).
+function fill_symmetric_from_vech!(symmetric_matrix::AbstractMatrix, vech_vector::AbstractVector)
+    matrix_size = size(symmetric_matrix, 1)
+    # Fill the upper triangle
+    @inbounds for column in 1:matrix_size
+        offset = div(column * (column - 1), 2)
+        @simd for row in 1:column
+            symmetric_matrix[row, column] = vech_vector[offset + row]
+        end
+    end
+    # Copy the upper triangle to the lower triangle
+    @inbounds for column in 1:matrix_size
+        @simd for row in (column + 1):matrix_size
+            symmetric_matrix[row, column] = symmetric_matrix[column, row]
+        end
+    end
+    return symmetric_matrix
+end
+
+# Approximate symmetry check (allocation-free).  Returns true when
+# max|C[i,j] - C[j,i]| ≤ rtol · max|C[i,j]| over all off-diagonal pairs.
+function _is_approx_symmetric(C::AbstractMatrix;
+                              rtol::Real = sqrt(eps(real(eltype(C)))))
+    m, n = size(C)
+    m == n || return false
+    max_asym = zero(real(eltype(C)))
+    max_abs  = zero(real(eltype(C)))
+    @inbounds for j in 1:n, i in 1:(j - 1)
+        max_asym = max(max_asym, abs(C[i, j] - C[j, i]))
+        max_abs  = max(max_abs,  abs(C[i, j]), abs(C[j, i]))
+    end
+    return max_abs == 0 ? true : max_asym ≤ rtol * max_abs
+end
+
 function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
+                                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                 lyapunov_algorithm::Symbol = :doubling,
-                                tol::AbstractFloat = 1e-14,
-                                acceptance_tol::AbstractFloat = 1e-12,
+                                tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                          rtol = 1e-14,
+                                                                          initial_guess_acceptance_tol = 1e-12,
+                                                                          acceptance_tol = 1e-12),
                                 verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
+    # Ownership: low-level methods below are mixed. Bartels-Stewart and sparse
+    # doubling paths return owned matrices, while dense doubling and Krylov
+    # paths can return workspace-backed buffers such as workspace.𝐂/workspace.𝐗.
+    # This dispatcher currently returns X directly, so callers must not retain
+    # the result across workspace reuse unless they make their own copy.
     # Update workspace dimension if needed (for cases like Kalman filter where dimension differs from initial setup)
     n = size(A, 1)
     if workspace.n != n
@@ -36,6 +90,29 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 
     # C = choose_matrix_format(C, density_threshold = 0.0)
     C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
+
+    initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
+    acceptance_tol = tol.acceptance_tol
+
+    if length(initial_guess) > 0
+        guess = initial_guess
+        if size(guess) == size(C)
+            ensure_lyapunov_doubling_buffers!(workspace)
+            _tmp = workspace.𝐂A
+            _res = workspace.𝐂¹
+            ℒ.mul!(_tmp, guess, A')
+            ℒ.mul!(_res, A, _tmp)
+            ℒ.axpy!(1, C, _res)
+            ℒ.axpy!(-1, guess, _res)
+
+            denom = max(ℒ.norm(guess), ℒ.norm(C))
+            reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
+            if reached_tol < initial_guess_acceptance_tol
+                if verbose println("Lyapunov equation - initial guess achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
+                return choose_matrix_format(guess), true
+            end
+        end
+    end
  
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
@@ -92,21 +169,24 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     ::Val{:bartels_stewart},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    # Note: workspace is unused by bartels_stewart but accepted for API consistency
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense matrix from MatrixEquations.lyapd.
     𝐂 = try 
         MatrixEquations.lyapd(A, C)::Matrix{T}
     catch
         return C, 0, 1.0
     end
     
-    # 𝐂¹ = A * 𝐂 * A' + C
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom   
+    # Allocation-free residual: use doubling workspace buffers as scratch
+    ensure_lyapunov_doubling_buffers!(workspace)
+    𝐂A_tmp = workspace.𝐂A
+    𝐂¹_tmp = workspace.𝐂¹
+    ℒ.mul!(𝐂A_tmp, 𝐂, A')
+    ℒ.mul!(𝐂¹_tmp, A, 𝐂A_tmp)
+    ℒ.axpy!(1, C, 𝐂¹_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹_tmp)
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+    reached_tol = ℒ.norm(𝐂¹_tmp) / ℒ.norm(𝐂)
 
     # if reached_tol > tol
     #     println("Lyapunov: lyapunov $reached_tol")
@@ -122,7 +202,8 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned sparse storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -140,7 +221,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -171,7 +252,8 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned sparse storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -192,7 +274,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -223,7 +305,8 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense storage created locally in this method.
     # Note: workspace is unused for sparse matrices but accepted for API consistency
     𝐂  = copy(C)
     𝐀  = copy(A)
@@ -235,7 +318,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
     iters = max_iter
 
     for i in 1:max_iter
-        # 𝐂¹ .= 𝐀 * 𝐂 * 𝐀' + 𝐂
+        # Sparse A: standard matmul is efficient; Symmetric wrapper lacks optimised sparse dispatch
         ℒ.mul!(𝐂A, 𝐂, 𝐀')
         ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
@@ -248,8 +331,11 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         droptol!(𝐀, eps())
 
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            copyto!(𝐂A, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂A)
+            normdiff = ℒ.norm(𝐂A)
+            maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+            if !isfinite(normdiff) || normdiff / maxnorm < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -260,21 +346,12 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         # 𝐂 = 𝐂¹
     end
 
-    # ℒ.mul!(𝐂A, 𝐂, A')
-    # ℒ.mul!(𝐂¹, A, 𝐂A)
-    # ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: doubling $reached_tol")
-    # end
+    reached_tol = ℒ.norm(𝐂¹) / ℒ.norm(𝐂)
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -287,7 +364,8 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense buffer workspace.𝐂.
     # Ensure doubling buffers are allocated
     ensure_lyapunov_doubling_buffers!(workspace)
     
@@ -307,15 +385,19 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     iters = max_iter
 
     for i in 1:max_iter
+        # Always use dgemm — dsymm is slower at typical DSGE sizes (n ≤ 400)
         ℒ.mul!(𝐂A, 𝐂, 𝐀')
         ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
         ℒ.mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
-        
+
         if i % 2 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            copyto!(𝐂A, 𝐂¹)
+            ℒ.axpy!(-1, 𝐂, 𝐂A)
+            normdiff = ℒ.norm(𝐂A)
+            maxnorm = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+            if !isfinite(normdiff) || normdiff / maxnorm < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -325,21 +407,12 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         copyto!(𝐂, 𝐂¹)
     end
 
-    # ℒ.mul!(𝐂A, 𝐂, A')
-    # ℒ.mul!(𝐂¹, A, 𝐂A)
-    # ℒ.axpy!(1, C, 𝐂¹)
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: doubling $reached_tol")
-    # end
+    reached_tol = ℒ.norm(𝐂¹) / ℒ.norm(𝐂)
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
@@ -352,48 +425,72 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 ::Val{:bicgstab},
                                 workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
-                                tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    # Ensure Krylov buffers and bicgstab solver are allocated
-    ensure_lyapunov_krylov_solver!(workspace, :bicgstab)
+                                tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     
-    # Use workspaces
-    tmp̄ = workspace.tmp̄
-    𝐗 = workspace.𝐗
-    b = workspace.b
+    if _is_approx_symmetric(C)
+        # vech-space Krylov: solve for n(n+1)/2 unique elements only
+        ensure_lyapunov_krylov_vech_solver!(workspace, :bicgstab)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        n = size(A, 1)
+        n_vech = n * (n + 1) ÷ 2
+        b_vech = workspace.b_vech
 
-    function lyapunov!(sol,𝐱)
-        copyto!(𝐗, 𝐱)
+        function lyapunov_vech_bicgstab!(sol, 𝐱)
+            fill_symmetric_from_vech!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            vech!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, n_vech, n_vech, true, true, lyapunov_vech_bicgstab!)
+
+        vech!(b_vech, C)
+
+        Krylov.bicgstab!(workspace.bicgstab_vech, lyapunov_op, b_vech, rtol = tol.rtol, atol = tol.atol)
+
+        fill_symmetric_from_vech!(𝐗, workspace.bicgstab_vech.x)
+
+        # Allocation-free residual: reuse tmp̄ for intermediate, 𝐗 is the solution
+        ensure_lyapunov_doubling_buffers!(workspace)
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
-        copyto!(sol, 𝐗)
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.bicgstab_vech.stats.niter, reached_tol
+    else
+        # Standard full-space Krylov
+        ensure_lyapunov_krylov_solver!(workspace, :bicgstab)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        b = workspace.b
+
+        function lyapunov_bicgstab!(sol,𝐱)
+            copyto!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            copyto!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov_bicgstab!)
+
+        copyto!(b, vec(C))
+        Krylov.bicgstab!(workspace.bicgstab, lyapunov_op, b, rtol = tol.rtol, atol = tol.atol)
+        copyto!(𝐗, workspace.bicgstab.x)
+
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.bicgstab.stats.niter, reached_tol
     end
-
-    lyapunov = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov!)
-
-    # Use vectorized C in workspace
-    copyto!(b, vec(C))
-    
-    # Use pre-allocated solver
-    Krylov.bicgstab!(workspace.bicgstab, lyapunov, b, rtol = tol, atol = tol)
-
-    copyto!(𝐗, workspace.bicgstab.x)
-
-    # ℒ.mul!(tmp̄, A, 𝐗 * A')
-    # ℒ.axpy!(1, C, tmp̄)
-
-    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
-
-    # ℒ.axpy!(-1, 𝐗, tmp̄)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-
-    reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: bicgstab $reached_tol")
-    # end
-
-    return 𝐗, workspace.bicgstab.stats.niter, reached_tol
 end
 
 
@@ -402,50 +499,72 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 ::Val{:gmres},
                                 workspace::lyapunov_workspace;
                                 # timer::TimerOutput = TimerOutput(),
-                                tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    # Ensure Krylov buffers and gmres solver are allocated
-    ensure_lyapunov_krylov_solver!(workspace, :gmres)
+                                tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     
-    # Use workspaces
-    tmp̄ = workspace.tmp̄
-    𝐗 = workspace.𝐗
-    b = workspace.b
+    if _is_approx_symmetric(C)
+        # vech-space Krylov: solve for n(n+1)/2 unique elements only
+        ensure_lyapunov_krylov_vech_solver!(workspace, :gmres)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        n = size(A, 1)
+        n_vech = n * (n + 1) ÷ 2
+        b_vech = workspace.b_vech
 
-    function lyapunov!(sol,𝐱)
-        copyto!(𝐗, 𝐱)
-        # 𝐗 = @view reshape(𝐱, size(𝐗))
+        function lyapunov_vech_gmres!(sol, 𝐱)
+            fill_symmetric_from_vech!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            vech!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, n_vech, n_vech, true, true, lyapunov_vech_gmres!)
+
+        vech!(b_vech, C)
+
+        Krylov.gmres!(workspace.gmres_vech, lyapunov_op, b_vech, rtol = tol.rtol, atol = tol.atol)
+
+        fill_symmetric_from_vech!(𝐗, workspace.gmres_vech.x)
+
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
-        copyto!(sol, 𝐗)
-        # sol = @view reshape(𝐗, size(sol))
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.gmres_vech.stats.niter, reached_tol
+    else
+        # Standard full-space Krylov
+        ensure_lyapunov_krylov_solver!(workspace, :gmres)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        b = workspace.b
+
+        function lyapunov_gmres!(sol,𝐱)
+            copyto!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            copyto!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov_gmres!)
+
+        copyto!(b, vec(C))
+        Krylov.gmres!(workspace.gmres, lyapunov_op, b, rtol = tol.rtol, atol = tol.atol)
+        copyto!(𝐗, workspace.gmres.x)
+
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.gmres.stats.niter, reached_tol
     end
-
-    lyapunov = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov!)
-
-    # Use vectorized C in workspace
-    copyto!(b, vec(C))
-    
-    # Use pre-allocated solver
-    Krylov.gmres!(workspace.gmres, lyapunov, b, rtol = tol, atol = tol)
-
-    copyto!(𝐗, workspace.gmres.x)
-
-    # ℒ.mul!(tmp̄, A, 𝐗 * A')
-    # ℒ.axpy!(1, C, tmp̄)
-
-    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
-
-    # ℒ.axpy!(-1, 𝐗, tmp̄)
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-
-    reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: gmres $reached_tol")
-    # end
-
-    return 𝐗, workspace.gmres.stats.niter, reached_tol
 end
 
 

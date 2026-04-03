@@ -188,12 +188,9 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         # x += Δx
         ℒ.axpy!(-1, Δx, x)
     end
-
     copyto!(x_aug, 1, x, 1, length(x))
     kron_x_aug = ℒ.kron(x_aug, x_aug)
     solved = isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)         
-
-    # println(x)
 
     ∂𝐒₁ =  zero(𝐒₁)
     ∂𝐒₂ =  zero(𝐒₂)
@@ -203,13 +200,11 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
 
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
-
         S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
         ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * kron_x_aug' / 2
-
         # end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
@@ -305,22 +300,25 @@ function rrule(::typeof(calculate_jacobian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                jacobian_funcs::jacobian_functions)
-    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
+                jacobian_funcs::jacobian_functions,
+                workspaces::workspaces)
+    jacobian = calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs, workspaces)
+    ∂∇₁_vec = ensure_first_order_cotangent_buffer!(workspaces.first_order, length(jacobian))
 
     function calculate_jacobian_pullback(∂∇₁)
         if ∂∇₁ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁u = unthunk(∂∇₁)
+        copyto!(∂∇₁_vec, ∂∇₁u)
 
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
         jacobian_funcs.f_SS_and_pars(caches_obj.jacobian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.jacobian_parameters' * vec(∂∇₁u)
-        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars' * vec(∂∇₁u)
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        ∂parameters = caches_obj.jacobian_parameters * ∂∇₁_vec
+        ∂SS_and_pars = caches_obj.jacobian_SS_and_pars * ∂∇₁_vec
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
@@ -331,23 +329,26 @@ function rrule(::typeof(calculate_hessian),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                hessian_funcs::hessian_functions)
-    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs)
+                hessian_funcs::hessian_functions,
+                workspaces::workspaces)
+    hessian = calculate_hessian(parameters, SS_and_pars, caches_obj, hessian_funcs, workspaces)
+    ∂∇₂_vec = ensure_higher_order_cotangent_buffer!(workspaces.second_order, length(hessian))
 
     function calculate_hessian_pullback(∂∇₂)
         if ∂∇₂ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₂u = unthunk(∂∇₂)
+        copyto!(∂∇₂_vec, ∂∇₂u)
 
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
         hessian_funcs.f_SS_and_pars(caches_obj.hessian_SS_and_pars, parameters, SS_and_pars)
 
-        ∂parameters = caches_obj.hessian_parameters' * vec(∂∇₂u)
-        ∂SS_and_pars = caches_obj.hessian_SS_and_pars' * vec(∂∇₂u)
+        ∂parameters = caches_obj.hessian_parameters * ∂∇₂_vec
+        ∂SS_and_pars = caches_obj.hessian_SS_and_pars * ∂∇₂_vec
 
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return hessian, calculate_hessian_pullback
@@ -358,23 +359,26 @@ function rrule(::typeof(calculate_third_order_derivatives),
                 parameters, 
                 SS_and_pars, 
                 caches_obj::caches,
-                third_order_derivatives_funcs::third_order_derivatives_functions)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs)
+                third_order_derivatives_funcs::third_order_derivatives_functions,
+                workspaces::workspaces)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, caches_obj, third_order_derivatives_funcs, workspaces)
+    ∂∇₃_vec = ensure_higher_order_cotangent_buffer!(workspaces.third_order, length(third_order_derivatives))
 
     function calculate_third_order_derivatives_pullback(∂∇₃)
         if ∂∇₃ isa Union{NoTangent, AbstractZero}
-            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent()
+            return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₃u = unthunk(∂∇₃)
+        copyto!(∂∇₃_vec, ∂∇₃u)
 
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
         third_order_derivatives_funcs.f_SS_and_pars(caches_obj.third_order_derivatives_SS_and_pars, parameters, SS_and_pars)
+        
+        ∂parameters = caches_obj.third_order_derivatives_parameters * ∂∇₃_vec
+        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars * ∂∇₃_vec
 
-        ∂parameters = caches_obj.third_order_derivatives_parameters' * vec(∂∇₃u)
-        ∂SS_and_pars = caches_obj.third_order_derivatives_SS_and_pars' * vec(∂∇₃u)
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent(), NoTangent(), NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
@@ -427,8 +431,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # if !isfinite(solution_error) || solution_error > opts.tol.nsss.acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.nsss.acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
@@ -440,7 +444,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # end # timeit_debug
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         # Update failed counter
         update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -596,7 +600,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     state = zeros(S, 𝓂.constants.post_model_macro.nVars)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
 
         pullback = function (ȳ)
@@ -619,7 +623,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                         parameter_values,
                         SS_and_pars,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     first_out, first_pb = rrule(calculate_first_order_solution,
                                 ∇₁,
@@ -627,7 +632,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameter_values)
 
     𝐒₁ = first_out[1]
     solved = first_out[3]
@@ -704,7 +710,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     (SS_and_pars, (solution_error, iters)), nsss_pullback =
         rrule(get_NSSS_and_parameters, 𝓂, parameters, opts = opts, estimation = estimation)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         common = (false,
                   zeros(Float64, nVars),
                   SS_and_pars,
@@ -725,11 +731,12 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁, jacobian_pullback =
-        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     (𝐒₁_raw, qme_sol, solved), first_order_pullback =
         rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
-              opts = opts, initial_guess = 𝓂.caches.qme_solution)
+              opts = opts, initial_guess = 𝓂.caches.qme_solution,
+              parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
@@ -751,11 +758,12 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     end
 
     ∇₂, hessian_pullback =
-        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     (𝐒₂_raw, solved2), second_order_pullback =
         rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
-              initial_guess = 𝓂.caches.second_order_solution, opts = opts)
+              initial_guess = 𝓂.caches.second_order_solution, opts = opts,
+              parameter_values = parameters)
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -1150,7 +1158,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1160,7 +1168,8 @@ function rrule(::typeof(calculate_stochastic_steady_state),
               𝓂.workspaces,
               𝓂.caches;
               initial_guess = 𝓂.caches.third_order_solution,
-              opts = opts)
+              opts = opts,
+              parameter_values = parameters)
 
     if !solved3
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1356,7 +1365,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1366,7 +1375,8 @@ function rrule(::typeof(calculate_stochastic_steady_state),
               𝓂.workspaces,
               𝓂.caches;
               initial_guess = 𝓂.caches.third_order_solution,
-              opts = opts)
+              opts = opts,
+              parameter_values = parameters)
 
     if !solved3
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1501,7 +1511,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₁ = ss_out[7]
     𝐒₂ = ss_out[8]
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1574,7 +1584,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₂ = ss_out[8]
     nVars = 𝓂.constants.post_model_macro.nVars
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, nVars), zeros(S, nVars)], converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1647,7 +1657,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₂ = ss_out[9]
     𝐒₃ = ss_out[10]
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1724,7 +1734,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     𝐒₃ = ss_out[10]
     nVars = 𝓂.constants.post_model_macro.nVars
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)], converged)
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
@@ -1957,7 +1967,7 @@ function rrule(::typeof(get_irf),
     reference_steady_state = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
+    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
         return zero_result(), zero_pullback
     end
 
@@ -1966,7 +1976,8 @@ function rrule(::typeof(get_irf),
                         parameters,
                         reference_steady_state,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     # ── step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -1975,7 +1986,8 @@ function rrule(::typeof(get_irf),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameters)
 
     sol_mat = first_out[1]
     solved  = first_out[3]
@@ -2126,12 +2138,12 @@ function rrule(::typeof(calculate_covariance),
     SS_and_pars = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         return (zeros(S, 0, 0), zeros(S, 0, 0), zeros(S, 0, 0), SS_and_pars, false), zero_pb
     end
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2140,7 +2152,8 @@ function rrule(::typeof(calculate_covariance),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.qme_solution,
-                                opts = opts)
+                                opts = opts,
+                                parameter_values = parameters)
     sol = first_out[1]
     solved_first = first_out[3]
 
@@ -2160,8 +2173,7 @@ function rrule(::typeof(calculate_covariance),
 
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
                                 lyapunov_algorithm = opts.lyapunov_algorithm,
-                                tol = opts.tol.lyapunov_tol,
-                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                tol = opts.tol.first_order.ad.lyapunov,
                                 verbose = opts.verbose)
     covar_raw = lyap_out[1]
     solved_lyap = lyap_out[2]
@@ -2280,7 +2292,7 @@ function rrule(::typeof(calculate_mean),
 
     # ── First-order path (mean = steady state) ──
     if algorithm == :first_order
-        solved = solution_error < opts.tol.NSSS_acceptance_tol
+        solved = solution_error < opts.tol.nsss.acceptance_tol
         mean_of_variables = SS_and_pars[1:nVars]
 
         function first_order_mean_pullback(∂out)
@@ -2299,7 +2311,7 @@ function rrule(::typeof(calculate_mean),
     end
 
     # ── Higher-order path: early exit on NSSS failure ──
-    if solution_error > opts.tol.NSSS_acceptance_tol
+    if solution_error > opts.tol.nsss.acceptance_tol
         return (SS_and_pars[1:nVars], false), zero_pb
     end
 
@@ -2313,7 +2325,7 @@ function rrule(::typeof(calculate_mean),
     vec_Iₑ = so.vec_Iₑ
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2322,7 +2334,8 @@ function rrule(::typeof(calculate_mean),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 initial_guess = 𝓂.caches.qme_solution,
-                                opts = opts)
+                                opts = opts,
+                                parameter_values = parameters)
     𝐒₁ = first_out[1]
     solved_first = first_out[3]
 
@@ -2333,10 +2346,10 @@ function rrule(::typeof(calculate_mean),
     end
 
     # ── Step 4: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 5: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
@@ -2527,10 +2540,10 @@ function rrule(::typeof(calculate_second_order_moments),
     Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw = so2_out[1]
     solved2 = so2_out[2]
 
@@ -2764,10 +2777,10 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian)
+    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
 
     # ── Step 3: Second-order solution ──
-    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts)
+    so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
     𝐒₂_raw, solved2 = so2_out
 
     update_perturbation_counter!(𝓂.counters, solved2, order = 2)
@@ -2846,8 +2859,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation,
                               Float64.(ŝ_to_ŝ₂), Float64.(CC), lyap_ws_2nd;
                               lyapunov_algorithm = opts.lyapunov_algorithm,
-                              tol = opts.tol.lyapunov_tol,
-                              acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                              tol = opts.tol.second_order.ad.lyapunov,
                               verbose = opts.verbose)
     Σᶻ₂ = lyap_out[1]
     info = lyap_out[2]
@@ -3086,13 +3098,14 @@ function rrule(::typeof(calculate_third_order_moments),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+                            opts = opts,
+                            parameter_values = parameters)
     𝐒₃, solved3 = so3_out
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
@@ -3107,7 +3120,7 @@ function rrule(::typeof(calculate_third_order_moments),
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
-                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+                                       covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     kron_e_e = so.kron_e_e
     kron_v_v = so.kron_v_v
@@ -3164,6 +3177,12 @@ function rrule(::typeof(calculate_third_order_moments),
         e_ss = substate_indices.e_ss
         ss_s = substate_indices.ss_s
         s_s = substate_indices.s_s
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
 
         # first order slices
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
@@ -3189,6 +3208,7 @@ function rrule(::typeof(calculate_third_order_moments),
         s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
         e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
         s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
 
         # third order slices
         kron_s_v = dep_kron.kron_s_v
@@ -3214,22 +3234,30 @@ function rrule(::typeof(calculate_third_order_moments),
         s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
         e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up pruned state transition sub-blocks (compressed)
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
+
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                         ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                        zeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -3253,29 +3281,29 @@ function rrule(::typeof(calculate_third_order_moments),
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
 
-        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
         droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
 
-        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A_mat, eps())
+        # ── Standard Lyapunov solve (compressed) ──
+        ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
-        droptol!(C_mat, eps())
+        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
+        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-
+        N_total = N_upper + N_lower
+        lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
+                                    ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                    tol = opts.tol.third_order.ad.lyapunov,
                                     verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
@@ -3339,18 +3367,25 @@ function rrule(::typeof(calculate_third_order_moments),
             e_e_e_to_s₃ = e_e_e_to_s₃,
             s_v_v_to_s₃ = s_v_v_to_s₃,
             e_v_v_to_s₃ = e_v_v_to_s₃,
-            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
             ê_to_ŝ₃ = ê_to_ŝ₃,
             ŝ_to_y₃ = ŝ_to_y₃,
             ê_to_y₃ = ê_to_y₃,
             Γ₃ = Γ₃,
             Eᴸᶻ = Eᴸᶻ,
-            A_mat = A_mat,
-            C_mat = C_mat,
+            ŝ_to_ŝ₃ = ŝ_to_ŝ₃,
             Σᶻ₃ = Σᶻ₃,
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
             lyap_pb = lyap_pb_iter,
+            N_upper = N_upper,
+            N_lower = N_lower,
+            D₂ˢ = D₂ˢ,
+            L₂ˢ = L₂ˢ,
+            D₃ˢ = D₃ˢ,
+            L₃ˢ = L₃ˢ,
+            n₂ˢ = n₂ˢ,
+            n₃ˢ = n₃ˢ,
+            s_to_s₁_by_s_to_s₁_c = s_to_s₁_by_s_to_s₁_c,
             I_plus_s_s = I_plus_s_s,
             ss_s = ss_s,
             s_s = s_s,
@@ -3389,6 +3424,8 @@ function rrule(::typeof(calculate_third_order_moments),
         for iter_idx in n_iters:-1:1
             d = iter_data[iter_idx]
             nˢ_i = d.nˢ
+            n₂ˢ_i = d.n₂ˢ
+            n₃ˢ_i = d.n₃ˢ
 
             # ── Gather ∂Σʸ₃tmp from ∂Σʸ₃ (reverse of scatter) ──
             nObs_iter = length(d.variance_observable)
@@ -3412,35 +3449,50 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Γ₃_iter   = d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
             ∂Eᴸᶻ_iter  = d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
 
-            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            # ── Standard Lyapunov adjoint ──
+            Nu = d.N_upper;  Nl = d.N_lower
+            ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
+
             lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
             ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
-            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[3])
 
-            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
-            # ê_s * Γ₃ * ê_s' is AXA': ∂ê += (∂C+∂C') * ê * Γ₃,  ∂Γ₃ += ê' * ∂C * ê
-            # A + A' with cotangent ∂C: ∂A = ∂C + ∂C'
-            ∂C_sym = ∂C_mat + ∂C_mat'
+            # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂C_sym = ∂C_lyap + ∂C_lyap'
+            ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
+            EL_d = Matrix{T}(d.Eᴸᶻ)
+            Γ₃_d = Matrix{T}(d.Γ₃)
 
-            ∂ê_to_ŝ₃  = ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
-            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
-            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
-            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+            # Term 1: ê * Γ₃ * ê'
+            ∂Γ₃_iter .+= ê_d' * ∂C_lyap * ê_d
+            ∂ê_to_ŝ₃ = ∂C_sym * ê_d * Γ₃_d
+
+            # Terms 2+3: M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂ê_to_ŝ₃ .+= ∂C_sym * ŝ_d * EL_d'
+            ∂Eᴸᶻ_iter .+= ê_d' * ∂C_sym * ŝ_d
+            ∂ŝ_to_ŝ₃ .+= ∂C_sym' * ê_d * EL_d
+
+            # Extract ∂A_UU, ∂A_LU, ∂A_LL from ∂ŝ_to_ŝ₃
+            ∂A_UU = ∂ŝ_to_ŝ₃[ru_i, ru_i]
+            ∂A_LU = ∂ŝ_to_ŝ₃[rl_i, ru_i]
+            ∂A_LL = ∂ŝ_to_ŝ₃[rl_i, rl_i]
+
 
             # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             # ŝ_to_y₃ = [s_to_y₁+svv/2 | s_to_y₁ | ss_to_y₂/2 | s_to_y₁ | ss_to_y₂ | sss_to_y₃/6]
             c = 0
             ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
-            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+n₂ˢ_i];     c += n₂ˢ_i   # compressed
             ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
             ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
 
             ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4     # ∂s_to_y₁
-            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5           # ∂s_s_to_y₂
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= (∂blk3 * Matrix(d.D₂ˢ)') ./ 2 .+ ∂blk5           # ∂s_s_to_y₂ (decompress blk3)
             ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2                     # ∂s_v_v_to_y₃
-            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6                     # ∂s_s_s_to_y₃
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= (∂blk6 * Matrix(d.D₃ˢ)') ./ 6  # ∂s_s_s_to_y₃ (decompress blk6)
 
             # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             # ê_to_y₃ = [e_to_y₁+evv/2 | ee_to_y₂/2 | se_to_y₂ | se_to_y₂ | sse_to_y₃/2 | see_to_y₃/2 | eee_to_y₃/6]
@@ -3491,44 +3543,63 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Δ̂μˢ₂_l = zeros(T, n)
 
             # Block boundary arrays
-            sb = cumsum([0, n, n, n^2, n, n^2, n^3])          # ŝ_to_ŝ₃ row/col
+            sb = cumsum([0, n, n, n₂ˢ_i, n, n^2, n₃ˢ_i])          # ŝ_to_ŝ₃ row/col (compressed)
             eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])  # ê_to_ŝ₃ cols
             gb = eb  # Γ₃ row/col (same block sizes)
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
 
-            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
-            ∂ŝ₃ = ∂ŝ_to_ŝ₃   # already dense Matrix{T}
+            # Reusable buffers for in-place kron adjoint operations
+            ∂s₁²_buf = zeros(T, n^2, n^2)
+            ∂e₁²_buf = zeros(T, n^2, ne^2)
+            ∂kron_buf = zeros(T, n^2, n * ne)
+            ∂vvh_buf = zeros(T, size(vvh))
+            ∂ssh_buf = zeros(T, size(ssh))
+            ∂eeh_buf = zeros(T, size(eeh))
 
-            # Direct s₁ blocks: (1,1), (2,2), (4,4)
-            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
-                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
-                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
-            # (2,3) ss₂/2
-            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
-            # (4,5) ss₂
-            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
-            # (4,1) s_vv₃/2
-            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
-            # (4,6) sss₃/6
-            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
-            # (3,3) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
-            # (5,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
-            ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
-            # (5,5) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
-            # (5,6) kron(s₁, ss₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
-            ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
-            # (6,6) kron(s₁, kron(s₁,s₁))
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
-            ∂s₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
-            ∂s₁_l .+= tmpL .+ tmpR
+            # ── 2a: A_UU, A_LU, A_LL disaggregation ──
+            # Block boundaries within sub-matrices
+            bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
+            bl = cumsum([0, n, n^2, n₃ˢ_i])               # A_LL row/col blocks (also A_LU rows)
+
+            # ── From ∂A_UU ──
+            # (1,1) s₁, (2,2) s₁
+            ∂s₁_l .+= ∂A_UU[bu[1]+1:bu[2], bu[1]+1:bu[2]] .+
+                       ∂A_UU[bu[2]+1:bu[3], bu[2]+1:bu[3]]
+            # (2,3) ss₂/2 * D₂ˢ — decompress cols
+            ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
+            # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
+            ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂inner33, s₁, s₁)
+
+            # ── From ∂A_LU ──
+            # (1,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
+            # (2,1) kron(s₁, vv₂/2)
+            ∂vvh_buf .= 0
+            fill_kron_adjoint!(∂vvh_buf, ∂s₁_l, Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), vvh, s₁)
+            ∂vv₂_l .+= ∂vvh_buf ./ 2
+
+            # ── From ∂A_LL ──
+            # (1,1) s₁
+            ∂s₁_l .+= ∂A_LL[bl[1]+1:bl[2], bl[1]+1:bl[2]]
+            # (1,2) ss₂
+            ∂ss₂_l .+= ∂A_LL[bl[1]+1:bl[2], bl[2]+1:bl[3]]
+            # (1,3) sss₃/6 * D₃ˢ — decompress cols
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
+            # (2,2) kron(s₁,s₁)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
+            # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
+            ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            ∂ssh_buf .= 0
+            fill_kron_adjoint!(∂ssh_buf, ∂s₁_l, ∂inner56, ssh, s₁)
+            ∂ss₂_l .+= ∂ssh_buf ./ 2
+            # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
+            ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            ∂s₁²_buf .= 0
+            fill_kron_adjoint!(∂s₁²_buf, ∂s₁_l, ∂inner66, s₁², s₁)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
+
 
             # ── 2b: ê_to_ŝ₃ disaggregation ──
             ∂ê₃ = Matrix{T}(∂ê_to_ŝ₃)
@@ -3539,13 +3610,11 @@ function rrule(::typeof(calculate_third_order_moments),
             # Row 2: (2,2) ee₂/2; (2,3) se₂
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
-            # Row 3: (3,2) kron(e₁,e₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
-            ∂e₁_l .+= tmpL .+ tmpR
-            # (3,3) I_plus_s_s * kron(s₁,e₁)
-            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
-            tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
-            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
+            fill_kron_adjoint!(∂e₁_l, ∂e₁_l, Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂k33, e₁, s₁)
             # Row 4: direct S₃ slices
             ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂ê₃[sb[4]+1:sb[5], eb[1]+1:eb[2]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[4]+1:sb[5], eb[4]+1:eb[5]]
@@ -3553,59 +3622,60 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
             ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
             # Row 5: (5,1) kron(e₁,vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
-            ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
+            ∂vvh_buf .= 0
+            fill_kron_adjoint!(∂vvh_buf, ∂e₁_l, Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), vvh, e₁)
+            ∂vv₂_l .+= ∂vvh_buf ./ 2
             # (5,4) s_s * kron(s₁,e₁)
             ∂k54 = Matrix(d.s_s') * Matrix(∂ê₃[sb[5]+1:sb[6], eb[4]+1:eb[5]])
-            tmpA, tmpB = _kron_vjp(∂k54, s₁, e₁)
-            ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂k54, e₁, s₁)
             # (5,5) kron(s₁,se₂) + s_s * kron(ss₂/2, e₁)
             ∂b55 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b55, s₁, se₂)
-            ∂s₁_l .+= tmpA;  ∂se₂_l .+= tmpB
+            fill_kron_adjoint!(∂se₂_l, ∂s₁_l, ∂b55, se₂, s₁)
             ∂k55b = Matrix(d.s_s') * ∂b55
-            tmpA, tmpB = _kron_vjp(∂k55b, ssh, e₁)
-            ∂ss₂_l .+= tmpA ./ 2;  ∂e₁_l .+= tmpB
+            ∂ssh_buf .= 0
+            fill_kron_adjoint!(∂e₁_l, ∂ssh_buf, ∂k55b, e₁, ssh)
+            ∂ss₂_l .+= ∂ssh_buf ./ 2
             # (5,6) kron(s₁,ee₂/2) + s_s * kron(se₂, e₁)
             ∂b56 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b56, s₁, eeh)
-            ∂s₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
+            ∂eeh_buf .= 0
+            fill_kron_adjoint!(∂eeh_buf, ∂s₁_l, ∂b56, eeh, s₁)
+            ∂ee₂_l .+= ∂eeh_buf ./ 2
             ∂k56b = Matrix(d.s_s') * ∂b56
-            tmpA, tmpB = _kron_vjp(∂k56b, se₂, e₁)
-            ∂se₂_l .+= tmpA;  ∂e₁_l .+= tmpB
+            fill_kron_adjoint!(∂e₁_l, ∂se₂_l, ∂k56b, e₁, se₂)
             # (5,7) kron(e₁, ee₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
-            ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
-            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
-            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)                    # Term 1
-            ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            tmpA, tmpB = _kron_vjp(∂b65, s₁, ss_s1e1)                # Term 2
-            ∂s₁_l .+= tmpA
-            tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            ∂k65c = ∂b65 * Matrix(d.e_ss')                           # Term 3
-            tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
-            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)                  # Term 1
-            ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            ∂eeh_buf .= 0
+            fill_kron_adjoint!(∂eeh_buf, ∂e₁_l, Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), eeh, e₁)
+            ∂ee₂_l .+= ∂eeh_buf ./ 2
+            # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
+            ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            ∂s₁²_buf .= 0                                            # Term 1: kron(s₁², e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁²_buf, ∂b65, e₁, s₁²)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
+            ∂kron_buf .= 0                                            # Term 2: kron(s₁, ss_s1e1)
+            fill_kron_adjoint!(∂kron_buf, ∂s₁_l, ∂b65, ss_s1e1, s₁)
+            tmpC = Matrix(d.s_s') * ∂kron_buf
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, tmpC, e₁, s₁)
+            ∂k65c = ∂b65 * Matrix(d.e_ss')                           # Term 3: kron(e₁, s₁²) * e_ss
+            ∂s₁²_buf .= 0
+            fill_kron_adjoint!(∂s₁²_buf, ∂e₁_l, ∂k65c, s₁², e₁)
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_buf, s₁, s₁)
+            # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
+            ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            ∂kron_buf .= 0                                            # Term 1: kron(s₁e₁, e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂kron_buf, ∂b66, e₁, s₁e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂kron_buf, e₁, s₁)
             ∂pre = ∂b66 * Matrix(d.e_es')                            # shared for Terms 2+3
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, s₁e₁)                  # Term 2
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, ss_s1e1)                # Term 3
-            ∂e₁_l .+= tmpA
-            tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            # (6,7) kron(e₁, e₁²)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
-            ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
+            ∂kron_buf .= 0                                            # Term 2: kron(e₁, s₁e₁)
+            fill_kron_adjoint!(∂kron_buf, ∂e₁_l, ∂pre, s₁e₁, e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, ∂kron_buf, e₁, s₁)
+            ∂kron_buf .= 0                                            # Term 3: kron(e₁, ss_s1e1)
+            fill_kron_adjoint!(∂kron_buf, ∂e₁_l, ∂pre, ss_s1e1, e₁)
+            tmpC = Matrix(d.s_s') * ∂kron_buf
+            fill_kron_adjoint!(∂e₁_l, ∂s₁_l, tmpC, e₁, s₁)
+            # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
+            ∂e₁²_buf .= 0
+            fill_kron_adjoint!(∂e₁²_buf, ∂e₁_l, Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁², e₁)
+            fill_kron_adjoint!(∂e₁_l, ∂e₁_l, ∂e₁²_buf, e₁, e₁)
 
             # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
             ∂Γ = Matrix{T}(∂Γ₃_iter)
@@ -3676,10 +3746,12 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
-            # Col 6: kron(C₅, vec_Ie)
+            # Col 6: kron(C₅ * L₃ˢ', vec_Ie) — compress C₅ cols
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
-            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            C5m_c = C5m * Matrix(d.L₃ˢ)'
+            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
             ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
@@ -3691,7 +3763,7 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂b_μ = I_m_s₁²' \ ∂x_μ
             # ∂(kron(s₁,s₁)) = ∂b * vec(μ)'
             ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
-            tmpL, tmpR = _kron_vjp(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_from_μ, s₁, s₁)
 
             # Decompose ∂RHS:  RHS = L₁ * s₁' + L₂ * e₁'
             ∂RHS = reshape(∂b_μ, n, n)
@@ -3847,13 +3919,14 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     𝐒₂ = sparse(𝐒₂_raw * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives)
+    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                             𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                             initial_guess = 𝓂.caches.third_order_solution,
-                            opts = opts)
+                            opts = opts,
+                            parameter_values = parameters)
     𝐒₃, solved3 = so3_out
 
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
@@ -3868,7 +3941,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
     # ── Step 5: Determine iteration groups ──
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃_full, 𝓂.constants, observables,
-                                       covariance = covariance, tol = opts.tol.dependencies_tol)
+                                       covariance = covariance, tol = opts.tol.third_order.dependencies_tol)
 
     kron_e_e = so.kron_e_e
     kron_v_v = so.kron_v_v
@@ -3976,22 +4049,39 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         s_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_s_v_v]
         e_v_v_to_s₃ = 𝐒₃_full[iˢ, kron_e_v_v]
 
-        # Set up pruned state transition matrices
-        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+        # Set up compression matrices
+        D₂ˢ = substate_indices.D₂ˢ
+        L₂ˢ = substate_indices.L₂ˢ
+        D₃ˢ = substate_indices.D₃ˢ
+        L₃ˢ = substate_indices.L₃ˢ
+        n₂ˢ = size(D₂ˢ, 2)
+        n₃ˢ = size(D₃ˢ, 2)
+        s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
+
+        # Set up pruned state transition sub-blocks (compressed)
+        N_upper = 2 * nˢ + n₂ˢ
+        N_lower = nˢ + nˢ^2 + n₃ˢ
+
+        A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+                spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+                spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+        A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+                ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+                spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+        A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+                spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                         e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                         ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                        zeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
 
-        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
@@ -4015,30 +4105,29 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                 e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
 
 
-        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   zeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
 
-        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(A_UU, eps())
+        droptol!(A_LU, eps())
+        droptol!(A_LL, eps())
         droptol!(ê_to_ŝ₃, eps())
         droptol!(Eᴸᶻ, eps())
         droptol!(Γ₃, eps())
 
-        A_mat = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        droptol!(A_mat, eps())
+        # ── Standard Lyapunov solve (compressed) ──
+        N_total = N_upper + N_lower
+        ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
+        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
 
-        C_mat = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A_mat + A_mat'
-        droptol!(C_mat, eps())
-
-        # Ensure third-order lyapunov workspace and solve
-        lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-
+        lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    Float64.(ŝ_to_ŝ₃), Float64.(C_mat), lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.lyapunov_tol,
-                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                    verbose = opts.verbose)
+                                       ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
+                                       lyapunov_algorithm = opts.lyapunov_algorithm,
+                                       tol = opts.tol.third_order.ad.lyapunov,
+                                       verbose = opts.verbose)
         Σᶻ₃ = lyap_out[1]
         info = lyap_out[2]
 
@@ -4081,9 +4170,9 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             s_to_s₁ⁱ = s_to_s₁ⁱ * Matrix{T}(s_to_s₁)
 
             # Step 3: rebuild Eᴸᶻ with s_to_s₁ⁱ prefix
-            Eᴸᶻⁱ = [ spzeros(T, nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 + nˢ^3)
-                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁, vec_Iₑ)   zeros(T, nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁', vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ, 2*nˢ + 1:end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2*nˢ + 1:end, 2*nˢ + 1:end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec_Iₑ)
-                spzeros(T, nᵉ^3, 3*nˢ + 2*nˢ^2 + nˢ^3)]
+            Eᴸᶻⁱ = [ spzeros(T, nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁, vec_Iₑ)   zeros(T, nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁', vec_Iₑ)    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ, 2*nˢ + 1:end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2*nˢ + 1:end, 2*nˢ + 1:end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+                spzeros(T, nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
             Eᴸᶻ_cur = Eᴸᶻⁱ
 
             # Step 4: compute autocorrelation
@@ -4092,7 +4181,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             num_diag_i = ℒ.diag(num_mat)
             ac_val = num_diag_i ./ norm_diag
             diag_Σ = ℒ.diag(Σʸ₃tmp)
-            zero_mask_i = diag_Σ .< opts.tol.lyapunov_acceptance_tol
+            zero_mask_i = diag_Σ .< opts.tol.third_order.ad.lyapunov.acceptance_tol
             ac_val[zero_mask_i] .= 0
 
             for obs in variance_observable
@@ -4169,12 +4258,19 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ê_to_y₃ = ê_to_y₃,
             Γ₃ = Γ₃,
             Eᴸᶻ = Eᴸᶻ_orig,
-            A_mat = A_mat,
-            C_mat = C_mat,
+            N_upper = N_upper,
+            N_lower = N_lower,
+            lyap_pb = lyap_pb_iter,
+            D₂ˢ = D₂ˢ,
+            L₂ˢ = L₂ˢ,
+            D₃ˢ = D₃ˢ,
+            L₃ˢ = L₃ˢ,
+            n₂ˢ = n₂ˢ,
+            n₃ˢ = n₃ˢ,
+            s_to_s₁_by_s_to_s₁_c = s_to_s₁_by_s_to_s₁_c,
             Σᶻ₃ = Σᶻ₃,
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
-            lyap_pb = lyap_pb_iter,
             I_plus_s_s = I_plus_s_s,
             ss_s = ss_s,
             s_s = s_s,
@@ -4251,7 +4347,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ss_s_M = Matrix(d.ss_s)
             vΣ_ac = vec(d.Σ̂ᶻ₁)
             n = nˢ_i; ne = nᵉ
-            sb_ac = cumsum([0, n, n, n^2, n, n^2, n^3])
+            sb_ac = cumsum([0, n, n, d.n₂ˢ, n, n^2, d.n₃ˢ])
             eb_ac = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
 
             # Reverse loop over autocorrelation periods
@@ -4336,13 +4432,15 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     ∂Δ̂μˢ₂_ac .+= ∂iC4_i * vΣ_ac
                     ∂Σ̂ᶻ₁_ac .+= reshape(∂iC4_i' * d.Δ̂μˢ₂, n, n)
 
-                    # Col 6: kron(s₁ⁱ * C5m, vec_Ie)
+                    # Col 6: kron(s₁ⁱ * C5m * L₃ˢ', vec_Ie)
                     inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
                     C5m = reshape(Matrix{T}(inner_C5), n, n^3)
-                    A_c6 = s₁ⁱ * C5m
+                    C5m_c = C5m * Matrix(d.L₃ˢ)'
+                    A_c6 = s₁ⁱ * C5m_c
                     ∂A_c6 = _kron_vjp(∂ELⁱ6[:, sb_ac[6]+1:sb_ac[7]], A_c6, vec_Ie_col)[1]
-                    ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m'
-                    ∂C5_i = s₁ⁱ' * ∂A_c6
+                    ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m_c'
+                    ∂C5m_c_i = s₁ⁱ' * ∂A_c6
+                    ∂C5_i = ∂C5m_c_i * Matrix(d.L₃ˢ)
                     ∂iC5_i = reshape(∂C5_i, n^2, n^2)
                     ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5_i
                     ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5_i + ∂iC5_i') * vΣ_ac, n, n)
@@ -4395,10 +4493,12 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     # Col 6
                     inner_C5p = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ_ac * vΣ_ac'
                     C5mp = reshape(Matrix{T}(inner_C5p), n, n^3)
-                    A_pc6 = s₁ⁱ_prev * C5mp
+                    C5mp_c = C5mp * Matrix(d.L₃ˢ)'
+                    A_pc6 = s₁ⁱ_prev * C5mp_c
                     ∂A_pc6 = _kron_vjp(∂ELprev6[:, sb_ac[6]+1:sb_ac[7]], A_pc6, vec_Ie_col)[1]
-                    ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp'
-                    ∂C5p = s₁ⁱ_prev' * ∂A_pc6
+                    ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp_c'
+                    ∂C5m_c_p = s₁ⁱ_prev' * ∂A_pc6
+                    ∂C5p = ∂C5m_c_p * Matrix(d.L₃ˢ)
                     ∂iC5p = reshape(∂C5p, n^2, n^2)
                     ∂Σ̂ᶻ₂_ac[2n+1:end, 2n+1:end] .+= ∂iC5p
                     ∂Σ̂ᶻ₁_ac .+= reshape((∂iC5p + ∂iC5p') * vΣ_ac, n, n)
@@ -4454,32 +4554,52 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Γ₃_iter   = ∂Γ₃_ac  .+ d.ê_to_y₃' * ∂Σʸ₃tmp * d.ê_to_y₃
             ∂Eᴸᶻ_iter  = ∂Eᴸᶻ_ac .+ d.ê_to_y₃' * ∂Σʸ₃tmp_sym * d.ŝ_to_y₃
 
-            # ── Lyapunov adjoint: Σᶻ₃ = lyap(ŝ_to_ŝ₃, C_mat) ──
+            # ── Standard Lyapunov adjoint ──
+            Nu = d.N_upper;  Nl = d.N_lower
+            ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
+
             lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
-            ∂ŝ_to_ŝ₃ = ∂ŝ_to_ŝ₃_ac .+ (lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2]))
-            ∂C_mat    = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.C_mat))     : Matrix{T}(lyap_grad[3])
+            ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[2])
+            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : Matrix{T}(lyap_grad[3])
 
-            # ── C_mat = ê_s * Γ₃ * ê_s' + A + A'  where A = ê_s * Eᴸᶻ * ŝ_s' ──
-            ∂C_sym = ∂C_mat + ∂C_mat'
+            # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂C_sym = ∂C_lyap + ∂C_lyap'
+            ê_d = Matrix{T}(d.ê_to_ŝ₃)
+            ŝ_d = Matrix{T}(d.ŝ_to_ŝ₃)
+            EL_d = Matrix{T}(d.Eᴸᶻ)
+            Γ₃_d = Matrix{T}(d.Γ₃)
 
-            ∂ê_to_ŝ₃  = ∂ê_to_ŝ₃_ac .+ ∂C_sym * (d.ê_to_ŝ₃ * d.Γ₃ + d.ŝ_to_ŝ₃ * Matrix(d.Eᴸᶻ'))
-            ∂Γ₃_iter  .+= d.ê_to_ŝ₃' * ∂C_mat * d.ê_to_ŝ₃
-            ∂Eᴸᶻ_iter .+= d.ê_to_ŝ₃' * ∂C_sym * d.ŝ_to_ŝ₃
-            ∂ŝ_to_ŝ₃  .+= ∂C_sym * d.ê_to_ŝ₃ * Matrix(d.Eᴸᶻ)
+            # Term 1: ê * Γ₃ * ê'
+            ∂Γ₃_iter .+= ê_d' * ∂C_lyap * ê_d
+            ∂ê_to_ŝ₃ = ∂ê_to_ŝ₃_ac .+ ∂C_sym * ê_d * Γ₃_d
+
+            # Terms 2+3: M + M' where M = ê * Eᴸᶻ * ŝ'
+            ∂ê_to_ŝ₃ .+= ∂C_sym * ŝ_d * EL_d'
+            ∂Eᴸᶻ_iter .+= ê_d' * ∂C_sym * ŝ_d
+            ∂ŝ_to_ŝ₃ .+= ∂C_sym' * ê_d * EL_d
+
+            # Add autocorrelation contributions
+            ∂ŝ_to_ŝ₃ .+= ∂ŝ_to_ŝ₃_ac
+
+            # Extract ∂A_UU, ∂A_LU, ∂A_LL from ∂ŝ_to_ŝ₃
+            ∂A_UU = ∂ŝ_to_ŝ₃[ru_i, ru_i]
+            ∂A_LU = ∂ŝ_to_ŝ₃[rl_i, ru_i]
+            ∂A_LL = ∂ŝ_to_ŝ₃[rl_i, rl_i]
 
             # ── Disaggregate ŝ_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
+            n₂ˢ_i = d.n₂ˢ;  n₃ˢ_i = d.n₃ˢ
             c = 0
             ∂blk1 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk2 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
-            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
+            ∂blk3 = ∂ŝ_to_y₃[:, c+1:c+n₂ˢ_i];     c += n₂ˢ_i   # compressed
             ∂blk4 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i];      c += nˢ_i
             ∂blk5 = ∂ŝ_to_y₃[:, c+1:c+nˢ_i^2];    c += nˢ_i^2
             ∂blk6 = ∂ŝ_to_y₃[:, c+1:end]
 
             ∂𝐒₁_acc[d.obs_in_y, d.dependencies_in_states_idx] .+= ∂blk1 .+ ∂blk2 .+ ∂blk4
-            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= ∂blk3 ./ 2 .+ ∂blk5
+            ∂S2f_acc[d.obs_in_y, d.kron_s_s]                  .+= (∂blk3 * Matrix(d.D₂ˢ)') ./ 2 .+ ∂blk5  # decompress blk3
             ∂S3f_acc[d.obs_in_y, d.kron_s_v_v]                .+= ∂blk1 ./ 2
-            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= ∂blk6 ./ 6
+            ∂S3f_acc[d.obs_in_y, d.kron_s_s_s]                .+= (∂blk6 * Matrix(d.D₃ˢ)') ./ 6  # decompress blk6
 
             # ── Disaggregate ê_to_y₃ → ∂𝐒₁, ∂𝐒₂, ∂𝐒₃ ──
             c = 0
@@ -4527,41 +4647,52 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Δ̂μˢ₂_l = ∂Δ̂μˢ₂_ac  # start with autocorrelation contribution
 
             # Block boundary arrays
-            sb = cumsum([0, n, n, n^2, n, n^2, n^3])
+            sb = cumsum([0, n, n, n₂ˢ_i, n, n^2, n₃ˢ_i])          # ŝ_to_ŝ₃ row/col (compressed)
             eb = cumsum([0, ne, ne^2, n*ne, n*ne, n^2*ne, n*ne^2, ne^3])
             gb = eb
 
             vvh = vv₂ ./ 2;  ssh = ss₂ ./ 2;  eeh = ee₂ ./ 2
 
-            # ── 2a: ŝ_to_ŝ₃ disaggregation ──
-            ∂ŝ₃ = ∂ŝ_to_ŝ₃
+            # ── 2a: A_UU, A_LU, A_LL disaggregation ──
+            # Block boundaries within sub-matrices
+            bu = cumsum([0, n, n, n₂ˢ_i])                 # A_UU row/col blocks
+            bl = cumsum([0, n, n^2, n₃ˢ_i])               # A_LL row/col blocks (also A_LU rows)
 
-            # Direct s₁ blocks: (1,1), (2,2), (4,4)
-            ∂s₁_l .+= ∂ŝ₃[sb[1]+1:sb[2], sb[1]+1:sb[2]] .+
-                       ∂ŝ₃[sb[2]+1:sb[3], sb[2]+1:sb[3]] .+
-                       ∂ŝ₃[sb[4]+1:sb[5], sb[4]+1:sb[5]]
-            # (2,3) ss₂/2
-            ∂ss₂_l .+= ∂ŝ₃[sb[2]+1:sb[3], sb[3]+1:sb[4]] ./ 2
-            # (4,5) ss₂
-            ∂ss₂_l .+= ∂ŝ₃[sb[4]+1:sb[5], sb[5]+1:sb[6]]
-            # (4,1) s_vv₃/2
-            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[1]+1:sb[2]] ./ 2
-            # (4,6) sss₃/6
-            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂ŝ₃[sb[4]+1:sb[5], sb[6]+1:sb[7]] ./ 6
-            # (3,3) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[3]+1:sb[4], sb[3]+1:sb[4]]), s₁, s₁)
+            # ── From ∂A_UU ──
+            # (1,1) s₁, (2,2) s₁
+            ∂s₁_l .+= ∂A_UU[bu[1]+1:bu[2], bu[1]+1:bu[2]] .+
+                       ∂A_UU[bu[2]+1:bu[3], bu[2]+1:bu[3]]
+            # (2,3) ss₂/2 * D₂ˢ — decompress cols
+            ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
+            # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
+            ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
+            tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[1]+1:sb[2]]), s₁, vvh)
+
+            # ── From ∂A_LU ──
+            # (1,1) s_vv₃/2
+            ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
+            # (2,1) kron(s₁, vv₂/2)
+            tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
             ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
-            # (5,5) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[5]+1:sb[6]]), s₁, s₁)
+
+            # ── From ∂A_LL ──
+            # (1,1) s₁
+            ∂s₁_l .+= ∂A_LL[bl[1]+1:bl[2], bl[1]+1:bl[2]]
+            # (1,2) ss₂
+            ∂ss₂_l .+= ∂A_LL[bl[1]+1:bl[2], bl[2]+1:bl[3]]
+            # (1,3) sss₃/6 * D₃ˢ — decompress cols
+            ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
+            # (2,2) kron(s₁,s₁)
+            tmpL, tmpR = _kron_vjp(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
-            # (5,6) kron(s₁, ss₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[5]+1:sb[6], sb[6]+1:sb[7]]), s₁, ssh)
+            # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
+            ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner56, s₁, ssh)
             ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
-            # (6,6) kron(s₁, kron(s₁,s₁))
-            tmpA, tmpB = _kron_vjp(Matrix(∂ŝ₃[sb[6]+1:sb[7], sb[6]+1:sb[7]]), s₁, s₁²)
+            # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
+            ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
+            tmpA, tmpB = _kron_vjp(∂inner66, s₁, s₁²)
             ∂s₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
@@ -4575,11 +4706,11 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # Row 2: (2,2) ee₂/2; (2,3) se₂
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
-            # Row 3: (3,2) kron(e₁,e₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
+            tmpL, tmpR = _kron_vjp(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
             ∂e₁_l .+= tmpL .+ tmpR
-            # (3,3) I_plus_s_s * kron(s₁,e₁)
-            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
+            # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
+            ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
             tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
             ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
             # Row 4: direct S₃ slices
@@ -4612,8 +4743,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # (5,7) kron(e₁, ee₂/2)
             tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
             ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
-            # Row 6: (6,5) kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss
-            ∂b65 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
+            # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
+            ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
             tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
@@ -4625,8 +4756,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            # (6,6) kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es
-            ∂b66 = Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
+            # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
+            ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
             tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)
             ∂e₁_l .+= tmpB
             tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
@@ -4638,8 +4769,8 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂e₁_l .+= tmpA
             tmpC = Matrix(d.s_s') * tmpB
             tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            # (6,7) kron(e₁, e₁²)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
+            tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
             ∂e₁_l .+= tmpA
             tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
 
@@ -4711,10 +4842,12 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂iC4' * d.Δ̂μˢ₂, n, n)
-            # Col 6: kron(C₅, vec_Ie)
+            # Col 6: kron(C₅ * L₃ˢ', vec_Ie) — compress col 6
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
-            ∂C5 = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m, vec_Ie_col)[1]
+            C5m_c = C5m * Matrix(d.L₃ˢ)'
+            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
             ∂Σ̂ᶻ₁ .+= reshape((∂iC5 + ∂iC5') * vΣ, n, n)
@@ -4854,7 +4987,9 @@ function rrule(::typeof(calculate_first_order_solution),
                 opts::CalculationOptions = merge_calculation_options(),
                 use_fastlapack_qr::Bool = true,
                 use_fastlapack_lu::Bool = true,
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where {R <: AbstractFloat}
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                parameter_values::AbstractVector{<:Real} = Float64[],
+                caching::Bool = true) where {R <: AbstractFloat}
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -4933,12 +5068,12 @@ function rrule(::typeof(calculate_first_order_solution),
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, constants, workspaces, cache;
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+                                                    tol = opts.tol.first_order.ad.qme,
+                                                    verbose = opts.verbose,
+                                                    caching = caching)
 
     if !solved
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (fill(NaN, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -5096,8 +5231,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         if !solved
@@ -5132,6 +5266,10 @@ function rrule(::typeof(calculate_first_order_solution),
         cache.first_order_solution_matrix = 𝐒₁
     end
 
+    if !isempty(parameter_values)
+        cache.valid_for.first_order_solution = Float64.(parameter_values)
+    end
+
     return (𝐒₁, sol, solved), first_order_solution_pullback
 end
 
@@ -5143,7 +5281,9 @@ function rrule(::typeof(calculate_second_order_solution),
                     workspaces::workspaces,
                     cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+                    opts::CalculationOptions = merge_calculation_options(),
+                    parameter_values::AbstractVector{<:Real} = Float64[],
+                    caching::Bool = true) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
         workspaces.second_order = Higher_order_workspace(T = S)
     end
@@ -5167,13 +5307,21 @@ function rrule(::typeof(calculate_second_order_solution),
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     # @timeit_debug timer "Setup matrices" begin
 
     # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
     # droptol!(𝐒₁,tol)
     
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
@@ -5183,7 +5331,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)]
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
@@ -5202,7 +5350,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "Setup second order matrices" begin
     # @timeit_debug timer "A" begin
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = spinv * ∇₁₊
     
@@ -5210,13 +5358,13 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "C" begin
 
     kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                         sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
     term1 = ∇₂ * kron_compressed
 
     kron_sigma_compressed = compressed_kron²(𝐒₁₊╱𝟎,
-                                            rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                                            rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                                             colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask,
                                             sparse_preallocation = ℂ.tmp_sparse_prealloc3)
 
@@ -5241,8 +5389,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.second_order.ad.sylvester,
                                             verbose = opts.verbose)
     𝐒₂_stable = copy(𝐒₂)
 
@@ -5259,11 +5406,15 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # sp𝐒₁₊╱𝟎t = choose_matrix_format(𝐒₁₊╱𝟎', density_threshold = 1.0)
 
-    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
+    𝛔t = M₂.𝛔ᵀ
 
-    𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
+    𝐔₂t = M₂.𝐔₂ᵀ
 
-    𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = 1.0)
+    𝐂₂t = M₂.𝐂₂ᵀ
+
+    Bt = choose_matrix_format(B', density_threshold = 1.0)
+    At = choose_matrix_format(A', density_threshold = 1.0)
+    𝐒₂_stable_t = choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
@@ -5318,14 +5469,13 @@ function rrule(::typeof(calculate_second_order_solution),
         end
 
         # @timeit_debug timer "Sylvester" begin
-        if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
+        if ℒ.norm(∂𝐒₂) < opts.tol.second_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.second_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         if !solved
@@ -5338,9 +5488,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C = choose_matrix_format(∂C) # Dense
 
-        ∂A = ∂C * B' * 𝐒₂_stable' # Dense
+        ∂A = ∂C * Bt * 𝐒₂_stable_t
 
-        ∂B = 𝐒₂_stable' * A' * ∂C # Dense
+        ∂B = 𝐒₂_stable_t * At * ∂C
 
         # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
         ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
@@ -5389,7 +5539,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 2" begin
 
         compressed_kron²_pullback!(∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎,
-                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask,
+                        tol = opts.tol.second_order.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
                         colmask = M₂.𝛔𝐂₂_nonempty_row_as_kron_colmask)
         
         # end # timeit_debug
@@ -5399,7 +5549,7 @@ function rrule(::typeof(calculate_second_order_solution),
         # @timeit_debug timer "Kron adjoint 3" begin
 
         compressed_kron²_pullback!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                        rowmask = M₂.𝐔₂_nonempty_col_as_kron_rowmask)
+                        tol = opts.tol.second_order.droptol, rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask)
 
         # end # timeit_debug
 
@@ -5452,10 +5602,1372 @@ function rrule(::typeof(calculate_second_order_solution),
         else
             cache.second_order_solution = 𝐒₂
         end
+        if !isempty(parameter_values)
+            cache.valid_for.second_order_solution = Float64.(parameter_values)
+        end
+        empty!(cache.valid_for.pruned_second_order_solution)
     end
 
     # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂_stable, solved), second_order_solution_pullback
+end
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Kron-adjoint helper kernels (fill_kron_adjoint!, mul_fill_kron_adjoint!, etc.)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
+                            ∂B::AbstractMatrix{R}, 
+                            ∂X::AbstractSparseMatrix{R}, 
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(B)
+    n2, m2 = size(A)
+
+    # Access the sparse matrix internal representation
+    if ∂X isa SparseMatrixCSC
+        colptr = ∂X.colptr  # Column pointers
+        rowval = ∂X.rowval  # Row indices of non-zeros
+        nzval  = ∂X.nzval   # Non-zero values
+    else
+        colptr = ∂X.A.colptr  # Column pointers
+        rowval = ∂X.A.rowval  # Row indices of non-zeros
+        nzval  = ∂X.A.nzval   # Non-zero values
+    end
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            @inbounds begin
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
+                
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+                ∂B[i,j] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
+                            ∂B::AbstractMatrix{R}, 
+                            ∂X::DenseMatrix{R}, 
+                            A::AbstractMatrix{TA}, 
+                            B::AbstractMatrix{TB}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    re∂X = reshape(∂X, 
+                    size(A,1), 
+                    size(B,1), 
+                    size(A,2), 
+                    size(B,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = (1,3))
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+
+    ei = 1
+    for e in eachslice(re∂X; dims = (2,4))
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                            ∂B::AbstractMatrix{R},
+                            ∂X::DenseMatrix{R},
+                            A::SparseMatrixCSC{TA, Int},
+                            B::SparseMatrixCSC{TB, Int}) where {R <: Real, TA <: Real, TB <: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+
+    n1, m1 = size(B)
+    n2, m2 = size(A)
+
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval = A.nzval
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval = B.nzval
+
+    # ∂A[k,l] += Σ_{i,j} B[i,j] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for l in 1:m2
+        base_col_l = l
+        for k in 1:n2
+            acc = zero(R)
+            for j in 1:m1
+                b_start = B_colptr[j]
+                b_stop = B_colptr[j + 1] - 1
+                col_idx = (j - 1) * m2 + base_col_l
+                for bidx in b_start:b_stop
+                    i = B_rowval[bidx]
+                    row_idx = (i - 1) * n2 + k
+                    acc += R(B_nzval[bidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂A[k, l] += acc
+        end
+    end
+
+    # ∂B[i,j] += Σ_{k,l} A[k,l] * ∂X[(i-1)n2 + k, (j-1)m2 + l]
+    @inbounds for j in 1:m1
+        b_start = B_colptr[j]
+        b_stop = B_colptr[j + 1] - 1
+        for bidx in b_start:b_stop
+            i = B_rowval[bidx]
+            row_base = (i - 1) * n2
+            col_base = (j - 1) * m2
+            acc = zero(R)
+            for l in 1:m2
+                a_start = A_colptr[l]
+                a_stop = A_colptr[l + 1] - 1
+                col_idx = col_base + l
+                for aidx in a_start:a_stop
+                    k = A_rowval[aidx]
+                    row_idx = row_base + k
+                    acc += R(A_nzval[aidx]) * ∂X[row_idx, col_idx]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint!(∂A::V, ∂B::V, ∂X::V, A::V, B::V) where V <: Vector{<: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    re∂X = reshape(∂X, 
+                    length(A), 
+                    length(B))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 1)
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 2)
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractArray{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(∂B)
+    n2, m2 = size(A)
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            @inbounds begin
+                i = (row - 1) ÷ n2 + 1
+                k = (row - 1) % n2 + 1
+                j = (col - 1) ÷ m2 + 1
+                l = (col - 1) % m2 + 1
+                
+                # Update ∂B and ∂A
+                ∂B[i,j] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1 = length(∂B)
+    n2 = size(A,1)
+    # println("hello")
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2) + 1
+                
+                # Update ∂B and ∂A
+                ∂B[i] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+
+function fill_kron_adjoint_∂B!(∂X::DenseMatrix{R}, ∂B::Vector{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+        
+    re∂X = reshape(∂X, 
+                    size(A,1), 
+                    length(∂B), 
+                    size(A,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 2)
+        @inbounds ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂A!(∂X::DenseMatrix{R}, ∂A::Vector{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂A) * length(B) "∂X must have the same length as kron(B,A)"
+        
+    re∂X = reshape(∂X, 
+                    length(∂A), 
+                    size(B,1), 
+                    size(B,2))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 1)
+        @inbounds ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+end
+
+
+function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMatrix{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(B)
+    n2 = size(∂A,1)
+    
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    const_n1n2m1 = n1 * n2 * m1
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+            end
+        end
+    end
+end
+
+
+# Fused operation: computes fill_kron_adjoint!(∂A, ∂B, M1*M2, A, B)
+# without materializing the full product M1*M2.
+# 
+# M1*M2 has shape (n1*n2, m1*m2) where kron(B,A) has the same shape,
+# B is (n1,m1) and A is (n2,m2).
+#
+# Processes column-blocks of M1*M2 to keep memory usage at O(n1*n2*block_size)
+# instead of O(n1*n2*m1*m2).
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::AbstractMatrix{TA},
+                                B::AbstractMatrix{TB};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2 "M1 rows ($(size(M1,1))) must equal n1*n2 ($(n1*n2))"
+    @assert size(M2, 2) == m1 * m2 "M2 cols ($(size(M2,2))) must equal m1*m2 ($(m1*m2))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n1 * n2
+
+    # Process one j-block at a time: columns (j-1)*m2+1 : j*m2
+    # Each block produces a (nrows × m2) matrix, reshaped to (n2, n1, m2)
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        # blk = M1 * M2[:, col_start:col_end]  — shape (n1*n2, m2)
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Reshape blk to (n2, n1, m2) for accumulation
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[:,l] += re_blk[:,i,l] * B[i,j] for all i → ∂A[:,l] += Σ_i B[i,j]*re_blk[:,i,l]
+        # = re_blk[:,:,l] * B[:,j]
+        for l in 1:m2
+            slice_l = view(re_blk, :, :, l)  # (n2, n1)
+            for i in 1:n1
+                bij = B[i, j]
+                if abs(bij) > tol
+                    for k in 1:n2
+                        ∂A[k, l] += bij * slice_l[k, i]
+                    end
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] = Σ_l dot(A[:,l], re_blk[:,i,l])
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for k in 1:n2
+                    acc += A[k, l] * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Sparse-factor variant: when A and B are sparse, exploit nzrange for dot products
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::SparseMatrixCSC{TA, Int},
+                                B::SparseMatrixCSC{TB, Int};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval  = B.nzval
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval  = A.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — only iterate nonzero B[i,j]
+        b_start = B_colptr[j]
+        b_stop  = B_colptr[j + 1] - 1
+        for l in 1:m2
+            for bidx in b_start:b_stop
+                i   = B_rowval[bidx]
+                bij = R(B_nzval[bidx])
+                for k in 1:n2
+                    ∂A[k, l] += bij * re_blk[k, i, l]
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — only iterate nonzero A[k,l]
+        for bidx in b_start:b_stop
+            i = B_rowval[bidx]
+            acc = zero(R)
+            for l in 1:m2
+                for aidx in A_colptr[l]:(A_colptr[l + 1] - 1)
+                    k = A_rowval[aidx]
+                    acc += R(A_nzval[aidx]) * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Mixed-sparsity variant: A is sparse, B is dense
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::SparseMatrixCSC{TA, Int},
+                                B::AbstractMatrix{TB};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    A_colptr = A.colptr
+    A_rowval = A.rowval
+    A_nzval  = A.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — B is dense, use iszero guard
+        for l in 1:m2
+            for i in 1:n1
+                bij = B[i, j]
+                if abs(bij) > tol
+                    for k in 1:n2
+                        ∂A[k, l] += bij * re_blk[k, i, l]
+                    end
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — A is sparse, use nzrange
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for aidx in A_colptr[l]:(A_colptr[l + 1] - 1)
+                    k = A_rowval[aidx]
+                    acc += R(A_nzval[aidx]) * re_blk[k, i, l]
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Mixed-sparsity variant: A is dense, B is sparse
+function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
+                                A::AbstractMatrix{TA},
+                                B::SparseMatrixCSC{TB, Int};
+                                tol::Real = 0.0,
+                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+    n2, m2 = size(A)
+    n1, m1 = size(B)
+
+    @assert size(M1, 1) == n1 * n2
+    @assert size(M2, 2) == m1 * m2
+    @assert size(M1, 2) == size(M2, 1)
+
+    nrows = n1 * n2
+
+    if size(block, 1) == nrows && size(block, 2) >= m2
+        blk = view(block, :, 1:m2)
+    else
+        blk = Matrix{R}(undef, nrows, m2)
+    end
+
+    B_colptr = B.colptr
+    B_rowval = B.rowval
+    B_nzval  = B.nzval
+
+    @inbounds for j in 1:m1
+        col_start = (j - 1) * m2 + 1
+        col_end   = j * m2
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        re_blk = reshape(blk, n2, n1, m2)
+
+        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — B is sparse, only iterate nonzero B[i,j]
+        b_start = B_colptr[j]
+        b_stop  = B_colptr[j + 1] - 1
+        for l in 1:m2
+            for bidx in b_start:b_stop
+                i   = B_rowval[bidx]
+                bij = R(B_nzval[bidx])
+                for k in 1:n2
+                    ∂A[k, l] += bij * re_blk[k, i, l]
+                end
+            end
+        end
+
+        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — iterate all i (∂B is dense)
+        for i in 1:n1
+            acc = zero(R)
+            for l in 1:m2
+                for k in 1:n2
+                    akl = A[k, l]
+                    if abs(akl) > tol
+                        acc += akl * re_blk[k, i, l]
+                    end
+                end
+            end
+            ∂B[i, j] += acc
+        end
+    end
+end
+
+
+# Variant that computes fill_kron_adjoint_∂A! for both the identity and a permuted
+# version of ∂X in a single sparse iteration pass.
+#
+# Equivalent to:
+#   fill_kron_adjoint_∂A!(∂X, ∂A, B)
+#   fill_kron_adjoint_∂A!(Pₗ * ∂X * Pᵣ, ∂A, B)
+# but avoids materializing the permuted matrix.
+#
+# perm_row and perm_col are integer vectors representing the row/column permutations
+# such that (Pₗ * ∂X * Pᵣ)[perm_row[row], perm_col[col]] = ∂X[row, col].
+# Accumulates the ∂A adjoint from ∂X + P₁ₗ * ∂X * P₁ᵣ where ∂X is the cotangent
+# of kron(B, A) and P₁ is the (2,1,3) tensor-axis swap on the d³ row/column space
+# (d = n_A = size(∂A,1)).  The permutation is baked in — no external vectors needed.
+#
+# Requires n_B = n_A² and m_B = m_A² (i.e. B is the d²×d² outer factor).
+function fill_kron_adjoint_∂A_with_perm!(∂X::AbstractSparseMatrix{R},
+                                          ∂A::AbstractMatrix{S},
+                                          B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂A) * length(B) "∂X must have the same length as kron(B,A)"
+
+    # Convention: kron(B, A) — A is inner (fastest-varying), B is outer
+    # Same decomposition as fill_kron_adjoint! reshape(∂X, n_A, n_B, m_A, m_B)
+    n_A = size(∂A, 1)
+    n_B = size(B, 1)
+    m_A = size(∂A, 2)
+
+    @assert n_B == n_A * n_A "fill_kron_adjoint_∂A_with_perm! requires n_B == n_A² for the (2,1,3) axis swap"
+    @assert size(B, 2) == m_A * m_A "fill_kron_adjoint_∂A_with_perm! requires m_B == m_A² for the (2,1,3) axis swap"
+
+    const_nAnB   = n_A * n_B
+    const_nAnBmA = n_A * n_B * m_A
+    nrows = size(∂X, 1)
+
+    colptr = ∂X.colptr
+    rowval = ∂X.rowval
+    nzval  = ∂X.nzval
+
+    @inbounds for col in 1:size(∂X, 2)
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            # --- Identity contribution (linear-index decomposition) ---
+            L = (col - 1) * nrows + row - 1
+            i_A = L % n_A + 1
+            i_B = (L ÷ n_A) % n_B + 1
+            j_A = (L ÷ const_nAnB) % m_A + 1
+            j_B = (L ÷ const_nAnBmA) + 1
+            ∂A[i_A, j_A] += B[i_B, j_B] * val
+
+            # --- (2,1,3) axis-swap contribution ---
+            # The outer index i_B (1-based) encodes two sub-axes of size n_A:
+            #   k₂ = (i_B-1) % n_A,  k₃ = (i_B-1) ÷ n_A
+            # Swapping axis 1 (i_A) with axis 2 (k₂) gives:
+            i_Ap = (i_B - 1) % n_A + 1
+            i_Bp = (i_A - 1) + ((i_B - 1) ÷ n_A) * n_A + 1
+            j_Ap = (j_B - 1) % m_A + 1
+            j_Bp = (j_A - 1) + ((j_B - 1) ÷ m_A) * m_A + 1
+            ∂A[i_Ap, j_Ap] += B[i_Bp, j_Bp] * val
+        end
+    end
+end
+
+
+# Fused variant of fill_kron_adjoint_∂A_with_perm! that processes M1 * M2
+# in column blocks without materializing the full product.
+#
+# Equivalent to:
+#   fill_kron_adjoint_∂A_with_perm!(sparse(M1 * M2), ∂A, B)
+# but avoids allocating the (n_A³ × m_A³) intermediate.
+#
+# Requires n_B = n_A² and m_B = m_A² (same as fill_kron_adjoint_∂A_with_perm!).
+function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
+                                              M2::AbstractMatrix,
+                                              ∂A::AbstractMatrix{S},
+                                              B::AbstractMatrix{T};
+                                              block::AbstractMatrix{S} = Matrix{S}(undef, size(M1, 1), 0)) where {S <: Real, T <: Real}
+    n_A = size(∂A, 1)
+    m_A = size(∂A, 2)
+    n_B = size(B, 1)
+    m_B = size(B, 2)
+
+    @assert n_B == n_A * n_A "mul_fill_kron_adjoint_∂A_with_perm! requires n_B == n_A²"
+    @assert m_B == m_A * m_A "mul_fill_kron_adjoint_∂A_with_perm! requires m_B == m_A²"
+    @assert size(M1, 1) == n_A * n_B "M1 rows ($(size(M1,1))) must equal n_A * n_B ($(n_A * n_B))"
+    @assert size(M2, 2) == m_A * m_B "M2 cols ($(size(M2,2))) must equal m_A * m_B ($(m_A * m_B))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n_A * n_B  # = n_A³
+
+    if size(block, 1) == nrows && size(block, 2) >= m_A
+        blk = view(block, :, 1:m_A)
+    else
+        blk = Matrix{S}(undef, nrows, m_A)
+    end
+
+    @inbounds for j in 1:m_B  # j = j_B (outer column index of B)
+        col_start = (j - 1) * m_A + 1
+        col_end   = j * m_A
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Pre-compute the fixed permuted column index for j_B = j
+        # (2,1,3) axis swap: j_Ap depends only on j, not on j_A
+        j_Ap_fixed = (j - 1) % m_A + 1
+
+        for j_A in 1:m_A
+            # (2,1,3) axis swap: j_Bp depends on both j_A and j
+            j_Bp = (j_A - 1) + ((j - 1) ÷ m_A) * m_A + 1
+
+            for row in 1:nrows
+                val = blk[row, j_A]
+
+                # Decompose row into (i_A, i_B) for kron(B, A) convention
+                i_A = (row - 1) % n_A + 1
+                i_B = (row - 1) ÷ n_A + 1
+
+                # Identity contribution
+                ∂A[i_A, j_A] += B[i_B, j] * val
+
+                # (2,1,3) axis-swap contribution
+                i_Ap = (i_B - 1) % n_A + 1
+                i_Bp = (i_A - 1) + ((i_B - 1) ÷ n_A) * n_A + 1
+                ∂A[i_Ap, j_Ap_fixed] += B[i_Bp, j_Bp] * val
+            end
+        end
+    end
+end
+
+
+# Sparse-B variant of mul_fill_kron_adjoint_∂A_with_perm! that exploits B's sparsity.
+# When B is ultra-sparse (e.g. σ with ~nₑ nonzeros in nₑ₋² × nₑ₋²),
+# this skips ~99.7% of work by iterating only nzrange columns.
+function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
+                                              M2::AbstractMatrix,
+                                              ∂A::AbstractMatrix{S},
+                                              B::SparseMatrixCSC{TB, Int};
+                                              block::AbstractMatrix{S} = Matrix{S}(undef, size(M1, 1), 0)) where {S <: Real, TB <: Real}
+    n_A = size(∂A, 1)
+    m_A = size(∂A, 2)
+    n_B = size(B, 1)
+    m_B = size(B, 2)
+
+    @assert n_B == n_A * n_A "mul_fill_kron_adjoint_∂A_with_perm! requires n_B == n_A²"
+    @assert m_B == m_A * m_A "mul_fill_kron_adjoint_∂A_with_perm! requires m_B == m_A²"
+    @assert size(M1, 1) == n_A * n_B "M1 rows ($(size(M1,1))) must equal n_A * n_B ($(n_A * n_B))"
+    @assert size(M2, 2) == m_A * m_B "M2 cols ($(size(M2,2))) must equal m_A * m_B ($(m_A * m_B))"
+    @assert size(M1, 2) == size(M2, 1) "M1 cols ($(size(M1,2))) must equal M2 rows ($(size(M2,1)))"
+
+    nrows = n_A * n_B  # = n_A³
+
+    B_colptr = B.colptr
+    B_rowval = SparseArrays.rowvals(B)
+    B_nzval  = nonzeros(B)
+
+    # Precompute which B columns have nonzeros for fast skip checks
+    has_nz = falses(m_B)
+    @inbounds for col in 1:m_B
+        has_nz[col] = B_colptr[col] < B_colptr[col + 1]
+    end
+
+    if size(block, 1) == nrows && size(block, 2) >= m_A
+        blk = view(block, :, 1:m_A)
+    else
+        blk = Matrix{S}(undef, nrows, m_A)
+    end
+
+    @inbounds for j in 1:m_B  # j = j_B (outer column index of B)
+        # Check if this j contributes anything:
+        # Identity path: B[:,j] has nonzeros
+        # Perm path: for each j_A, B[:, j_Bp(j_A, j)] has nonzeros
+        need_blk = has_nz[j]
+        if !need_blk
+            j_div = (j - 1) ÷ m_A
+            for j_A in 1:m_A
+                j_Bp = (j_A - 1) + j_div * m_A + 1
+                if has_nz[j_Bp]
+                    need_blk = true
+                    break
+                end
+            end
+        end
+        need_blk || continue
+
+        col_start = (j - 1) * m_A + 1
+        col_end   = j * m_A
+        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+
+        # Pre-compute for (2,1,3) axis swap
+        j_Ap_fixed = (j - 1) % m_A + 1
+        j_div = (j - 1) ÷ m_A
+
+        # Identity contribution: iterate nonzeros of B[:, j]
+        for bidx in B_colptr[j]:(B_colptr[j + 1] - 1)
+            i_B = B_rowval[bidx]
+            b_val = S(B_nzval[bidx])
+            # i_A = (row-1) % n_A + 1 for row = (i_B-1)*n_A + 1 : i_B*n_A
+            row_start = (i_B - 1) * n_A
+            for j_A in 1:m_A
+                for i_A in 1:n_A
+                    ∂A[i_A, j_A] += b_val * blk[row_start + i_A, j_A]
+                end
+            end
+        end
+
+        # (2,1,3) axis-swap contribution: for each j_A, iterate nonzeros of B[:, j_Bp]
+        for j_A in 1:m_A
+            j_Bp = (j_A - 1) + j_div * m_A + 1
+            for bidx in B_colptr[j_Bp]:(B_colptr[j_Bp + 1] - 1)
+                i_Bp = B_rowval[bidx]
+                b_val = S(B_nzval[bidx])
+                # Reverse-map: i_Ap = (i_B-1) % n_A + 1, but here i_Bp encodes
+                # i_Bp = (i_A-1) + ((i_B-1) ÷ n_A) * n_A + 1
+                # So: i_A = (i_Bp-1) % n_A + 1, block_offset = (i_Bp-1) ÷ n_A
+                i_A = (i_Bp - 1) % n_A + 1
+                block_k3 = (i_Bp - 1) ÷ n_A  # = (i_B-1) ÷ n_A = k₃ - 1
+
+                # The identity i_Ap = (i_B-1) % n_A + 1 = k₂
+                # and row = (i_B-1)*n_A + i_A  where i_B = k₂ + k₃*n_A + 1
+                # We need to iterate over all k₂ (= i_Ap's corresponding i_B values)
+                # For a given i_Bp, we have i_A and block_k3 fixed.
+                # i_Ap = k₂ + 1 ranges over 1:n_A, with i_B = k₂ + block_k3*n_A + 1
+                # and row = (i_B-1)*n_A + i_A = (k₂ + block_k3*n_A)*n_A + i_A
+                for k2 in 0:(n_A - 1)
+                    i_Ap = k2 + 1
+                    row = (k2 + block_k3 * n_A) * n_A + i_A
+                    ∂A[i_Ap, j_Ap_fixed] += b_val * blk[row, j_A]
+                end
+            end
+        end
+    end
+end
+
+# Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
+# Forward contribution for each sorted output column triple (α≥β≥γ) is:
+#   Y[row,col] += A[i,α] * σ[(j-1)*nᵣ+k, (β-1)*nᶜ+γ]
+# where row is obtained by sorting (i,j,k) into i₁≥j₁≥k₁.
+function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
+                                        ∂σ::AbstractMatrix{T},
+                                        ∂Y::AbstractMatrix{T},
+                                        A::AbstractMatrix{TA},
+                                        σ::AbstractMatrix{Tσ};
+                                        tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nᵣ, nᶜ = size(A)
+    size(σ) == (nᵣ^2, nᶜ^2) || throw(DimensionMismatch("σ must be $(nᵣ^2)×$(nᶜ^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nᶜ)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nᶜ^2)
+    @inbounds for col in 1:nᶜ
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nᶜ^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    @inbounds for α in 1:nᶜ
+        rng_A = ranges_A[α]
+        isempty(rng_A) && continue
+
+        for β in 1:α
+            for γ in 1:β
+                σ_col = (β - 1) * nᶜ + γ
+                rng_σ = ranges_σ[σ_col]
+                isempty(rng_σ) && continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                for pA in rng_A
+                    i = rv_A[pA]
+                    a_val = nzv_A[pA]
+
+                    for pσ in rng_σ
+                        s = rv_σ[pσ]
+                        σ_val = nzv_σ[pσ]
+
+                        val = a_val * σ_val
+                        abs(val) > tol || continue
+
+                        j = (s - 1) ÷ nᵣ + 1
+                        k = (s - 1) % nᵣ + 1
+
+                        i₁ = i; j₁ = j; k₁ = k
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+                        if j₁ < k₁; j₁, k₁ = k₁, j₁; end
+                        if i₁ < j₁; i₁, j₁ = j₁, i₁; end
+
+                        row = (i₁ - 1) * i₁ * (i₁ + 1) ÷ 6 + (j₁ - 1) * j₁ ÷ 2 + k₁
+                        g = ∂Y[row, col]
+                        abs(g) <= tol && continue
+
+                        ∂A[i, α] += g * σ_val
+                        ∂σ[s, σ_col] += g * a_val
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+# Helper: adjoint of compressed_permuted_mixed_kron(A, σ; tol) w.r.t. A and σ.
+function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
+                                                  ∂σ::AbstractMatrix{T},
+                                                  ∂Y::AbstractMatrix{T},
+                                                  A::AbstractMatrix{TA},
+                                                  σ::AbstractMatrix{Tσ};
+                                                  tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    G = Matrix(∂Y)
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                            ∂σ[qr, σ_col_βγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                            ∂σ[pr, σ_col_αγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                            ∂σ[pq, σ_col_αβ] += g * a_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
+# ∂A-only variant: skips ∂σ accumulation (matches fill_kron_adjoint_∂A! pattern).
+# Use when the ∂σ output is discarded (e.g. B-pullback for Sylvester).
+function compressed_permuted_mixed_kron_pullback_∂A!(∂A::AbstractMatrix{T},
+                                                     ∂Y::AbstractMatrix{T},
+                                                     A::AbstractMatrix{TA},
+                                                     σ::AbstractMatrix{Tσ};
+                                                     tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    G = Matrix(∂Y)
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = G[row, col]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
+end
+
+
+# Fused variant: computes g_col = M1 * M2[:, col] lazily per (α,β,γ) triple
+# instead of materializing the full ∂Y = M1 * M2 matrix.
+# Equivalent to:
+#   compressed_permuted_mixed_kron_pullback!(∂A, ∂σ, M1 * M2, A, σ; tol)
+# but avoids the n_compressed³ × n_compressed³ allocation.
+function mul_compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
+                                                      ∂σ::AbstractMatrix{T},
+                                                      M1::AbstractMatrix,
+                                                      M2::AbstractMatrix,
+                                                      A::AbstractMatrix{TA},
+                                                      σ::AbstractMatrix{Tσ};
+                                                      tol::AbstractFloat = eps()) where {T <: Real, TA <: Real, Tσ <: Real}
+
+    nr, nc = size(A)
+    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
+
+    As = A isa SparseMatrixCSC ? A : sparse(A)
+    σs = σ isa SparseMatrixCSC ? σ : sparse(σ)
+
+    rv_A = SparseArrays.rowvals(As)
+    nzv_A = nonzeros(As)
+    rv_σ = SparseArrays.rowvals(σs)
+    nzv_σ = nonzeros(σs)
+
+    ranges_A = Vector{UnitRange{Int}}(undef, nc)
+    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
+    @inbounds for col in 1:nc
+        ranges_A[col] = SparseArrays.nzrange(As, col)
+    end
+    @inbounds for col in 1:(nc^2)
+        ranges_σ[col] = SparseArrays.nzrange(σs, col)
+    end
+
+    g_col = Vector{T}(undef, size(M1, 1))
+
+    @inbounds for α in 1:nc
+        rng_Aα = ranges_A[α]
+        for β in 1:α
+            rng_Aβ = ranges_A[β]
+            for γ in 1:β
+                rng_Aγ = ranges_A[γ]
+
+                σ_col_βγ = (β - 1) * nc + γ
+                σ_col_αγ = (α - 1) * nc + γ
+                σ_col_αβ = (α - 1) * nc + β
+
+                rng_σβγ = ranges_σ[σ_col_βγ]
+                rng_σαγ = ranges_σ[σ_col_αγ]
+                rng_σαβ = ranges_σ[σ_col_αβ]
+
+                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
+                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
+                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
+
+                (has_t1 || has_t2 || has_t3) || continue
+
+                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
+
+                # Compute g_col = M1 * M2[:, col] lazily for this triple
+                ℒ.mul!(g_col, M1, view(M2, :, col))
+
+                if has_t1
+                    for ia in rng_Aα
+                        p = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σβγ
+                            qr = rv_σ[is]
+                            q = (qr - 1) ÷ nr + 1
+                            r = qr - (q - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[p, α] += g * σ_val
+                            ∂σ[qr, σ_col_βγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t2
+                    for ia in rng_Aβ
+                        q = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαγ
+                            pr = rv_σ[is]
+                            p = (pr - 1) ÷ nr + 1
+                            r = pr - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[q, β] += g * σ_val
+                            ∂σ[pr, σ_col_αγ] += g * a_val
+                        end
+                    end
+                end
+
+                if has_t3
+                    for ia in rng_Aγ
+                        r = rv_A[ia]
+                        a_val = nzv_A[ia]
+                        for is in rng_σαβ
+                            pq = rv_σ[is]
+                            p = (pq - 1) ÷ nr + 1
+                            q = pq - (p - 1) * nr
+
+                            i1 = p
+                            j1 = q
+                            k1 = r
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+                            if j1 < k1
+                                j1, k1 = k1, j1
+                            end
+                            if i1 < j1
+                                i1, j1 = j1, i1
+                            end
+
+                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                            g = g_col[row]
+                            abs(g) <= tol && continue
+
+                            σ_val = nzv_σ[is]
+                            ∂A[r, γ] += g * σ_val
+                            ∂σ[pq, σ_col_αβ] += g * a_val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return
 end
 
 
@@ -5465,6 +6977,7 @@ end
 function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
                                     ∂Y::AbstractMatrix{T},
                                     X::AbstractMatrix{T};
+                                    tol::Real = 0.0,
                                     rowmask::Vector{Int} = Int[],
                                     colmask::Vector{Int} = Int[]) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
@@ -5498,19 +7011,17 @@ function compressed_kron²_pullback!(∂X::AbstractMatrix{T},
         end
     end
 
-    for i1 in 1:n_rows, j1 in 1:n_rows
-        j1 ≤ i1 || continue
+    for i1 in 1:n_rows, j1 in 1:i1
         row = (i1 - 1) * i1 ÷ 2 + j1
         (norowmask || rowmask_lookup[row]) || continue
         divisor = i1 == j1 ? 2 : 1
 
-        for i2 in 1:n_cols, j2 in 1:n_cols
-            j2 ≤ i2 || continue
+        for i2 in 1:n_cols, j2 in 1:i2
             col = (i2 - 1) * i2 ÷ 2 + j2
             (nocolmask || colmask_lookup[col]) || continue
 
             g = ∂Y[row, col]
-            iszero(g) && continue
+            abs(g) <= tol && continue
             g_d = g / divisor
 
             @inbounds aii = Xd[i1, i2]
@@ -5530,35 +7041,94 @@ end
 # Helper: adjoint of compressed_kron³(X) w.r.t. X.
 # Forward: out[row,col] = (aii*(ajj*akk + ajk*akj) + aij*(aji*akk + ajk*aki) + aik*(aji*akj + ajj*aki)) / divisor
 # where row ↔ (i1≥j1≥k1) and col ↔ (i2≥j2≥k2) and a_pq = X[p,q].
-function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}) where T <: Real
+function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}; tol::Real = 0.0) where T <: Real
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
     # Unlike the forward pass, the pullback must iterate over ALL row/column
     # indices, not just nonzero ones.  The gradient at a zero entry X[r,c] can
     # be non-zero because  ∂(X[i]*X[j]*X[k])/∂X[i] = X[j]*X[k]  which is
     # generically non-zero even when X[i]=0.
-    for i1 in 1:n_rows, j1 in 1:n_rows
-        j1 ≤ i1 || continue
-        for k1 in 1:n_rows
-            k1 ≤ j1 || continue
-            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-            # divisor for row symmetry
-            if i1 == j1
-                divisor = (j1 == k1) ? 6 : 2
-            else
-                divisor = (j1 == k1 || i1 == k1) ? 2 : 1
-            end
-            for i2 in 1:n_cols, j2 in 1:n_cols
-                j2 ≤ i2 || continue
-                for k2 in 1:n_cols
-                    k2 ≤ j2 || continue
-                    col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+    # However, we can skip columns that have no stored entries in sparse ∂Y.
+    sparse_cols = if ∂Y isa SparseMatrixCSC
+        colmask = falses(size(∂Y, 2))
+        @inbounds for col in 1:size(∂Y, 2)
+            colmask[col] = ∂Y.colptr[col] < ∂Y.colptr[col + 1]
+        end
+        colmask
+    else
+        trues(size(∂Y, 2))
+    end
+    for i2 in 1:n_cols, j2 in 1:i2
+        for k2 in 1:j2
+            col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+            sparse_cols[col] || continue
+            for i1 in 1:n_rows, j1 in 1:i1
+                @inbounds for k1 in 1:j1
+                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                     g = ∂Y[row, col]
-                    iszero(g) && continue
+                    abs(g) <= tol && continue
+                    # divisor for row symmetry
+                    if i1 == j1
+                        divisor = (j1 == k1) ? 6 : 2
+                    else
+                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                    end
                     g_d = g / divisor
-                    @inbounds aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
-                    @inbounds aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
-                    @inbounds aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+                    ∂X[k1, i2] += g_d * (aij * ajk + aik * ajj)
+                    ∂X[k1, j2] += g_d * (aik * aji + aii * ajk)
+                    ∂X[k1, k2] += g_d * (aii * ajj + aij * aji)
+                end
+            end
+        end
+    end
+end
+
+# Fused variant: computes g_col = M1 * M2[:, col] lazily per (i2,j2,k2) triple
+# instead of materializing the full ∂Y = M1 * M2 matrix.
+# Equivalent to:
+#   compressed_kron³_pullback!(∂X, M1 * M2, X)
+# but avoids the n_compressed³ × n_compressed³ allocation.
+function mul_compressed_kron³_pullback!(∂X::AbstractMatrix{T},
+                                        M1::AbstractMatrix,
+                                        M2::AbstractMatrix,
+                                        X::AbstractMatrix{T};
+                                        tol::Real = 0.0) where T <: Real
+    Xd = X isa DenseMatrix ? X : collect(X)
+    n_rows, n_cols = size(Xd)
+
+    g_col = Vector{T}(undef, size(M1, 1))
+
+    for i2 in 1:n_cols, j2 in 1:i2
+        for k2 in 1:j2
+            col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+            # Compute g_col = M1 * M2[:, col] lazily for this triple
+            ℒ.mul!(g_col, M1, view(M2, :, col))
+
+            for i1 in 1:n_rows, j1 in 1:i1
+                @inbounds for k1 in 1:j1
+                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                    g = g_col[row]
+                    abs(g) <= tol && continue
+                    # divisor for row symmetry
+                    if i1 == j1
+                        divisor = (j1 == k1) ? 6 : 2
+                    else
+                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                    end
+                    g_d = g / divisor
+                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
                     ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
                     ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
                     ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
@@ -5588,7 +7158,9 @@ function rrule(::typeof(calculate_third_order_solution),
                     workspaces::workspaces,
                     cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+                    opts::CalculationOptions = merge_calculation_options(),
+                    parameter_values::AbstractVector{<:Real} = Float64[],
+                    caching::Bool = true) where {S <: Real, R <: Real}
 
     # --- workspace / constants ---------------------------------------------------
     if !(eltype(workspaces.third_order.Ŝ) == S)
@@ -5611,6 +7183,8 @@ function rrule(::typeof(calculate_third_order_solution),
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    ensure_higher_order_solution_buffers!(ℂ, n, nₑ₋)
+
     initial_guess_sylv = if length(initial_guess) == 0
         zeros(S, 0, 0)
     elseif eltype(initial_guess) <: AbstractFloat
@@ -5622,19 +7196,25 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- forward pass (mirrors the primal, but stores intermediates) ---------------
 
     # 1st-order solution with zero-column
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
+    𝐒₁ = ℂ.𝐒₁::Matrix{S}
+    copyto!(@view(𝐒₁[:,1:n₋]), @view(𝑺₁[:,1:n₋]))
+    fill!(@view(𝐒₁[:,n₋+1]), zero(S))
+    copyto!(@view(𝐒₁[:,n₋+2:end]), @view(𝑺₁[:,n₋+1:end]))
 
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₋╱𝟏ₑ = ℂ.𝐒₁₋╱𝟏ₑ::Matrix{S}
+    copyto!(@view(𝐒₁₋╱𝟏ₑ[1:n₋,:]), @view(𝐒₁[i₋,:]))
+    fill!(@view(𝐒₁₋╱𝟏ₑ[n₋+1:end,:]), zero(S))
+    @inbounds 𝐒₁₋╱𝟏ₑ[n₋+1,n₋+1] = one(S)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
                                 ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]]
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋)]
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
 
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
@@ -5645,81 +7225,75 @@ function rrule(::typeof(calculate_third_order_solution),
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+    ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
     A = spinv * ∇₁₊
 
     # --- B matrix -----------------------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-    B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
+    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
                                           𝐒₂
                                           zeros(n₋ + nₑ, nₑ₋^2)]
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋^2)]
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    # tmpkron0 = kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    # tmpkron22 = kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * 𝛔)
-    tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
+    S1p0_kron_sigma = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
+    tmpkron22 = compressed_permuted_mixed_kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                               S1p0_kron_sigma,
+                                               sparse_preallocation = ℂ.tmp_sparse_prealloc6)
 
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    K22_sum = tmpkron22 + M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-
-    𝐗₃_∇₃_term = 𝐔∇₃ * K22_sum   # the ∇₃-dependent part (before 𝐂₃ and ck3)
-
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
-    out2  = ∇₂ * tmpkron1 * tmpkron2
-    out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+    # Terms (a)+(b): ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * [tmpkron2 + 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ] * 𝐏𝐂₃
+    tmpkron2 = ℒ.kron(M₂.𝛔, choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol))
+    D_ab = (tmpkron2 + M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ) * M₃.𝐏𝐂₃
+    𝐗₃ = mat_mult_kron(∇₂, collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎), D_ab, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)
 
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
+    # Term (c): ∇₂ * kron(⎸𝐒₁..⎹, ⎸𝐒₂k..⎹) * 𝐏𝐂₃
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)
+
+    # Term (d): ∇₂ * kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎*𝛔) * 𝐏𝐂₃
+    S2p0_sigma = 𝐒₂₊╱𝟎 * M₂.𝛔
+    𝐗₃ += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(S2p0_sigma), M₃.𝐏𝐂₃, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
+
+    # Term (e): ∇₁₊ * 𝐒₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) * 𝐏𝐂₃
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.third_order.droptol)
     mm_𝐒₂_kron = mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
-    out2 += ∇₁₊ * mm_𝐒₂_kron
+    𝐗₃ += ∇₁₊ * mm_𝐒₂_kron * M₃.𝐏𝐂₃
 
-    𝐗₃_pre = 𝐗₃_∇₃_term + out2 * M₃.𝐏    # before 𝐂₃ compression
-
-    𝐗₃ = 𝐗₃_pre * M₃.𝐂₃
+    𝐗₃ += ∇₃ * tmpkron22
 
     # Compute compressed_kron³(aux) WITHOUT rowmask: the pullback needs ∂∇₃ at ALL
     # positions (including currently-zero columns of ∇₃) so that gradients flow
     # correctly through calculate_third_order_derivatives back to parameters.
-    ck3_aux_mat = compressed_kron³(aux, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
+    ck3_aux_mat = compressed_kron³(aux, rowmask = M₃.∇₃_rowmask, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5)
     ck3_aux = ∇₃ * ck3_aux_mat
     𝐗₃ += ck3_aux
-
+    
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol.sylvester_tol,
-                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            tol = opts.tol.third_order.ad.sylvester,
                                             verbose = opts.verbose)
 
-    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.droptol)
+    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
 
     if !solved
@@ -5737,33 +7311,60 @@ function rrule(::typeof(calculate_third_order_solution),
     else
         cache.third_order_solution = 𝐒₃_stable
     end
+    if !isempty(parameter_values)
+        cache.valid_for.third_order_solution = Float64.(parameter_values)
+    end
+    empty!(cache.valid_for.pruned_third_order_solution)
 
     # --- precompute transposed constants for pullback -----------------------------
-    𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
-    𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
-    𝐏t  = choose_matrix_format(M₃.𝐏',  density_threshold = 1.0)
-    𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
-    𝛔t  = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
-    𝐔∇₂t = choose_matrix_format(M₂.𝐔∇₂', density_threshold = 1.0)
-    𝐔₂t  = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
+    # Use pre-cached transposes from constants (computed once at model compile time)
+    𝐏𝐂₃t = M₃.𝐏𝐂₃ᵀ
+    𝛔t  = M₂.𝛔ᵀ
+    𝐔∇₂t = M₂.𝐔∇₂ᵀ
+    𝐔₂t  = M₂.𝐔₂ᵀ
 
-    # ck3_aux_mat already computed above (without rowmask) — reuse for pullback
+    # Materialized transposes of forward-pass intermediates
+    At = choose_matrix_format(A')
+    Bt = choose_matrix_format(B')
+    ∇₂t = choose_matrix_format(∇₂')
+    ∇₃t = choose_matrix_format(∇₃')
+    D_ab_t = choose_matrix_format(D_ab')
+    tmpkron22_t = choose_matrix_format(tmpkron22')
+    ck3_aux_mat_t = choose_matrix_format(ck3_aux_mat')
+    𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
+    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎')
+    S2p0_sigma_t = choose_matrix_format(S2p0_sigma')
 
+    mm_𝐒₂_kron_t = choose_matrix_format(mm_𝐒₂_kron')
+
+    # Precompute (∇₁₊ · 𝐒₂)ᵀ for term 8 fused kron adjoint
+    ∇₁₊_𝐒₂_t = choose_matrix_format((∇₁₊ * 𝐒₂)')
+
+    # Precompute (∇₂ · kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎))ᵀ for fused terms a+b pullback
+    nabla2_kron_S1S2_t = collect(mat_mult_kron(collect(∇₂), collect(𝐒₁₊╱𝟎), collect(𝐒₂₊╱𝟎))')
+
+    # Sparse σ for fill_kron_adjoint_∂A_with_perm! (ultra-sparse: ~nₑ nonzeros in nₑ₋² × nₑ₋²)
+    σ_sparse = M₂.𝛔 isa SparseMatrixCSC ? M₂.𝛔 : sparse(M₂.𝛔)
+
+    # --- ensure pullback workspace buffers ---
+    ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
+
+    tmpkron22_ck3_aux_mat_t = choose_matrix_format(tmpkron22_t + ck3_aux_mat_t)
     # =========================================================================
     #   PULLBACK
     # =========================================================================
     function third_order_solution_pullback(∂𝐒₃_solved)
-        ∂𝐒₃ = ∂𝐒₃_solved[1]
+        ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
 
-        if ℒ.norm(∂𝐒₃) < opts.tol.sylvester_tol
+        if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ∂C_adj, slvd = solve_sylvester_equation(A', B', Matrix{Float64}(∂𝐒₃), ℂ.sylvester_workspace,
+        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
                                                   sylvester_algorithm = opts.sylvester_algorithm³,
-                                                  tol = opts.tol.sylvester_tol,
-                                                  acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                  tol = opts.tol.third_order.ad.sylvester,
                                                   verbose = opts.verbose)
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -5771,57 +7372,83 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂C_adj = choose_matrix_format(∂C_adj)
 
+        # --- Initialize all gradient accumulators ---
+        # Dense workspace temporaries (overwritten by mul! each call)
+        ∂𝐗₃           = ℂ.∂𝐗₃_3rd
+        ∂A             = ℂ.∂A_3rd
+        ∂B_from_sylv   = ℂ.∂B_sylv_3rd
+        ∂out2          = ℂ.∂out2_3rd
+        mul_tmp        = ℂ.mul_tmp_3rd
+        ∂∇₁₊𝐒₁➕∇₁₀   = ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd
+
+        # Dense workspace accumulators (need zeroing)
+        ∂spinv         = ℂ.∂spinv_3rd
+        ∂∇₁            = ℂ.∂∇₁_3rd;  fill!(∂∇₁, zero(S))
+        ∂𝐒₁₃           = ℂ.∂𝐒₁_3rd;  fill!(∂𝐒₁₃, zero(S))
+
+        # Sparse-preserving gradient accumulators (reuse workspace buffers)
+        ∂𝐒₂            = zero(𝐒₂)  # sparse — must stay fresh
+
+        ∂𝐒₁₊╱𝟎_tmp    = ℂ.∂𝐒₁₊╱𝟎_tmp_3rd;  fill!(∂𝐒₁₊╱𝟎_tmp, zero(S))
+        ∂𝐒₂₊╱𝟎        = ℂ.∂𝐒₂₊╱𝟎_3rd;       fill!(∂𝐒₂₊╱𝟎, zero(S))
+        ∂L_c           = ℂ.∂L_c_3rd;          fill!(∂L_c, zero(S))
+        ∂R_c           = ℂ.∂R_c_3rd;          fill!(∂R_c, zero(S))
+        ∂L_d           = ℂ.∂L_d_3rd;          fill!(∂L_d, zero(S))
+        ∂R_d           = ℂ.∂R_d_3rd;          fill!(∂R_d, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ_t8   = ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd;  fill!(∂𝐒₁₋╱𝟏ₑ_t8, zero(S))
+        ∂𝐒₂₋╱𝟎        = ℂ.∂𝐒₂₋╱𝟎_3rd;       fill!(∂𝐒₂₋╱𝟎, zero(S))
+        ∂𝐒₁₋╱𝟏ₑ₃     = ℂ.∂𝐒₁₋╱𝟏ₑ_3rd;     fill!(∂𝐒₁₋╱𝟏ₑ₃, zero(S))
+        ∂𝐒₁₊╱𝟎₃      = ℂ.∂𝐒₁₊╱𝟎_3rd;       fill!(∂𝐒₁₊╱𝟎₃, zero(S))
+        ∂S1S1_stack    = ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd; fill!(∂S1S1_stack, zero(S))
+        ∂aux           = ℂ.∂aux_3rd;          fill!(∂aux, zero(S))
+
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
-        ∂A = ∂C_adj * B' * 𝐒₃_stable'
-        ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj
+        # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
+        ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
+        ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+        # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
+        ℒ.mul!(∂𝐗₃, At, ∂C_adj)
+        ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
+        # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
+        # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
+        # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
+        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj)
 
-        # C = spinv * 𝐗₃
-        ∂𝐗₃   = spinv' * ∂C_adj
-        ∂spinv = ∂C_adj * 𝐗₃'
-
-        # A = spinv * ∇₁₊
-        ∂spinv += ∂A * ∇₁₊'
+        # C = spinv * 𝐗₃  →  ∂spinv
+        # A = spinv * ∇₁₊  →  ∂spinv accumulation
+        ℒ.mul!(∂spinv, ∂C_adj, 𝐗₃')
+        ℒ.mul!(∂spinv, ∂A, ∇₁₊', 1, 1)
 
         # =====================================================================
         #  ∂∇₃  (linear: ∇₃ appears in two additive terms of 𝐗₃)
         # =====================================================================
-        # Term 1:  𝐗₃ contains (∇₃·𝐔∇₃)·K22_sum  (goes through ·𝐂₃ then ·spinv⁻¹)
-        #   i.e.  𝐗₃_pre_part1 = ∇₃ · 𝐔∇₃ · K22_sum  →  𝐗₃ += 𝐗₃_pre_part1 · 𝐂₃
-        #   ∂∇₃_term1 = ∂𝐗₃ · 𝐂₃ᵀ · K22_sumᵀ · 𝐔∇₃ᵀ  (but that's = ∂𝐗₃_pre · K22_sumᵀ · 𝐔∇₃ᵀ)
-        # Term 2:  𝐗₃ += ∇₃ · ck3_aux_mat
-        #   ∂∇₃_term2 = ∂𝐗₃ · ck3_aux_matᵀ
-
-        ∂𝐗₃_pre = ∂𝐗₃ * 𝐂₃t   # adjoint of 𝐗₃ = 𝐗₃_pre * 𝐂₃ + ck3_aux
-
-        ∂∇₃ = ∂𝐗₃_pre * K22_sum' * 𝐔∇₃t + ∂𝐗₃ * ck3_aux_mat'
-
+        # 𝐗₃ = out2 * 𝐏𝐂₃ + ∇₃ * tmpkron22 + ∇₃ * ck3_aux_mat
+        # ∇₃ has two direct linear terms; out2 maps through 𝐏𝐂₃.
+        ∂∇₃ = ∂𝐗₃ * tmpkron22_ck3_aux_mat_t
         # =====================================================================
         #  ∂∇₂  (∇₂ is linear in out2 → 𝐗₃_pre → 𝐗₃)
         # =====================================================================
-        # out2 enters 𝐗₃_pre as:  𝐗₃_pre = ... + out2 · 𝐏
-        # ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ
-        ∂out2 = ∂𝐗₃_pre * 𝐏t
+        # out2 enters 𝐗₃ as: 𝐗₃ = out2 · 𝐏𝐂₃ + ...
+        # ∂out2 = ∂𝐗₃ · (𝐏𝐂₃)ᵀ
+        ℒ.mul!(∂out2, ∂𝐗₃, 𝐏𝐂₃t)
 
-        # out2  = ∇₂ · tmpkron1 · tmpkron2                                      (term a)
-        #       + ∇₂ · tmpkron1 · 𝐏₁ₗ · tmpkron2 · 𝐏₁ᵣ                        (term b)
-        #       + ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)                                   (term c)
-        #       + ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)                                  (term d)
-        #   (term 8 = ∇₁₊ · mm_𝐒₂_kron does not involve ∇₂.)
+        # 𝐗₃ = ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) * D_ab                               (terms a+b)
+        #     + ∇₂ * kron(⎸𝐒₁..⎹, ⎸𝐒₂k..⎹) * 𝐏𝐂₃                             (term c)
+        #     + ∇₂ * kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔) * 𝐏𝐂₃                             (term d)
+        #   (term e = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) · 𝐏𝐂₃ does not involve ∇₂.)
 
-        # For correctness-first: materialize kron products
-        R_a = tmpkron1 * tmpkron2                                       # term a right factor
-        R_b = tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ                  # term b right factor
-        R_c = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)  # term c right factor
-        R_d = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔))   # term d right factor
-
-        ∂∇₂ = ∂out2 * R_a' + ∂out2 * R_b' + ∂out2 * R_c' + ∂out2 * R_d'
+        # ∂∇₂ via mat_mult_kron (avoids materializing cubic kron transposes)
+        ∂mid_ab = choose_matrix_format(∂𝐗₃ * D_ab_t)                                   # n × nₑ₋³
+        ∂∇₂ = mat_mult_kron(∂mid_ab, collect(𝐒₁₊╱𝟎'), collect(𝐒₂₊╱𝟎'))               # terms a+b
+        ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t) # term c
+        ∂∇₂ = ∂∇₂ + mat_mult_kron(∂out2, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, S2p0_sigma_t)        # term d
 
 
         # =====================================================================
         #  ∂𝐒₂  (𝐒₂ enters out2 via several stacking matrices)
         # =====================================================================
         # 𝐒₂ does NOT affect A, B, or the ∇₃ terms — only out2.
-        # We already have ∂out2 = ∂𝐗₃_pre · 𝐏ᵀ from the ∂∇₂ section above.
+        # We already have ∂out2 from the 𝐗₃ = out2 * 𝐏𝐂₃ adjoint.
         #
         # out2 terms that depend on 𝐒₂:
         #   (a) ∇₂ · tmpkron1 · tmpkron2           — tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -5830,73 +7457,60 @@ function rrule(::typeof(calculate_third_order_solution),
         #   (d) ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)       — second factor depends on 𝐒₂
         #   (8) ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)  — both 𝐒₂ and 𝐒₂₋╱𝟎 depend on 𝐒₂
 
-        ∂𝐒₂ = zeros(S, size(𝐒₂))
+        # --- terms (a) and (b): through kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) via D_ab ---
+        # ∂kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) = ∇₂ᵀ * ∂𝐗₃ * D_ab' (combines terms a+b)
+        ∂tmpkron1 = (∇₂t * ∂mid_ab)
+        # ∂tmpkron1 = sparse(∇₂t * ∂mid_ab)
 
-        # --- terms (a) and (b):  through tmpkron1 = kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) ---
-        # ∂(∇₂·tmpkron1·R) w.r.t. tmpkron1 = ∇₂ᵀ·∂out2·Rᵀ
-        ∂tmpkron1  = ∇₂' * ∂out2 * tmpkron2'                            # from (a)
-        ∂tmpkron1 += ∇₂' * ∂out2 * (M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ')    # from (b)
-
+        # Force only the cotangent argument onto the dense fill_kron_adjoint! path here
+        # and in the analogous calls below. The primal factors may stay sparse/abstract,
+        # but the sparse ∂X overload only iterates stored cotangent entries.
         # kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎) pullback → ∂𝐒₂₊╱𝟎 via fill_kron_adjoint!
-        ∂𝐒₁₊╱𝟎_tmp = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂𝐒₂₊╱𝟎 = zeros(S, size(𝐒₂₊╱𝟎))
-        fill_kron_adjoint!(∂𝐒₂₊╱𝟎, ∂𝐒₁₊╱𝟎_tmp, Matrix{S}(∂tmpkron1), Matrix{S}(𝐒₂₊╱𝟎), 𝐒₁₊╱𝟎)
+        fill_kron_adjoint!(∂𝐒₂₊╱𝟎, ∂𝐒₁₊╱𝟎_tmp, ∂tmpkron1, 𝐒₂₊╱𝟎, 𝐒₁₊╱𝟎)
 
         # 𝐒₂₊╱𝟎 = [𝐒₂[i₊,:]; 0]  →  ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎[1:length(i₊),:]
-        ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎[1:length(i₊),:]
+        @views ∂𝐒₂[i₊,:] .+= ∂𝐒₂₊╱𝟎[1:length(i₊),:]
 
         # --- term (c): through ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 ---
-        # ∇₂ · kron(⎸𝐒₁..⎹, ⎸𝐒₂..⎹)  →  ∂kron_c = ∇₂ᵀ · ∂out2
-        ∂kron_c = ∇₂' * ∂out2
-        # kron(L, R) pullback  where L = ⎸𝐒₁..⎹, R = ⎸𝐒₂k..⎹
-        ∂L_c = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂R_c = zeros(S, size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
-        fill_kron_adjoint!(∂R_c, ∂L_c, Matrix{S}(∂kron_c), Matrix{S}(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — avoids materializing ∇₂t_∂out2
+        mul_fill_kron_adjoint!(∂R_c, ∂L_c, ∇₂t, ∂out2, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.third_order.droptol)
 
         # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [ (𝐒₂·kron𝐒₁₋╱𝟏ₑ + 𝐒₁·[𝐒₂[i₋,:];0])[i₊,:] ; 𝐒₂ ; 0 ]
         # Top block (rows 1:n₊): depends on 𝐒₂ through 𝐒₂·kron𝐒₁₋╱𝟏ₑ and 𝐒₁·[𝐒₂[i₋,:];0]
         n₊_len = length(i₊)
         ∂top_block = ∂R_c[1:n₊_len, :]
         # From 𝐒₂·kron𝐒₁₋╱𝟏ₑ:
-        ∂𝐒₂ += ℒ.I(n)[:,i₊] * ∂top_block * kron𝐒₁₋╱𝟏ₑ'
+        @views ∂𝐒₂[i₊,:] .+= ∂top_block * kron𝐒₁₋╱𝟏ₑ'
         # From 𝐒₁·[𝐒₂[i₋,:];0] → ∂𝐒₂[i₋,:] += 𝐒₁' * I[:,i₊] * ∂top_block
         #   (since [𝐒₂[i₋,:];0] pads with zeros, only i₋ rows of 𝐒₂ contribute)
-        ∂𝐒₂_padded = 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_block   # n₋+1+nₑ × nₑ₋²
-        ∂𝐒₂[i₋,:] += ∂𝐒₂_padded[1:n₋, :]
+        ∂𝐒₂_padded = 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_block   # TODO: In general check if there are more optimizations that can be carried over from the non-AD call. # n₋+1+nₑ × nₑ₋²
+        @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂_padded[1:n₋, :]
 
         # Middle block (rows n₊_len+1 : n₊_len+n): directly 𝐒₂
-        ∂𝐒₂ += ∂R_c[n₊_len .+ (1:n), :]
+        @views ∂𝐒₂ .+= ∂R_c[n₊_len .+ (1:n), :]
 
         # Bottom block is zeros
 
         # --- term (d): through kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔) ---
-        # ∇₂ · kron(⎸𝐒₁..⎹, 𝐒₂₊╱𝟎·𝛔)  →  ∂kron_d = ∇₂ᵀ · ∂out2
-        # (same ∂kron_d = ∂kron_c since ∂out2 is the total adjoint — but we need
-        #  the Kron adjoint for the actual kron pair (L, 𝐒₂₊╱𝟎·𝛔) )
-        ∂L_d = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        S2p0_sigma = collect(𝐒₂₊╱𝟎 * M₂.𝛔)
-        ∂R_d = zeros(S, size(S2p0_sigma))
-        fill_kron_adjoint!(∂R_d, ∂L_d, Matrix{S}(∂kron_c), Matrix{S}(S2p0_sigma), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
+        # Fused: ∇₂ᵀ * ∂out2 with fill_kron_adjoint! — same pattern, different kron factors
+        mul_fill_kron_adjoint!(∂R_d, ∂L_d, ∇₂t, ∂out2, S2p0_sigma, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = opts.tol.third_order.droptol)
 
         # 𝐒₂₊╱𝟎·𝛔  →  ∂𝐒₂₊╱𝟎_d = ∂R_d · 𝛔ᵀ
         ∂𝐒₂₊╱𝟎_d = ∂R_d * 𝛔t
-        ∂𝐒₂[i₊,:] += ∂𝐒₂₊╱𝟎_d[1:length(i₊),:]
+        @views ∂𝐒₂[i₊,:] .+= ∂𝐒₂₊╱𝟎_d[1:length(i₊),:]
 
         # --- term (8): ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎) ---
         # out2_term8 = ∇₁₊ · 𝐒₂ · kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         # ∂(∇₁₊·𝐒₂·K) w.r.t. 𝐒₂ = ∇₁₊ᵀ · ∂out2 · Kᵀ
-        kron_s1_s2 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-        ∂𝐒₂ += ∇₁₊' * ∂out2 * kron_s1_s2'
+        tmp_t8 = ∇₁₊' * ∂out2
+        ∂𝐒₂ = ∂𝐒₂ + mat_mult_kron(tmp_t8, collect(𝐒₁₋╱𝟏ₑ'), collect(𝐒₂₋╱𝟎'))
 
         # ∂(∇₁₊·𝐒₂·kron(𝐒₁₋╱𝟏ₑ,𝐒₂₋╱𝟎)) w.r.t. 𝐒₂₋╱𝟎  (through the kron)
-        # ∂kron_term8 = (∇₁₊·𝐒₂)ᵀ · ∂out2
-        ∂kron_term8 = (∇₁₊ * 𝐒₂)' * ∂out2
-        ∂𝐒₁₋╱𝟏ₑ_t8 = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₂₋╱𝟎 = zeros(S, size(𝐒₂₋╱𝟎))
-        fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, Matrix{S}(∂kron_term8), Matrix{S}(𝐒₂₋╱𝟎), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        # Fused: (∇₁₊·𝐒₂)ᵀ · ∂out2 with fill_kron_adjoint! in one pass
+        mul_fill_kron_adjoint!(∂𝐒₂₋╱𝟎, ∂𝐒₁₋╱𝟏ₑ_t8, ∇₁₊_𝐒₂_t, ∂out2, 𝐒₂₋╱𝟎, 𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol)
 
         # 𝐒₂₋╱𝟎 = [𝐒₂[i₋,:]; 0]  →  ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
-        ∂𝐒₂[i₋,:] += ∂𝐒₂₋╱𝟎[1:n₋,:]
+        @views ∂𝐒₂[i₋,:] .+= ∂𝐒₂₋╱𝟎[1:n₋,:]
 
         # =====================================================================
         #  ∂∇₁
@@ -5908,90 +7522,98 @@ function rrule(::typeof(calculate_third_order_solution),
         #      → A = spinv·∇₁₊   and   out2 += ∇₁₊ · mm_𝐒₂_kron
 
         # step 1: ∂ through inv(∇₁₊𝐒₁➕∇₁₀)  (∂spinv already accumulated)
-        ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
+        ℒ.mul!(mul_tmp, spinv', ∂spinv)
+        ℒ.mul!(∂∇₁₊𝐒₁➕∇₁₀, mul_tmp, spinv')
+        ℒ.rmul!(∂∇₁₊𝐒₁➕∇₁₀, -1)
 
-        ∂∇₁ = zeros(S, size(∇₁))
         ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋] * 𝐒₁[i₊,1:n₋]'
         ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
 
         # step 2: ∂ through ∇₁₊
-        ∂∇₁₊ = spinv' * ∂A             # from A = spinv · ∇₁₊
-        ∂∇₁₊ += ∂out2 * mm_𝐒₂_kron'    # from out2 += ∇₁₊ · mm_𝐒₂_kron
+        ∂∇₁₊ = ℂ.∂∇₁₊_3rd
+        ℒ.mul!(∂∇₁₊, spinv', ∂A)  # from A = spinv · ∇₁₊
+        ℒ.mul!(∂∇₁₊, ∂out2, mm_𝐒₂_kron_t, 1, 1)  # from out2 += ∇₁₊ · mm_𝐒₂_kron
 
         ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
 
         # =====================================================================
         #  ∂𝑺₁  (𝑺₁ enters through 𝐒₁, affecting A,B,C,out2 via many paths)
         # =====================================================================
-        ∂𝐒₁₋╱𝟏ₑ₃ = zeros(S, size(𝐒₁₋╱𝟏ₑ))
-        ∂𝐒₁₊╱𝟎₃ = zeros(S, size(𝐒₁₊╱𝟎))
-        ∂S1S1_stack = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂𝐒₁₃ = zeros(S, n, nₑ₋)
-
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from out2 terms c,d (kron outer factors) ---
-        ∂S1S1_stack .+= ∂L_c .+ ∂L_d
+        ℒ.axpy!(1, ∂L_c, ∂S1S1_stack)
+        ℒ.axpy!(1, ∂L_d, ∂S1S1_stack)
 
-        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from K22_sum → tmpkron22 ---
-        ∂K22_sum = 𝐔∇₃' * ∂𝐗₃_pre
-        ∂tmpkron22 = ∂K22_sum + M₃.𝐏₁ₗ̂' * ∂K22_sum * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∂K22_sum * M₃.𝐏₂ᵣ̃'
-        tmpkron0_σ = collect(tmpkron0 * M₂.𝛔)
-        ∂tmpkron0_σ = zeros(S, size(tmpkron0_σ))
-        ∂S1S1_from22 = zeros(S, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        fill_kron_adjoint!(∂tmpkron0_σ, ∂S1S1_from22, Matrix{S}(∂tmpkron22), Matrix{S}(tmpkron0_σ), Matrix{S}(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
-        ∂S1S1_stack .+= ∂S1S1_from22
-        ∂tmpkron0 = ∂tmpkron0_σ * 𝛔t
-        ∂𝐒₁₊╱𝟎_tk0 = zeros(S, size(𝐒₁₊╱𝟎))
-        fill_kron_adjoint!(∂𝐒₁₊╱𝟎_tk0, ∂𝐒₁₊╱𝟎_tk0, Matrix{S}(∂tmpkron0), Matrix{S}(𝐒₁₊╱𝟎), Matrix{S}(𝐒₁₊╱𝟎))
-        ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tk0
+        # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ + ∂𝐒₁₊╱𝟎 : from ∇₃ * compressed_kron(...) ---
+        # Fused: compute g_col = ∇₃ᵀ * ∂𝐗₃[:, col] lazily per (α,β,γ) triple
+        # instead of materializing the full ∂tmpkron22 = ∇₃ᵀ * ∂𝐗₃ matrix.
+        ∂S1S1_from_ck = ℂ.∂S1S1_from_ck_3rd
+        fill!(∂S1S1_from_ck, zero(S))
+        ∂S1p0_kron_sigma = ℂ.∂S1p0_kron_sigma_3rd
+        fill!(∂S1p0_kron_sigma, zero(S))
+        mul_compressed_permuted_mixed_kron_pullback!(∂S1S1_from_ck,
+                             ∂S1p0_kron_sigma,
+                             ∇₃t, ∂𝐗₃,
+                             ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                             S1p0_kron_sigma;
+                             tol = opts.tol.third_order.droptol)
+
+        # Sparsify ∂S1p0_kron_sigma: structurally bounded by σ's support, so very sparse.
+        # sparse × sparse matmul avoids dense intermediate; downstream fill_kron_adjoint!
+        # uses the sparse overload that iterates only nonzero cotangent entries.
+        ∂S1p0_kron = choose_matrix_format(sparse(∂S1p0_kron_sigma) * 𝛔t)
+        ∂S1p0_left = ℂ.∂S1p0_left_3rd
+        fill!(∂S1p0_left, zero(S))
+        ∂S1p0_right = ℂ.∂S1p0_right_3rd
+        fill!(∂S1p0_right, zero(S))
+        fill_kron_adjoint!(∂S1p0_left, ∂S1p0_right, ∂S1p0_kron, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+
+        ℒ.axpy!(1, ∂S1S1_from_ck, ∂S1S1_stack)
+        ℒ.axpy!(1, ∂S1p0_left, ∂𝐒₁₊╱𝟎₃)
+        ℒ.axpy!(1, ∂S1p0_right, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ : from compressed_kron³(aux) → 𝐗₃ ---
-        ∂ck3_aux = ∇₃' * ∂𝐗₃
-        ∂aux = zeros(S, size(aux))
-        compressed_kron³_pullback!(∂aux, Matrix{S}(∂ck3_aux), Matrix{S}(aux))
-        ∂S1S1_stack .+= M₃.𝐒𝐏' * ∂aux
+        # Fused: compute g_col = ∇₃ᵀ * ∂𝐗₃[:, col] lazily per (i2,j2,k2) triple
+        mul_compressed_kron³_pullback!(∂aux, ∇₃t, ∂𝐗₃, aux; tol = opts.tol.third_order.droptol)
+        ℒ.mul!(∂S1S1_stack, M₃.𝐒𝐏', ∂aux, 1, 1)
 
         # --- ∂𝐒₁₊╱𝟎 : from tmpkron1 (already computed for ∂𝐒₂) ---
-        ∂𝐒₁₊╱𝟎₃ .+= ∂𝐒₁₊╱𝟎_tmp
+        ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
-        # --- ∂𝐒₁₋╱𝟏ₑ : from B via tmpkron_σ = kron(B=𝐒₁₋╱𝟏ₑ, A=𝛔) ---
-        ∂B_pre = 𝐔₃t * ∂B_from_sylv
-        ∂B_pre_raw = ∂B_pre * 𝐂₃t
-        ∂tmpkron_σ₃ = ∂B_pre_raw + M₃.𝐏₁ₗ̄' * ∂B_pre_raw * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̄' * ∂B_pre_raw * M₃.𝐏₂ᵣ̃'
-        ∂𝛔_discard = zeros(S, size(M₂.𝛔))
-        fill_kron_adjoint!(∂𝛔_discard, ∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂tmpkron_σ₃), Matrix{S}(M₂.𝛔), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
+        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Matrix{S}(∂B_from_sylv), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
-        tmp_a = tmpkron1' * ∇₂' * ∂out2
-        ∂tmpkron2 = tmp_a + M₃.𝐏₁ₗ' * tmp_a * M₃.𝐏₁ᵣ'
-        ∂𝛔_discard2 = zeros(S, size(M₂.𝛔))
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝛔_discard2, Matrix{S}(∂tmpkron2), Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(M₂.𝛔))
+        # Fused: nabla2_kron_S1S2_t * ∂out2 in blocks + identity/(2,1,3) permuted ∂A
+        # Avoids materializing both ∇₂t_∂out2 (n_∇₂ × n_out2_c) and tmp_a (nₑ₋³ × nₑ₋³)
+        mul_fill_kron_adjoint_∂A_with_perm!(nabla2_kron_S1S2_t, ∂out2, ∂𝐒₁₋╱𝟏ₑ₃, σ_sparse)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from term 8 kron (already computed for ∂𝐒₂) ---
-        ∂𝐒₁₋╱𝟏ₑ₃ .+= ∂𝐒₁₋╱𝟏ₑ_t8
+        ℒ.axpy!(1, ∂𝐒₁₋╱𝟏ₑ_t8, ∂𝐒₁₋╱𝟏ₑ₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from kron𝐒₁₋╱𝟏ₑ in ⎸𝐒₂k..⎹ top block ---
-        ∂kron𝐒₁₋╱𝟏ₑ₃ = Matrix{S}(𝐒₂' * ℒ.I(n)[:,i₊] * ∂top_block)
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝐒₁₋╱𝟏ₑ₃, ∂kron𝐒₁₋╱𝟏ₑ₃, Matrix{S}(𝐒₁₋╱𝟏ₑ), Matrix{S}(𝐒₁₋╱𝟏ₑ))
+        # ∂kron𝐒₁₋╱𝟏ₑ₃ = sparse(𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block)
+        ∂kron𝐒₁₋╱𝟏ₑ₃ = (𝐒₂t * ℒ.I(n)[:,i₊] * ∂top_block)
+        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ₃, ∂𝐒₁₋╱𝟏ₑ₃, ∂kron𝐒₁₋╱𝟏ₑ₃, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
         # --- ∂𝐒₁ : from 𝐒₁·[𝐒₂[i₋,:];0] in ⎸𝐒₂k..⎹ top block ---
         S2_padded = [𝐒₂[i₋,:]; zeros(S, nₑ + 1, nₑ₋^2)]
-        ∂𝐒₁₃ += ℒ.I(n)[:,i₊] * ∂top_block * S2_padded'
+        @views ∂𝐒₁₃[i₊,:] .+= ∂top_block * S2_padded'
 
         # === Convert ∂S1S1_stack → ∂𝐒₁ and ∂𝐒₁₋╱𝟏ₑ ===
         n₊l = length(i₊)
         ∂top_S1S1 = ∂S1S1_stack[1:n₊l, :]
-        ∂𝐒₁₃ += ℒ.I(n)[:,i₊] * ∂top_S1S1 * 𝐒₁₋╱𝟏ₑ'
-        ∂𝐒₁₋╱𝟏ₑ₃ += 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_S1S1
-        ∂𝐒₁₃ += ∂S1S1_stack[n₊l .+ (1:n), :]
+        @views ∂𝐒₁₃[i₊,:] .+= ∂top_S1S1 * 𝐒₁₋╱𝟏ₑ'
+        ∂𝐒₁₋╱𝟏ₑ₃ .+= 𝐒₁' * ℒ.I(n)[:,i₊] * ∂top_S1S1
+        @views ∂𝐒₁₃ .+= ∂S1S1_stack[n₊l .+ (1:n), :]
 
         # === Convert ∂𝐒₁₊╱𝟎ₓ → ∂𝐒₁ ===
-        ∂𝐒₁₃[i₊,:] += ∂𝐒₁₊╱𝟎₃[1:n₊l,:]
+        @views ∂𝐒₁₃[i₊,:] .+= ∂𝐒₁₊╱𝟎₃[1:n₊l,:]
 
         # === Convert ∂𝐒₁₋╱𝟏ₑ → ∂𝐒₁ ===
-        ∂𝐒₁₃[i₋,:] += ∂𝐒₁₋╱𝟏ₑ₃[1:length(i₋),:]
+        @views ∂𝐒₁₃[i₋,:] .+= ∂𝐒₁₋╱𝟏ₑ₃[1:length(i₋),:]
 
         # === ∂𝐒₁ from ∇₁₊𝐒₁➕∇₁₀ (spinv) ===
         ∂𝐒₁₃[i₊,1:n₋] -= ∇₁[:,1:n₊]' * ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋]
@@ -6018,8 +7640,7 @@ function rrule(::typeof(solve_sylvester_equation),
     𝕊ℂ::sylvester_workspace;
     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
     sylvester_algorithm::Symbol = :doubling,
-    acceptance_tol::AbstractFloat = 1e-10,
-    tol::AbstractFloat = 1e-14,
+    tol::SolverTolerances = SolverTolerances(),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
@@ -6039,7 +7660,7 @@ function rrule(::typeof(solve_sylvester_equation),
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
@@ -6048,14 +7669,11 @@ function rrule(::typeof(solve_sylvester_equation),
 
         solved = solved && slvd
 
-        tmp_n = 𝕊ℂ.𝐀
-        tmp_m = 𝕊ℂ.𝐁
-
-        ℒ.mul!(tmp_n, ∂C, B')
-        ∂A = tmp_n * P_cached'
-
-        ℒ.mul!(tmp_m, P_cached', A')
-        ∂B = tmp_m * ∂C
+        # ∂C is n×m, B' is m×m, P_cached is n×m, A is n×n
+        # Intermediate products are n×m and m×n — not n×n or m×m,
+        # so workspace buffers 𝐀 (n×n) / 𝐁 (m×m) are wrong shape when n ≠ m.
+        ∂A = (∂C * B') * P_cached'
+        ∂B = (P_cached' * A') * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
@@ -6067,37 +7685,50 @@ function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64},
                 workspace::lyapunov_workspace;
+                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                 lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
+                tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                                rtol = 1e-14,
+                                                          initial_guess_acceptance_tol = 1e-12,
+                                                          acceptance_tol = 1e-12),
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, workspace,
+                                        initial_guess = initial_guess,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        tol = tol,
+                                        verbose = verbose)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
     copyto!(workspace.P, P)
     P_cached = workspace.P
     ensure_lyapunov_doubling_buffers!(workspace)
+    A_dense = collect(A)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], workspace, lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
+        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
+        # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
+        # (the dispatcher's choose_matrix_format would convert back to sparse)
+        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
+        ∂C = ∂C_result
+        slvd = adj_tol < tol.acceptance_tol
     
         solved = solved && slvd
 
         tmp_n1 = workspace.𝐂A
         tmp_n2 = workspace.𝐀²
-        ∂A = zero(A)
+        ∂A = zeros(eltype(A), size(A))
 
-        ℒ.mul!(tmp_n1, ∂C, A)
+        ℒ.mul!(tmp_n1, ∂C, A_dense)
         ℒ.mul!(∂A, tmp_n1, P_cached')
 
-        ℒ.mul!(tmp_n2, ∂C', A)
+        ℒ.mul!(tmp_n2, ∂C', A_dense)
         ℒ.mul!(∂A, tmp_n2, P_cached, 1, 1)
 
         return NoTangent(), ∂A, ∂C, NoTangent()
@@ -8491,8 +10122,7 @@ function rrule(::typeof(calculate_loglikelihood),
                                                         𝐁,
                                                         lyap_ws,
                                                         lyapunov_algorithm = opts.lyapunov_algorithm,
-                                                        tol = opts.tol.lyapunov_tol,
-                                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                        tol = opts.tol.first_order.ad.lyapunov,
                                                         verbose = opts.verbose)
         lyap_pullback = lyap_pullback_local
         lyap_rrule_result[1]
@@ -8866,7 +10496,7 @@ function rrule(::typeof(get_statistics),
         SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
         ret = Dict{Symbol,AbstractArray{T}}()
-        ret[:non_stochastic_steady_state] = solution_error < opts.tol.NSSS_acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+        ret[:non_stochastic_steady_state] = solution_error < opts.tol.nsss.acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
         function nsss_only_pullback(Δret)
             Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
@@ -8986,7 +10616,7 @@ function rrule(::typeof(get_statistics),
                 P_i = P_i * ŝ_to_ŝ₂
             end
 
-            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            second_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.second_order.lyapunov.acceptance_tol
             autocorr[second_order_mask, :] .= 0
         elseif !(run_algorithm == :pruned_third_order)
             first_order_P = ℒ.diagm(ones(T, 𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, :]
@@ -9007,7 +10637,7 @@ function rrule(::typeof(get_statistics),
                 autocorr[:, i] .= ℒ.diag(first_order_R_seq[i]) .* d_inv
             end
 
-            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol
+            first_order_mask = ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol
             autocorr[first_order_mask, :] .= 0
         end
     end
@@ -9336,7 +10966,7 @@ function rrule(::typeof(get_solution),
     SS_and_pars = nsss_out[1]
     solution_error = nsss_out[2][1]
 
-    if solution_error > tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if algorithm in [:second_order, :pruned_second_order]
             result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
         elseif algorithm in [:third_order, :pruned_third_order]
@@ -9352,7 +10982,8 @@ function rrule(::typeof(get_solution),
                         parameters,
                         SS_and_pars,
                         𝓂.caches,
-                        𝓂.functions.jacobian)
+                        𝓂.functions.jacobian,
+                        𝓂.workspaces)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -9361,7 +10992,8 @@ function rrule(::typeof(get_solution),
                                 𝓂.workspaces,
                                 𝓂.caches;
                                 opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution)
+                                initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameters)
 
     𝐒₁ = first_out[1]
     solved = first_out[3]
@@ -9386,7 +11018,8 @@ function rrule(::typeof(get_solution),
                              parameters,
                              SS_and_pars,
                              𝓂.caches,
-                             𝓂.functions.hessian)
+                            𝓂.functions.hessian,
+                            𝓂.workspaces)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -9395,7 +11028,8 @@ function rrule(::typeof(get_solution),
                                       𝓂.workspaces,
                                       𝓂.caches;
                                       initial_guess = 𝓂.caches.second_order_solution,
-                                      opts = opts)
+                                      opts = opts,
+                                      parameter_values = parameters)
 
         𝐒₂_raw = second_out[1]
         solved2 = second_out[2]
@@ -9455,6 +11089,7 @@ function rrule(::typeof(get_solution),
 
             # ── first_pb ──
             first_grads = first_pb((∂𝐒₁_total, NoTangent(), NoTangent()))
+            
             ∂∇₁_total = ∂∇₁_from_2nd + first_grads[2]
 
             # ── jac_pb ──
@@ -9477,7 +11112,8 @@ function rrule(::typeof(get_solution),
                              parameters,
                              SS_and_pars,
                              𝓂.caches,
-                             𝓂.functions.hessian)
+                            𝓂.functions.hessian,
+                            𝓂.workspaces)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -9486,7 +11122,8 @@ function rrule(::typeof(get_solution),
                                       𝓂.workspaces,
                                       𝓂.caches;
                                       initial_guess = 𝓂.caches.second_order_solution,
-                                      opts = opts)
+                                      opts = opts,
+                                      parameter_values = parameters)
 
         𝐒₂_raw = second_out[1]
         solved2 = second_out[2]
@@ -9498,7 +11135,8 @@ function rrule(::typeof(get_solution),
                                     parameters,
                                     SS_and_pars,
                                     𝓂.caches,
-                                    𝓂.functions.third_order_derivatives)
+                                    𝓂.functions.third_order_derivatives,
+                                    𝓂.workspaces)
 
         # ── Step 7: Third-order solution ──
         # calculate_third_order_solution now receives compressed 𝐒₂ and compressed ∇₂
@@ -9509,7 +11147,8 @@ function rrule(::typeof(get_solution),
                                     𝓂.workspaces,
                                     𝓂.caches;
                                     initial_guess = 𝓂.caches.third_order_solution,
-                                    opts = opts)
+                                    opts = opts,
+                                    parameter_values = parameters)
 
         𝐒₃_raw = third_out[1]
         solved3 = third_out[2]

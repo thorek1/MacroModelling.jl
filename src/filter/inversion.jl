@@ -26,6 +26,7 @@ function calculate_loglikelihood(::Val{:inversion},
     T = constants.post_model_macro
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
+    ensure_inversion_estimation_buffers!(ws, T.nExo, length(observables_index))
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = convert(Vector{R}, state[1])
@@ -36,6 +37,8 @@ function calculate_loglikelihood(::Val{:inversion},
 
     cond_var_idx = observables_index
 
+    # Use workspace buffers for observation and shock vectors
+    state_concat = ws.state_concat
 
     shocks² = zero(R)
     logabsdets = zero(R)
@@ -63,7 +66,9 @@ function calculate_loglikelihood(::Val{:inversion},
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
     
         for i in 1:warmup_iterations-1
-            ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+            copyto!(state_concat, 1, view(state, T.past_not_future_and_mixed_idx), 1, T.nPast_not_future_and_mixed)
+            copyto!(state_concat, T.nPast_not_future_and_mixed + 1, view(warmup_shocks, :, i), 1, T.nExo)
+            ℒ.mul!(state, 𝐒, state_concat)
             # state = state_update(state, warmup_shocks[:,i])
         end
 
@@ -78,8 +83,10 @@ function calculate_loglikelihood(::Val{:inversion},
         shocks² += sum(abs2,x)
     end
 
-    y = zeros(R, length(cond_var_idx))
-    x = zeros(R, T.nExo)
+    y = ws.y_obs
+    x = ws.x_shocks
+    fill!(y, zero(R))
+    fill!(x, zero(R))
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables_index)
@@ -126,7 +133,10 @@ function calculate_loglikelihood(::Val{:inversion},
             if !isfinite(shocks²) return on_failure_loglikelihood end
         end
 
-        ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
+        # Use pre-allocated state_concat instead of vcat
+        copyto!(state_concat, 1, view(state, T.past_not_future_and_mixed_idx), 1, T.nPast_not_future_and_mixed)
+        copyto!(state_concat, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
+        ℒ.mul!(state, 𝐒, state_concat)
         # state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
 
@@ -162,6 +172,7 @@ function calculate_loglikelihood(::Val{:inversion},
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+    ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index))
 
     n_obs = size(data_in_deviations,2)
 
@@ -233,15 +244,20 @@ function calculate_loglikelihood(::Val{:inversion},
     kron_buffer3 = ws.kron_buffer_state
     kronstate¹⁻_vol = ws.kronstate_vol
 
-    shock_independent = zeros(size(data_in_deviations,1))
+    # Use workspace buffers instead of fresh allocations
+    shock_independent = ws.shock_independent
+    fill!(shock_independent, 0.0)
 
-    𝐒ⁱ = copy(𝐒¹ᵉ)
+    𝐒ⁱ = ws.Si_buffer
+    copyto!(𝐒ⁱ, 𝐒¹ᵉ)
 
-    jacc = copy(𝐒¹ᵉ)
+    jacc = ws.jacc_buffer
+    copyto!(jacc, 𝐒¹ᵉ)
 
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
         
-    init_guess = zeros(size(𝐒ⁱ, 2))
+    init_guess = ws.init_guess
+    fill!(init_guess, 0.0)
 
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
@@ -411,6 +427,7 @@ function calculate_loglikelihood(::Val{:inversion},
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+    ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index))
 
     precision_factor = 1.0
 
@@ -478,17 +495,22 @@ function calculate_loglikelihood(::Val{:inversion},
 
     kron_buffer3 = ws.kron_buffer_state
 
-    shock_independent = zeros(size(data_in_deviations,1))
+    # Use workspace buffers instead of fresh allocations
+    shock_independent = ws.shock_independent
+    fill!(shock_independent, 0.0)
 
     kronstate¹⁻_vol = ws.kronstate_vol
 
-    𝐒ⁱ = copy(𝐒¹ᵉ)
+    𝐒ⁱ = ws.Si_buffer
+    copyto!(𝐒ⁱ, 𝐒¹ᵉ)
 
-    jacc = copy(𝐒¹ᵉ)
+    jacc = ws.jacc_buffer
+    copyto!(jacc, 𝐒¹ᵉ)
 
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
 
-    init_guess = zeros(size(𝐒ⁱ, 2))
+    init_guess = ws.init_guess
+    fill!(init_guess, 0.0)
 
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
@@ -650,6 +672,7 @@ function calculate_loglikelihood(::Val{:inversion},
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
     precision_factor = 1.0
 
@@ -734,42 +757,38 @@ function calculate_loglikelihood(::Val{:inversion},
     state[2] = state[2][T.past_not_future_and_mixed_idx]
     state[3] = state[3][T.past_not_future_and_mixed_idx]
 
-    𝐒ⁱ = copy(𝐒¹ᵉ)
-
-    jacc = copy(𝐒¹ᵉ)
-
-    kron_buffer = zeros(T.nExo^2)
-
-    kron_buffer² = zeros(T.nExo^3)
-
-    II = ℒ.I(T.nExo^2)
-    
+    # Use workspace buffers
+    kron_buffer = ws.kron_buffer
+    kron_buffer² = ws.kron_buffer²
     J = ℒ.I(T.nExo)
+    II = ℒ.I(T.nExo^2)
+    kron_buffer2 = ws.kron_buffer2
+    kron_buffer3 = ws.kron_buffer3
+    kron_buffer4 = ws.kron_buffer4
+    kron_buffer_state = ws.kron_buffer_state
+    𝐒ⁱ = ws.Si_buffer
+    jacc = ws.jacc_buffer
+    shock_independent = ws.shock_independent
+    init_guess = ws.init_guess
+    state_vol = ws.state_vol
+    kronstate_vol = ws.kronstate_vol
+    kronstate_vol³ = ws.kronstate_vol³
+    state²⁻_vol = ws.state²⁻_vol
 
-    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
-
-    kron_buffer3 = ℒ.kron(J, kron_buffer)
-    
-    kron_buffer4 = ℒ.kron(II, zeros(T.nExo))
-
+    # Pruned-third specific kron buffers (not in ws, allocated once per call)
     kron_buffer4sv = ℒ.kron(II, vcat(1,state[1]))
-
-    kron_buffer2s = ℒ.kron(J, vcat(state[1], zero(R)))
-
-    kron_buffer2sv = ℒ.kron(J, vcat(1,state[1]))
-
     kron_buffer2ss = ℒ.kron(state[1], state[1])
-
-    kron_buffer2svsv = ℒ.kron(vcat(1,state[1]), vcat(1,state[1]))
-
-    kron_buffer3svsv = ℒ.kron(kron_buffer2svsv, vcat(1,state[1]))
-
-    kron_buffer3sv = ℒ.kron(kron_buffer2sv, vcat(1,state[1]))
+    kron_buffer3sv = ℒ.kron(ℒ.kron(J, vcat(1,state[1])), vcat(1,state[1]))
     
     # Use workspaces for augmented state kron operations
     kron_aug_state₁ = ws.kronaug_state
     
     kron_kron_aug_state₁ = ws.kron_kron_aug_state
+
+    aug_state₁ = ws.aug_state₁
+    aug_state₁̂ = ws.aug_state₁̂
+    aug_state₂ = ws.aug_state₂
+    aug_state₃ = ws.aug_state₃
 
     state¹⁻ = state[1]
 
@@ -777,18 +796,19 @@ function calculate_loglikelihood(::Val{:inversion},
 
     state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
 
-    state²⁻_vol = zeros(R, length(state²⁻) + 1)
-
     # @timeit_debug timer "Loop" begin
 
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
-    init_guess = zeros(size(𝐒ⁱ, 2))
+    fill!(init_guess, zero(R))
     
     for i in axes(data_in_deviations,2)
-        state¹⁻_vol = vcat(state¹⁻, 1)
+        # state¹⁻_vol = [state¹⁻; 1]
+        copyto!(state_vol, 1, state¹⁻, 1, n_past)
+        state_vol[end] = 1
+        state¹⁻_vol = state_vol
 
-        shock_independent = copy(data_in_deviations[:,i])
+        copyto!(shock_independent, view(data_in_deviations, :, i))
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
@@ -796,33 +816,31 @@ function calculate_loglikelihood(::Val{:inversion},
 
         ℒ.mul!(shock_independent, 𝐒¹⁻, state³⁻, -1, 1)
 
-        ℒ.kron!(kron_buffer2svsv, state¹⁻_vol, state¹⁻_vol)
+        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
 
-        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_buffer2svsv, -1/2, 1)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
 
         ℒ.kron!(kron_buffer2ss, state¹⁻, state²⁻)
 
         ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
 
-        ℒ.kron!(kron_buffer3svsv, kron_buffer2svsv, state¹⁻_vol)
+        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
 
-        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_buffer3svsv, -1/6, 1)   
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
         
-        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(J, state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(J, state¹⁻_vol), state¹⁻_vol) / 2
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵛᵉ * kron(J, s2_vol) + 𝐒²⁻ᵉ * kron(J, sv) + 𝐒³⁻ᵉ² * kron(kron(J, sv), sv) / 2
         
         copyto!(state²⁻_vol, 1, state²⁻, 1)
         state²⁻_vol[end] = 0
-        ℒ.kron!(kron_buffer2s, J, state²⁻_vol)
+        ℒ.kron!(kron_buffer_state, J, state²⁻_vol)
     
-        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer2s)
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer_state)
 
-        ℒ.kron!(kron_buffer2sv, J, state¹⁻_vol)
+        ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
     
-        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer2sv, 1, 1)
-
-        ℒ.kron!(kron_buffer2sv, J, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
     
-        ℒ.kron!(kron_buffer3sv, kron_buffer2sv, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
         
         ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
@@ -1020,10 +1038,25 @@ function calculate_loglikelihood(::Val{:inversion},
             end
         end
 
-        aug_state₁ = [state¹⁻; 1; x]
-        aug_state₁̂ = [state¹⁻; 0; x]
-        aug_state₂ = [state²⁻; 0; zero(x)]
-        aug_state₃ = [state³⁻; 0; zero(x)]
+        # aug_state₁ = [state¹⁻; 1; x]
+        copyto!(aug_state₁, 1, state¹⁻, 1, n_past)
+        aug_state₁[n_past + 1] = 1
+        copyto!(aug_state₁, n_past + 2, x, 1, n_exo)
+
+        # aug_state₁̂ = [state¹⁻; 0; x]
+        copyto!(aug_state₁̂, 1, state¹⁻, 1, n_past)
+        aug_state₁̂[n_past + 1] = 0
+        copyto!(aug_state₁̂, n_past + 2, x, 1, n_exo)
+
+        # aug_state₂ = [state²⁻; 0; zero(x)]
+        copyto!(aug_state₂, 1, state²⁻, 1, n_past)
+        aug_state₂[n_past + 1] = 0
+        fill!(view(aug_state₂, n_past + 2:n_past + 1 + n_exo), zero(R))
+
+        # aug_state₃ = [state³⁻; 0; zero(x)]
+        copyto!(aug_state₃, 1, state³⁻, 1, n_past)
+        aug_state₃[n_past + 1] = 0
+        fill!(view(aug_state₃, n_past + 2:n_past + 1 + n_exo), zero(R))
         
         # kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
         ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
@@ -1083,6 +1116,7 @@ function calculate_loglikelihood(::Val{:inversion},
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
     precision_factor = 1.0
 
@@ -1185,31 +1219,48 @@ function calculate_loglikelihood(::Val{:inversion},
 
     II = sparse(ℒ.I(T.nExo^2))
 
+    # Use workspace buffers for state/estimation temporaries
+    state_vol = ws.state_vol
+    kronstate_vol = ws.kronstate_vol
+    kronstate_vol³ = ws.kronstate_vol³
+    kron_buffer_state = ws.kron_buffer_state
+    shock_independent = ws.shock_independent
+    init_guess = ws.init_guess
+    𝐒ⁱ = ws.Si_buffer
+    jacc = ws.jacc_buffer
+    aug_state = ws.aug_state₁
+    kronaug_state = ws.kronaug_state
+    kron_kron_aug_state = ws.kron_kron_aug_state
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
     
     for i in axes(data_in_deviations,2)
-        state¹⁻ = state
+        # Build state_vol = [state; 1]
+        copyto!(state_vol, 1, state, 1, n_past)
+        state_vol[end] = 1
+        state¹⁻_vol = state_vol
 
-        state¹⁻_vol = vcat(state¹⁻, 1)
-        
-        shock_independent = copy(data_in_deviations[:,i])
+        copyto!(shock_independent, view(data_in_deviations, :, i))
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
-        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
         
-        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
+        ℒ.kron!(kronstate_vol³, state¹⁻_vol, kronstate_vol)
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
 
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron(I, sv) + 𝐒³⁻ᵉ² * kron(kron(I, sv), sv) / 2
+        ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
+        copyto!(𝐒ⁱ, 𝐒¹ᵉ)
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
+        ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², ℒ.kron(kron_buffer_state, state¹⁻_vol), 1/2, 1)
     
         𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
 
-        𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
-
-        # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
-
-        init_guess = zeros(size(𝐒ⁱ, 2))
+        fill!(init_guess, zero(R))
 
         # @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
@@ -1357,7 +1408,14 @@ function calculate_loglikelihood(::Val{:inversion},
         #     println("LagrangeNewton restart - $mat2: $x3, $(ℒ.norm(x3))")
         # # end
 
-        jacc = -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
+        # jacc = -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron(I,x) + 3 * 𝐒ⁱ³ᵉ * kron(I, kron(x,x)))
+        ℒ.kron!(kron_buffer2, J, x)
+        ℒ.kron!(kron_buffer, x, x)
+        ℒ.kron!(kron_buffer3, J, kron_buffer)
+        copyto!(jacc, 𝐒ⁱ)
+        ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+        ℒ.mul!(jacc, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 1)
+        ℒ.rmul!(jacc, -1)
     
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
@@ -1374,13 +1432,17 @@ function calculate_loglikelihood(::Val{:inversion},
             end
         end
 
-        aug_state = [state; 1; x]
+        # aug_state = [state; 1; x]
+        copyto!(aug_state, 1, state, 1, n_past)
+        aug_state[n_past + 1] = 1
+        copyto!(aug_state, n_past + 2, x, 1, n_exo)
 
-        # res = 𝐒[1][cond_var_idx, :] * aug_state + 𝐒[2][cond_var_idx, :] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3][cond_var_idx, :] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - data_in_deviations[:,i]
-        # println("Match with data: $res")
-
-        state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-        # state = state_update(state, x)
+        # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * kron(aug,aug)/2 + 𝐒⁻³ * kron(kron(aug,aug),aug)/6
+        ℒ.kron!(kronaug_state, aug_state, aug_state)
+        ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+        ℒ.mul!(state, 𝐒⁻¹, aug_state)
+        ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2, 1)
+        ℒ.mul!(state, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
     end
 
     # end # timeit_debug
@@ -1408,7 +1470,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         @error "No solution for these parameters."
         return variables, shocks, zeros(0,0), decomposition
     end
@@ -1417,14 +1479,15 @@ function filter_data_with_model(𝓂::ℳ,
 
     initial_state = zeros(T.nVars)
 
-    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)# |> Matrix
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
                                                         𝓂.workspaces,
                                                         𝓂.caches;
                                                         initial_guess = 𝓂.caches.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        parameter_values = 𝓂.parameter_values)
     
     update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
@@ -1545,7 +1608,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find 2nd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -1767,7 +1830,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), 𝓂.parameter_values, 𝓂, opts = opts)
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find pruned 2nd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -2038,7 +2101,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find 3rd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
@@ -2353,7 +2416,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), 𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
-    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
         @error "Could not find pruned 3rd order stochastic steady state"
         return variables, shocks, zeros(0,0), zeros(0,0)
     end

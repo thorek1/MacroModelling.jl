@@ -136,7 +136,7 @@ function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
-    if solution_error < tol.NSSS_acceptance_tol
+    if solution_error < tol.nsss.acceptance_tol
         push!(MacroModelling.DEFAULT_SOLVER_PARAMETERS, par_inputs)
         return true
     else 

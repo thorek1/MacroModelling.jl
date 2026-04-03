@@ -1071,6 +1071,8 @@ function find_shocks(::Val{:LagrangeNewton},
     iter = 0
     @inbounds for i in 1:max_iter
         iter = i
+        # Initialize x ⊗ x for the current iterate before using kron_buffer in Jacobian terms.
+        ℒ.kron!(kron_buffer, x, x)
         ℒ.kron!(kron_buffer2, J, x)
         ℒ.kron!(kron_buffer3, J, kron_buffer)
 

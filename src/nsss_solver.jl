@@ -228,6 +228,7 @@ function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{
         Float64[],
         CircularBuffer{Vector{Vector{Float64}}}(1),
         1,
+        zeros(Float64, length(𝓂.equations.steady_state) + length(𝓂.equations.calibration)),
     )
     return nothing
 end
@@ -1783,7 +1784,7 @@ function execute_step!(step_idx::Int,
 
         error += solution[2][1]
         iters = solution[2][2]
-        if error > tol.NSSS_acceptance_tol
+        if error > tol.nsss.acceptance_tol
             if verbose
                 println("Failed after solving block with error $error")
             end
@@ -1796,7 +1797,7 @@ function execute_step!(step_idx::Int,
             err_buf = @view w.error_buffer[1:err_n]
             f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
             error += sum(abs, err_buf)
-            if error > tol.NSSS_acceptance_tol
+            if error > tol.nsss.acceptance_tol
                 if verbose
                     println("Failed for aux variables with error $error")
                 end
@@ -1886,7 +1887,7 @@ function solve_nsss_steps(
             append!(nsss_solver_cache_tmp, step_cache)
         end
         
-        if solution_error > tol.NSSS_acceptance_tol
+        if solution_error > tol.nsss.acceptance_tol
             if verbose
                 println("Step '$(nsss_consts.descriptions[step_idx])' failed with accumulated error $solution_error")
             end
@@ -1901,7 +1902,7 @@ function solve_nsss_steps(
         resize!(SS_and_pars, n_output)
     end
 
-    if solution_error >= tol.NSSS_acceptance_tol
+    if solution_error >= tol.nsss.acceptance_tol
         fill!(SS_and_pars, 0.0)
     else
         @inbounds for i in 1:n_output
@@ -2016,7 +2017,7 @@ function solve_nsss_wrapper(
     @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
     preferred_idx = clamp(preferred_solver_parameter_idx, 1, n_solver_parameters)
 
-    while range_iters <= max_iters && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
+    while range_iters <= max_iters && !(solution_error < tol.nsss.acceptance_tol && solved_scale == 1)
         range_iters += 1
         fail_fast_solvers_only = range_iters > 1
 
@@ -2052,7 +2053,7 @@ function solve_nsss_wrapper(
         )
         
         # Check convergence and update scaling
-        if solution_error < tol.NSSS_acceptance_tol
+        if solution_error < tol.nsss.acceptance_tol
             solved_scale = scale
             
             if scale == 1

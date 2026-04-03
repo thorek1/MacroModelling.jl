@@ -241,6 +241,11 @@ struct moments_substate_indices
     e_ss::SparseMatrixCSC{Float64, Int}
     ss_s::SparseMatrixCSC{Float64, Int}
     s_s::SparseMatrixCSC{Float64, Int}
+    # Duplication/elimination matrices for symmetric Kronecker compression
+    D₂ˢ::SparseMatrixCSC{Float64, Int}   # nˢ² × nˢ(nˢ+1)/2 duplication
+    L₂ˢ::SparseMatrixCSC{Float64, Int}   # nˢ(nˢ+1)/2 × nˢ² elimination
+    D₃ˢ::SparseMatrixCSC{Float64, Int}   # nˢ³ × nˢ(nˢ+1)(nˢ+2)/6 duplication
+    L₃ˢ::SparseMatrixCSC{Float64, Int}   # nˢ(nˢ+1)(nˢ+2)/6 × nˢ³ elimination
 end
 
 struct moments_dependency_kron_indices
@@ -255,7 +260,7 @@ Second-order perturbation auxiliary matrices and index caches.
 These are computed once when the model structure is known and reused across solutions.
 Contains three categories of data:
 
-1. **Auxiliary matrices** (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂): Sparse integer matrices for second-order
+1. **Auxiliary matrices** (𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂): Sparse matrices for second-order
    perturbation solution. Populated by `create_second_order_auxiliary_matrices` during
    `write_functions_mapping!`.
 
@@ -273,13 +278,21 @@ mutable struct second_order_indices
     # Triggered by: write_functions_mapping! ← solve!
     # =========================================================================
     𝛔::SparseMatrixCSC{Int}              # Commutation matrix
+    𝛔_sym::SparseMatrixCSC{Int}           # Symmetrised volatility: 𝛔 + P_swap * 𝛔 * P_swap
     𝛔c₂::SparseMatrixCSC{Int}             # Compressed volatility: 𝐔₂ * 𝛔 * 𝐂₂
     𝛔𝐂₂::SparseMatrixCSC{Int}            # Product 𝛔 * 𝐂₂ (precomputed)
     𝐂₂::SparseMatrixCSC{Int}             # Duplication matrix for 2nd order
     𝐔₂::SparseMatrixCSC{Int}             # Unique elements selector for 2nd order
     𝐔∇₂::SparseMatrixCSC{Int}            # Gradient unique elements selector
-    𝐔₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
+    𝐈ₙ₊::SparseMatrixCSC{Int}            # Future-state row selector from I(nVars)
+    𝐈ₙ₋::SparseMatrixCSC{Int}            # Past-state row selector from I(nVars)
+    ∇₂_nonempty_col_as_kron_rowmask::Vector{Int}      # Non-empty columns of ∇₂, mapped to rowmask in compressed_kron²
     𝛔𝐂₂_nonempty_row_as_kron_colmask::Vector{Int}    # Non-empty rows of σc₂, mapped to colmask in compressed_kron²
+    # Pre-transposed constants for rrule pullback
+    𝛔ᵀ::SparseMatrixCSC{Int}             # 𝛔'
+    𝐂₂ᵀ::SparseMatrixCSC{Int}            # 𝐂₂'
+    𝐔₂ᵀ::SparseMatrixCSC{Int}            # 𝐔₂'
+    𝐔∇₂ᵀ::SparseMatrixCSC{Int}           # 𝐔∇₂'
 
     # =========================================================================
     # COMPUTATIONAL CONSTANTS (for efficient sparse operations)
@@ -357,7 +370,12 @@ mutable struct third_order_indices
     𝐈₃::Dict{Vector{Int}, Int}           # Index mapping for 3rd order terms
     𝐂∇₃::SparseMatrixCSC{Int}            # Gradient duplication matrix
     𝐔∇₃::SparseMatrixCSC{Int}            # Gradient unique selector
+    ∇₃_rowmask::Vector{Int}              # Structural nonzero compressed gradient columns
     𝐏::SparseMatrixCSC{Int}              # Permutation matrix
+
+
+
+    𝐏𝐂₃::SparseMatrixCSC{Int}            # Cached product 𝐏 * 𝐂₃
     𝐏₁ₗ::SparseMatrixCSC{Int}            # Left permutation 1
     𝐏₁ᵣ::SparseMatrixCSC{Int}            # Right permutation 1
     𝐏₁ₗ̂::SparseMatrixCSC{Int}            # Modified left permutation 1
@@ -367,6 +385,17 @@ mutable struct third_order_indices
     𝐏₁ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 1
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}            # Alternative right permutation 2
     𝐒𝐏::SparseMatrixCSC{Int}             # Combined selection-permutation
+
+    # Pre-transposed constants (computed once, reused by rrule pullback)
+    𝐂₃ᵀ::SparseMatrixCSC{Int}             # 𝐂₃'
+    𝐔₃ᵀ::SparseMatrixCSC{Int}             # 𝐔₃'
+    𝐏𝐂₃ᵀ::SparseMatrixCSC{Int}            # 𝐏𝐂₃'
+    𝐏₁ₗᵀ::SparseMatrixCSC{Int}            # 𝐏₁ₗ'
+    𝐏₁ᵣᵀ::SparseMatrixCSC{Int}            # 𝐏₁ᵣ'
+    𝐏₁ₗ̄ᵀ::SparseMatrixCSC{Int}            # 𝐏₁ₗ̄'
+    𝐏₂ₗ̄ᵀ::SparseMatrixCSC{Int}            # 𝐏₂ₗ̄'
+    𝐏₁ᵣ̃ᵀ::SparseMatrixCSC{Int}            # 𝐏₁ᵣ̃'
+    𝐏₂ᵣ̃ᵀ::SparseMatrixCSC{Int}            # 𝐏₂ᵣ̃'
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -505,6 +534,7 @@ mutable struct first_order_workspace{T <: Real, R <: Real}
     X̃_first_order::Matrix{R}   # For first order solution partials
     p_tmp::Matrix{R}            # For calculate_first_order_solution
     ∂SS_and_pars::Matrix{R}     # For NSSS partials in get_NSSS_and_parameters
+    ∂∇₁_vec::Vector{T}          # Flattened cotangent buffer for calculate_jacobian pullback
 
     # First-order perturbation workspaces (primal)
     𝐧ₚ₋::Matrix{T}                     # nₚ₋ = A₊ᵤ * D
@@ -681,6 +711,11 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     bicgstab::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres::Krylov.GmresWorkspace{T, T, Vector{T}}
     
+    # vech-space Krylov buffers (for symmetric C, dimension n(n+1)/2)
+    b_vech::Vector{T}
+    bicgstab_vech::Krylov.BicgstabWorkspace{T, T, Vector{T}}
+    gmres_vech::Krylov.GmresWorkspace{T, T, Vector{T}}
+    
     # ForwardDiff partials buffers (for forward-mode AD)
     P::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
     P̃::Matrix{R}       # For lyapunov equation partials
@@ -785,6 +820,7 @@ mutable struct NSSSSolverWorkspace
     scaled_parameters_buffer::Vector{Float64} # continuation interpolation scratch
     continuation::CircularBuffer{Vector{Vector{Float64}}} # continuation warm-start cache
     continuation_capacity::Int
+    check_residual::Vector{Float64}  # for NSSS_check in get_NSSS_and_parameters (n_equations + n_calibration)
 end
 
 
@@ -816,19 +852,36 @@ NSSSSolverWorkspace() = NSSSSolverWorkspace(
     [Float64[], Float64[Inf]],
     Float64[], Float64[], Float64[],
     Float64[], CircularBuffer{Vector{Vector{Float64}}}(1), 1,
+    Float64[],
 )
 
 mutable struct valid_for_caches
     non_stochastic_steady_state::Vector{Float64}
+    jacobian::Vector{Float64}
+    hessian::Vector{Float64}
+    third_order_derivatives::Vector{Float64}
     first_order_solution::Vector{Float64}
+    first_order_obc_solution::Vector{Float64}
     second_order_solution::Vector{Float64}
     pruned_second_order_solution::Vector{Float64}
+    second_order_stochastic_steady_state::Vector{Float64}
+    pruned_second_order_stochastic_steady_state::Vector{Float64}
     third_order_solution::Vector{Float64}
     pruned_third_order_solution::Vector{Float64}
+    third_order_stochastic_steady_state::Vector{Float64}
+    pruned_third_order_stochastic_steady_state::Vector{Float64}
 end
 
 
 valid_for_caches() = valid_for_caches(
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
     Float64[],
     Float64[],
     Float64[],
@@ -868,14 +921,14 @@ mutable struct caches
     # Computed by model derivative functions, used by perturbation solvers
     # =========================================================================
     jacobian::AbstractMatrix{<: Real}                      # ∇f at SS
-    jacobian_parameters::AbstractMatrix{<: Real}           # ∂∇f/∂θ
-    jacobian_SS_and_pars::AbstractMatrix{<: Real}          # ∂∇f/∂(SS,θ)
+    jacobian_parameters::AbstractMatrix{<: Real}           # ∂∇f/∂θ, stored as (targets × vec(∇f))
+    jacobian_SS_and_pars::AbstractMatrix{<: Real}          # ∂∇f/∂(SS,θ), stored as (targets × vec(∇f))
     hessian::AbstractMatrix{<: Real}                       # ∇²f at SS
-    hessian_parameters::AbstractMatrix{<: Real}            # ∂∇²f/∂θ
-    hessian_SS_and_pars::AbstractMatrix{<: Real}           # ∂∇²f/∂(SS,θ)
+    hessian_parameters::AbstractMatrix{<: Real}            # ∂∇²f/∂θ, stored as (targets × vec(∇²f))
+    hessian_SS_and_pars::AbstractMatrix{<: Real}           # ∂∇²f/∂(SS,θ), stored as (targets × vec(∇²f))
     third_order_derivatives::AbstractMatrix{<: Real}       # ∇³f at SS
-    third_order_derivatives_parameters::AbstractMatrix{<: Real}  # ∂∇³f/∂θ
-    third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real} # ∂∇³f/∂(SS,θ)
+    third_order_derivatives_parameters::AbstractMatrix{<: Real}  # ∂∇³f/∂θ, stored as (targets × vec(∇³f))
+    third_order_derivatives_SS_and_pars::AbstractMatrix{<: Real} # ∂∇³f/∂(SS,θ), stored as (targets × vec(∇³f))
     
     # =========================================================================
     # PERTURBATION SOLUTION CACHES
@@ -991,6 +1044,24 @@ mutable struct inversion_workspace{T <: Real}
     aug_state₁::Vector{T}            # n_past+1+n_exo
     aug_state₂::Vector{T}            # n_past+1+n_exo
     
+    # Estimation loop temporaries (lazily allocated via ensure_inversion_estimation_buffers!)
+    n_cond_var::Int                   # number of conditioning variables (observables)
+    shock_independent::Vector{T}     # n_cond_var - shock-independent residual
+    init_guess::Vector{T}            # n_exo - initial guess for find_shocks
+    Si_buffer::Matrix{T}             # (n_cond_var, n_exo) - effective Jacobian 𝐒ⁱ workspace
+    jacc_buffer::Matrix{T}           # (n_cond_var, n_exo) - Jacobian for logdet
+    Si2e_buffer::Matrix{T}           # (n_cond_var, n_exo^2) - 𝐒ⁱ²ᵉ workspace for 3rd order
+    # First-order inversion filter buffers
+    y_obs::Vector{T}                 # n_cond_var - observation prediction
+    x_shocks::Vector{T}              # n_exo - recovered shocks
+    state_concat::Vector{T}          # n_past + n_exo - for vcat-free concatenation in 1st order
+    # Pruned third-order augmented state buffers
+    aug_state₃::Vector{T}            # n_past+1+n_exo - third state component
+    aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
+    state²⁻_vol::Vector{T}           # n_past+1 - second-order state with volatility slot
+    # Third-order state kron buffers
+    kronstate_vol³::Vector{T}        # (n_past+1)^3 - triple kron of state_vol
+    
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
     ∂_tmp2::Matrix{T}                # (n_past, n_past + n_exo)
@@ -1049,8 +1120,12 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc7::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    𝐒₁::Matrix{F}
+    𝐒₁₋╱𝟏ₑ::Matrix{F}
     Ŝ::Matrix{F}
     sylvester_workspace::sylvester_workspace{G, H}
+    ∂∇_vec::Vector{F}          # Flattened cotangent buffer for low-level higher-order derivative pullbacks
     # Pullback gradient buffers (lazily allocated, used in rrule pullback functions)
     # Second order pullback buffers
     ∂∇₂::Matrix{F}
@@ -1070,6 +1145,32 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂𝐒₁₋╱𝟏ₑ_3rd::Matrix{F}
     ∂𝐒₁₊╱𝟎_3rd::Matrix{F}
     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd::Matrix{F}
+    # Third order pullback temporary buffers (reused across calls)
+    ∂𝐒₂₊╱𝟎_3rd::Matrix{F}
+    ∂R_c_3rd::Matrix{F}
+    ∂L_c_3rd::Matrix{F}
+    ∂L_d_3rd::Matrix{F}
+    ∂R_d_3rd::Matrix{F}
+    ∂𝐒₂₋╱𝟎_3rd::Matrix{F}
+    ∂𝐒₁₋╱𝟏ₑ_t8_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_tmp_3rd::Matrix{F}
+    ∂𝐒₁₊╱𝟎_tk0_3rd::Matrix{F}
+    ∂tmpkron0_σ_3rd::Matrix{F}
+    ∂aux_3rd::Matrix{F}
+    ∂S1S1_from_ck_3rd::Matrix{F}
+    ∂S1p0_kron_sigma_3rd::Matrix{F}
+    ∂S1p0_left_3rd::Matrix{F}
+    ∂S1p0_right_3rd::Matrix{F}
+    # Third order pullback intermediate product buffers (for mul!)
+    ∂A_3rd::Matrix{F}
+    ∂B_sylv_3rd::Matrix{F}
+    ∂𝐗₃_3rd::Matrix{F}
+    ∂𝐗₃_pre_3rd::Matrix{F}
+    ∂out2_3rd::Matrix{F}
+    ∂∇₁₊_3rd::Matrix{F}
+    ∂∇₁₊𝐒₁➕∇₁₀_3rd::Matrix{F}
+    ∇₂t_∂out2_3rd::Matrix{F}
+    mul_tmp_3rd::Matrix{F}
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials
@@ -1114,7 +1215,9 @@ mutable struct workspaces
     lyapunov_1st_order::lyapunov_workspace{Float64, Float64}  # Covariance (1st order moments)
     lyapunov_2nd_order::lyapunov_workspace{Float64, Float64}  # Covariance (2nd order moments)
     lyapunov_3rd_order::lyapunov_workspace{Float64, Float64}  # Covariance (3rd order moments)
+    lyapunov_block::lyapunov_workspace{Float64, Float64}      # Block-triangular inner Lyapunov
     sylvester_1st_order::sylvester_workspace{Float64, Float64} # Sylvester equation
+    sylvester_block::sylvester_workspace{Float64, Float64}    # Block-triangular Sylvester
     # Filter workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter

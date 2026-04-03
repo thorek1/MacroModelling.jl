@@ -16,10 +16,13 @@ function solve_sylvester_equation(A::M,
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
+    # Ownership: low-level methods below are mixed. Some return freshly allocated
+    # matrices, while dense doubling and Krylov paths can return workspace-backed
+    # buffers (for example 𝕊ℂ.𝐂_dbl or 𝕊ℂ.𝐗). This dispatcher therefore returns
+    # an owned copy so callers do not accidentally retain aliased workspace state.
     # @timeit_debug timer "Choose matrix formats" begin
     # Ensure doubling buffers are allocated unconditionally so they are available
     # for both the primary path and fallback retry paths below.
@@ -54,6 +57,7 @@ function solve_sylvester_equation(A::M,
         a = choose_matrix_format(A)
 
         b = choose_matrix_format(B)
+        # b = B
 
         c = choose_matrix_format(C)
     end
@@ -61,24 +65,31 @@ function solve_sylvester_equation(A::M,
     # end # timeit_debug
     # @timeit_debug timer "Check if guess solves it already" begin
 
-    if length(initial_guess) > 0
+    initial_guess_acceptance_tol = tol.initial_guess_acceptance_tol
+    acceptance_tol = tol.acceptance_tol
+
+    if length(initial_guess) > 0 || length(C) > 0
         n = size(A, 1)
         m = size(B, 2)
         ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
+
+        guess = length(initial_guess) > 0 ? initial_guess : c
+        guess_name = length(initial_guess) > 0 ? "previous solution" : "C"
         
         _tmp = 𝕊ℂ.tmp
         _res = 𝕊ℂ.𝐂
-        ℒ.mul!(_tmp, initial_guess, b)
+        ℒ.mul!(_tmp, guess, b)
         ℒ.mul!(_res, a, _tmp)
         ℒ.axpy!(1, c, _res)
-        ℒ.axpy!(-1, initial_guess, _res)
+        ℒ.axpy!(-1, guess, _res)
         
-        reached_tol = ℒ.norm(_res) / ℒ.norm(initial_guess)
+        denom = max(ℒ.norm(guess), ℒ.norm(c))
+        reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
 
-        if reached_tol < acceptance_tol
-            if verbose println("Sylvester equation - previous solution achieves relative tol of $reached_tol") end
+        if reached_tol < initial_guess_acceptance_tol
+            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
 
-            return initial_guess, true
+            return choose_matrix_format(guess), true
         end
     end
     
@@ -277,8 +288,9 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns owned sparse storage created locally in this method.
     # guess_provided = true
     
     if length(initial_guess) == 0
@@ -308,7 +320,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -344,8 +356,9 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012    
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -396,7 +409,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -429,8 +442,9 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # @timeit_debug timer "Doubling solve" begin
     # @timeit_debug timer "Setup buffers" begin
 
@@ -497,7 +511,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -530,7 +544,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     initial_guess::AbstractMatrix{T} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
 
@@ -582,7 +596,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -614,7 +628,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -663,7 +677,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -698,7 +712,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -746,7 +760,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -780,8 +794,9 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns owned dense storage created locally in this method.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -827,7 +842,7 @@ function solve_sylvester_equation(  A::Matrix{T},
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -861,8 +876,9 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
+    # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # @timeit_debug timer "Setup buffers" begin
     
     # guess_provided = true
@@ -927,7 +943,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
             copyto!(𝐂B, 𝐂¹)
             ℒ.axpy!(-1, 𝐂, 𝐂B)
             normdiff = ℒ.norm(𝐂B)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol.rtol
             # if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -973,7 +989,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns owned dense matrix from MatrixEquations.sylvd.
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -1034,7 +1051,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1130,8 +1148,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                             # [vec(initial_guess);], 
                             itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                             timemax = 10.0,
-                            rtol = tol, 
-                            atol = tol)#, M = precond)
+                            rtol = tol.rtol, 
+                            atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1186,7 +1204,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1282,8 +1301,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
-                        rtol = tol, 
-                        atol = tol)#, M = precond)
+                        rtol = tol.rtol, 
+                        atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.dqgmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1338,7 +1357,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1434,8 +1454,8 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                         # [vec(initial_guess);], 
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
-                        rtol = tol, 
-                        atol = tol)#, M = precond)
+                        rtol = tol.rtol, 
+                        atol = tol.atol)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end

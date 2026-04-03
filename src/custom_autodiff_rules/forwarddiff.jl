@@ -221,7 +221,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 opts::CalculationOptions = merge_calculation_options(),
                                 cold_start::Bool = false,
-                                estimation::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                estimation::Bool = false,
+                                caching::Bool = true)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
@@ -239,7 +240,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             length(𝓂.constants.post_complete_parameters.parameters),
         )
 
-        residual = zeros(length(𝓂.equations.steady_state) + length(𝓂.equations.calibration))
+        residual = 𝓂.workspaces.nsss_solver.check_residual
+        fill!(residual, 0.0)
         
         𝓂.functions.NSSS_check(residual, parameter_values, SS_and_pars_tmp)
         
@@ -247,8 +249,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         iters = 0
 
-        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # if !isfinite(solution_error) || solution_error > opts.tol.nsss.acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.nsss.acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
@@ -266,7 +268,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     end
     ∂SS_and_pars = qme_ws.∂SS_and_pars
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
 
         # Update failed counter
@@ -401,6 +403,21 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         end
     end
     
+    # Cache write: store NSSS result and stamp (using Float64 values)
+    if caching
+        cache_ss = 𝓂.caches.non_stochastic_steady_state
+        if length(cache_ss) != length(SS_and_pars)
+            resize!(cache_ss, length(SS_and_pars))
+        end
+        copyto!(cache_ss, SS_and_pars)
+        solved = !(solution_error > opts.tol.nsss.acceptance_tol)
+        if solved
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64.(parameter_values)
+        else
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
+        end
+    end
+
     return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(SS_and_pars)), (solution_error, iters)
@@ -412,7 +429,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         use_fastlapack_lu::Bool = true,
-                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
+                                        parameter_values::AbstractVector{<:Real} = Float64[],
+                                        caching::Bool = true)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
     qme_ws = workspaces.first_order
@@ -462,7 +481,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         ℱ.value.(initial_guess)
     end
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, workspaces, cache; opts = opts, initial_guess = initial_guess_value)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, constants, workspaces, cache; opts = opts, initial_guess = initial_guess_value, caching = caching)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -536,8 +555,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
         # if !solved
@@ -553,7 +571,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     
         initial_guess = dX
 
-        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
+        @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
     end
 
     x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
@@ -578,6 +596,10 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         cache.first_order_solution_matrix = S₁_value
     end
 
+    if !isempty(parameter_values)
+        cache.valid_for.first_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+    end
+
     return S₁, qme_sol, solved
 end
 
@@ -588,9 +610,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         workspaces::workspaces,
                                         cache::caches;
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, 
+                                        tol::AdTolerances = AdTolerances(), 
                                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                        verbose::Bool = false) where {Z,S,N}
+                                        verbose::Bool = false,
+                                        caching::Bool = true) where {Z,S,N}
     T = constants.post_model_macro
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
@@ -612,10 +635,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 constants,
                                                 workspaces,
                                                 cache;
-                                                tol = tol,
+                                                tol = tol.qme,
                                                 initial_guess = initial_guess_value,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                verbose = verbose)
+                                                verbose = verbose,
+                                                caching = caching)
 
     AXB = Â * X + B̂
     
@@ -649,7 +673,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester, sylvester_algorithm = :doubling)
+        dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester,
+                            sylvester_algorithm = :doubling,
+                            tol = tol.sylvester)
 
         solved = Bool(solved) && Bool(slvd)
 
@@ -667,8 +693,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
@@ -752,15 +777,30 @@ end
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     workspace::lyapunov_workspace;
+                                    initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
+                                    tol::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                                rtol = 1e-14,
+                                                                              initial_guess_acceptance_tol = 1e-12,
+                                                                              acceptance_tol = 1e-12),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    initial_guess_value = if length(initial_guess) == 0
+        zeros(eltype(Â), 0, 0)
+    elseif eltype(initial_guess) <: AbstractFloat
+        initial_guess isa Matrix{eltype(Â)} ? initial_guess : Matrix{eltype(Â)}(initial_guess)
+    else
+        ℱ.value.(initial_guess)
+    end
+
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        initial_guess = initial_guess_value,
+                                        tol = tol,
+                                        verbose = verbose)
 
     if size(workspace.P) != size(P̂)
         workspace.P = zeros(eltype(P̂), size(P̂)...)
@@ -800,7 +840,11 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_lyapunov_equation(Â, X, workspace, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        # X = Ã*P̂*Â' + Â*P̂*Ã' + C̃ is symmetric when C is symmetric (P̂ is always symmetric)
+        P, slvd = solve_lyapunov_equation(Â, X, workspace,
+                        lyapunov_algorithm = lyapunov_algorithm,
+                        tol = tol,
+                        verbose = verbose)
         
         solved = solved && slvd
 
@@ -859,16 +903,33 @@ function calculate_loglikelihood(::Val{:kalman},
     z = C * u
     loglik = zero(eltype(A))
 
+    # Pre-allocate Dual-typed loop buffers to avoid per-iteration allocations
+    DT = eltype(A)
+    ns = size(A, 1)    # n_obs_and_states
+    no = size(C, 1)    # n_obs
+    v = zeros(DT, no)
+    CP = zeros(DT, no, ns)
+    F_buf = zeros(DT, no, no)
+    PCt = zeros(DT, ns, no)
+    K = zeros(DT, ns, no)
+    KC = zeros(DT, ns, ns)
+    PmKCP = zeros(DT, ns, ns)
+    AP = zeros(DT, ns, ns)
+    Kv = zeros(DT, ns)
+    uKv = zeros(DT, ns)
+    w = zeros(DT, no)
+
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z))
             if opts.verbose println("KF not finite at step $t") end
             return on_failure_loglikelihood
         end
 
-        v = data_in_deviations[:, t] - z
-        F = C * P * C'
+        @views v .= data_in_deviations[:, t] .- z
+        ℒ.mul!(CP, C, P)
+        ℒ.mul!(F_buf, CP, C')
 
-        luF = ℒ.lu(F, check = false)
+        luF = ℒ.lu(F_buf, check = false)
         if !ℒ.issuccess(luF)
             if opts.verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
@@ -880,16 +941,29 @@ function calculate_loglikelihood(::Val{:kalman},
             return on_failure_loglikelihood
         end
 
-        invF = inv(luF)
-
         if t > presample_periods
-            loglik += log(Fdet) + ℒ.dot(v, invF, v)
+            ℒ.ldiv!(w, luF, v)
+            loglik += log(Fdet) + ℒ.dot(v, w)
         end
 
-        K = P * C' * invF
-        P = A * (P - K * C * P) * A' + 𝐁
-        u = A * (u + K * v)
-        z = C * u
+        invF = inv(luF)
+        ℒ.mul!(PCt, P, C')
+        ℒ.mul!(K, PCt, invF)
+
+        # P = A * (P - K * C * P) * A' + 𝐁
+        ℒ.mul!(KC, K, C)
+        ℒ.mul!(PmKCP, KC, P)
+        ℒ.axpby!(1, P, -1, PmKCP)      # PmKCP = P - K*C*P
+        ℒ.mul!(AP, A, PmKCP)
+        ℒ.mul!(P, AP, A')
+        ℒ.axpy!(1, 𝐁, P)               # P += 𝐁
+
+        # u = A * (u + K * v)
+        ℒ.mul!(Kv, K, v)
+        copyto!(uKv, u)
+        ℒ.axpy!(1, Kv, uKv)            # uKv = u + K*v
+        ℒ.mul!(u, A, uKv)              # u = A*(u + K*v)
+        ℒ.mul!(z, C, u)
     end
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2

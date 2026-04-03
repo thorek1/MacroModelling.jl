@@ -9,18 +9,27 @@ See [`second_order_indices`](@ref) for field documentation.
 """
 function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_sparse_bool = spzeros(Bool, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_indices(
-        # Auxiliary matrices (𝛔, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂)
+        # Auxiliary matrices (𝛔, 𝛔_sym, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂, 𝐈ₙ₊, 𝐈ₙ₋)
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
         empty_sparse_int,
-        Int[],               # 𝐔₂_nonempty_col_as_kron_rowmask
+        empty_sparse_int,
+        empty_sparse_int,
+        empty_sparse_int,
+        Int[],               # ∇₂_nonempty_col_as_kron_rowmask
         Int[],               # 𝛔𝐂₂_nonempty_row_as_kron_colmask
+        # Pre-transposed constants for rrule pullback
+        empty_sparse_int,    # 𝛔ᵀ
+        empty_sparse_int,    # 𝐂₂ᵀ
+        empty_sparse_int,    # 𝐔₂ᵀ
+        empty_sparse_int,    # 𝐔∇₂ᵀ
         # Computational index caches (BitVectors)
         BitVector(),         # s_in_s⁺
         BitVector(),         # s_in_s
@@ -67,13 +76,15 @@ function Third_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return third_order_indices(
-        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
+        # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏𝐂₃, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
         empty_sparse_int,    # 𝐂₃
         empty_sparse_int,    # 𝐔₃
         Dict{Vector{Int}, Int}(),  # 𝐈₃
         empty_sparse_int,    # 𝐂∇₃
         empty_sparse_int,    # 𝐔∇₃
+        Int[],               # ∇₃_rowmask
         empty_sparse_int,    # 𝐏
+        empty_sparse_int,    # 𝐏𝐂₃
         empty_sparse_int,    # 𝐏₁ₗ
         empty_sparse_int,    # 𝐏₁ᵣ
         empty_sparse_int,    # 𝐏₁ₗ̂
@@ -83,6 +94,16 @@ function Third_order_indices()
         empty_sparse_int,    # 𝐏₁ᵣ̃
         empty_sparse_int,    # 𝐏₂ᵣ̃
         empty_sparse_int,    # 𝐒𝐏
+        # Pre-transposed constants for rrule pullback
+        empty_sparse_int,    # 𝐂₃ᵀ
+        empty_sparse_int,    # 𝐔₃ᵀ
+        empty_sparse_int,    # 𝐏𝐂₃ᵀ
+        empty_sparse_int,    # 𝐏₁ₗᵀ
+        empty_sparse_int,    # 𝐏₁ᵣᵀ
+        empty_sparse_int,    # 𝐏₁ₗ̄ᵀ
+        empty_sparse_int,    # 𝐏₂ₗ̄ᵀ
+        empty_sparse_int,    # 𝐏₁ᵣ̃ᵀ
+        empty_sparse_int,    # 𝐏₂ᵣ̃ᵀ
         # Conditional forecast index caches
         Int[],               # var_vol³_idxs
         Int[],               # shock_idxs2
@@ -192,8 +213,12 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        zeros(T,0,0),  # 𝐒₁
+                        zeros(T,0,0),  # 𝐒₁₋╱𝟏ₑ
                         zeros(T,0,0),
                         Sylvester_workspace(S = S),
+                        zeros(T,0),    # ∂∇_vec
                         # Second order pullback gradient buffers (lazily allocated)
                         zeros(T,0,0),  # ∂∇₂
                         zeros(T,0,0),  # ∂∇₁
@@ -212,9 +237,41 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_3rd
                         zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_3rd
                         zeros(T,0,0),  # ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd
+                        # Third order pullback temporary buffers
+                        zeros(T,0,0),  # ∂𝐒₂₊╱𝟎_3rd
+                        zeros(T,0,0),  # ∂R_c_3rd
+                        zeros(T,0,0),  # ∂L_c_3rd
+                        zeros(T,0,0),  # ∂L_d_3rd
+                        zeros(T,0,0),  # ∂R_d_3rd
+                        zeros(T,0,0),  # ∂𝐒₂₋╱𝟎_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₋╱𝟏ₑ_t8_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_tmp_3rd
+                        zeros(T,0,0),  # ∂𝐒₁₊╱𝟎_tk0_3rd
+                        zeros(T,0,0),  # ∂tmpkron0_σ_3rd
+                        zeros(T,0,0),  # ∂aux_3rd
+                        zeros(T,0,0),  # ∂S1S1_from_ck_3rd
+                        zeros(T,0,0),  # ∂S1p0_kron_sigma_3rd
+                        zeros(T,0,0),  # ∂S1p0_left_3rd
+                        zeros(T,0,0),  # ∂S1p0_right_3rd
+                        # Third order pullback intermediate product buffers (for mul!)
+                        zeros(T,0,0),  # ∂A_3rd
+                        zeros(T,0,0),  # ∂B_sylv_3rd
+                        zeros(T,0,0),  # ∂𝐗₃_3rd
+                        zeros(T,0,0),  # ∂𝐗₃_pre_3rd
+                        zeros(T,0,0),  # ∂out2_3rd
+                        zeros(T,0,0),  # ∂∇₁₊_3rd
+                        zeros(T,0,0),  # ∂∇₁₊𝐒₁➕∇₁₀_3rd
+                        zeros(T,0,0),  # ∇₂t_∂out2_3rd
+                        zeros(T,0,0),  # mul_tmp_3rd
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order
+end
+
+function ensure_higher_order_solution_buffers!(ws::higher_order_workspace{S,G,H}, n::Int, nₑ₋::Int) where {S <: Real, G <: AbstractFloat, H <: Real}
+    size(ws.𝐒₁) == (n, nₑ₋) || (ws.𝐒₁ = zeros(S, n, nₑ₋))
+    size(ws.𝐒₁₋╱𝟏ₑ) == (nₑ₋, nₑ₋) || (ws.𝐒₁₋╱𝟏ₑ = zeros(S, nₑ₋, nₑ₋))
+    return ws
 end
 
 """
@@ -222,42 +279,43 @@ end
 
 Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function First_order_workspace(; T::Type = Float64, S::Type = Float64)
-    empty_qr_factors = zeros(T, 0, 0)
-    empty_qr_ws = FastLapackInterface.QRWs(empty_qr_factors)
-    empty_qr_rhs = zeros(T, 0, 0)
-    empty_qr_orm_ws = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
-    empty_lu_factors = zeros(T, 0, 0)
+function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+    empty_qr_factors = zeros(TT, 0, 0)
+    empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
+    empty_qr_rhs = zeros(TT, 0, 0)
+    empty_qr_orm_ws::FastLapackInterface.QROrmWs = FastLapackInterface.QROrmWs(empty_qr_ws, 'L', 'T', empty_qr_factors, empty_qr_rhs)
+    empty_lu_factors = zeros(TT, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
-    empty_sparse = spzeros(T, 0, 0)
-    empty_sparse_rhs = zeros(T, 0)
+    empty_sparse = spzeros(TT, 0, 0)
+    empty_sparse_rhs = zeros(TT, 0)
     empty_sparse_prob = 𝒮.LinearProblem(empty_sparse, empty_sparse_rhs)
-    empty_sparse_lu = 𝒮.init(empty_sparse_prob,
-                             𝒮.LUFactorization(),
-                             verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    empty_sparse_lu::𝒮.LinearCache = 𝒮.init(empty_sparse_prob,
+                                            𝒮.LUFactorization(),
+                                            verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
-                    Sylvester_workspace(S = T, T = S),  # sylvester
+                    Sylvester_workspace(S = TT, T = SS),  # sylvester
                     # ForwardDiff partials buffers
-                    zeros(S, 0, 0),  # X̃_first_order
-                    zeros(S, 0, 0),  # p_tmp
-                    zeros(S, 0, 0),  # ∂SS_and_pars
+                    zeros(SS, 0, 0),  # X̃_first_order
+                    zeros(SS, 0, 0),  # p_tmp
+                    zeros(SS, 0, 0),  # ∂SS_and_pars
+                    zeros(TT, 0),     # ∂∇₁_vec
                     # First-order perturbation workspaces (primal)
-                    zeros(T, 0, 0),  # 𝐧ₚ₋
-                    zeros(T, 0, 0),  # 𝐌
-                    zeros(T, 0, 0),  # 𝐀₊
-                    zeros(T, 0, 0),  # 𝐀₀
-                    zeros(T, 0, 0),  # 𝐀₋
-                    zeros(T, 0, 0),  # 𝐀̃₊
-                    zeros(T, 0, 0),  # 𝐀̃₀
-                    zeros(T, 0, 0),  # 𝐀̃₋
-                    zeros(T, 0, 0),  # 𝐀̄₀ᵤ
-                    zeros(T, 0, 0),  # 𝐀₊ᵤ
-                    zeros(T, 0, 0),  # 𝐀̃₀ᵤ
-                    zeros(T, 0, 0),  # 𝐀₋ᵤ
-                    zeros(T, 0, 0),  # 𝐀
-                    zeros(T, 0, 0),  # ∇₀
-                    zeros(T, 0, 0),  # ∇ₑ
+                    zeros(TT, 0, 0),  # 𝐧ₚ₋
+                    zeros(TT, 0, 0),  # 𝐌
+                    zeros(TT, 0, 0),  # 𝐀₊
+                    zeros(TT, 0, 0),  # 𝐀₀
+                    zeros(TT, 0, 0),  # 𝐀₋
+                    zeros(TT, 0, 0),  # 𝐀̃₊
+                    zeros(TT, 0, 0),  # 𝐀̃₀
+                    zeros(TT, 0, 0),  # 𝐀̃₋
+                    zeros(TT, 0, 0),  # 𝐀̄₀ᵤ
+                    zeros(TT, 0, 0),  # 𝐀₊ᵤ
+                    zeros(TT, 0, 0),  # 𝐀̃₀ᵤ
+                    zeros(TT, 0, 0),  # 𝐀₋ᵤ
+                    zeros(TT, 0, 0),  # 𝐀
+                    zeros(TT, 0, 0),  # ∇₀
+                    zeros(TT, 0, 0),  # ∇ₑ
                     # FastLapackInterface QR workspaces
                     empty_qr_factors,
                     empty_qr_ws,
@@ -276,8 +334,8 @@ function First_order_workspace(; T::Type = Float64, S::Type = Float64)
                     empty_lu_ws,
                     (0, 0),
                     empty_sparse_lu,
-                    zeros(T, 0),
-                    zeros(T, 0, 0))
+                    zeros(TT, 0),
+                    zeros(TT, 0, 0))
 end
 
 """
@@ -387,6 +445,9 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
         Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
+        zeros(T, 0),            # b_vech (vech-space Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_vech
+        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_vech
         zeros(T, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
@@ -462,6 +523,37 @@ function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Sy
         end
     else
         error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")
+    end
+
+    return ws
+end
+
+"""
+    ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+
+Ensure vech-space Krylov buffers and solver workspace are allocated for symmetric Lyapunov equations.
+The vech dimension is n(n+1)/2 instead of n².
+"""
+function ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+    ensure_lyapunov_krylov_buffers!(ws)
+    n = ws.n
+    if n == 0
+        return ws
+    end
+    n_vech = n * (n + 1) ÷ 2
+
+    if length(ws.b_vech) != n_vech
+        ws.b_vech = zeros(T, n_vech)
+    end
+
+    if algorithm == :bicgstab
+        if length(ws.bicgstab_vech.x) != n_vech
+            ws.bicgstab_vech = Krylov.BicgstabWorkspace(n_vech, n_vech, Vector{T})
+        end
+    elseif algorithm == :gmres
+        if length(ws.gmres_vech.x) != n_vech
+            ws.gmres_vech = Krylov.GmresWorkspace(n_vech, n_vech, Vector{T}; memory = 20)
+        end
     end
 
     return ws
@@ -595,6 +687,20 @@ function Inversion_workspace(;T::Type = Float64)
         zeros(T, 0),            # state_vol (n_past+1)
         zeros(T, 0),            # aug_state₁ (n_past+1+n_exo)
         zeros(T, 0),            # aug_state₂ (n_past+1+n_exo)
+        # Estimation loop temporaries
+        0,                      # n_cond_var
+        zeros(T, 0),            # shock_independent (n_cond_var)
+        zeros(T, 0),            # init_guess (n_exo)
+        zeros(T, 0, 0),         # Si_buffer (n_cond_var × n_exo)
+        zeros(T, 0, 0),         # jacc_buffer (n_cond_var × n_exo)
+        zeros(T, 0, 0),         # Si2e_buffer (n_cond_var × n_exo^2)
+        zeros(T, 0),            # y_obs (n_cond_var)
+        zeros(T, 0),            # x_shocks (n_exo)
+        zeros(T, 0),            # state_concat (n_past + n_exo)
+        zeros(T, 0),            # aug_state₃ (n_past+1+n_exo)
+        zeros(T, 0),            # aug_state₁̂ (n_past+1+n_exo)
+        zeros(T, 0),            # state²⁻_vol (n_past+1)
+        zeros(T, 0),            # kronstate_vol³ ((n_past+1)^3)
         # Pullback buffers (for reverse-mode AD)
         zeros(T, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
         zeros(T, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
@@ -671,6 +777,70 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
     end
     if length(ws.aug_state₂) != n_aug
         ws.aug_state₂ = zeros(T, n_aug)
+    end
+    
+    # Estimation loop temporaries (init_guess depends only on n_exo)
+    if length(ws.init_guess) != n_exo
+        ws.init_guess = zeros(T, n_exo)
+    end
+    if length(ws.x_shocks) != n_exo
+        ws.x_shocks = zeros(T, n_exo)
+    end
+    if length(ws.state_concat) != n_past + n_exo
+        ws.state_concat = zeros(T, n_past + n_exo)
+    end
+    
+    # Augmented state buffers for pruned third-order
+    if third_order
+        if length(ws.aug_state₃) != n_aug
+            ws.aug_state₃ = zeros(T, n_aug)
+        end
+        if length(ws.aug_state₁̂) != n_aug
+            ws.aug_state₁̂ = zeros(T, n_aug)
+        end
+        if length(ws.state²⁻_vol) != n_state_vol
+            ws.state²⁻_vol = zeros(T, n_state_vol)
+        end
+        if length(ws.kronstate_vol³) != n_state_vol^3
+            ws.kronstate_vol³ = zeros(T, n_state_vol^3)
+        end
+    end
+    
+    return ws
+end
+
+
+"""
+    ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int) where T
+
+Ensure observation-dimension-dependent estimation buffers are allocated.
+Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
+"""
+function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
+    if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
+       size(ws.Si_buffer) == (n_cond_var, n_exo)
+        return ws
+    end
+    
+    ws.n_cond_var = n_cond_var
+    
+    if length(ws.shock_independent) != n_cond_var
+        ws.shock_independent = zeros(T, n_cond_var)
+    end
+    if length(ws.y_obs) != n_cond_var
+        ws.y_obs = zeros(T, n_cond_var)
+    end
+    if size(ws.Si_buffer) != (n_cond_var, n_exo)
+        ws.Si_buffer = zeros(T, n_cond_var, n_exo)
+    end
+    if size(ws.jacc_buffer) != (n_cond_var, n_exo)
+        ws.jacc_buffer = zeros(T, n_cond_var, n_exo)
+    end
+    if third_order
+        n_exo² = n_exo^2
+        if size(ws.Si2e_buffer) != (n_cond_var, n_exo²)
+            ws.Si2e_buffer = zeros(T, n_cond_var, n_exo²)
+        end
     end
     
     return ws
@@ -763,7 +933,7 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
 end
 
 
-function Workspaces(;T::Type = Float64, S::Type = Float64)
+function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
@@ -773,7 +943,9 @@ function Workspaces(;T::Type = Float64, S::Type = Float64)
                 Lyapunov_workspace(0, T = T),  # 1st order - will be resized
                 Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
                 Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
+                Lyapunov_workspace(0, T = T),  # block-triangular inner - will be resized
                 Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
+                Sylvester_workspace(S = S),  # block-triangular sylvester - will be resized
                 Find_shocks_workspace(T = T),  # conditional forecast - will be resized
                 Inversion_workspace(T = T),  # inversion filter - will be resized
                 Kalman_workspace(T = T),  # Kalman filter - will be resized
@@ -1302,6 +1474,68 @@ function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
 end
 
 """
+    ensure_third_order_pullback_workspaces!(ℂ, S, T, M₂, M₃)
+
+Ensure workspace buffers for the third-order pullback are allocated with correct dimensions.
+Only dense intermediate-product temporaries are workspace-backed; gradient accumulators for
+∇₂, ∇₃, 𝐒₂ and "may be sparse" matrices are freshly allocated via `zero()` inside the
+pullback to preserve their sparse/dense format.
+"""
+function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::Type{S}, T, M₂, M₃) where S
+    n      = T.nVars
+    n₊     = T.nFuture_not_past_and_mixed
+    n₋     = T.nPast_not_future_and_mixed
+    nₑ     = T.nExo
+    nₑ₋    = n₋ + 1 + nₑ
+    n_stack = n₊ + n + n₋ + nₑ
+
+    # Structural dimensions from constants
+    n_∇₂     = size(M₂.𝐔∇₂, 2)
+    n_𝐂₃_r   = size(M₃.𝐂₃, 1)
+    n_𝐂₃     = size(M₃.𝐂₃, 2)
+    σ_c       = size(M₂.𝛔, 2)
+    n_out2_c  = σ_c * nₑ₋
+
+    # Dense workspace: always-dense gradient accumulators (matches main branch)
+    size(ℂ.∂spinv_3rd)          == (n, n)             || (ℂ.∂spinv_3rd = zeros(S, n, n))
+    size(ℂ.∂∇₁_3rd)            == (n, n_stack)       || (ℂ.∂∇₁_3rd = zeros(S, n, n_stack))
+    size(ℂ.∂𝐒₁_3rd)            == (n, nₑ₋)          || (ℂ.∂𝐒₁_3rd = zeros(S, n, nₑ₋))
+
+    # Dense workspace: intermediate-product temporaries (overwritten by mul! each call)
+    size(ℂ.∂A_3rd)              == (n, n)             || (ℂ.∂A_3rd = zeros(S, n, n))
+    size(ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd)   == (n, n)             || (ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd = zeros(S, n, n))
+    size(ℂ.mul_tmp_3rd)         == (n, n)             || (ℂ.mul_tmp_3rd = zeros(S, n, n))
+    size(ℂ.∂B_sylv_3rd)        == (n_𝐂₃, n_𝐂₃)     || (ℂ.∂B_sylv_3rd = zeros(S, n_𝐂₃, n_𝐂₃))
+    size(ℂ.∂𝐗₃_3rd)            == (n, n_𝐂₃)         || (ℂ.∂𝐗₃_3rd = zeros(S, n, n_𝐂₃))
+    size(ℂ.∂𝐗₃_pre_3rd)        == (n, n_𝐂₃_r)      || (ℂ.∂𝐗₃_pre_3rd = zeros(S, n, n_𝐂₃_r))
+    size(ℂ.∂out2_3rd)          == (n, n_out2_c)      || (ℂ.∂out2_3rd = zeros(S, n, n_out2_c))
+    size(ℂ.∇₂t_∂out2_3rd)     == (n_∇₂, n_out2_c)  || (ℂ.∇₂t_∂out2_3rd = zeros(S, n_∇₂, n_out2_c))
+
+    # Pullback gradient accumulator buffers (zeroed at start of each pullback call)
+    size(ℂ.∂𝐒₁₊╱𝟎_tmp_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_tmp_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂𝐒₂₊╱𝟎_3rd)        == (n_stack, nₑ₋^2)  || (ℂ.∂𝐒₂₊╱𝟎_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂L_c_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂L_c_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂R_c_3rd)           == (n_stack, nₑ₋^2)  || (ℂ.∂R_c_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂L_d_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂L_d_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂R_d_3rd)           == (n_stack, nₑ₋^2)  || (ℂ.∂R_d_3rd = zeros(S, n_stack, nₑ₋^2))
+    size(ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd)   == (nₑ₋, nₑ₋)       || (ℂ.∂𝐒₁₋╱𝟏ₑ_t8_3rd = zeros(S, nₑ₋, nₑ₋))
+    size(ℂ.∂𝐒₂₋╱𝟎_3rd)        == (nₑ₋, nₑ₋^2)     || (ℂ.∂𝐒₂₋╱𝟎_3rd = zeros(S, nₑ₋, nₑ₋^2))
+    size(ℂ.∂𝐒₁₋╱𝟏ₑ_3rd)      == (nₑ₋, nₑ₋)       || (ℂ.∂𝐒₁₋╱𝟏ₑ_3rd = zeros(S, nₑ₋, nₑ₋))
+    size(ℂ.∂𝐒₁₊╱𝟎_3rd)        == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂𝐒₁₊╱𝟎_tk0_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂𝐒₁₊╱𝟎_tk0_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd) == (n_stack, nₑ₋) || (ℂ.∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂aux_3rd)           == (n_stack, nₑ₋)    || (ℂ.∂aux_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂tmpkron0_σ_3rd)   == (nₑ₋^2, nₑ₋^2)   || (ℂ.∂tmpkron0_σ_3rd = zeros(S, nₑ₋^2, nₑ₋^2))
+    size(ℂ.∂∇₁₊_3rd)          == (n, n)             || (ℂ.∂∇₁₊_3rd = zeros(S, n, n))
+    size(ℂ.∂S1S1_from_ck_3rd) == (n_stack, nₑ₋)    || (ℂ.∂S1S1_from_ck_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂S1p0_kron_sigma_3rd) == (n_stack^2, σ_c) || (ℂ.∂S1p0_kron_sigma_3rd = zeros(S, n_stack^2, σ_c))
+    size(ℂ.∂S1p0_left_3rd)    == (n_stack, nₑ₋)    || (ℂ.∂S1p0_left_3rd = zeros(S, n_stack, nₑ₋))
+    size(ℂ.∂S1p0_right_3rd)   == (n_stack, nₑ₋)    || (ℂ.∂S1p0_right_3rd = zeros(S, n_stack, nₑ₋))
+
+    return ℂ
+end
+
+"""
     ensure_first_order_workspace_buffers!(ws, T, n_dyn, n_comb)
 
 Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
@@ -1335,6 +1569,22 @@ function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T
     size(ws.∇ₑ) == (n, nₑ) || (ws.∇ₑ = zeros(R, n, nₑ))
 
     return ws
+end
+
+function ensure_first_order_cotangent_buffer!(ws::first_order_workspace{T}, n::Int) where T <: Real
+    if length(ws.∂∇₁_vec) != n
+        ws.∂∇₁_vec = zeros(T, n)
+    end
+
+    return ws.∂∇₁_vec
+end
+
+function ensure_higher_order_cotangent_buffer!(ws::higher_order_workspace{T}, n::Int) where T <: Real
+    if length(ws.∂∇_vec) != n
+        ws.∂∇_vec = zeros(T, n)
+    end
+
+    return ws.∂∇_vec
 end
 
 """
@@ -1393,8 +1643,14 @@ function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbo
             workspaces.lyapunov_3rd_order = Lyapunov_workspace(n)
         end
         return workspaces.lyapunov_3rd_order
+    elseif order == :block
+        ws = workspaces.lyapunov_block
+        if ws.n != n
+            workspaces.lyapunov_block = Lyapunov_workspace(n)
+        end
+        return workspaces.lyapunov_block
     else
-        error("Invalid order: $order. Must be :first_order, :second_order, or :third_order")
+        error("Invalid order: $order. Must be :first_order, :second_order, :third_order, or :block")
     end
 end
 
@@ -1481,28 +1737,31 @@ function compute_e4(nᵉ::Int)
     if nᵉ == 0
         return Float64[]
     end
-    E_e4 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
-    quadrup = multiplicate(nᵉ, 4)
-    comb4 = reduce(vcat, generateSumVectors(nᵉ, 4))
-    comb4 = comb4 isa Int64 ? reshape([comb4], 1, 1) : comb4
-    for j = 1:size(comb4, 1)
-        E_e4[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb4[j, :])
+    # Isserlis' theorem for i.i.d. standard normal shocks:
+    # E[ε_a ε_b ε_c ε_d] = δ_ab δ_cd + δ_ac δ_bd + δ_ad δ_bc
+    e4 = zeros(nᵉ^4)
+    for d in 1:nᵉ, c in 1:nᵉ, b in 1:nᵉ, a in 1:nᵉ
+        e4[a + nᵉ*(b-1) + nᵉ^2*(c-1) + nᵉ^3*(d-1)] = Float64((a==b)*(c==d) + (a==c)*(b==d) + (a==d)*(b==c))
     end
-    return quadrup * E_e4
+    return e4
 end
 
 function compute_e6(nᵉ::Int)
     if nᵉ == 0
         return Float64[]
     end
-    E_e6 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
-    sextup = multiplicate(nᵉ, 6)
-    comb6 = reduce(vcat, generateSumVectors(nᵉ, 6))
-    comb6 = comb6 isa Int64 ? reshape([comb6], 1, 1) : comb6
-    for j = 1:size(comb6, 1)
-        E_e6[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb6[j, :])
+    # Isserlis' theorem for i.i.d. standard normal shocks:
+    # E[ε_a ε_b ε_c ε_d ε_e ε_f] = sum over all 15 perfect matchings
+    e6 = zeros(nᵉ^6)
+    for f in 1:nᵉ, e in 1:nᵉ, d in 1:nᵉ, c in 1:nᵉ, b in 1:nᵉ, a in 1:nᵉ
+        e6[a + nᵉ*(b-1) + nᵉ^2*(c-1) + nᵉ^3*(d-1) + nᵉ^4*(e-1) + nᵉ^5*(f-1)] = Float64(
+            (a==b)*((c==d)*(e==f) + (c==e)*(d==f) + (c==f)*(d==e)) +
+            (a==c)*((b==d)*(e==f) + (b==e)*(d==f) + (b==f)*(d==e)) +
+            (a==d)*((b==c)*(e==f) + (b==e)*(c==f) + (b==f)*(c==e)) +
+            (a==e)*((b==c)*(d==f) + (b==d)*(c==f) + (b==f)*(c==d)) +
+            (a==f)*((b==c)*(d==e) + (b==d)*(c==e) + (b==e)*(c==d)))
     end
-    return sextup * E_e6
+    return e6
 end
 
 function ensure_moments_constants!(constants::constants)
@@ -1565,7 +1824,51 @@ function ensure_moments_substate_indices!(𝓂, nˢ::Int)
         e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        to.substate_indices[nˢ] = moments_substate_indices(I_plus_s_s, e_es, e_ss, ss_s, s_s)
+
+        # Second-order duplication/elimination matrices (D₂ˢ: nˢ² × nˢ(nˢ+1)/2, L₂ˢ: nˢ(nˢ+1)/2 × nˢ²)
+        # D₂ˢ * vech(M) = vec(M) for symmetric M; L₂ˢ * vec(M) = vech(M)
+        # vech ordering: (1,1), (1,2), (2,2), (1,3), (2,3), (3,3), ... (upper triangle, col-major)
+        canonical2 = [nˢ * (i-1) + k for i in 1:nˢ for k in 1:i]  # canonical vec positions
+        rows2 = Int[]; cols2 = Int[]
+        col_idx = 0
+        for i in 1:nˢ
+            for k in 1:i
+                col_idx += 1
+                push!(rows2, nˢ * (i-1) + k)  # M_{k,i} position
+                push!(cols2, col_idx)
+                if i != k
+                    push!(rows2, nˢ * (k-1) + i)  # M_{i,k} symmetric duplicate
+                    push!(cols2, col_idx)
+                end
+            end
+        end
+        D₂ˢ = sparse(rows2, cols2, 1.0, nˢ^2, col_idx)
+        L₂ˢ = sparse(1:length(canonical2), canonical2, 1.0, length(canonical2), nˢ^2)
+
+        # Third-order duplication/elimination matrices (D₃ˢ: nˢ³ × nˢ(nˢ+1)(nˢ+2)/6, L₃ˢ: inverse)
+        # D₃ˢ * vech₃(T) = vec(T) for symmetric 3-tensor T; L₃ˢ * vec(T) = vech₃(T)
+        canonical3 = [nˢ^2 * (i-1) + nˢ * (k-1) + l for i in 1:nˢ for k in 1:i for l in 1:k]
+        rows3 = Int[]; cols3 = Int[]
+        col_idx = 0
+        for i in 1:nˢ
+            for k in 1:i
+                for l in 1:k
+                    col_idx += 1
+                    perms = Set{Tuple{Int,Int,Int}}()
+                    for p in ((i,k,l), (i,l,k), (k,i,l), (k,l,i), (l,i,k), (l,k,i))
+                        push!(perms, p)
+                    end
+                    for (a, b, c) in perms
+                        push!(rows3, nˢ^2 * (a-1) + nˢ * (b-1) + c)
+                        push!(cols3, col_idx)
+                    end
+                end
+            end
+        end
+        D₃ˢ = sparse(rows3, cols3, 1.0, nˢ^3, col_idx)
+        L₃ˢ = sparse(1:length(canonical3), canonical3, 1.0, length(canonical3), nˢ^3)
+
+        to.substate_indices[nˢ] = moments_substate_indices(I_plus_s_s, e_es, e_ss, ss_s, s_s, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ)
     end
     return to.substate_indices[nˢ]
 end
@@ -1586,24 +1889,188 @@ function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symb
 end
 
 
-struct Tolerances
-    NSSS_acceptance_tol::Float64
-    NSSS_xtol::Float64
-    NSSS_ftol::Float64
-    NSSS_rel_xtol::Float64
+"""
+    SolverTolerances
 
-    qme_tol::Float64
-    qme_acceptance_tol::Float64
+Tolerance settings for a single numerical equation solver (Sylvester, Lyapunov, or QME).
 
-    sylvester_tol::Float64
-    sylvester_acceptance_tol::Float64
+# Fields
+- `atol::Float64`: absolute convergence tolerance (used by Krylov solvers).
+- `rtol::Float64`: relative convergence tolerance (used by iterative stopping checks).
+- `initial_guess_acceptance_tol::Float64`: if an initial guess achieves a relative
+  residual below this threshold it is accepted immediately, skipping the full solve.
+- `acceptance_tol::Float64`: result is accepted when the relative residual falls below
+  this threshold; otherwise the dispatcher retries with a fallback algorithm.
 
-    lyapunov_tol::Float64
-    lyapunov_acceptance_tol::Float64
+Construct via `SolverTolerances(; atol, rtol, initial_guess_acceptance_tol, acceptance_tol)`.
+Default values differ by solver type and are set by the enclosing tolerance hierarchy;
+see [`Tolerances`](@ref) and [`FirstOrderTolerances`](@ref) / [`HigherOrderTolerances`](@ref).
+"""
+struct SolverTolerances
+    atol::Float64
+    rtol::Float64
+    initial_guess_acceptance_tol::Float64
+    acceptance_tol::Float64
+end
 
+function SolverTolerances(; atol::Float64 = 1e-14,
+                          rtol::Float64 = 1e-14,
+                          initial_guess_acceptance_tol::Float64 = 1e-10,
+                          acceptance_tol::Float64 = 1e-10)
+    return SolverTolerances(atol, rtol, initial_guess_acceptance_tol, acceptance_tol)
+end
+
+"""
+    NsssTolerances
+
+Tolerance settings for the non-stochastic steady state (NSSS) solver.
+
+# Fields
+- `acceptance_tol::Float64` [Default: `1e-12`]: solution is accepted when the residual
+  norm falls below this value.
+- `initial_guess_acceptance_tol::Float64` [Default: `1e-12`]: an initial guess is reused
+  when its residual is below this threshold.
+- `xtol::Float64` [Default: `1e-12`]: absolute step-size tolerance.
+- `ftol::Float64` [Default: `1e-14`]: absolute function-value tolerance.
+- `rel_xtol::Float64` [Default: `eps()`]: relative step-size tolerance.
+
+Construct via `NsssTolerances(; acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)`.
+"""
+struct NsssTolerances
+    acceptance_tol::Float64
+    initial_guess_acceptance_tol::Float64
+    xtol::Float64
+    ftol::Float64
+    rel_xtol::Float64
+end
+
+function NsssTolerances(; acceptance_tol::Float64 = 1e-12,
+                        initial_guess_acceptance_tol::Float64 = 1e-12,
+                        xtol::Float64 = 1e-12,
+                        ftol::Float64 = 1e-14,
+                        rel_xtol::Float64 = eps())
+    return NsssTolerances(acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)
+end
+
+"""
+    AdTolerances
+
+Tolerance settings passed to the automatic differentiation (AD) paths of each equation
+solver. Each field is a [`SolverTolerances`](@ref) that controls the corresponding solver
+when it is called inside a ForwardDiff dual-number overload or a ChainRulesCore rrule.
+
+# Fields
+- `qme::SolverTolerances`: tolerances for the quadratic matrix equation (QME) derivative solve.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+- `sylvester::SolverTolerances`: tolerances for the Sylvester equation derivative solve.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation derivative solve.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+
+Construct via `AdTolerances(; qme, sylvester, lyapunov)`.
+"""
+struct AdTolerances
+    qme::SolverTolerances
+    sylvester::SolverTolerances
+    lyapunov::SolverTolerances
+end
+
+function AdTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                  rtol = 1e-14,
+                                                                  initial_guess_acceptance_tol = 1e-8,
+                                                                  acceptance_tol = 1e-8),
+                      sylvester::SolverTolerances = SolverTolerances(),
+                      lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                     rtol = 1e-14,
+                                                                     initial_guess_acceptance_tol = 1e-12,
+                                                                     acceptance_tol = 1e-12))
+    return AdTolerances(qme, sylvester, lyapunov)
+end
+
+"""
+    FirstOrderTolerances
+
+Tolerance settings for the first-order perturbation solution and its AD pathways.
+
+# Fields
+- `qme::SolverTolerances`: tolerances for the quadratic matrix equation solver.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
+  compute first-order covariance matrices.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+- `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
+  matrices are dropped (set to zero) to reduce sparsity fill-in.
+- `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
+  dependencies when isolating subsystems for covariance statistics.
+- `ad::AdTolerances`: tolerances used in the AD derivative evaluation paths.
+
+Construct via `FirstOrderTolerances(; qme, lyapunov, droptol, dependencies_tol, ad)`.
+"""
+struct FirstOrderTolerances
+    qme::SolverTolerances
+    lyapunov::SolverTolerances
     droptol::Float64
-
     dependencies_tol::Float64
+    ad::AdTolerances
+end
+
+function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                          rtol = 1e-14,
+                                                                          initial_guess_acceptance_tol = 1e-8,
+                                                                          acceptance_tol = 1e-8),
+                              lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                             rtol = 1e-14,
+                                                                             initial_guess_acceptance_tol = 1e-12,
+                                                                             acceptance_tol = 1e-12),
+                              droptol::Float64 = 1e-14,
+                              dependencies_tol::Float64 = 1e-12,
+                              ad::AdTolerances = AdTolerances())
+    return FirstOrderTolerances(qme, lyapunov, droptol, dependencies_tol, ad)
+end
+
+"""
+    HigherOrderTolerances
+
+Tolerance settings for second- and third-order perturbation solutions and their AD pathways.
+
+# Fields
+- `sylvester::SolverTolerances`: tolerances for the Sylvester equation solver.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
+- `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
+  compute higher-order covariance matrices.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+- `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
+  matrices are dropped (set to zero) to reduce sparsity fill-in.
+- `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
+  dependencies when isolating subsystems for covariance statistics.
+- `ad::AdTolerances`: tolerances used in the AD derivative evaluation paths.
+
+Construct via `HigherOrderTolerances(; sylvester, lyapunov, droptol, dependencies_tol, ad)`.
+"""
+struct HigherOrderTolerances
+    sylvester::SolverTolerances
+    lyapunov::SolverTolerances
+    droptol::Float64
+    dependencies_tol::Float64
+    ad::AdTolerances
+end
+
+function HigherOrderTolerances(; sylvester::SolverTolerances = SolverTolerances(),
+                               lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
+                                                                              rtol = 1e-14,
+                                                                              initial_guess_acceptance_tol = 1e-12,
+                                                                              acceptance_tol = 1e-12),
+                               droptol::Float64 = 1e-14,
+                               dependencies_tol::Float64 = 1e-12,
+                               ad::AdTolerances = AdTolerances())
+    return HigherOrderTolerances(sylvester, lyapunov, droptol, dependencies_tol, ad)
+end
+
+struct Tolerances
+    nsss::NsssTolerances
+    first_order::FirstOrderTolerances
+    second_order::HigherOrderTolerances
+    third_order::HigherOrderTolerances
 end
 
 struct CalculationOptions
@@ -1621,57 +2088,199 @@ end
 @stable default_mode = "disable" begin
 """
 $(SIGNATURES)
-Function to manually define tolerances for the solvers of various problems: non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme).
+
+Define tolerances for the numerical solvers used throughout model solution and estimation.
+Tolerances are organised in a two-level hierarchy:
+
+```
+Tolerances
+├── nsss          :: NsssTolerances          — non-stochastic steady state solver
+├── first_order   :: FirstOrderTolerances    — first-order perturbation solution
+│   ├── qme       :: SolverTolerances        — quadratic matrix equation (QME)
+│   ├── lyapunov  :: SolverTolerances        — Lyapunov equation
+│   ├── droptol                              — zero-threshold for solution matrices
+│   ├── dependencies_tol                     — subsystem isolation threshold
+│   └── ad        :: AdTolerances            — AD derivative paths
+│       ├── qme      :: SolverTolerances
+│       ├── sylvester:: SolverTolerances
+│       └── lyapunov :: SolverTolerances
+├── second_order  :: HigherOrderTolerances   — second-order perturbation solution
+│   ├── sylvester :: SolverTolerances        — Sylvester equation
+│   ├── lyapunov  :: SolverTolerances        — Lyapunov equation
+│   ├── droptol / dependencies_tol
+│   └── ad        :: AdTolerances
+└── third_order   :: HigherOrderTolerances   — third-order perturbation solution
+    └── (same structure as second_order)
+```
+
+Each [`SolverTolerances`](@ref) carries four values:
+- `atol`: absolute convergence tolerance used by Krylov solvers.
+- `rtol`: relative convergence tolerance used by iterative stopping checks.
+- `initial_guess_acceptance_tol`: accept an initial guess without re-solving if its
+  residual is already below this threshold.
+- `acceptance_tol`: accept the final result when the residual falls below this threshold;
+  otherwise the dispatcher retries with a fallback algorithm.
 
 # Keyword Arguments
-- `NSSS_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for non-stochastic steady state solver.
-- `NSSS_xtol` [Default: `1e-12`, Type: `Float64`]: Absolute tolerance for solver steps for non-stochastic steady state solver.
-- `NSSS_ftol` [Default: `1e-14`, Type: `Float64`]: Absolute tolerance for solver function values for non-stochastic steady state solver.
-- `NSSS_rel_xtol` [Default: `eps()`, Type: `Float64`]: Relative tolerance for solver steps for non-stochastic steady state solver.
+- `nsss` [Default: `NsssTolerances()`]: tolerances for the non-stochastic steady state
+  solver. See [`NsssTolerances`](@ref).
+- `first_order` [Default: `FirstOrderTolerances()`]: tolerances for the first-order
+  solution and its AD paths. See [`FirstOrderTolerances`](@ref).
+- `second_order` [Default: `HigherOrderTolerances()`]: tolerances for the second-order
+  solution and its AD paths. See [`HigherOrderTolerances`](@ref).
+- `third_order` [Default: `HigherOrderTolerances()`]: tolerances for the third-order
+  solution and its AD paths. See [`HigherOrderTolerances`](@ref).
 
-- `qme_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for quadratic matrix equation solver.
-- `qme_acceptance_tol` [Default: `1e-8`, Type: `Float64`]: Acceptance tolerance for quadratic matrix equation solver.
+# Examples
+```julia
+# use defaults
+tol = Tolerances()
 
-- `sylvester_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Sylvester equation solver.
-- `sylvester_acceptance_tol` [Default: `1e-10`, Type: `Float64`]: Acceptance tolerance for Sylvester equation solver.
+# tighten the NSSS solver
+tol = Tolerances(nsss = NsssTolerances(xtol = 1e-14))
 
-- `lyapunov_tol` [Default: `1e-14`, Type: `Float64`]: Tolerance for Lyapunov equation solver.
-- `lyapunov_acceptance_tol` [Default: `1e-12`, Type: `Float64`]: Acceptance tolerance for Lyapunov equation solver.
-
-- `droptol` [Default: `1e-14`, Type: `Float64`]: Tolerance below which matrix entries are considered 0.
-
-- `dependencies_tol` [Default: `1e-12`, Type: `Float64`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
+# tighten second- and third-order Sylvester/Lyapunov solvers
+tight = SolverTolerances(acceptance_tol = 1e-14)
+tol = Tolerances(
+    second_order = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+    third_order  = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+)
+```
 """
-function Tolerances(;NSSS_acceptance_tol::Float64 = 1e-12,
-                    NSSS_xtol::Float64 = 1e-12,
-                    NSSS_ftol::Float64 = 1e-14,
-                    NSSS_rel_xtol::Float64 = eps(),
-                    
-                    qme_tol::Float64 = 1e-14,
-                    qme_acceptance_tol::Float64 = 1e-8,
+function Tolerances(; nsss::NsssTolerances = NsssTolerances(),
+                    first_order::FirstOrderTolerances = FirstOrderTolerances(),
+                    second_order::HigherOrderTolerances = HigherOrderTolerances(),
+                    third_order::HigherOrderTolerances = HigherOrderTolerances())
+    return Tolerances(nsss, first_order, second_order, third_order)
+end
 
-                    sylvester_tol::Float64 = 1e-14,
-                    sylvester_acceptance_tol::Float64 = 1e-10,
 
-                    lyapunov_tol::Float64 = 1e-14,
-                    lyapunov_acceptance_tol::Float64 = 1e-12,
+const HIGHER_ORDER_ALGORITHMS = (:second_order, :pruned_second_order, :third_order, :pruned_third_order)
+const THIRD_ORDER_ALGORITHMS  = (:third_order, :pruned_third_order)
 
-                    droptol::Float64 = 1e-14,
+"""
+    solver_tol_to_dict(st::SolverTolerances) -> Dict{Symbol,Any}
 
-                    dependencies_tol::Float64 = 1e-12)
-    
-    return Tolerances(NSSS_acceptance_tol,
-                        NSSS_xtol,
-                        NSSS_ftol,
-                        NSSS_rel_xtol, 
-                        qme_tol,
-                        qme_acceptance_tol,
-                        sylvester_tol,
-                        sylvester_acceptance_tol,
-                        lyapunov_tol,
-                        lyapunov_acceptance_tol,
-                        droptol,
-                        dependencies_tol)
+Convert a [`SolverTolerances`](@ref) struct to a flat `Dict`.
+"""
+function solver_tol_to_dict(st::SolverTolerances)
+    return Dict{Symbol,Any}(
+        :atol => st.atol,
+        :rtol => st.rtol,
+        :initial_guess_acceptance_tol => st.initial_guess_acceptance_tol,
+        :acceptance_tol => st.acceptance_tol,
+    )
+end
+
+"""
+    nsss_tol_to_dict(nt::NsssTolerances) -> Dict{Symbol,Any}
+
+Convert a [`NsssTolerances`](@ref) struct to a flat `Dict`.
+"""
+function nsss_tol_to_dict(nt::NsssTolerances)
+    return Dict{Symbol,Any}(
+        :acceptance_tol => nt.acceptance_tol,
+        :initial_guess_acceptance_tol => nt.initial_guess_acceptance_tol,
+        :xtol => nt.xtol,
+        :ftol => nt.ftol,
+        :rel_xtol => nt.rel_xtol,
+    )
+end
+
+"""
+    tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false) -> Dict{Symbol,Any}
+
+Build a nested `Dict` of tolerance values that are **relevant** for the given
+`algorithm` and covariance requirement.  Irrelevant sub-trees (e.g. third-order
+tolerances when running a first-order solve) are omitted so that
+`compare_args_and_kwargs` never reports spurious differences in unused settings.
+
+AD sub-tolerances are always excluded (too internal for plot annotations).
+"""
+function tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    d = Dict{Symbol,Any}()
+
+    # NSSS — always relevant
+    d[:nsss] = nsss_tol_to_dict(tol.nsss)
+
+    # First-order — always relevant
+    fo = Dict{Symbol,Any}(:qme => solver_tol_to_dict(tol.first_order.qme),
+                           :droptol => tol.first_order.droptol)
+    if needs_covariance
+        fo[:lyapunov] = solver_tol_to_dict(tol.first_order.lyapunov)
+        fo[:dependencies_tol] = tol.first_order.dependencies_tol
+    end
+    d[:first_order] = fo
+
+    # Second-order — only for higher-order algorithms
+    if algorithm in HIGHER_ORDER_ALGORITHMS
+        so = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.second_order.sylvester),
+                               :droptol => tol.second_order.droptol)
+        if needs_covariance
+            so[:lyapunov] = solver_tol_to_dict(tol.second_order.lyapunov)
+            so[:dependencies_tol] = tol.second_order.dependencies_tol
+        end
+        d[:second_order] = so
+    end
+
+    # Third-order — only for third-order algorithms
+    if algorithm in THIRD_ORDER_ALGORITHMS
+        to = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.third_order.sylvester),
+                               :droptol => tol.third_order.droptol)
+        if needs_covariance
+            to[:lyapunov] = solver_tol_to_dict(tol.third_order.lyapunov)
+            to[:dependencies_tol] = tol.third_order.dependencies_tol
+        end
+        d[:third_order] = to
+    end
+
+    return d
+end
+
+"""
+    warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+
+Emit `@info` messages when `tol` contains non-default values in sub-trees that
+have **no effect** for the given `algorithm` and covariance setting.  This gives
+users immediate feedback that their custom tolerances are being ignored.
+"""
+function warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    defaults = Tolerances()
+
+    # --- order-based irrelevance ---
+    if algorithm ∉ HIGHER_ORDER_ALGORITHMS
+        if tol.second_order != defaults.second_order
+            @info "Second-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    if algorithm ∉ THIRD_ORDER_ALGORITHMS
+        if tol.third_order != defaults.third_order
+            @info "Third-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    # --- covariance-based irrelevance ---
+    if !needs_covariance
+        if tol.first_order.lyapunov != defaults.first_order.lyapunov ||
+           tol.first_order.dependencies_tol != defaults.first_order.dependencies_tol
+            @info "First-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+        end
+
+        if algorithm in HIGHER_ORDER_ALGORITHMS
+            if tol.second_order.lyapunov != defaults.second_order.lyapunov ||
+               tol.second_order.dependencies_tol != defaults.second_order.dependencies_tol
+                @info "Second-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+
+        if algorithm in THIRD_ORDER_ALGORITHMS
+            if tol.third_order.lyapunov != defaults.third_order.lyapunov ||
+               tol.third_order.dependencies_tol != defaults.third_order.dependencies_tol
+                @info "Third-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+    end
 end
 
 

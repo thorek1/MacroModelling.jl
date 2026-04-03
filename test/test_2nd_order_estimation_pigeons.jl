@@ -3,18 +3,20 @@ using Test
 import Turing
 import Pigeons
 import Turing: logpdf
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
 include("../models/FS2000.jl")
 
 # load data
-dat = CSV.read("data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(header)
+data = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
 data = log.(data)
 
 # declare observables
-observables = sort(Symbol.("log_".*names(dat)))
+observables = sort(Symbol.("log_".*names))
 
 # subset observables in data
 data = data(observables,:)
@@ -45,7 +47,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_fail
 end
 
 
-Random.seed!(30)
+const PIGEONS_SEED = 30
 
 # generate a Pigeons log potential
 FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)+1e10))
@@ -66,9 +68,9 @@ if isfinite(LLH)
         return result
     end
 
-    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 else
-    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
     LPmax = FS2000_2nd_lp(XMAX)
@@ -93,6 +95,7 @@ pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 9,
+            seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
 samps = MCMCChains.Chains(pt)

@@ -3,14 +3,16 @@ using Test
 import Turing
 import Pigeons
 import Turing: logpdf, PG, IS
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+dat, header = readdlm("data/usmodel.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
+data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
 # declare observables
 observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
@@ -57,7 +59,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_fai
 end
 
 
-Random.seed!(3)
+const PIGEONS_SEED = 3
 
 Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -Inf)
 
@@ -82,9 +84,9 @@ if isfinite(LLH)
         return result
     end
 
-    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 else
-    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
@@ -108,8 +110,9 @@ end
 
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
+            n_chains = 4,
             n_rounds = 8,
+            seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
 samps = MCMCChains.Chains(pt)
