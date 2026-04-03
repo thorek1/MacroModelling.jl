@@ -1,3 +1,82 @@
+function make_params(m, old_params)
+    return [old_params,
+            (m.constants.post_complete_parameters.parameters[1] => old_params[1] * exp(rand()*1e-4)),
+            Tuple(m.constants.post_complete_parameters.parameters[1:2] .=> old_params[1:2] .* 1.0001),
+            m.constants.post_complete_parameters.parameters .=> old_params,
+            (string(m.constants.post_complete_parameters.parameters[1]) => old_params[1] * 1.0001),
+            Tuple(string.(m.constants.post_complete_parameters.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)),
+            old_params]
+end
+
+function make_conditions_and_shocks(m, algorithm;
+    condition_values = [(.01, .02), (.011, .024), (.014, .0207), (.014, .025)],
+    level_differences = [(.017, .02), (.01, .027)],
+    shock_values = (.13, .18, .12, .19))
+
+    new_sub_irfs_all = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+    varnames   = axiskeys(new_sub_irfs_all, 1)
+    shocknames = axiskeys(new_sub_irfs_all, 3)
+    sol        = get_solution(m)
+    n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(), dims = 1))
+    var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1, length(m.equations.obc_violation) > 0 ? 2 : end]]
+    stst = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+    conditions = []
+
+    cndtns = Matrix{Union{Nothing, Float64}}(undef, size(new_sub_irfs_all, 1), 2)
+    cndtns[var_idxs[1], 1] = condition_values[1][1]
+    cndtns[var_idxs[2], 2] = condition_values[1][2]
+    push!(conditions, cndtns)
+
+    cndtns = spzeros(size(new_sub_irfs_all, 1), 2)
+    cndtns[var_idxs[1], 1] = condition_values[2][1]
+    cndtns[var_idxs[2], 2] = condition_values[2][2]
+    push!(conditions, cndtns)
+
+    cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 2, 2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+    cndtns[1, 1] = condition_values[3][1]
+    cndtns[2, 2] = condition_values[3][2]
+    push!(conditions, cndtns)
+
+    cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 2, 2), Variables = varnames[var_idxs], Periods = 1:2)
+    cndtns[1, 1] = condition_values[4][1]
+    cndtns[2, 2] = condition_values[4][2]
+    push!(conditions, cndtns)
+
+    conditions_lvl = []
+
+    cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 2, 2), Variables = varnames[var_idxs], Periods = 1:2)
+    cndtns_lvl[1, 1] = level_differences[1][1] + stst[var_idxs[1]]
+    cndtns_lvl[2, 2] = level_differences[1][2] + stst[var_idxs[2]]
+    push!(conditions_lvl, cndtns_lvl)
+
+    cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 2, 2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+    cndtns_lvl[1, 1] = level_differences[2][1] + stst[var_idxs[1]]
+    cndtns_lvl[2, 2] = level_differences[2][2] + stst[var_idxs[2]]
+    push!(conditions_lvl, cndtns_lvl)
+
+    shocks = [nothing]
+    if all(vec(sum(sol[end-length(shocknames)+1:end, var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+        shcks = Matrix{Union{Nothing, Float64}}(undef, size(new_sub_irfs_all, 3), 1)
+        shcks[1, 1] = shock_values[1]
+        push!(shocks, shcks)
+
+        shcks = spzeros(size(new_sub_irfs_all, 3), 1)
+        shcks[1, 1] = shock_values[2]
+        push!(shocks, shcks)
+
+        shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 1, 1), Shocks = [shocknames[1]], Periods = [1])
+        shcks[1, 1] = shock_values[3]
+        push!(shocks, shcks)
+
+        shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef, 1, 1), Shocks = string.([shocknames[1]]), Periods = [1])
+        shcks[1, 1] = shock_values[4]
+        push!(shocks, shcks)
+    end
+
+    return conditions, conditions_lvl, shocks
+end
+
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
     old_params2 = copy(m2.parameter_values)
@@ -11,22 +90,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
 
-    params = [old_params, 
-                (m.constants.post_complete_parameters.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
-                Tuple(m.constants.post_complete_parameters.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
-                m.constants.post_complete_parameters.parameters .=> old_params, 
-                (string(m.constants.post_complete_parameters.parameters[1]) => old_params[1] * 1.0001), 
-                Tuple(string.(m.constants.post_complete_parameters.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
-                old_params]
-                
-    
-    params2 = [old_params2, 
-                (m2.constants.post_complete_parameters.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
-                Tuple(m2.constants.post_complete_parameters.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
-                m2.constants.post_complete_parameters.parameters .=> old_params2, 
-                (string(m2.constants.post_complete_parameters.parameters[1]) => old_params2[1] * 1.0001), 
-                Tuple(string.(m2.constants.post_complete_parameters.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
-                old_params2]
+    params  = make_params(m, old_params)
+    params2 = make_params(m2, old_params2)
 
     param_derivs = [:all, 
                     m.constants.post_complete_parameters.parameters[1], 
@@ -968,137 +1033,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         @testset "plot_conditional_forecast" begin
             # test conditional forecasting
-            new_sub_irfs_all  = get_irf(m2, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
-            varnames = axiskeys(new_sub_irfs_all,1)
-            shocknames = axiskeys(new_sub_irfs_all,3)
-            sol = get_solution(m2)
-            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m2.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.equations.obc_violation) > 0 ? 2 : end]]
-
-
-            stst  = get_irf(m2, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
-
-            conditions2 = []
-
-            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
-
-            push!(conditions2, cndtns)
-
-            cndtns = spzeros(size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .011
-            cndtns[var_idxs[2],2] = .024
-
-            push!(conditions2, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns[1,1] = .014
-            cndtns[2,2] = .0207
-
-            push!(conditions2, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns[1,1] = .014
-            cndtns[2,2] = .025
-
-            push!(conditions2, cndtns)
-
-            conditions_lvl2 = []
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-
-            push!(conditions_lvl2, cndtns_lvl)
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
-        
-            push!(conditions_lvl2, cndtns_lvl)
-
-
-
-            # test conditional forecasting
-            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
-            varnames = axiskeys(new_sub_irfs_all,1)
-            shocknames = axiskeys(new_sub_irfs_all,3)
-            sol = get_solution(m)
-            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.equations.obc_violation) > 0 ? 2 : end]]
-
-
-            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
-
-            conditions = []
-
-            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
-
-            push!(conditions, cndtns)
-
-            cndtns = spzeros(size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .011
-            cndtns[var_idxs[2],2] = .024
-
-            push!(conditions, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns[1,1] = .014
-            cndtns[2,2] = .0207
-
-            push!(conditions, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns[1,1] = .014
-            cndtns[2,2] = .025
-
-            push!(conditions, cndtns)
-
-            conditions_lvl = []
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-
-            push!(conditions_lvl, cndtns_lvl)
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
-        
-            push!(conditions_lvl, cndtns_lvl)
-
-
-            shocks = []
-
-            push!(shocks, nothing)
-
-            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
-                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .13
-
-                push!(shocks, shcks)
-
-                shcks = spzeros(size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .18
-                
-                push!(shocks, shcks)
-
-                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-                shcks[1,1] = .12
-
-                push!(shocks, shcks)
-
-                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-                shcks[1,1] = .19
-
-                push!(shocks, shcks)
-            end
+            conditions2, conditions_lvl2, _ = make_conditions_and_shocks(m2, algorithm)
+            conditions, conditions_lvl, shocks = make_conditions_and_shocks(m, algorithm)
             
             # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
             #     if backend == :gr
@@ -1781,84 +1717,13 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     end
 
     @testset "get_conditional_forecast" begin
-        # test conditional forecasting
-        new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
-        varnames = axiskeys(new_sub_irfs_all,1)
-        shocknames = axiskeys(new_sub_irfs_all,3)
-        sol = get_solution(m)
-        # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
-        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.equations.obc_violation) > 0 ? 2 : end]]
-
-
-        stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
-
-        conditions = []
-
-        cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
-        cndtns[var_idxs[1],1] = .01
-        cndtns[var_idxs[2],2] = .02
-
-        push!(conditions, cndtns)
-
-        cndtns = spzeros(size(new_sub_irfs_all,1),2)
-        cndtns[var_idxs[1],1] = .01
-        cndtns[var_idxs[2],2] = .02
-
-        push!(conditions, cndtns)
-
-        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-        cndtns[1,1] = .01
-        cndtns[2,2] = .02
-
-        push!(conditions, cndtns)
-
-        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-        cndtns[1,1] = .01
-        cndtns[2,2] = .02
-
-        push!(conditions, cndtns)
-
-        conditions_lvl = []
-
-        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-        cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-        cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-
-        push!(conditions_lvl, cndtns_lvl)
-
-        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-        cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-        cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-    
-        push!(conditions_lvl, cndtns_lvl)
-
-
-        shocks = []
-
-        push!(shocks, nothing)
-
-        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
-            shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-            shcks[1,1] = .1
-
-            push!(shocks, shcks)
-
-            shcks = spzeros(size(new_sub_irfs_all,3),1)
-            shcks[1,1] = .1
-            
-            push!(shocks, shcks)
-
-            shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-            shcks[1,1] = .1
-
-            push!(shocks, shcks)
-
-            shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-            shcks[1,1] = .1
-
-            push!(shocks, shcks)
-        end
+        # Using uniform condition values (.01, .02) across all four condition formats ensures
+        # deviation-based and level-based forecasts represent the same constraint, which
+        # is verified by @test isapprox(cond_fcst, cond_fcst_lvl) below.
+        conditions, conditions_lvl, shocks = make_conditions_and_shocks(m, algorithm,
+            condition_values  = [(.01, .02), (.01, .02), (.01, .02), (.01, .02)],
+            level_differences = [(.01, .02), (.01, .02)],
+            shock_values = (.1, .1, .1, .1))
 
         cond_fcst = get_conditional_forecast(m, conditions[1],
                                             conditions_in_levels = false,
@@ -2557,7 +2422,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
-            if algorithm == :first_order_
+            if algorithm == :first_order
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                                 sylvester_acceptance_tol = 1e-14),
@@ -2575,7 +2440,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                     covariance = :all_excluding_obc)[:covariance]
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
-                    if algorithm == :first_order_
+                    if algorithm == :first_order
                         @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-4)
                     end
 
@@ -2690,7 +2555,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             # println(ℒ.norm(deriv5 - DERIV5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))                      
 							@test isapprox(deriv5, DERIV5, rtol = 1e-4)
 
-                            if algorithm == :first_order_
+                            if algorithm == :first_order
                                 clear_solution_caches!(m, algorithm)
     
                                 DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
