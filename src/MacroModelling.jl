@@ -4698,6 +4698,14 @@ function write_ss_check_function!(𝓂::ℳ;
 
     𝓂.functions.NSSS_check = func_exprs
 
+    # Ensure check_residual buffer is sized for the NSSS_check function
+    nres = length(ss_equations)
+    cr = 𝓂.workspaces.nsss_solver.check_residual
+    if length(cr) != nres
+        resize!(cr, nres)
+        fill!(cr, 0.0)
+    end
+
 
     # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.constants.post_model_macro.parameters_in_equations,𝓂.constants.post_model_macro.➕_vars))))), 𝓂.calibration_equations_parameters))
 
@@ -4814,7 +4822,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
-    # SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
+    SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
     
     found_solution = true
     
