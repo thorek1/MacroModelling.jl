@@ -5073,7 +5073,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                     caching = caching)
 
     if !solved
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (fill(NaN, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug

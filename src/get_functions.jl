@@ -2957,12 +2957,11 @@ function get_moments(𝓂::ℳ;
         if mean && !(variance || standard_deviation || covariance)
             state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
 
-            if solved
-                var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
-            else
+            if !solved
                 @warn "Mean not found."
-                var_means = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
             end
+
+            var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
         end
 
         if variance
@@ -2979,26 +2978,19 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
-                if mean && algorithm == :first_order && solved
+                if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
                 end
             end
 
-            if solved
-                varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
-                varrs = KeyedArray(varr[var_idx];  Variables = axis1)
-                if standard_deviation
-                    st_dev = KeyedArray(sqrt.(varr)[var_idx];  Variables = axis1)
-                end
-            else
+            if !solved
                 @warn "Could not find covariance matrix."
-                varrs = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
-                if standard_deviation
-                    st_dev = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
-                end
-                if mean
-                    var_means = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
-                end
+            end
+
+            varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            varrs = KeyedArray(varr[var_idx];  Variables = axis1)
+            if standard_deviation
+                st_dev = KeyedArray(sqrt.(varr)[var_idx];  Variables = axis1)
             end
         end
 
@@ -3016,20 +3008,16 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
-                if mean && algorithm == :first_order && solved
+                if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
                 end
             end
 
-            if solved
-                st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
-            else
+            if !solved
                 @warn "Could not find covariance matrix."
-                st_dev = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
-                if mean
-                    var_means = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
-                end
             end
+
+            st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
         end
 
         if covariance
@@ -3046,15 +3034,12 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
-                if mean && algorithm == :first_order && solved
+                if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
-                elseif !solved && mean
-                    var_means = KeyedArray(fill(NaN, length(var_idx));  Variables = axis1)
                 end
 
                 if !solved
                     @warn "Could not find covariance matrix."
-                    covar_dcmp = fill(NaN, 𝓂.constants.post_model_macro.nVars, 𝓂.constants.post_model_macro.nVars)
                 end
             end
         end

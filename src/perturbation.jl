@@ -99,7 +99,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # end # timeit_debug
@@ -135,7 +135,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved_Ā₀ᵤ
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -188,7 +188,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     if !solved_∇₀
         if opts.verbose println("Factorisation of ∇₀ failed") end
-        return zeros(R, T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+        return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     solve_lu_left!(∇₀, ∇ₑ, qme_ws.fast_lu_ws_nabla0, C;

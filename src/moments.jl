@@ -90,7 +90,7 @@ function calculate_mean(parameters::Vector{R},
         update_perturbation_counter!(𝓂.counters, solved, order = 1)
 
         if !solved 
-            mean_of_variables = SS_and_pars[1:T.nVars]
+            mean_of_variables = fill(R(NaN), T.nVars)
         else
             ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
             
@@ -100,7 +100,7 @@ function calculate_mean(parameters::Vector{R},
             update_perturbation_counter!(𝓂.counters, solved, order = 2)
 
             if !solved 
-                mean_of_variables = SS_and_pars[1:T.nVars]
+                mean_of_variables = fill(R(NaN), T.nVars)
             else
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
@@ -404,9 +404,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
                 slvd = solved && solved2 && info
             else
-                Σʸ₂ = zeros(R,0,0)
+                nVars = 𝓂.constants.post_model_macro.nVars
+                Σʸ₂ = fill(R(NaN), nVars, nVars)
                 Σᶻ₂ = zeros(R,0,0)
-                μʸ₂ = zeros(R,0)
+                μʸ₂ = fill(R(NaN), nVars)
                 Δμˢ₂ = zeros(R,0)
                 autocorr_tmp = zeros(R,0,0)
                 ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -414,9 +415,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 slvd = info
             end
         else
-            Σʸ₂ = zeros(R,0,0)
+            nVars = 𝓂.constants.post_model_macro.nVars
+            Σʸ₂ = fill(R(NaN), nVars, nVars)
             Σᶻ₂ = zeros(R,0,0)
-            μʸ₂ = zeros(R,0)
+            μʸ₂ = fill(R(NaN), nVars)
             Δμˢ₂ = zeros(R,0)
             autocorr_tmp = zeros(R,0,0)
             ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -424,9 +426,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             slvd = solved2
         end
     else
-        Σʸ₂ = zeros(R,0,0)
+        nVars = 𝓂.constants.post_model_macro.nVars
+        Σʸ₂ = fill(R(NaN), nVars, nVars)
         Σᶻ₂ = zeros(R,0,0)
-        μʸ₂ = zeros(R,0)
+        μʸ₂ = fill(R(NaN), nVars)
         Δμˢ₂ = zeros(R,0)
         autocorr_tmp = zeros(R,0,0)
         ŝ_to_ŝ₂ = zeros(R,0,0)
@@ -868,7 +871,8 @@ function calculate_third_order_moments(parameters::Vector{T},
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, solved = second_order_moments
 
     if !solved
-        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+        nVars = 𝓂.constants.post_model_macro.nVars
+        return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
@@ -890,7 +894,8 @@ function calculate_third_order_moments(parameters::Vector{T},
     update_perturbation_counter!(𝓂.counters, solved3, order = 3)
     
     if !solved3
-        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+        nVars = 𝓂.constants.post_model_macro.nVars
+        return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
     end
 
     𝐒₃ *= 𝓂.constants.third_order.𝐔₃
@@ -1121,7 +1126,8 @@ function calculate_third_order_moments(parameters::Vector{T},
         end
 
         if !info
-            return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+            nVars = 𝓂.constants.post_model_macro.nVars
+            return fill(T(NaN), nVars, nVars), fill(T(NaN), nVars), fill(T(NaN), nVars), false
         end
     
         solved_lyapunov = solved_lyapunov && info
