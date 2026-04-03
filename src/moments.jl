@@ -47,7 +47,7 @@ function calculate_covariance(parameters::Vector{R},
                             tol = opts.tol.first_order.lyapunov,
                             verbose = opts.verbose)
 
-    covar_stable = copy(covar_raw)
+    covar_stable = covar_raw
 
     return covar_stable, sol , ∇₁, SS_and_pars, solved
 end

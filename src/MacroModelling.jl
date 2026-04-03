@@ -4814,7 +4814,7 @@ function solve_steady_state!(𝓂::ℳ,
     end
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
-    SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
+    # SS_and_pars = copy(SS_and_pars) # decouple from workspace output_buffer before select_fastest overwrites it
     
     found_solution = true
     
@@ -5988,7 +5988,7 @@ function solve!(𝓂::ℳ;
             if isempty(𝓂.caches.first_order_obc_solution_matrix)
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, copy(𝓂.caches.non_stochastic_steady_state), 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = false)
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, 𝓂.caches.non_stochastic_steady_state, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = false)
 
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     constants,
