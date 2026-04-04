@@ -373,6 +373,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                 end
             end
         else
+            # Old way (≤v0.1.42): nsss_lu = lu(∂SS_equations/∂SS_and_pars)
             qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
                                                                                                      qme_ws.fast_lu_ws_nsss,
                                                                                                      qme_ws.fast_lu_dims_nsss)
@@ -388,6 +389,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                 end
                 copyto!(qme_ws.nsss_jvp_rhs, rhs_dense)
 
+                # Old way (≤v0.1.42): JVP = -(∂SS_equations/∂SS_and_pars \ ∂SS_equations/∂parameters)
                 solve_lu_left!(∂SS_equations_∂SS_and_pars,
                                qme_ws.nsss_jvp_rhs,
                                qme_ws.fast_lu_ws_nsss,
@@ -464,14 +466,15 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     tmp = qme_ws.sylvester.𝐂¹
     B_sylv = qme_ws.sylvester.𝐂B
 
-    # Legacy readable path (before workspace reuse):
+    # Old way (≤v0.1.42):
     #   ∇̂₁ = value.(∇₁)
-    #   A = ∇̂₁[:, 1:T.nFuture_not_past_and_mixed] * expand_future
-    #   B = ∇̂₁[:, idx_constants.nabla_zero_cols]
-    #   X = 𝐒₁[:, 1:end-T.nExo] * expand_past
+    #   A = ∇̂₁[:, 1:nFuture_not_past_and_mixed] * expand_future
+    #   B = ∇̂₁[:, nabla_zero_cols]
+    #   X = 𝐒₁[:, 1:end-nExo] * expand_past
     #   AXB = A * X + B
-    #   AA = inv(AXB) * A
-    # Current code computes the same objects via `mul!`/`copyto!`/LU solves in reusable buffers.
+    #   AXBfact = lu(AXB)
+    #   AA = AXB \ A
+    # Current code computes the same objects via mul!/copyto!/LU solves in reusable buffers.
 
     initial_guess_value = if length(initial_guess) == 0
         zeros(eltype(∇̂₁), 0, 0)
@@ -487,14 +490,15 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
         return ∇₁, qme_sol, false
     end
 
-    ℒ.mul!(A, @view(∇̂₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
-    copyto!(B, @view(∇̂₁[:,idx_constants.nabla_zero_cols]))
+    ℒ.mul!(A, @view(∇̂₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)  # A = ∇̂₁[:, future_cols] * expand_future
+    copyto!(B, @view(∇̂₁[:,idx_constants.nabla_zero_cols]))  # B = ∇̂₁[:, present_cols]
 
-    ℒ.mul!(X, @view(𝐒₁[:,1:end-T.nExo]), expand_past)
+    ℒ.mul!(X, @view(𝐒₁[:,1:end-T.nExo]), expand_past)  # X = 𝐒₁[:, state_cols] * expand_past
 
     copyto!(AXB, B)
-    ℒ.mul!(AXB, A, X, 1, 1)
+    ℒ.mul!(AXB, A, X, 1, 1)  # AXB = A * X + B
 
+    # Old way (≤v0.1.42): AXBfact = lu(AXB)
     qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_AXB, AXBfact = factorize_lu!(AXB,
                                                                                                  qme_ws.fast_lu_ws_nabla0,
                                                                                                  qme_ws.fast_lu_dims_nabla0;
@@ -506,9 +510,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
 
     copyto!(AA, A)
     solve_lu_left!(AXB, AA, qme_ws.fast_lu_ws_nabla0, AXBfact;
-                   use_fastlapack_lu = use_fastlapack_lu)
+                   use_fastlapack_lu = use_fastlapack_lu)  # AA = AXB \ A
 
-    ℒ.mul!(X², X, X)
+    ℒ.mul!(X², X, X)  # X² = X * X
 
     # Allocate or reuse workspace for partials (from first_order_workspace)
     if size(qme_ws.X̃_first_order) != (length(𝐒₁[:,1:end-T.nExo]), N)
@@ -529,24 +533,22 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     for i in 1:N
         p .= ℱ.partials.(∇₁, i)
 
-        ℒ.mul!(dA, @view(p[:,1:T.nFuture_not_past_and_mixed]), expand_future)
-        copyto!(dB, @view(p[:,idx_constants.nabla_zero_cols]))
-        ℒ.mul!(dC, @view(p[:,idx_constants.nabla_minus_cols]), expand_past)
+        ℒ.mul!(dA, @view(p[:,1:T.nFuture_not_past_and_mixed]), expand_future)  # dA = p[:, future_cols] * expand_future
+        copyto!(dB, @view(p[:,idx_constants.nabla_zero_cols]))  # dB = p[:, present_cols]
+        ℒ.mul!(dC, @view(p[:,idx_constants.nabla_minus_cols]), expand_past)  # dC = p[:, past_cols] * expand_past
 
         copyto!(CC, dC)
-        ℒ.mul!(tmp, dA, X²)
+        ℒ.mul!(tmp, dA, X²)  # tmp = dA * X²
         CC .+= tmp
-        ℒ.mul!(tmp, dB, X)
-        CC .+= tmp
+        ℒ.mul!(tmp, dB, X)  # tmp = dB * X
+        CC .+= tmp  # CC = dA * X² + dC + dB * X
 
-        # Legacy readable equivalent:
-        #   CC = inv(AXB) * (dA * X² + dC + dB * X)
+        # Old way (≤v0.1.42):
+        #   CC = (AXB) \ (dA * X² + dC + dB * X)
         # followed by Sylvester solve with (-X, -CC).
-        # Here, `solve_lu_left!` replaces explicit inverse multiplication,
-        # and `B_sylv`/sign flip encode the same Sylvester system.
 
         solve_lu_left!(AXB, CC, qme_ws.fast_lu_ws_nabla0, AXBfact;
-                       use_fastlapack_lu = use_fastlapack_lu)
+                       use_fastlapack_lu = use_fastlapack_lu)  # CC = AXB \ CC
 
         if ℒ.norm(CC) < eps() continue end
 

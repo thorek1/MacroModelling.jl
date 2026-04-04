@@ -1,5 +1,6 @@
 @stable default_mode = "disable" begin
 
+# Old way (≤v0.1.42): Q = qr(A)  — allocates a new QR factorisation object each call
 function factorize_qr!(qr_mat::AbstractMatrix,
                        qr_factors::AbstractMatrix{R},
                        qr_ws::FastLapackInterface.QRWs{R};
@@ -14,6 +15,7 @@ function factorize_qr!(qr_mat::AbstractMatrix,
     end
 end
 
+# Old way (≤v0.1.42): dest = Q' * src  — allocates intermediate Q.Q' and result
 function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   src::AbstractMatrix,
                                   Q::AbstractMatrix{R},
@@ -32,6 +34,7 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
     return qr_orm_ws, qr_orm_dims
 end
 
+# Fallback: dest = Q' * src  (uses standard mul! when FastLapackInterface is not active)
 function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   src::AbstractMatrix,
                                   Q::ℒ.QRCompactWY,
@@ -39,10 +42,11 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
                                   qr_orm_dims::NTuple{3, Int},
                                   qr_ws;
                                   use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
-    ℒ.mul!(dest, Q.Q', src)
+    ℒ.mul!(dest, Q.Q', src) # dest = Q' * src
     return qr_orm_ws, qr_orm_dims
 end
 
+# Old way (≤v0.1.42): F = lu(A)  — allocates a new LU factorisation object each call
 function factorize_lu!(A::AbstractMatrix{R},
                        lu_ws,
                        lu_dims::NTuple{2, Int};
@@ -61,34 +65,39 @@ function factorize_lu!(A::AbstractMatrix{R},
     end
 end
 
+# Old way (≤v0.1.42): X = A \ B  — solves A * X = B, allocates result
 function solve_lu_left!(A::AbstractMatrix{R},
                         B::AbstractVecOrMat{R},
                         lu_ws,
                         lu;
                         use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    # B ← A \ B  (overwrites B in-place)
     if use_fastlapack_lu && R <: Union{Float32, Float64}
         ℒ.LAPACK.getrs!(lu_ws, 'N', A, B)
     else
-        ℒ.ldiv!(lu, B)
+        ℒ.ldiv!(lu, B) # B = A \ B
     end
     return B
 end
 
+# B ← A \ B  (Nothing-dispatch variant, always uses LAPACK)
 function solve_lu_left!(A::AbstractMatrix{R},
                         B::AbstractVecOrMat{R},
                         lu_ws,
                         lu::Nothing;
                         use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
-    ℒ.LAPACK.getrs!(lu_ws, 'N', A, B)
+    ℒ.LAPACK.getrs!(lu_ws, 'N', A, B) # B = A \ B
     return B
 end
 
+# Old way (≤v0.1.42): X = B / A  — solves X * A = B, allocates result
 function solve_lu_right!(A::AbstractMatrix{R},
                          B::AbstractMatrix{R},
                          lu_ws,
                          lu,
                          rhs_t::AbstractMatrix{R};
                          use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    # B ← B / A  (overwrites B in-place)
     if use_fastlapack_lu && R <: Union{Float32, Float64}
         rhs_t_dims = (size(B, 2), size(B, 1))
         @assert size(rhs_t) == rhs_t_dims
@@ -97,11 +106,12 @@ function solve_lu_right!(A::AbstractMatrix{R},
         ℒ.LAPACK.getrs!(lu_ws, 'T', A, rhs_t)
         copyto!(B, transpose(rhs_t))
     else
-        ℒ.rdiv!(B, lu)
+        ℒ.rdiv!(B, lu) # B = B / A
     end
     return B
 end
 
+# B ← B / A  (Nothing-dispatch variant, always uses LAPACK)
 function solve_lu_right!(A::AbstractMatrix{R},
                          B::AbstractMatrix{R},
                          lu_ws,
@@ -117,6 +127,7 @@ function solve_lu_right!(A::AbstractMatrix{R},
     return B
 end
 
+# Old way (≤v0.1.42): S = schur(D, E); ordschur!(S, eigenselect)  — allocates Schur object
 function factorize_generalized_schur!(D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
                                       qz_ws,

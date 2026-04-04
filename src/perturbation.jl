@@ -51,25 +51,25 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
-    # Legacy readable flow (before allocation-focused refactor):
-    #   Q = qr!(∇₀[:, T.present_only_idx])
-    #   A₊ = Q.Q' * ∇₊;  A₀ = Q.Q' * ∇₀;  A₋ = Q.Q' * ∇₋
-    # Current code performs the same transforms using reusable QR/ORM workspaces.
+    # Old way (≤v0.1.42):
+    #   Q = qr(∇₀[:, present_only_idx])
+    #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
+    # Current code reuses QR/ORM workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
+    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;                 # Q = qr(∇₀_present)
                         use_fastlapack_qr = use_fastlapack_qr)
 
-    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,
+    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
                                                                                         qme_ws.fast_qr_orm_dims_plus,
                                                                                         qr_ws;
                                                                                         use_fastlapack_qr = use_fastlapack_qr)
-    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,
+    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,           # A₀ = Q' * ∇₀
                                                                                         qme_ws.fast_qr_orm_ws_zero,
                                                                                         qme_ws.fast_qr_orm_dims_zero,
                                                                                         qr_ws;
                                                                                         use_fastlapack_qr = use_fastlapack_qr)
-    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,
+    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,         # A₋ = Q' * ∇₋
                                                                                            qme_ws.fast_qr_orm_ws_minus,
                                                                                            qme_ws.fast_qr_orm_dims_minus,
                                                                                            qr_ws;
@@ -79,13 +79,13 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Sort matrices" begin
 
     Ã₊ = qme_ws.𝐀̃₊
-    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), @view(Ir[future_not_past_and_mixed_in_comb,:]))
+    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), @view(Ir[future_not_past_and_mixed_in_comb,:]))  # Ã₊ = A₊[dynIndex,:] * Ir
 
-    Ã₀ = qme_ws.𝐀̃₀
-    copyto!(Ã₀, @view(A₀[dynIndex, comb]))
+    Ã₀ = qme_ws.𝐀̃₀
+    copyto!(Ã₀, @view(A₀[dynIndex, comb]))
 
-    Ã₋ = qme_ws.𝐀̃₋
-    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), @view(Ir[past_not_future_and_mixed_in_comb,:]))
+    Ã₋ = qme_ws.𝐀̃₋
+    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), @view(Ir[past_not_future_and_mixed_in_comb,:]))  # Ã₋ = A₋[dynIndex,:] * Ir
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -138,21 +138,20 @@ function calculate_first_order_solution(∇₁::Matrix{R},
         return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
-    # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    # Old way (≤v0.1.42): A₋ᵤ = -(Ā₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol + A₋ᵤ))
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)  # A₋ᵤ = A₋ᵤ + Ã₀ᵤ * sol
         nₚ₋ = qme_ws.𝐧ₚ₋
-        ℒ.mul!(nₚ₋, A₊ᵤ, 𝐃)
-        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;
+        ℒ.mul!(nₚ₋, A₊ᵤ, 𝐃)                                                    # nₚ₋ = A₊ᵤ * D
+        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)                                                # A₋ᵤ = A₋ᵤ + nₚ₋ * L
+        solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;                 # A₋ᵤ = Ā₀ᵤ \ A₋ᵤ
                        use_fastlapack_lu = use_fastlapack_lu)
-        ℒ.rmul!(A₋ᵤ, -1)
+        ℒ.rmul!(A₋ᵤ, -1)                                                       # A₋ᵤ = -A₋ᵤ
     end
 
     A = qme_ws.𝐀
-    # Legacy readable flow:
-    #   A = vcat(A₋ᵤ, sol_compact)[T.reorder, :]
-    # Expanded loop below writes into preallocated `A` without temporary concatenation.
+    # Old way (≤v0.1.42): A = vcat(A₋ᵤ, sol_compact)[reorder, :]
+    # Expanded loop below writes into preallocated A without temporary concatenation.
     n_cols = size(A, 2)
     
     for i in 1:T.nVars
@@ -174,13 +173,14 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Exogenous part solution" begin
 
     M = qme_ws.𝐌
-    # Legacy readable flow:
-    #   M = A[T.future_not_past_and_mixed_idx, :] * expand_past
-    #   ∇₀ = ∇₁[:, 1:T.nFuture_not_past_and_mixed] * M + ∇₀
-    ℒ.mul!(M, @view(A[T.future_not_past_and_mixed_idx,:]), idx_constants.expand_past)
+    # Old way (≤v0.1.42):
+    #   M = A[future_idx, :] * expand_past
+    #   ∇₀ = ∇₊ * M + ∇₀
+    ℒ.mul!(M, @view(A[T.future_not_past_and_mixed_idx,:]), idx_constants.expand_past)  # M = A[future_idx,:] * expand_past
 
-    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)
+    ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)                 # ∇₀ = ∇₊ * M + ∇₀
 
+    # Old way (≤v0.1.42): C = lu(∇₀)
     qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
                                                                                          qme_ws.fast_lu_dims_nabla0;
@@ -191,7 +191,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
         return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
-    solve_lu_left!(∇₀, ∇ₑ, qme_ws.fast_lu_ws_nabla0, C;
+    # Old way (≤v0.1.42): ∇ₑ = -(∇₀ \ ∇ₑ)
+    solve_lu_left!(∇₀, ∇ₑ, qme_ws.fast_lu_ws_nabla0, C;                                # ∇ₑ = ∇₀ \ ∇ₑ
                    use_fastlapack_lu = use_fastlapack_lu)
     ℒ.rmul!(∇ₑ, -1)
 

@@ -539,6 +539,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
         JVP = qme_ws.nsss_jvp_rhs
     else
+        # Old way (≤v0.1.42): nsss_lu = lu(∂SS/∂SS_and_pars)
         qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
                                                                                                  qme_ws.fast_lu_ws_nsss,
                                                                                                  qme_ws.fast_lu_dims_nsss)
@@ -554,12 +555,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
         end
         copyto!(qme_ws.nsss_jvp_rhs, rhs_dense)
 
-        solve_lu_left!(∂SS_equations_∂SS_and_pars,
+        # JVP = -(∂SS/∂SS_and_pars \ ∂SS/∂parameters)
+        solve_lu_left!(∂SS_equations_∂SS_and_pars,         # rhs ← ∂SS/∂SS_and_pars \ rhs
                        qme_ws.nsss_jvp_rhs,
                        qme_ws.fast_lu_ws_nsss,
                        nsss_lu)
 
-        ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)
+        ℒ.rmul!(qme_ws.nsss_jvp_rhs, -1)                  # JVP = -JVP
         JVP = qme_ws.nsss_jvp_rhs
     end
 
@@ -5026,25 +5028,25 @@ function rrule(::typeof(calculate_first_order_solution),
     A₀ = qme_ws.𝐀₀
     A₋ = qme_ws.𝐀₋
     ∇₀_present = @view ∇₀[:, T.present_only_idx]
-    # Legacy readable flow mirrored from primal first-order solver:
-    #   Q = qr!(∇₀[:, T.present_only_idx])
-    #   A₊ = Q.Q' * ∇₊;  A₀ = Q.Q' * ∇₀;  A₋ = Q.Q' * ∇₋
-    # The current implementation keeps the same algebra while reusing QR workspaces.
+    # Old way (≤v0.1.42):
+    #   Q = qr(∇₀[:, present_only_idx])
+    #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
+    # Current code reuses QR workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;
+    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;                 # Q = qr(∇₀_present)
                         use_fastlapack_qr = use_fastlapack_qr)
 
-    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,
+    qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
                                                                                         qme_ws.fast_qr_orm_dims_plus,
                                                                                         qr_ws;
                                                                                         use_fastlapack_qr = use_fastlapack_qr)
-    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,
+    qme_ws.fast_qr_orm_ws_zero, qme_ws.fast_qr_orm_dims_zero = apply_qr_transpose_left!(A₀, ∇₀, Q,           # A₀ = Q' * ∇₀
                                                                                         qme_ws.fast_qr_orm_ws_zero,
                                                                                         qme_ws.fast_qr_orm_dims_zero,
                                                                                         qr_ws;
                                                                                         use_fastlapack_qr = use_fastlapack_qr)
-    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,
+    qme_ws.fast_qr_orm_ws_minus, qme_ws.fast_qr_orm_dims_minus = apply_qr_transpose_left!(A₋, ∇₋, Q,         # A₋ = Q' * ∇₋
                                                                                            qme_ws.fast_qr_orm_ws_minus,
                                                                                            qme_ws.fast_qr_orm_dims_minus,
                                                                                            qr_ws;
@@ -5054,13 +5056,13 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Sort matrices" begin
 
     Ã₊ = qme_ws.𝐀̃₊
-    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), Ir[future_not_past_and_mixed_in_comb,:])
+    ℒ.mul!(Ã₊, @view(A₊[dynIndex,:]), Ir[future_not_past_and_mixed_in_comb,:])  # Ã₊ = A₊[dynIndex,:] * Ir
 
     Ã₀ = qme_ws.𝐀̃₀
     copyto!(Ã₀, @view(A₀[dynIndex, comb]))
 
     Ã₋ = qme_ws.𝐀̃₋
-    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), Ir[past_not_future_and_mixed_in_comb,:])
+    ℒ.mul!(Ã₋, @view(A₋[dynIndex,:]), Ir[past_not_future_and_mixed_in_comb,:])  # Ã₋ = A₋[dynIndex,:] * Ir
 
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
@@ -5101,6 +5103,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
+    # Old way (≤v0.1.42): Ā̂₀ᵤ = lu(Ā₀ᵤ)
     qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
                                                                                        qme_ws.fast_lu_dims_a0u;
@@ -5112,13 +5115,13 @@ function rrule(::typeof(calculate_first_order_solution),
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, @view(sol[:,past_not_future_and_mixed_in_comb]), 1, 1)  # A₋ᵤ = A₋ᵤ + Ã₀ᵤ * sol
         nₚ₋ = qme_ws.𝐧ₚ₋
-        ℒ.mul!(nₚ₋, A₊ᵤ, D)
-        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+        ℒ.mul!(nₚ₋, A₊ᵤ, D)  # nₚ₋ = A₊ᵤ * D
+        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)  # A₋ᵤ = A₋ᵤ + nₚ₋ * L
         solve_lu_left!(Ā₀ᵤ, A₋ᵤ, qme_ws.fast_lu_ws_a0u, Ā̂₀ᵤ;
                        use_fastlapack_lu = use_fastlapack_lu)
-        ℒ.rmul!(A₋ᵤ, -1)
+        ℒ.rmul!(A₋ᵤ, -1)  # A₋ᵤ = -A₋ᵤ
     end
 
     # end # timeit_debug
@@ -5141,13 +5144,15 @@ function rrule(::typeof(calculate_first_order_solution),
     end
     
     𝐒̂ᵗ = qme_ws.sylvester.tmp
-    ℒ.mul!(𝐒̂ᵗ, 𝐒ᵗ, expand_past)
+    ℒ.mul!(𝐒̂ᵗ, 𝐒ᵗ, expand_past)  # Ŝᵗ = Sᵗ * expand_past  # Ŝᵗ = Sᵗ * expand_past
 
     ∇₊ = qme_ws.sylvester.𝐀
-    ℒ.mul!(∇₊, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)
+    ℒ.mul!(∇₊, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), expand_future)  # ∇₊ = ∇₁[:, future_cols] * expand_future
 
-    ℒ.mul!(∇₀, ∇₊, 𝐒̂ᵗ, 1, 1)
+    ℒ.mul!(∇₀, ∇₊, 𝐒̂ᵗ, 1, 1)  # ∇₀ = ∇₊ * Ŝᵗ + ∇₀  # ∇₀ = ∇₊ * Ŝᵗ + ∇₀
 
+    # Old way (≤v0.1.42): C = lu(∇₀)
+    # Old way (≤v0.1.42): C = lu(∇₀)
     qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
                                                                                          qme_ws.fast_lu_dims_nabla0;
@@ -5157,6 +5162,7 @@ function rrule(::typeof(calculate_first_order_solution),
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # Old way (≤v0.1.42): ∇ₑ = -(∇₀ \ ∇ₑ)
     solve_lu_left!(∇₀, ∇̂ₑ, qme_ws.fast_lu_ws_nabla0, C;
                    use_fastlapack_lu = use_fastlapack_lu)
     ℒ.rmul!(∇̂ₑ, -1)
@@ -5169,12 +5175,13 @@ function rrule(::typeof(calculate_first_order_solution),
     @inbounds for i in axes(M, 1)
         M[i, i] = one(R)
     end
+    # Old way (≤v0.1.42): M = ∇₀ \ I  (i.e. inv(∇₀))
     solve_lu_left!(∇₀, M, qme_ws.fast_lu_ws_nabla0, C;
                    use_fastlapack_lu = use_fastlapack_lu)
 
     tmp2 = qme_ws.sylvester.𝐁
-    ℒ.mul!(tmp2, M', ∇₊')
-    ℒ.rmul!(tmp2, -1)
+    ℒ.mul!(tmp2, M', ∇₊')  # tmp2 = M' * ∇₊'
+    ℒ.rmul!(tmp2, -1)  # tmp2 = -tmp2
 
     ∇ₑ = @view ∇₁[:,idx_constants.nabla_e_start:end]
 
@@ -10155,11 +10162,12 @@ function rrule(::typeof(calculate_loglikelihood),
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        v[t] .= data_in_deviations[:, t-1] .- z
+        v[t] .= data_in_deviations[:, t-1] .- z  # v[t] = data - C * u_predict
 
-        ℒ.mul!(CP[t], C, P̄)
-        ℒ.mul!(F, CP[t], C')
+        ℒ.mul!(CP[t], C, P̄)  # CP[t] = C * P
+        ℒ.mul!(F, CP[t], C')  # F = CP[t] * C' = C * P * C'
 
+        # Old way (≤v0.1.42): luF = lu(F)
         kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
                                                                                            kalman_ws.fast_lu_ws_f,
                                                                                            kalman_ws.fast_lu_dims_f)
@@ -10169,6 +10177,7 @@ function rrule(::typeof(calculate_loglikelihood),
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
+        # Old way (≤v0.1.42): logabsdetF = log(abs(det(luF)))
         logabsdetF = 0.0
         signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, eachindex(kalman_ws.fast_lu_ws_f.ipiv))) ? -1.0 : 1.0
         @inbounds for i in 1:size(F, 1)
@@ -10190,28 +10199,28 @@ function rrule(::typeof(calculate_loglikelihood),
         @inbounds for i in 1:size(invF[t], 1)
             invF[t][i, i] = 1.0
         end
-        solve_lu_left!(F, invF[t], kalman_ws.fast_lu_ws_f, luF)
+        solve_lu_left!(F, invF[t], kalman_ws.fast_lu_ws_f, luF)  # invF[t] = F \ I
 
         if t - 1 > presample_periods
-            loglik += logabsdetF + ℒ.dot(v[t], invF[t], v[t])
+            loglik += logabsdetF + ℒ.dot(v[t], invF[t], v[t])  # Old way: loglik += log(det(F)) + v' * inv(F) * v
         end
 
-        ℒ.mul!(PCtmp, P̄, C')
-        copyto!(K[t], PCtmp)
-        solve_lu_right!(F, K[t], kalman_ws.fast_lu_ws_f, luF, kalman_ws.fast_lu_rhs_t_k)
+        ℒ.mul!(PCtmp, P̄, C')  # PCtmp = P * C'
+        copyto!(K[t], PCtmp)  # K[t] = P * C' (before solving)
+        solve_lu_right!(F, K[t], kalman_ws.fast_lu_ws_f, luF, kalman_ws.fast_lu_rhs_t_k)  # K[t] = P * C' / F
 
-        ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)
-        P_seq[t] .+= P̄
+        ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)  # P_seq[t] = -K[t] * CP[t]
+        P_seq[t] .+= P̄  # P_seq[t] = P - K[t] * C * P
 
-        ℒ.mul!(temp_N_N, P_seq[t], A')
-        ℒ.mul!(P̄, A, temp_N_N)
-        P̄ .+= 𝐁
+        ℒ.mul!(temp_N_N, P_seq[t], A')  # temp = P_seq[t] * A'
+        ℒ.mul!(P̄, A, temp_N_N)  # P = A * P_seq[t] * A'
+        P̄ .+= 𝐁  # P = A * P_seq[t] * A' + B
 
-        ℒ.mul!(u[t], K[t], v[t])
-        u[t] .+= ū
+        ℒ.mul!(u[t], K[t], v[t])  # u[t] = K[t] * v[t]
+        u[t] .+= ū  # u[t] = K[t] * v[t] + u_predicted
 
-        ℒ.mul!(ū, A, u[t])
-        ℒ.mul!(z, C, ū)
+        ℒ.mul!(ū, A, u[t])  # u_predict = A * u[t]
+        ℒ.mul!(z, C, ū)  # z = C * u_predict
     end
 
     llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2

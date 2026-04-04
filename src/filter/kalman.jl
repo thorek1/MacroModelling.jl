@@ -95,7 +95,7 @@ function run_kalman_iterations(A::Matrix{S},
     
     # Initialize state estimate to zero
     fill!(u, zero(S))
-    ℒ.mul!(z, C, u)
+    ℒ.mul!(z, C, u)                          # z = C * u
 
     loglik = S(0.0)
 
@@ -106,24 +106,23 @@ function run_kalman_iterations(A::Matrix{S},
             return on_failure_loglikelihood 
         end
 
-        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)
-        # v = data_in_deviations[:, t] - z
+        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)   # z = data[:,t] - z  (innovation v)
 
-        ℒ.mul!(Ctmp, C, P) # use Octavian.jl
-        ℒ.mul!(F, Ctmp, C')
-        # F = C * P * C'
+        ℒ.mul!(Ctmp, C, P)                                     # Ctmp = C * P
+        ℒ.mul!(F, Ctmp, C')                                    # F = C * P * C'
 
-        # @timeit_debug timer "LU factorisation" begin
+        # Old way (≤v0.1.42): luF = lu(F)  — allocates new LU each step
         ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
                                                                            ws.fast_lu_ws_f,
                                                                            ws.fast_lu_dims_f)
-        # end # timeit_debug
 
         if !solved_F
             if verbose println("KF factorisation failed step $t") end
             return on_failure_loglikelihood
         end
 
+        # Old way (≤v0.1.42): Fdet = det(luF); loglik += log(Fdet) + v' * inv(F) * v
+        # Current code computes log|det(F)| from the LU diagonal and pivot signs.
         logabsdetF = zero(S)
         signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, eachindex(ws.fast_lu_ws_f.ipiv))) ? -one(S) : one(S)
         @inbounds for i in 1:size(F, 1)
@@ -142,43 +141,35 @@ function run_kalman_iterations(A::Matrix{S},
             return on_failure_loglikelihood
         end
 
-        # invF = inv(luF) ###
-
-        # @timeit_debug timer "LU div" begin
+        # Old way (≤v0.1.42): loglik += log(det(F)) + v' * inv(F) * v
         if t > presample_periods
             copyto!(ztmp, z)
-            solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)
-            loglik += logabsdetF + ℒ.dot(z', ztmp) ###
-            # loglik += log(Fdet) + z' * invF * z###
-            # loglik += log(Fdet) + v' * invF * v###
+            solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)      # ztmp = F \ z
+            loglik += logabsdetF + ℒ.dot(z', ztmp)             # loglik += log|det(F)| + z' * (F \ z)
         end
 
-        # ℒ.mul!(Ktmp, P, C')
-        # ℒ.mul!(K, Ktmp, invF)
-        ℒ.mul!(K, P, C')
-        solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
-        # K = P * Ct / luF
-        # K = P * C' * invF
+        # Old way (≤v0.1.42): K = P * C' / F  — Kalman gain
+        ℒ.mul!(K, P, C')                                       # K = P * C'
+        solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)  # K = K / F
 
         # end # timeit_debug
         # @timeit_debug timer "Matmul" begin
 
-        ℒ.mul!(tmp, K, C)
-        ℒ.mul!(Ptmp, tmp, P)
-        ℒ.axpy!(-1, Ptmp, P)
+        # P = A * (P - K * C * P) * A' + B
+        ℒ.mul!(tmp, K, C)                                      # tmp = K * C
+        ℒ.mul!(Ptmp, tmp, P)                                   # Ptmp = K * C * P
+        ℒ.axpy!(-1, Ptmp, P)                                   # P = P - K * C * P
 
-        ℒ.mul!(Ptmp, A, P)
-        ℒ.mul!(P, Ptmp, A')
-        ℒ.axpy!(1, 𝐁, P)
-        # P = A * (P - K * C * P) * A' + 𝐁
+        ℒ.mul!(Ptmp, A, P)                                     # Ptmp = A * P
+        ℒ.mul!(P, Ptmp, A')                                    # P = A * P * A'
+        ℒ.axpy!(1, 𝐁, P)                                      # P = P + B
 
-        ℒ.mul!(u, K, z, 1, 1)
-        ℒ.mul!(utmp, A, u)
-        u .= utmp
         # u = A * (u + K * v)
+        ℒ.mul!(u, K, z, 1, 1)                                  # u = u + K * v
+        ℒ.mul!(utmp, A, u)                                     # utmp = A * u
+        u .= utmp                                              # u = A * (u + K * v)
 
-        ℒ.mul!(z, C, u)
-        # z = C * u
+        ℒ.mul!(z, C, u)                                        # z = C * u
 
         # end # timeit_debug
     end
