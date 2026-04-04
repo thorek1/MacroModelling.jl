@@ -212,7 +212,7 @@ Other than the mean and median of the posterior distribution the mode can also b
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
                                         adtype = AutoMooncake(; config=nothing), 
-                                        initial_params = FS2000.parameter_values)
+                                        initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 ```
 
 ## Model estimates given the data and the model solution

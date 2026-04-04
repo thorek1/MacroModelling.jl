@@ -69,14 +69,14 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
                                                 Optim.NelderMead(),
                                                 iterations = 100,
                                                 # show_trace = true,
-                                                initial_params = Caldara_et_al_2012_estim.parameter_values)
+                                                initial_params = Turing.InitFromParams((; all_params = Caldara_et_al_2012_estim.parameter_values)))
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
                                                 adtype = AutoMooncake(; config=nothing),
                                                 iterations = 100,
                                                 # show_trace = true,
-                                                initial_params = mode_estimateNM.values)
+                                                initial_params = Turing.InitFromParams(mode_estimateNM))
 
 init_params = mode_estimateLBFGS.values |> collect
 

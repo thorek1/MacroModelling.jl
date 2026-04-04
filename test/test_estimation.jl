@@ -79,7 +79,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 
-                                        initial_params = FS2000.parameter_values)
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeFS2000.lp)")
 

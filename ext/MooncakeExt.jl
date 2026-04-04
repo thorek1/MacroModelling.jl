@@ -143,7 +143,7 @@ function Mooncake.rrule!!(
 )
     MacroModelling.clear_solution_caches!(Mooncake.primal(model_cd), Mooncake.primal(alg_cd))
     pb!!(::NoRData) = (NoRData(), NoRData(), NoRData())
-    return CoDual(nothing, Mooncake.NoTangent()), pb!!
+    return CoDual(nothing, Mooncake.NoFData()), pb!!
 end
 
 end  # module MooncakeExt

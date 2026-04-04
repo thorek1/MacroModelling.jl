@@ -3084,7 +3084,7 @@ savefig(p, joinpath("./docs/src/assets", "FS2000_posterior_surface.png"))
 
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
                                         # adtype = AutoZygote(), 
-                                        initial_params = FS2000.parameter_values)
+                                        initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 
 get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))
 

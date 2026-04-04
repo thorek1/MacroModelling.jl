@@ -23,9 +23,7 @@ import Dates
 # import MadNLP
 # import Ipopt
 # import AbstractDifferentiation as 𝒜
-import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
-backend = 𝒟.AutoForwardDiff()
 # import Diffractor: DiffractorForwardBackend
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
@@ -870,7 +868,7 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
 
     if length(jac) > 0
         # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.functions.obc_violation(xx, p), X)[1]'
-        jac .= 𝒟.jacobian(xx -> 𝓂.functions.obc_violation(xx, p), backend, X)'
+        jac .= ℱ.jacobian(xx -> 𝓂.functions.obc_violation(xx, p), X)'
     end
 
     res .= 𝓂.functions.obc_violation(X, p)

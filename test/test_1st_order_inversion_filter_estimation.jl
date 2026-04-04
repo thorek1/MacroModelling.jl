@@ -58,7 +58,7 @@ sample_nuts = mean(samps).nt.mean
 modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         adtype = AutoMooncake(; config=nothing), 
-                                        initial_params = FS2000.parameter_values)
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
