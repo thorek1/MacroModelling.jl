@@ -41,9 +41,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure
                             all_params, 
                             filter = filter,
                             on_failure_loglikelihood = on_failure_loglikelihood)
-    if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.product_distribution(dists), all_params)) with params $all_params"
-    end
+    maybe_print_loglikelihood(verbose, llh, dists, all_params)
 
     Turing.@addlogprob! llh
 end

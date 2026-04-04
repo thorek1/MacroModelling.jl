@@ -55,9 +55,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_fai
                                  all_params, 
                                  algorithm = :pruned_third_order, 
                                  on_failure_loglikelihood = on_failure_loglikelihood)
-        if verbose
-            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.product_distribution(dists), all_params)) with params $all_params"
-        end
+        maybe_print_loglikelihood(verbose, llh, dists, all_params)
 
         Turing.@addlogprob! llh
     end
