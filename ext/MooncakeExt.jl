@@ -87,15 +87,21 @@ function Mooncake.rrule!!(
     # Call ChainRules rrule directly with kwargs (Core.kwcall has no rrule)
     y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_statistics, model, params; kw...)
     y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    kwargs_lazy_rdata = Mooncake.lazy_zero_rdata(kw)
     inner_fargs = (f_cd, model_cd, params_cd)
     lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
     function pb!!(y_rdata)
         cr_tangent = _mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
         cr_dfargs = cr_pb(cr_tangent)
+        kwargs_rdata = Mooncake.increment_and_get_rdata!(
+            Mooncake.tangent(kwargs_cd),
+            Mooncake.instantiate(kwargs_lazy_rdata),
+            ChainRulesCore.NoTangent(),
+        )
         inner_rdata = map(inner_fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
             Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
         end
-        return (NoRData(), NoRData(), inner_rdata...)
+        return (NoRData(), kwargs_rdata, inner_rdata...)
     end
     return CoDual(y_primal, y_fdata), pb!!
 end
