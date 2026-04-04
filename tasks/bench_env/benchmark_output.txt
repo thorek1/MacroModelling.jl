@@ -1,0 +1,66 @@
+Remove redundant variables in non-stochastic steady state problem:	0.53 seconds
+Set up non-stochastic steady state problem:				12.68 seconds
+Find non-stochastic steady state:					0.319 seconds
+Take symbolic derivatives up to first order:				0.927 seconds
+Model:        RBC
+Variables
+ Total:       3
+  Auxiliary:  0
+ States:      2
+  Auxiliary:  0
+ Jumpers:     2
+  Auxiliary:  0
+Shocks:       1
+Parameters:   5
+======================================================================
+BENCHMARK: Mooncake vs Zygote gradient performance
+======================================================================
+
+── get_solution: norm(𝐒₁) ──
+ERROR: LoadError: Mutating arrays is not supported -- called setindex!(Vector{Union{Nothing, Int64}}, ...)
+This error occurs when you ask Zygote to differentiate operations that change
+the elements of arrays in place (e.g. setting values with x .= ...)
+
+Possible fixes:
+- avoid mutating operations (preferred)
+- or read the documentation and solutions for this error
+  https://fluxml.ai/Zygote.jl/latest/limitations
+
+Stacktrace:
+  [1] error(s::String)
+    @ Base ./error.jl:44
+  [2] _throw_mutation_error(f::Function, args::Vector{Union{Nothing, Int64}})
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/lib/array.jl:70
+  [3] (::Zygote.var"#706#707"{Vector{Union{Nothing, Int64}}})(::Nothing)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/lib/array.jl:82
+  [4] (::Zygote.var"#708#709"{Zygote.var"#706#707"{Vector{Union{Nothing, Int64}}}})(Δ::Nothing)
+    @ Zygote ~/.julia/packages/ZygoteRules/CkVIK/src/adjoint.jl:72
+  [5] (::Zygote.Pullback{Tuple{typeof(indexin), Vector{Int64}, Vector{Int64}}, Any})(Δ::Nothing)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+  [6] build_first_order_index_cache
+    @ ~/.julia/packages/MacroModelling/7WzMZ/src/options_and_caches.jl:1109 [inlined]
+  [7] (::Zygote.Pullback{Tuple{typeof(MacroModelling.build_first_order_index_cache), MacroModelling.post_model_macro, Diagonal{Bool, Vector{Bool}}}, Any})(Δ::Nothing)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:0
+  [8] (::Zygote.Pullback{Tuple{typeof(MacroModelling.ensure_first_order_constants!), MacroModelling.ℳ}, Any})(Δ::Nothing)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+  [9] (::Zygote.Pullback{Tuple{typeof(MacroModelling.initialise_constants!), MacroModelling.ℳ}, Tuple{Zygote.var"#389#390"{Zygote.var"#back#back##9"{:constants, Zygote.Context{false}, MacroModelling.ℳ, MacroModelling.constants}}, Zygote.Pullback{Tuple{typeof(MacroModelling.ensure_computational_constants!), MacroModelling.ℳ}, Any}, Zygote.Pullback{Tuple{typeof(MacroModelling.ensure_first_order_constants!), MacroModelling.ℳ}, Any}, Zygote.Pullback{Tuple{typeof(MacroModelling.ensure_name_display_constants!), MacroModelling.ℳ}, Any}}})(Δ::Nothing)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+ [10] (::Zygote.Pullback{Tuple{MacroModelling.var"##get_solution#213", Missing, Symbol, Bool, Tolerances, Symbol, Symbol, typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Any})(Δ::Tuple{Nothing, ChainRulesCore.InplaceableThunk{ChainRulesCore.Thunk{ChainRules.var"#rrule##475#rrule##476"{Float64, Matrix{Float64}, Float64}}, ChainRules.var"#rrule##473#rrule##474"{Float64, Matrix{Float64}, Float64}}, Nothing})
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+ [11] (::Zygote.Pullback{Tuple{typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Tuple{Zygote.Pullback{Tuple{MacroModelling.var"##get_solution#213", Missing, Symbol, Bool, Tolerances, Symbol, Symbol, typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Any}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.Pullback{Tuple{Type{Tolerances}}, Tuple{}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Bool}}, Zygote.Pullback{Tuple{MacroModelling.var"#15#16", MacroModelling.ℳ}, Any}}})(Δ::Tuple{Nothing, ChainRulesCore.InplaceableThunk{ChainRulesCore.Thunk{ChainRules.var"#rrule##475#rrule##476"{Float64, Matrix{Float64}, Float64}}, ChainRules.var"#rrule##473#rrule##474"{Float64, Matrix{Float64}, Float64}}, Nothing})
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+ [12] (::Zygote.Pullback{Tuple{typeof(f_sol), Vector{Float64}}, Tuple{Zygote.ZBack{ChainRules.var"#norm_pullback_2#rrule##472"{Matrix{Float64}, Float64}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, MacroModelling.ℳ}}, Zygote.Pullback{Tuple{typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Tuple{Zygote.Pullback{Tuple{MacroModelling.var"##get_solution#213", Missing, Symbol, Bool, Tolerances, Symbol, Symbol, typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Any}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.Pullback{Tuple{Type{Tolerances}}, Tuple{}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Bool}}, Zygote.Pullback{Tuple{MacroModelling.var"#15#16", MacroModelling.ℳ}, Any}}}, Zygote.var"#259#260"{Zygote.var"#back#back##0"{3, 2, Zygote.Context{false}, Matrix{Float64}}}}})(Δ::Float64)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface2.jl:100
+ [13] (::Zygote.var"#pullback##0#pullback##1"{Zygote.Pullback{Tuple{typeof(f_sol), Vector{Float64}}, Tuple{Zygote.ZBack{ChainRules.var"#norm_pullback_2#rrule##472"{Matrix{Float64}, Float64}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, MacroModelling.ℳ}}, Zygote.Pullback{Tuple{typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Tuple{Zygote.Pullback{Tuple{MacroModelling.var"##get_solution#213", Missing, Symbol, Bool, Tolerances, Symbol, Symbol, typeof(get_solution), MacroModelling.ℳ, Vector{Float64}}, Any}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.Pullback{Tuple{Type{Tolerances}}, Tuple{}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Symbol}}, Zygote.var"#231#232"{Zygote.var"#229#230"{Zygote.Context{false}, GlobalRef, Bool}}, Zygote.Pullback{Tuple{MacroModelling.var"#15#16", MacroModelling.ℳ}, Any}}}, Zygote.var"#259#260"{Zygote.var"#back#back##0"{3, 2, Zygote.Context{false}, Matrix{Float64}}}}}})(Δ::Float64)
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface.jl:97
+ [14] gradient(f::Function, args::Vector{Float64})
+    @ Zygote ~/.julia/packages/Zygote/55SqB/src/compiler/interface.jl:154
+ [15] top-level scope
+    @ ~/GitHub/MacroModelling.jl.worktrees/copilot-worktree-2026-04-03T22-35-49/tasks/bench_env/benchmark.jl:41
+ [16] include(mod::Module, _path::String)
+    @ Base ./Base.jl:306
+ [17] exec_options(opts::Base.JLOptions)
+    @ Base ./client.jl:317
+ [18] _start()
+    @ Base ./client.jl:550
+in expression starting at /Users/thorekockerols/GitHub/MacroModelling.jl.worktrees/copilot-worktree-2026-04-03T22-35-49/tasks/bench_env/benchmark.jl:41

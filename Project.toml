@@ -44,11 +44,13 @@ ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [extensions]
+MooncakeExt = "Mooncake"
 OptimExt = "Optim"
 StatsPlotsExt = "StatsPlots"
 TuringExt = "Turing"
@@ -84,6 +86,7 @@ LoopVectorization = "0.12"
 MCMCChains = "6, 7"
 MacroTools = "0.5"
 MatrixEquations = "2"
+Mooncake = "0.5"
 NLopt = "0.6, 1"
 Optim = "1"
 Pigeons = "0.3, 0.4"

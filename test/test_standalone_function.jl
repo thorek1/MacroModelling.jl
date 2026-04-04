@@ -622,6 +622,20 @@ RBC_CME = nothing
 
     @test isapprox(forw_grad,fin_grad,rtol = 1e-5)
 
+    solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2])
+    forw_grad = ForwardDiff.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))
+    reverse_grad = Zygote.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))[1]
+    fin_grad = FiniteDifferences.grad(central_fdm(4,1), solution_norm_obj, RBC_CME.parameter_values)[1]
+
+    @test isapprox(forw_grad,reverse_grad,rtol = 1e-6)
+    @test isapprox(forw_grad,fin_grad,rtol = 1e-6)
+
+    if !isnothing(Base.find_package("ADTypes")) && !isnothing(Base.find_package("Mooncake"))
+        import ADTypes, DifferentiationInterface
+        mooncake_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
+        @test isapprox(forw_grad,mooncake_grad,rtol = 1e-6)
+    end
+
 
 
     Random.seed!(3)

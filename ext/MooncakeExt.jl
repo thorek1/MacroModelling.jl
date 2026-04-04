@@ -1,0 +1,126 @@
+module MooncakeExt
+
+import MacroModelling
+import Mooncake
+import Mooncake: CoDual, NoRData, @is_primitive
+import ChainRulesCore
+import AxisKeys: KeyedArray
+
+Mooncake.tangent_type(::Type{MacroModelling.ℳ}) = Mooncake.NoTangent
+
+# ── Scalar/Array-returning functions: @from_rrule works directly ──
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_solution), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}} where {T<:Base.IEEEFloat} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat} true
+
+# ── get_statistics: manual rrule!! ──
+# Returns Dict{Symbol,...} whose MutableTangent cannot be converted by to_cr_tangent.
+# We mirror rrule_wrapper but reconstruct the Dict cotangent from MutableTangent fields.
+
+# Convert MutableTangent (Dict internals: slots/keys/vals/...) → actual Dict cotangent
+function _mooncake_dict_to_cr_tangent(primal_dict::Dict, mt::Mooncake.MutableTangent)
+    result = Dict{Symbol,Any}()
+    raw_vals = mt.fields.vals
+    vals_tangent = if raw_vals isa Mooncake.PossiblyUninitTangent
+        Mooncake.is_init(raw_vals) ? raw_vals.tangent : return result
+    else
+        raw_vals
+    end
+    for (k, _) in primal_dict
+        idx = Base.ht_keyindex(primal_dict, k)
+        idx > 0 || continue
+        isassigned(vals_tangent, idx) || continue
+        vt = vals_tangent[idx]
+        cr_vt = _val_to_cr(vt)
+        cr_vt isa ChainRulesCore.AbstractZero && continue
+        result[k] = cr_vt
+    end
+    return result
+end
+_mooncake_dict_to_cr_tangent(::Dict, ::Mooncake.NoTangent) = ChainRulesCore.NoTangent()
+
+_val_to_cr(x::AbstractArray{<:AbstractFloat}) = x
+_val_to_cr(::Mooncake.NoTangent) = ChainRulesCore.ZeroTangent()
+_val_to_cr(x::Mooncake.PossiblyUninitTangent) =
+    Mooncake.is_init(x) ? _val_to_cr(x.tangent) : ChainRulesCore.ZeroTangent()
+_val_to_cr(x) = Mooncake.to_cr_tangent(x)
+
+# Positional: get_statistics(model, params)
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_statistics), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat}
+
+function Mooncake.rrule!!(
+    f_cd::CoDual{typeof(MacroModelling.get_statistics)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    params_cd::CoDual{Vector{T}}
+) where {T<:Base.IEEEFloat}
+    fargs = (f_cd, model_cd, params_cd)
+    primals = map(Mooncake.primal, fargs)
+    lazy_rdata = map(Mooncake.lazy_zero_rdata, primals)
+    y_primal, cr_pb = ChainRulesCore.rrule(primals...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    function pb!!(y_rdata)
+        cr_tangent = _mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
+        cr_dfargs = cr_pb(cr_tangent)
+        return map(fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
+            Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
+        end
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+# Keyword: Core.kwcall(kwargs, get_statistics, model, params)
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_statistics), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat}
+
+function Mooncake.rrule!!(
+    kwcall_cd::CoDual{typeof(Core.kwcall)},
+    kwargs_cd::CoDual{<:NamedTuple},
+    f_cd::CoDual{typeof(MacroModelling.get_statistics)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    params_cd::CoDual{Vector{T}}
+) where {T<:Base.IEEEFloat}
+    kw = Mooncake.primal(kwargs_cd)
+    model = Mooncake.primal(model_cd)
+    params = Mooncake.primal(params_cd)
+    # Call ChainRules rrule directly with kwargs (Core.kwcall has no rrule)
+    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_statistics, model, params; kw...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    inner_fargs = (f_cd, model_cd, params_cd)
+    lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
+    function pb!!(y_rdata)
+        cr_tangent = _mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
+        cr_dfargs = cr_pb(cr_tangent)
+        inner_rdata = map(inner_fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
+            Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
+        end
+        return (NoRData(), NoRData(), inner_rdata...)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+# ── Dict getindex primitive ──
+# Without this, Mooncake tries to compile a tape through Dict's hash table internals
+# (hashing, slot probing, Memory access), which takes extremely long.
+# For mutable containers, fdata is accumulated in-place so the pullback is a no-op.
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Base.getindex), <:Dict{Symbol}, Symbol}
+
+function Mooncake.rrule!!(
+    ::CoDual{typeof(Base.getindex)},
+    dict_cd::CoDual{<:Dict{Symbol}},
+    key_cd::CoDual{Symbol}
+)
+    dict = Mooncake.primal(dict_cd)
+    key = Mooncake.primal(key_cd)
+    val = dict[key]
+    dict_fdata = Mooncake.tangent(dict_cd)
+    idx = Base.ht_keyindex(dict, key)
+    val_fdata = dict_fdata.fields.vals[idx]
+    function pb!!(::NoRData)
+        return NoRData(), NoRData(), NoRData()
+    end
+    return CoDual(val, val_fdata), pb!!
+end
+
+end  # module MooncakeExt
