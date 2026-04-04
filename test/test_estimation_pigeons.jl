@@ -36,7 +36,7 @@ dists = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         llh = get_loglikelihood(m, 
@@ -44,7 +44,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglike
                                  all_params, 
                                  on_failure_loglikelihood = on_failure_loglikelihood)
         if verbose
-            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.product_distribution(dists), all_params)) with params $all_params"
         end
 
         Turing.@addlogprob! llh

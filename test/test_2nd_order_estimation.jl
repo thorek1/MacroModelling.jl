@@ -35,7 +35,7 @@ dists = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     Turing.@addlogprob! get_loglikelihood(m, 
                                             data, 
@@ -49,7 +49,7 @@ Random.seed!(30)
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
 println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")

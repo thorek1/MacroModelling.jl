@@ -47,7 +47,7 @@ dists = [
 ]
 
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     llh = get_loglikelihood(m, 
                              data, 
@@ -55,7 +55,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_fai
                              algorithm = :pruned_third_order, 
                              on_failure_loglikelihood = on_failure_loglikelihood)
     if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.product_distribution(dists), all_params)) with params $all_params"
     end
 
     Turing.@addlogprob! llh
@@ -92,7 +92,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = init_params)))
 
 
 println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")

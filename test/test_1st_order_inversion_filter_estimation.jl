@@ -34,7 +34,7 @@ dists = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     llh = get_loglikelihood(m, 
                             data, 
@@ -42,7 +42,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure
                             filter = filter,
                             on_failure_loglikelihood = on_failure_loglikelihood)
     if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.product_distribution(dists), all_params)) with params $all_params"
     end
 
     Turing.@addlogprob! llh
@@ -50,7 +50,7 @@ end
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
 println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")

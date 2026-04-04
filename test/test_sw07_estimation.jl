@@ -70,7 +70,7 @@ Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
 ]
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, filter)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
 

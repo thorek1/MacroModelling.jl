@@ -35,7 +35,7 @@ dists = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         Turing.@addlogprob! get_loglikelihood(m, 

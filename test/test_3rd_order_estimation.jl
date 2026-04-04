@@ -47,7 +47,7 @@ dists = [
 ]
 
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     Turing.@addlogprob! get_loglikelihood(m, 
                                             data, 
@@ -84,7 +84,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = init_params)
+samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = init_params)))
 
 println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 

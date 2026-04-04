@@ -2995,7 +2995,7 @@ prior_distributions = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(prior_distributions, data, m; verbose = false)
-    parameters ~ Turing.arraydist(prior_distributions)
+    parameters ~ Turing.product_distribution(prior_distributions)
 
     # if DynamicPPL.leafcontext(DynamicPPL.__context__) !== DynamicPPL.PriorContext() 
         Turing.@addlogprob! get_loglikelihood(m, 
