@@ -101,8 +101,8 @@ Next the parameter priors are defined using the Turing package. The `@model` mac
 ```@repl tutorial_2
 import Turing
 import Turing: NUTS, sample, logpdf, replacenames
-import ADTypes: AutoZygote
-import Zygote
+import ADTypes: AutoMooncake
+import Mooncake
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp
@@ -211,7 +211,7 @@ Other than the mean and median of the posterior distribution the mode can also b
 
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
-                                        adtype = AutoZygote(), 
+                                        adtype = AutoMooncake(; config=nothing), 
                                         initial_params = FS2000.parameter_values)
 ```
 

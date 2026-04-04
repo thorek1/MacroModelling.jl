@@ -97,7 +97,7 @@ If the sentinel is not found within the timeout, check `.julia_repl/out` for err
 - **Poll, don't sleep** — use `for i in {1..N}; do grep -q "SENTINEL" .julia_repl/out && break; sleep 1; done` instead of fixed `sleep` durations. This returns as soon as the task finishes.
 - **The session persists** — variables, models, compiled methods all survive between `echo` commands. This is the whole point.
 - **Revise picks up edits** — after editing `src/` files with the editor tool, the running session sees the changes automatically.
-- **For test project deps**, use `--project=test` instead of `--project=.` when tests need extra packages (Zygote, Turing, etc.).
+- **For test project deps**, use `--project=test` instead of `--project=.` when tests need extra packages (Mooncake, Turing, etc.).
 - **To reset the session**, send `exit()` to the pipe, wait for the process to end, then re-run steps 1-2:
   ```bash
   echo 'exit()' > .julia_repl/pipe

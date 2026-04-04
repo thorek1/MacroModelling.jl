@@ -1,6 +1,7 @@
 using MacroModelling
 import Turing
-import ADTypes: AutoZygote
+import ADTypes: AutoMooncake
+import DifferentiationInterface
 import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, DelimitedFiles, MCMCChains, AxisKeys
@@ -78,7 +79,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
+                                                adtype = AutoMooncake(; config=nothing),
 
                                                 iterations = 100,
                                                 # show_trace = true,
@@ -91,23 +92,23 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = init_params)
 
 
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
-@testset "Zygote vs FiniteDifferences gradient (pruned 3rd order)" begin
-    back_grad = Zygote.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order), init_params)
-    @test !isnothing(back_grad[1])
-    @test all(isfinite, back_grad[1])
+@testset "Mooncake vs FiniteDifferences gradient (pruned 3rd order)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order), ADTypes.AutoMooncake(config = nothing), init_params)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
     for i in 1:100
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1, max_range = 1e-3), x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order), init_params)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end

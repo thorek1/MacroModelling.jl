@@ -1,5 +1,6 @@
 using MacroModelling
-import ADTypes: AutoZygote
+import ADTypes: AutoMooncake
+import DifferentiationInterface
 import Turing
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
@@ -114,23 +115,23 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, 
                             # initial_params = inits,
                             progress = true)
 
 println(samps)
 println("Mean variable values (linear): $(mean(samps).nt.mean)")
 
-@testset "Zygote vs FiniteDifferences gradient (SW07 linear)" begin
-    back_grad = Zygote.gradient(x -> get_loglikelihood(Smets_Wouters_2007_linear, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007_linear.parameter_values)
-    @test !isnothing(back_grad[1])
-    @test all(isfinite, back_grad[1])
+@testset "Mooncake vs FiniteDifferences gradient (SW07 linear)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007_linear, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
     for i in 1:100
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(Smets_Wouters_2007_linear, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007_linear.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end
@@ -166,23 +167,23 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, 
                             # initial_params = inits,
                             progress = true)
 
 println(samps)
 println("Mean variable values (nonlinear): $(mean(samps).nt.mean)")
 
-@testset "Zygote vs FiniteDifferences gradient (SW07 nonlinear)" begin
-    back_grad = Zygote.gradient(x -> get_loglikelihood(Smets_Wouters_2007, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007.parameter_values)
-    @test !isnothing(back_grad[1])
-    @test all(isfinite, back_grad[1])
+@testset "Mooncake vs FiniteDifferences gradient (SW07 nonlinear)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
     for i in 1:100
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(Smets_Wouters_2007, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end

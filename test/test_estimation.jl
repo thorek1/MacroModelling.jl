@@ -1,10 +1,10 @@
 using MacroModelling
 import Turing
-import ADTypes: AutoZygote
+import ADTypes: AutoMooncake
+import DifferentiationInterface
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, DelimitedFiles, MCMCChains, AxisKeys
-import Zygote
 
 include("../models/FS2000.jl")
 
@@ -55,15 +55,15 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
 # with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 
 get_steady_state(FS2000, steady_state_function = FS2000_custom_steady_state_function!)
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
 # with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
-println("Mean variable values (Zygote + custom steady state): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake + custom steady state): $(mean(samps).nt.mean)")
 
 get_steady_state(FS2000, steady_state_function = nothing)
 
@@ -79,7 +79,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         # Optim.NelderMead(), 
-                                        adtype = AutoZygote(), 
+                                        adtype = AutoMooncake(; config=nothing), 
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 
@@ -92,16 +92,16 @@ println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeF
     @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
-@testset "Zygote vs FiniteDifferences gradient (1st order Kalman)" begin
-    back_grad = Zygote.gradient(x -> get_loglikelihood(FS2000, data, x), FS2000.parameter_values)
-    @test !isnothing(back_grad[1])
-    @test all(isfinite, back_grad[1])
+@testset "Mooncake vs FiniteDifferences gradient (1st order Kalman)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
     for i in 1:100
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x), FS2000.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end

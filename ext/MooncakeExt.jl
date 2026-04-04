@@ -123,4 +123,21 @@ function Mooncake.rrule!!(
     return CoDual(val, val_fdata), pb!!
 end
 
+
+# ── clear_solution_caches! primitive ──
+# This function mutates model caches and has no differentiable effect on outputs.
+# Registering it as a primitive with zero gradient prevents Mooncake from tracing
+# through its internals when it is called inside differentiable closures.
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.clear_solution_caches!), MacroModelling.ℳ, Symbol}
+
+function Mooncake.rrule!!(
+    ::CoDual{typeof(MacroModelling.clear_solution_caches!)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    alg_cd::CoDual{Symbol}
+)
+    MacroModelling.clear_solution_caches!(Mooncake.primal(model_cd), Mooncake.primal(alg_cd))
+    pb!!(::NoRData) = (NoRData(), NoRData(), NoRData())
+    return CoDual(nothing, Mooncake.NoTangent()), pb!!
+end
+
 end  # module MooncakeExt
