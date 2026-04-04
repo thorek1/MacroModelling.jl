@@ -1,10 +1,9 @@
 name = "MacroModelling"
 uuid = "687ffad2-3618-405e-ac50-e0f7b9c75e44"
-version = "0.1.46"
 authors = ["Thore Kockerols <mail@thorekockerols.com>"]
+version = "0.1.46"
 
 [deps]
-ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
 AxisKeys = "94b1ba4f-4ee9-5380-92f1-94cde586c3c5"
 BlockTriangularForm = "adeb47b7-70bf-415a-bb24-c358563e873a"
@@ -27,7 +26,6 @@ LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
-Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
@@ -46,6 +44,7 @@ ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
@@ -70,7 +69,7 @@ DelimitedFiles = "1"
 DifferentiationInterface = "0.6,0.7"
 DispatchDoctor = "0.4"
 DocStringExtensions = "0.8, 0.9"
-DynamicPPL = "0.40"
+DynamicPPL = "0.38 - 0.40"
 DynarePreprocessor_jll = "6"
 FastLapackInterface = "2"
 FiniteDifferences = "0.12"
@@ -108,7 +107,7 @@ SymPyPythonCall = "0.2 - 0.5"
 Symbolics = "5 - 7"
 Test = "1"
 ThreadedSparseArrays = "0.2.3"
-Turing = "0.43"
+Turing = "0.41 - 0.43"
 Unicode = "1"
 julia = "1.10"
 
@@ -128,7 +127,6 @@ Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
-Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 
 [targets]
-test = ["ADTypes", "Aqua", "JET", "Dates", "DelimitedFiles", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Mooncake", "StatsPlots", "Preferences"]
+test = ["ADTypes", "Aqua", "JET", "Dates", "DelimitedFiles", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "StatsPlots", "Preferences"]
