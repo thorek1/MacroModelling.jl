@@ -69,7 +69,7 @@ DelimitedFiles = "1"
 DifferentiationInterface = "0.6,0.7"
 DispatchDoctor = "0.4"
 DocStringExtensions = "0.8, 0.9"
-DynamicPPL = "0.35 - 0.38"
+DynamicPPL = "0.35"
 DynarePreprocessor_jll = "6"
 FastLapackInterface = "2"
 FiniteDifferences = "0.12"
@@ -107,9 +107,8 @@ SymPyPythonCall = "0.2 - 0.5"
 Symbolics = "5 - 7"
 Test = "1"
 ThreadedSparseArrays = "0.2.3"
-Turing = "0.30 - 0.39"
+Turing = "0.30"
 Unicode = "1"
-Zygote = "0.6, 0.7"
 julia = "1.10"
 
 [extras]
@@ -128,7 +127,7 @@ Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
-Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 
 [targets]
-test = ["ADTypes", "Aqua", "JET", "Dates", "DelimitedFiles", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
+test = ["ADTypes", "Aqua", "JET", "Dates", "DelimitedFiles", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Mooncake", "StatsPlots", "Preferences"]

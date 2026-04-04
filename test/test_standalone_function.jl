@@ -5,8 +5,9 @@ using Test
 import MacroModelling: post_model_macro, get_NSSS_and_parameters
 using ForwardDiff
 import LinearAlgebra as ℒ
-using FiniteDifferences, Zygote
+using FiniteDifferences
 import Optim, LineSearches
+import DifferentiationInterface, ADTypes
 
 Random.seed!(3)
 
@@ -624,17 +625,13 @@ RBC_CME = nothing
 
     solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2])
     forw_grad = ForwardDiff.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))
-    reverse_grad = Zygote.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))[1]
+    reverse_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
     fin_grad = FiniteDifferences.grad(central_fdm(4,1), solution_norm_obj, RBC_CME.parameter_values)[1]
 
     @test isapprox(forw_grad,reverse_grad,rtol = 1e-6)
     @test isapprox(forw_grad,fin_grad,rtol = 1e-6)
 
-    if !isnothing(Base.find_package("ADTypes")) && !isnothing(Base.find_package("Mooncake"))
-        import ADTypes, DifferentiationInterface
-        mooncake_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
-        @test isapprox(forw_grad,mooncake_grad,rtol = 1e-6)
-    end
+
 
 
 
@@ -645,7 +642,7 @@ RBC_CME = nothing
     @test isapprox(425.7689804539224, get_loglikelihood(RBC_CME, data(observables), RBC_CME.parameter_values),rtol = 1e-5)
 
     forw_grad = ForwardDiff.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))
-    reverse_grad = Zygote.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))[1]
+    reverse_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
 
     fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> get_loglikelihood(RBC_CME, data(observables), x), RBC_CME.parameter_values)[1]
 

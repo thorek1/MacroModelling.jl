@@ -1,6 +1,7 @@
 using MacroModelling
 import Turing
-import ADTypes: AutoZygote
+import ADTypes: AutoMooncake
+import DifferentiationInterface
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, DelimitedFiles, MCMCChains, AxisKeys
@@ -48,23 +49,23 @@ Random.seed!(30)
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
-@testset "Zygote vs FiniteDifferences gradient (2nd order)" begin
-    back_grad = Zygote.gradient(x -> get_loglikelihood(FS2000, data, x, algorithm = :second_order), FS2000.parameter_values)
-    @test !isnothing(back_grad[1])
-    @test all(isfinite, back_grad[1])
+@testset "Mooncake vs FiniteDifferences gradient (2nd order)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x, algorithm = :second_order), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
     for i in 1:100
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x, algorithm = :second_order), FS2000.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end
