@@ -192,6 +192,10 @@ jobs:
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
             -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[compat\]/,/^\[/ s/^DifferentiationInterface[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^DifferentiationInterface[[:space:]]*=.*$//g' \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"DifferentiationInterface"//g' \
             -e '/^\[targets\]/,$ s/"DifferentiationInterface",[[:space:]]*//g' \
             Project.toml
