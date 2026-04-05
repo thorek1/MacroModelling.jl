@@ -6,6 +6,8 @@ import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 
+include("test_helpers.jl")
+
 # estimate highly nonlinear model
 
 # load data

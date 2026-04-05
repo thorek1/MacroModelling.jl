@@ -6,6 +6,8 @@ import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 
+include("test_helpers.jl")
+
 include("../models/FS2000.jl")
 
 # load data
