@@ -168,6 +168,8 @@ jobs:
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Pigeons"//g' \
             -e '/^\[targets\]/,$ s/"Pigeons",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Pigeons[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Pigeons[[:space:]]*=.*$//g' \
             Project.toml
           rm -f Project.toml.bak
 
@@ -189,6 +191,9 @@ jobs:
         run: |
           # `Pkg.test` re-resolves the full shared test target. The pigeons rows need
           # to remove Mooncake and DifferentiationInterface.
+          # JSON is patched to "0.21" so that CondaPkg 0.2.34+ (which requires JSON 1.x)
+          # is excluded, forcing CondaPkg 0.2.33 (JSON3-based, no JSON dep) and
+          # satisfying Pigeons' JSON = "0.21" requirement.
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
             -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
@@ -198,6 +203,36 @@ jobs:
             -e '/^\[extras\]/,/^\[/ s/^DifferentiationInterface[[:space:]]*=.*$//g' \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"DifferentiationInterface"//g' \
             -e '/^\[targets\]/,$ s/"DifferentiationInterface",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^JSON[[:space:]]*=.*$/JSON = "0.21"/' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove Turing and estimation packages for old Julia versions
+        if: matrix.version == 'min' || matrix.version == 'lts'
+        shell: bash
+        run: |
+          # On Julia 1.10 (min/lts), LinearSolve 3.63+ requires RecursiveArrayTools
+          # which requires Zygote 0.7+, but Turing 0.37-0.38 (max on Julia 1.10) pulls
+          # in AdvancedVI which only supports Zygote <=0.6.77. This conflict is
+          # irreconcilable, so Turing and estimation-only packages are removed from
+          # the test environment for the basic test set that runs on old Julia.
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Turing"//g' \
+            -e '/^\[targets\]/,$ s/"Turing",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"MCMCChains"//g' \
+            -e '/^\[targets\]/,$ s/"MCMCChains",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"DynamicPPL"//g' \
+            -e '/^\[targets\]/,$ s/"DynamicPPL",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$//g' \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"LineSearches"//g' \
+            -e '/^\[targets\]/,$ s/"LineSearches",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^LineSearches[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^LineSearches[[:space:]]*=.*$//g' \
             Project.toml
           rm -f Project.toml.bak
 
