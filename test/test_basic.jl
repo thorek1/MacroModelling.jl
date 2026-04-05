@@ -7,6 +7,7 @@ using AxisKeys, SparseArrays
 import Mooncake, FiniteDifferences, ForwardDiff, Zygote
 import DifferentiationInterface, ADTypes
 import StatsPlots, Optim
+import MatrixEquations
 using Aqua
 import LinearAlgebra as ℒ
 using DelimitedFiles

@@ -6,7 +6,7 @@
 
 using Documenter
 using MacroModelling
-import Optim, StatsPlots, Turing
+import MatrixEquations, Optim, StatsPlots, Turing
 using DocumenterCitations
 
 bib = CitationBibliography(

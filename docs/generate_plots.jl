@@ -5,6 +5,7 @@
 ## Setup
 # using Revise
 using MacroModelling
+import MatrixEquations
 import StatsPlots
 using AxisKeys
 import Random; Random.seed!(10) # For reproducibility of :simulate

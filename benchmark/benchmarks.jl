@@ -14,6 +14,7 @@ const SUITE = BenchmarkGroup()
 # SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
 import LinearAlgebra as ℒ
 using MacroModelling
+import MatrixEquations
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ
 
 # Check if new workspace API is available (not present in old package versions)

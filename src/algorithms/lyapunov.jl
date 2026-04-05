@@ -81,6 +81,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
         
+    if lyapunov_algorithm == :bartels_stewart && !_has_bartels_stewart()
+        error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
+    end
+
     if lyapunov_algorithm ≠ :bartels_stewart
         A = choose_matrix_format(A)
     else
@@ -143,7 +147,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         end
     end
 
-    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 # try sylvester if previous one didn't solve it
+    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 && _has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
         A = collect(A)
 
         C = collect(C)
@@ -160,39 +164,6 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # if (reached_tol > tol) println("Lyapunov failed: $reached_tol") end
 
     return X, reached_tol < acceptance_tol
-end
-
-
-
-function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:bartels_stewart},
-                                    workspace::lyapunov_workspace;
-                                    # timer::TimerOutput = TimerOutput(),
-                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    # Ownership: returns owned dense matrix from MatrixEquations.lyapd.
-    𝐂 = try 
-        MatrixEquations.lyapd(A, C)::Matrix{T}
-    catch
-        return C, 0, 1.0
-    end
-    
-    # Allocation-free residual: use doubling workspace buffers as scratch
-    ensure_lyapunov_doubling_buffers!(workspace)
-    𝐂A_tmp = workspace.𝐂A
-    𝐂¹_tmp = workspace.𝐂¹
-    ℒ.mul!(𝐂A_tmp, 𝐂, A')
-    ℒ.mul!(𝐂¹_tmp, A, 𝐂A_tmp)
-    ℒ.axpy!(1, C, 𝐂¹_tmp)
-    ℒ.axpy!(-1, 𝐂, 𝐂¹_tmp)
-    
-    reached_tol = ℒ.norm(𝐂¹_tmp) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: lyapunov $reached_tol")
-    # end
-
-    return 𝐂, 0, reached_tol # return info on convergence
 end
 
 

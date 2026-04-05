@@ -40,6 +40,10 @@ function solve_sylvester_equation(A::M,
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
 
+    if sylvester_algorithm == :bartels_stewart && !_has_bartels_stewart()
+        error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
+    end
+
     if sylvester_algorithm ∈ [:bicgstab, :gmres, :dqgmres, :bartels_stewart]
         a = 𝕊ℂ.𝐀
         copyto!(a, A)
@@ -106,7 +110,7 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
-    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) # try sylvester if previous one didn't solve it
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && _has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
         aa = 𝕊ℂ.𝐀
         copyto!(aa, A)
 
@@ -978,68 +982,6 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     return 𝐂, iters, reached_tol # return info on convergence
-end
-
-
-function solve_sylvester_equation(A::DenseMatrix{T},
-                                    B::Union{ℒ.Adjoint{Float64, Matrix{T}}, DenseMatrix{T}},
-                                    C::DenseMatrix{T},
-                                    ::Val{:bartels_stewart},
-                                    𝕊ℂ::sylvester_workspace;
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false,
-                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    # Ownership: returns owned dense matrix from MatrixEquations.sylvd.
-    # guess_provided = true
-
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
-    
-    # Ensure workspaces are allocated (reuse Krylov buffers for tmp and 𝐂¹)
-    n = size(A, 1)
-    m = size(B, 2)
-    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
-    
-    # Use workspaces
-    𝐂¹ = 𝕊ℂ.𝐂
-    tmp̄ = 𝕊ℂ.tmp
-      
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess
-    ℒ.mul!(tmp̄, initial_guess, B)
-    ℒ.mul!(𝐂¹, A, tmp̄)
-    ℒ.axpy!(1, C, 𝐂¹)
-    ℒ.axpy!(-1, initial_guess, 𝐂¹)
-
-    𝐂 = try 
-        MatrixEquations.sylvd(-A, B, 𝐂¹)::Matrix{T}
-    catch
-        return C, 0, 1.0
-    end
-
-    # 𝐂¹ = A * 𝐂 * B + C
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
-
-    𝐂 += initial_guess
-
-    ℒ.mul!(tmp̄, 𝐂, B)
-    ℒ.mul!(𝐂¹, A, tmp̄)
-    ℒ.axpy!(1, C, 𝐂¹)
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
-    
-    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
-    # reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
-
-    # if reached_tol > tol
-    #     println("Sylvester: sylvester $reached_tol")
-    # end
-
-    return 𝐂, -1, reached_tol # return info on convergence
 end
 
 

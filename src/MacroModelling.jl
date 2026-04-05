@@ -54,7 +54,6 @@ import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 import Suppressor: @suppress
 import REPL
 import Unicode
-import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
@@ -172,6 +171,11 @@ include("inspect.jl")
 include("moments.jl")
 include("./algorithms/fast_lapack_wrappers.jl")
 include("perturbation.jl")
+
+# Sentinel for MatrixEquations extension (bartels_stewart algorithm).
+# Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
+const _BARTELS_STEWART_AVAILABLE = Ref(false)
+_has_bartels_stewart() = _BARTELS_STEWART_AVAILABLE[]
 
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
