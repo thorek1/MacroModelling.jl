@@ -1,6 +1,7 @@
 using Test
 using MacroModelling
 import Mooncake
+import ADTypes
 import ADTypes: AutoMooncake
 import DifferentiationInterface
 import FiniteDifferences

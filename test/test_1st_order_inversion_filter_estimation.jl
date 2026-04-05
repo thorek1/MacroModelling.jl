@@ -3,6 +3,7 @@ using MacroModelling
 import Turing
 import Mooncake
 import Turing: NUTS, sample
+import ADTypes
 import ADTypes: AutoMooncake
 import DifferentiationInterface
 import FiniteDifferences
