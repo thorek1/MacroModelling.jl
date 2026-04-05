@@ -4,8 +4,6 @@ import MacroModelling: clear_solution_caches!
 using Random
 import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
-import Mooncake, FiniteDifferences, ForwardDiff, Zygote
-import DifferentiationInterface, ADTypes
 import StatsPlots, Optim
 import MatrixEquations
 using Aqua

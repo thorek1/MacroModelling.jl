@@ -2,7 +2,6 @@ using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
 using Random
-import StatsPlots
 
 include("functionality_tests.jl")
 

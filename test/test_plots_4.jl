@@ -6,7 +6,6 @@ import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
 import Mooncake, FiniteDifferences, Zygote
 import DifferentiationInterface, ADTypes
-import StatsPlots
 import LinearAlgebra as ℒ
 
 include("functionality_tests.jl")
