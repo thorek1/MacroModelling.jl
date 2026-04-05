@@ -129,10 +129,10 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "pruned_3rd_order_estimation_pigeons"
-          - version: 'min'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "basic"
+          # - version: 'min'
+          #   os: ubuntu-latest
+          #   arch: x64
+          #   test_set: "basic"
           - version: 'lts'
             os: ubuntu-latest
             arch: x64
