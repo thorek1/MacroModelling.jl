@@ -60,7 +60,7 @@ modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS
                                         adtype = AutoMooncake(; config=nothing), 
                                         initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
-println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
+println("Mode variable values: $(modeFS2000i.params); Mode loglikelihood: $(modeFS2000i.lp)")
 
 @testset "Mooncake vs FiniteDifferences gradient (1st order inversion)" begin
     back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x, filter = :inversion), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)

@@ -104,12 +104,12 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-#                                         initial_params = modeSW2007.values)
+#                                         initial_params = modeSW2007.params)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.NelderMead())
 
-# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.params); Mode loglikelihood: $(modeSW2007.lp)")
 
 # LLH = Turing.logjoint(SW07_loglikelihood, (all_params = inits,))
 
@@ -157,13 +157,13 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-#                                         initial_params = modeSW2007.values)
+#                                         initial_params = modeSW2007.params)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.NelderMead(),
-#                                         initial_params = modeSW2007.values)
+#                                         initial_params = modeSW2007.params)
 
-# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.params); Mode loglikelihood: $(modeSW2007.lp)")
 
 n_samples = 1000
 

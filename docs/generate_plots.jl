@@ -3086,7 +3086,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # adtype = AutoZygote(), 
                                         initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 
-get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))
+get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.params))
 
 plot_model_estimates(FS2000, data,
                         save_plots = true, 

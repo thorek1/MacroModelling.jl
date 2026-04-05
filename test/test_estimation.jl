@@ -81,7 +81,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # ub = [1,1,10,10,1,1,1,100,100], 
                                         initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
-println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeFS2000.lp)")
+println("Mode variable values: $(modeFS2000.params); Mode loglikelihood: $(modeFS2000.lp)")
 
 @testset "Estimation results" begin
     # @test isapprox(modeFS2000.lp, 1281.669108730447, rtol = eps(Float32))
