@@ -109,7 +109,7 @@ Test = "1"
 ThreadedSparseArrays = "0.2.3"
 Turing = "0.30 - 0.43"
 Unicode = "1"
-Zygote = "0.7"
+Zygote = "0.6, 0.7"
 julia = "1.10"
 
 [extras]
