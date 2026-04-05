@@ -1708,13 +1708,21 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                                     clear_solution_caches!(m, algorithm)
 
-                                    zyg_grad_llh = DifferentiationInterface.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                    moon_grad_llh = DifferentiationInterface.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                     algorithm = algorithm,
                                                                                                     filter = filter,
                                                                                                     presample_periods = presample_periods,
                                                                                                     initial_covariance = initial_covariance,
                                                                                                     tol = tol,
                                                                                                     verbose = verbose), ADTypes.AutoMooncake(config = nothing), parameter_values)
+
+                                    zyg_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                    algorithm = algorithm,
+                                                                                                    filter = filter,
+                                                                                                    presample_periods = presample_periods,
+                                                                                                    initial_covariance = initial_covariance,
+                                                                                                    tol = tol,
+                                                                                                    verbose = verbose), parameter_values)[1]
 
                                     if algorithm == :first_order && filter == :kalman
                                         for i in 1:100
@@ -1731,6 +1739,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                             verbose = verbose)
                                                                                             end, parameter_values)
                                             if isfinite(ℒ.norm(fin_grad_llh[1]))
+                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-5)
                                                 @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-5)
                                                 break
                                             end
@@ -1757,7 +1766,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                                                 clear_solution_caches!(m, algorithm)
                                         
-                                                ZYG_grad_llh = DifferentiationInterface.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                MOON_grad_llh = DifferentiationInterface.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                                 algorithm = algorithm,
                                                                                                                 filter = filter,
                                                                                                                 presample_periods = presample_periods,
@@ -1767,7 +1776,19 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                                                 verbose = verbose), ADTypes.AutoMooncake(config = nothing), parameter_values)
+
+                                                ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                                algorithm = algorithm,
+                                                                                                                filter = filter,
+                                                                                                                presample_periods = presample_periods,
+                                                                                                                initial_covariance = initial_covariance,
+                                                                                                                tol = tol,
+                                                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                                                                verbose = verbose), parameter_values)[1]
                 
+                                                @test isapprox(MOON_grad_llh, moon_grad_llh, rtol = 1e-6)
                                                 @test isapprox(ZYG_grad_llh, zyg_grad_llh, rtol = 1e-6)
                                         end
                                     end
@@ -2184,11 +2205,19 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                 clear_solution_caches!(m, algorithm)
 
-                deriv_sol_zyg = []
+                deriv_sol_moon = []
                 for i in 1:length(sol)-2
-                    push!(deriv_sol_zyg, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
+                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
                 end
 
+                clear_solution_caches!(m, algorithm)
+
+                deriv_sol_zyg = []
+                for i in 1:length(sol)-2
+                    push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
+                end
+
+                @test isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
                 @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
                 
                 @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
@@ -2218,15 +2247,26 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                             clear_solution_caches!(m, algorithm)
 
-                            DERIV_SOL_zyg = []
+                            DERIV_SOL_moon = []
                             for i in 1:length(sol)-2
-                                push!(DERIV_SOL_zyg, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
                             end
 
-                            @test isapprox(deriv_sol_zyg, DERIV_SOL_zyg, rtol = 1e-8)
+                            clear_solution_caches!(m, algorithm)
+
+                            DERIV_SOL_zyg = []
+                            for i in 1:length(sol)-2
+                                push!(DERIV_SOL_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)[i], parameter_values)[1])
+                            end
+
+                            @test isapprox(DERIV_SOL_moon, DERIV_SOL, rtol = 1e-8)
+                            @test isapprox(DERIV_SOL_zyg, DERIV_SOL, rtol = 1e-8)
                     end
                 end
             end
@@ -2328,7 +2368,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                     clear_solution_caches!(m, algorithm)
 
-                    deriv_zyg = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_moon = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
                     for i in 1:100
                         local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
@@ -2338,6 +2379,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,1,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg[1]))
+                                @test isapprox(deriv_moon, deriv_fin_zyg[1], rtol = 1e-5, atol = 1e-8)
                             @test isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
@@ -2364,7 +2406,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     # Last period derivative tests (Mooncake)
                     clear_solution_caches!(m, algorithm)
 
-                    deriv_zyg_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_moon_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
                     for i in 1:100
                         local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
@@ -2374,6 +2417,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
+                                @test isapprox(deriv_moon_last, deriv_fin_zyg_last[1], rtol = 1e-5, atol = 1e-8)
                             @test isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5, atol = 1e-8)
                             break
                         end
@@ -2496,8 +2540,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
 
-            deriv1_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+            deriv1_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], ADTypes.AutoMooncake(config = nothing), old_params)
+            deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)[1]
                  
             for i in 1:100        
                 local deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
@@ -2512,6 +2558,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
                     # ℒ.norm(deriv1 - deriv1_zyg) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg))
             
+                    @test isapprox(deriv1_moon, deriv1_fin[1], rtol = 1e-5)
                     @test isapprox(deriv1_zyg, deriv1_fin[1], rtol = 1e-5)
             
                     @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-5)
@@ -2527,7 +2574,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             mean = :all_excluding_obc)[:mean], old_params)
             
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                deriv2_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                deriv2_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
             end
 
@@ -2543,6 +2592,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv2_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv2_moon, deriv2_fin[1], rtol = 1e-5)
                         @test isapprox(deriv2_zyg, deriv2_fin[1], rtol = 1e-5)
                     end
                     
@@ -2557,7 +2607,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
             
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                deriv3_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                deriv3_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
             end                    
 
@@ -2571,6 +2623,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5)
                         @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5)
                     end
                     
@@ -2585,7 +2638,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             variance = :all_excluding_obc)[:variance], old_params)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                deriv4_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                deriv4_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
             end
 
@@ -2598,6 +2653,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv4_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv4_moon, deriv4_fin[1], rtol = 1e-5)
                         @test isapprox(deriv4_zyg, deriv4_fin[1], rtol = 1e-5)
                     end
                     @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
@@ -2612,7 +2668,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                deriv5_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                deriv5_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
+                                                                covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                                                 covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
             end         
@@ -2628,6 +2687,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4)
                         @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4)
                     end
 
@@ -2643,7 +2703,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                deriv6_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                deriv6_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
             end
 
@@ -2656,6 +2718,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv6_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv6_moon, deriv6_fin[1], rtol = 1e-4)
                         @test isapprox(deriv6_zyg, deriv6_fin[1], rtol = 1e-4)
                     end
                     @test isapprox(deriv6, deriv6_fin[1], rtol = 1e-4)
@@ -2674,16 +2737,22 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     get_statistics(m, x, algorithm = algorithm, autocorrelation = :all_excluding_obc)[:autocorrelation] |> sum
                 end
 
-                var_grad_zyg = DifferentiationInterface.gradient(var_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                var_grad_moon = DifferentiationInterface.gradient(var_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                var_grad_zyg = Zygote.gradient(var_obj, old_params)[1]
                 var_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), var_obj, old_params)[1]
+                @test all(isfinite, var_grad_moon)
                 @test all(isfinite, var_grad_zyg)
                 @test all(isfinite, var_grad_fin)
+                @test ℒ.norm(var_grad_moon - var_grad_fin) / max(ℒ.norm(var_grad_fin), eps()) < 1e-4
                 @test ℒ.norm(var_grad_zyg - var_grad_fin) / max(ℒ.norm(var_grad_fin), eps()) < 1e-4
 
-                autocorr_grad_zyg = DifferentiationInterface.gradient(autocorr_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                autocorr_grad_moon = DifferentiationInterface.gradient(autocorr_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                autocorr_grad_zyg = Zygote.gradient(autocorr_obj, old_params)[1]
                 autocorr_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), autocorr_obj, old_params)[1]
+                @test all(isfinite, autocorr_grad_moon)
                 @test all(isfinite, autocorr_grad_zyg)
                 @test all(isfinite, autocorr_grad_fin)
+                @test ℒ.norm(autocorr_grad_moon - autocorr_grad_fin) / max(ℒ.norm(autocorr_grad_fin), eps()) < 1e-4
                 @test ℒ.norm(autocorr_grad_zyg - autocorr_grad_fin) / max(ℒ.norm(autocorr_grad_fin), eps()) < 1e-4
             end
             end
@@ -2705,13 +2774,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
                             @test isapprox(deriv1, DERIV1, rtol = 1e-8)
                             
-                            DERIV1_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                            DERIV1_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                             tol = tol,
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], ADTypes.AutoMooncake(config = nothing), old_params)
-                            @test isapprox(deriv1_zyg, DERIV1_zyg, rtol = 1e-8)
+                            DERIV1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)[1]
+                            @test isapprox(DERIV1_moon, DERIV1, rtol = 1e-8)
+                            @test isapprox(DERIV1_zyg, DERIV1, rtol = 1e-8)
                         
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -2728,13 +2804,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
-                                DERIV2_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV2_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
-                                @test isapprox(deriv2_zyg, DERIV2_zyg, rtol = 1e-8)
+                                DERIV2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                mean = :all_excluding_obc)[:mean], old_params)[1]
+                                @test isapprox(DERIV2_moon, DERIV2, rtol = 1e-8)
+                                @test isapprox(DERIV2_zyg, DERIV2, rtol = 1e-8)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2750,13 +2833,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
-                                DERIV3_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV3_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
-                                @test isapprox(deriv3_zyg, DERIV3_zyg, rtol = 1e-6)
+                                DERIV3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)[1]
+                                @test isapprox(DERIV3_moon, DERIV3, rtol = 1e-6)
+                                @test isapprox(DERIV3_zyg, DERIV3, rtol = 1e-6)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2772,13 +2862,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
-                                DERIV4_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV4_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
-                                @test isapprox(deriv4_zyg, DERIV4_zyg, rtol = 1e-8)
+                                DERIV4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                variance = :all_excluding_obc)[:variance], old_params)[1]
+                                @test isapprox(DERIV4_moon, DERIV4, rtol = 1e-8)
+                                @test isapprox(DERIV4_zyg, DERIV4, rtol = 1e-8)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2795,13 +2892,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
-                                DERIV5_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV5_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
-                                @test isapprox(deriv5_zyg, DERIV5_zyg, rtol = 1e-4)
+                                DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                covariance = :all_excluding_obc)[:covariance], old_params)[1]
+                                @test isapprox(DERIV5_moon, DERIV5, rtol = 1e-4)
+                                @test isapprox(DERIV5_zyg, DERIV5, rtol = 1e-4)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2817,13 +2921,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
     
-                                DERIV6_zyg = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV6_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
-                                @test isapprox(deriv6_zyg, DERIV6_zyg, rtol = 1e-4)
+                                DERIV6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)[1]
+                                @test isapprox(DERIV6_moon, DERIV6, rtol = 1e-4)
+                                @test isapprox(DERIV6_zyg, DERIV6, rtol = 1e-4)
                             end
                             end
                         end

@@ -36,6 +36,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1), x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
         
@@ -44,6 +45,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
             break
         end
     end
@@ -77,6 +79,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -85,6 +88,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
             break
         end
     end
@@ -119,6 +123,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values[1:10])
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), model.parameter_values[1:10])[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), model.parameter_values[1:10])
 
@@ -127,6 +132,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-2)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-2)
             break
         end
     end
@@ -162,6 +168,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -170,6 +177,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
             break
         end
     end
@@ -202,6 +210,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -210,6 +219,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
             break
         end
     end
@@ -244,6 +254,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-5), x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
         
@@ -252,6 +263,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end
@@ -286,6 +298,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -294,6 +307,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-4)
             break
         end
     end
@@ -327,6 +341,7 @@
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -335,6 +350,7 @@
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+            @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
             break
         end
     end
@@ -370,6 +386,7 @@
     # SS(model, parameters = [:alpha => 0.1, :trend_inflation => 1.5, :var_rho => 0.01]) # avoid the NaN error for finitediff in tests
 
     back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # use forward_cdm so that parameter values stay positive. they would return NaN otherwise
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
@@ -380,6 +397,7 @@
             if isfinite(ℒ.norm(fin_grad))
                 println("Finite differences worked after $i iterations")
                 @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+                @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-4)
                 break
             end
         end
@@ -423,6 +441,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -431,6 +450,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
         break
     end
 end
@@ -474,6 +494,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -482,6 +503,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
         break
     end
 end
@@ -526,6 +548,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -534,6 +557,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
         break
     end
 end
@@ -579,6 +603,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -587,6 +612,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
         break
     end
 end
@@ -625,6 +651,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -633,6 +660,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-3)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-3)
         break
     end
 end
@@ -677,6 +705,7 @@ simulated_data = simulate(model)
 get_loglikelihood(model, simulated_data(observables, :, :simulate), verbose = true, model.parameter_values)
 
 back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
@@ -685,6 +714,7 @@ for i in 1:100
     if isfinite(ℒ.norm(fin_grad))
         println("Finite differences worked after $i iterations")
         @test isapprox(back_grad, fin_grad[1], rtol = 1e-6)
+        @test isapprox(zygote_back_grad, fin_grad[1], rtol = 1e-6)
         break
     end
 end

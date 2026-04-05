@@ -6,6 +6,7 @@ import MacroModelling: post_model_macro, get_NSSS_and_parameters
 using ForwardDiff
 import LinearAlgebra as ℒ
 using FiniteDifferences
+using Zygote
 import Optim, LineSearches
 import DifferentiationInterface, ADTypes
 
@@ -626,9 +627,11 @@ RBC_CME = nothing
     solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2])
     forw_grad = ForwardDiff.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))
     reverse_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
+    zygote_reverse_grad = Zygote.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))[1]
     fin_grad = FiniteDifferences.grad(central_fdm(4,1), solution_norm_obj, RBC_CME.parameter_values)[1]
 
     @test isapprox(forw_grad,reverse_grad,rtol = 1e-6)
+    @test isapprox(forw_grad,zygote_reverse_grad,rtol = 1e-6)
     @test isapprox(forw_grad,fin_grad,rtol = 1e-6)
 
 
@@ -643,10 +646,12 @@ RBC_CME = nothing
 
     forw_grad = ForwardDiff.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))
     reverse_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
+    zygote_reverse_grad = Zygote.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))[1]
 
     fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> get_loglikelihood(RBC_CME, data(observables), x), RBC_CME.parameter_values)[1]
 
     @test isapprox(forw_grad,fin_grad, rtol = 1e-6)
+    @test isapprox(forw_grad,zygote_reverse_grad, rtol = 1e-6)
     @test isapprox(forw_grad,reverse_grad, rtol = 1e-6)
 
     RBC_CME = nothing
