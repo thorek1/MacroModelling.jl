@@ -1,10 +1,13 @@
+using Test
 using MacroModelling
 import Turing
 import Mooncake
 import ADTypes: AutoMooncake
 import DifferentiationInterface
-import Turing: NUTS, sample, logpdf
+import FiniteDifferences
+import Turing: NUTS, sample
 import Optim, LineSearches
+import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 
 include("test_helpers.jl")

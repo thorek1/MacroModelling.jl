@@ -1,10 +1,13 @@
+using Test
 using MacroModelling
 import Turing
 import Mooncake
 import ADTypes: AutoMooncake
 import DifferentiationInterface
-import Turing: NUTS, sample, logpdf, PG, IS
+import FiniteDifferences
+import Turing: NUTS, sample
 import Optim, LineSearches
+import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 
 include("test_helpers.jl")
@@ -86,7 +89,7 @@ mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihoo
                                                 # show_trace = true,
                                                 initial_params = Turing.InitFromParams(mode_estimateNM))
 
-init_params = mode_estimateLBFGS.params |> collect
+init_params = collect(mode_estimateLBFGS.params.all_params)
 
 
 println("Mode variable values (L-BFGS): $init_params")
