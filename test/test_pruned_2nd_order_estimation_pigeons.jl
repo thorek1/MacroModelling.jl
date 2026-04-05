@@ -2,7 +2,6 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-import Turing: logpdf
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 

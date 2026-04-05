@@ -1,3 +1,5 @@
+import Zygote
+
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
     old_params2 = copy(m2.parameter_values)

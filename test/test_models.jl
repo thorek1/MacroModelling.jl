@@ -1,3 +1,5 @@
+import Zygote
+
 # if !test_higher_order
     include("../models/Guerrieri_Iacoviello_2017.jl")
     SSvals = get_SS(Guerrieri_Iacoviello_2017)
