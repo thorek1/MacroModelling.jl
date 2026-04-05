@@ -12,7 +12,7 @@ import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
 import Mooncake, FiniteDifferences, ForwardDiff, Zygote
 import DifferentiationInterface, ADTypes
-import StatsPlots, Turing, Optim # has to come before Aqua, otherwise exports are not recognised
+import StatsPlots, Optim
 using Aqua
 import LinearAlgebra as ℒ
 using DelimitedFiles
