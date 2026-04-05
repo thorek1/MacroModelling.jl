@@ -1,7 +1,6 @@
 using MacroModelling
 using Test
 import Turing, Pigeons
-import ADTypes: AutoMooncake
 import Turing: NUTS, sample, logpdf
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL

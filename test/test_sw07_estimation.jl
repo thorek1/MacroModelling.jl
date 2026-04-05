@@ -1,4 +1,5 @@
 using MacroModelling
+import Mooncake
 import ADTypes: AutoMooncake
 import DifferentiationInterface
 import Turing

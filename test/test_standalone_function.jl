@@ -6,7 +6,7 @@ import MacroModelling: post_model_macro, get_NSSS_and_parameters
 using ForwardDiff
 import LinearAlgebra as ℒ
 using FiniteDifferences
-using Zygote
+using Zygote, Mooncake
 import Optim, LineSearches
 import DifferentiationInterface, ADTypes
 

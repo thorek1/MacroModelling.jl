@@ -1,5 +1,6 @@
 using MacroModelling
 import Turing
+import Mooncake
 import ADTypes: AutoMooncake
 import DifferentiationInterface
 import Turing: NUTS, sample, logpdf
