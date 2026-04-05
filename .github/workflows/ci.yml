@@ -175,19 +175,25 @@ jobs:
         if: matrix.test_set != 'jet'
         shell: bash
         run: |
+          # `JET` is only needed for the dedicated `jet` rows. Keeping it in the
+          # shared test target adds resolver constraints to unrelated jobs.
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"JET"//g' \
             -e '/^\[targets\]/,$ s/"JET",[[:space:]]*//g' \
             Project.toml
           rm -f Project.toml.bak
 
-      - name: Restrict Turing/DynamicPPL compat and remove Mooncake for Pigeons test sets
+      - name: Remove Mooncake and DifferentiationInterface for Pigeons test sets
         if: contains(matrix.test_set, 'pigeons')
         shell: bash
         run: |
+          # `Pkg.test` re-resolves the full shared test target. The pigeons rows need
+          # to remove Mooncake and DifferentiationInterface.
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
             -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"DifferentiationInterface"//g' \
+            -e '/^\[targets\]/,$ s/"DifferentiationInterface",[[:space:]]*//g' \
             Project.toml
           rm -f Project.toml.bak
 
