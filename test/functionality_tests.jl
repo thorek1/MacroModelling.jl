@@ -1,5 +1,7 @@
 import Zygote, FiniteDifferences, ForwardDiff, Mooncake, DifferentiationInterface, ADTypes
 
+import StatsPlots
+
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
     old_params2 = copy(m2.parameter_values)
@@ -54,7 +56,6 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
 
     if plots
-        import StatsPlots
         @testset "plot_model_estimates" begin
             sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
             

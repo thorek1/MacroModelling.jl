@@ -182,6 +182,18 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
+      - name: Remove Mooncake from pigeons runs
+        if: contains(matrix.test_set, 'pigeons')
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
+            -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
       - name: Remove JET from non-jet runs
         if: matrix.test_set != 'jet'
         shell: bash
