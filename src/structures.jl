@@ -986,6 +986,7 @@ mutable struct model_functions
     third_order_derivatives::third_order_derivatives_functions
     # OBC-related functions
     obc_violation::Function
+    obc_constraint_info::Vector{Tuple{Int, Int, Float64}}
     # Whether all functions have been written/compiled
     functions_written::Bool
 end

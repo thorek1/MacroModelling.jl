@@ -23,7 +23,7 @@ import Dates
 # import MadNLP
 # import Ipopt
 # import AbstractDifferentiation as 𝒜
-import ForwardDiff as ℱ
+# import ForwardDiff as ℱ  # moved to ForwardDiffExt
 # import Diffractor: DiffractorForwardBackend
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
@@ -492,6 +492,9 @@ function mul_reverse_AD!(   C::Matrix{S},
 end
 
 
+# Generic primal-value extraction — identity for plain reals.
+# ForwardDiffExt extends this for ForwardDiff.Dual numbers.
+primal(x::Real) = x
 
 
 function check_for_dynamic_variables(ex::Expr)
@@ -866,14 +869,299 @@ end
 function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
     𝓂 = p[4]
 
-    if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.functions.obc_violation(xx, p), X)[1]'
-        jac .= ℱ.jacobian(xx -> 𝓂.functions.obc_violation(xx, p), X)'
-    end
-
     res .= 𝓂.functions.obc_violation(X, p)
 
+    if length(jac) > 0
+        compute_obc_analytical_jacobian!(jac, X, p)
+    end
+
 	return nothing
+end
+
+
+# ── Analytical OBC Jacobian ──────────────────────────────────────────────────
+#
+# The OBC constraint vector has, per constraint, three blocks:
+#   1.  [sum(a .* b)]           (1 element — complementary slackness)
+#   2.  sign * a                (P elements — left argument)
+#   3.  sign * b                (P elements — right argument)
+# where a = Y[left_row, 1:P], b = Y[right_row, 1:P], and
+#       sign = +1 for max, −1 for min.
+#
+# Y is the forward path simulated through state_update, which is a known
+# function of the perturbation solution matrices.  dY/dx is therefore
+# computed analytically (exactly for all algorithm orders).
+
+function compute_obc_analytical_jacobian!(jac::Matrix{S}, X::Vector{S}, p) where S
+    state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
+    T    = 𝓂.constants.post_model_macro
+    nv   = T.nVars
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past   = T.nPast_not_future_and_mixed
+    n_x  = length(X)
+    P    = max(periods, 1)
+
+    obc_idx    = findall(contains.(string.(T.exo), "ᵒᵇᶜ"))
+    shock_vals = copy(shock_values)
+    shock_vals[obc_idx] .= X
+    n_shocks   = length(shock_vals)
+    zero_shock = zero(shock_vals)
+
+    Ŝ₁ = 𝓂.caches.first_order_obc_solution_matrix
+
+    Y    = zeros(S, nv, periods + 1)
+    dYdx = zeros(S, nv, n_x, periods + 1)
+
+    if algorithm == :first_order
+        _obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
+                               past_idx, n_past, obc_idx, Ŝ₁, periods)
+
+    elseif algorithm ∈ [:second_order, :third_order]
+        _obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
+                                    past_idx, n_past, n_shocks, obc_idx,
+                                    Ŝ₁, 𝓂, algorithm, periods)
+
+    elseif algorithm ∈ [:pruned_second_order, :pruned_third_order]
+        _obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
+                          past_idx, n_past, n_shocks, obc_idx,
+                          Ŝ₁, 𝓂, algorithm, periods)
+    end
+
+    Y .+= @view reference_steady_state[1:nv]
+
+    _fill_obc_constraint_jacobian!(jac, Y, dYdx,
+                                   𝓂.functions.obc_constraint_info, n_x, P)
+    return nothing
+end
+
+
+# ── First-order: purely linear propagation ───────────────────────────────────
+function _obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
+                                past_idx, n_past, obc_idx, Ŝ₁, periods)
+    A = @view Ŝ₁[:, 1:n_past]
+    Y[:, 1] = Ŝ₁ * [state[past_idx]; shock_vals]
+    dYdx[:, :, 1] .= @view Ŝ₁[:, n_past .+ obc_idx]
+    for t in 1:periods
+        Y[:, t+1] = A * Y[past_idx, t]
+        dYdx[:, :, t+1] = A * dYdx[past_idx, :, t]
+    end
+end
+
+
+# ── Non-pruned second / third order ─────────────────────────────────────────
+function _obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
+                                     past_idx, n_past, n_shocks, obc_idx,
+                                     Ŝ₁, 𝓂, algorithm, periods)
+    S = eltype(Y)
+    nv = size(Y, 1)
+    n_x = size(dYdx, 2)
+    𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+    Ŝ₁̂ = [Ŝ₁[:, 1:n_past] zeros(S, nv) Ŝ₁[:, n_past+1:end]]
+    n_aug = n_past + 1 + n_shocks
+
+    has_third = algorithm == :third_order
+    𝐒₃ = has_third ? 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃ : nothing
+
+    # ── t = 0 ──
+    aug = [state[past_idx]; one(S); shock_vals]
+    kron_aug = ℒ.kron(aug, aug)
+    Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * kron_aug / 2
+    if has_third;  Y[:, 1] += 𝐒₃ * ℒ.kron(kron_aug, aug) / 6;  end
+
+    d_aug = zeros(S, n_aug)
+    for j in 1:n_x
+        fill!(d_aug, zero(S))
+        d_aug[n_past + 1 + obc_idx[j]] = one(S)
+        dYdx[:, j, 1] = Ŝ₁̂ * d_aug +
+                         𝐒₂ * (ℒ.kron(d_aug, aug) + ℒ.kron(aug, d_aug)) / 2
+        if has_third
+            dYdx[:, j, 1] += 𝐒₃ * (ℒ.kron(ℒ.kron(d_aug, aug), aug) +
+                                    ℒ.kron(ℒ.kron(aug, d_aug), aug) +
+                                    ℒ.kron(kron_aug, d_aug)) / 6
+        end
+    end
+
+    # ── t > 0 ──
+    d_aug_t = zeros(S, n_aug)
+    for t in 1:periods
+        aug_t    = [Y[past_idx, t]; one(S); zeros(S, n_shocks)]
+        kron_aug_t = ℒ.kron(aug_t, aug_t)
+        Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * kron_aug_t / 2
+        if has_third;  Y[:, t+1] += 𝐒₃ * ℒ.kron(kron_aug_t, aug_t) / 6;  end
+
+        for j in 1:n_x
+            fill!(d_aug_t, zero(S))
+            d_aug_t[1:n_past] .= @view dYdx[past_idx, j, t]
+            dYdx[:, j, t+1] = Ŝ₁̂ * d_aug_t +
+                              𝐒₂ * (ℒ.kron(d_aug_t, aug_t) + ℒ.kron(aug_t, d_aug_t)) / 2
+            if has_third
+                dYdx[:, j, t+1] += 𝐒₃ * (ℒ.kron(ℒ.kron(d_aug_t, aug_t), aug_t) +
+                                         ℒ.kron(ℒ.kron(aug_t, d_aug_t), aug_t) +
+                                         ℒ.kron(kron_aug_t, d_aug_t)) / 6
+            end
+        end
+    end
+end
+
+
+# ── Pruned second / third order ─────────────────────────────────────────────
+function _obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
+                           past_idx, n_past, n_shocks, obc_idx,
+                           Ŝ₁, 𝓂, algorithm, periods)
+    S = eltype(Y)
+    nv = size(Y, 1)
+    n_x = size(dYdx, 2)
+    𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+    Ŝ₁̂ = [Ŝ₁[:, 1:n_past] zeros(S, nv) Ŝ₁[:, n_past+1:end]]
+    n_aug = n_past + 1 + n_shocks
+
+    has_third = algorithm == :pruned_third_order
+    𝐒₃ = has_third ? 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃ : nothing
+
+    # Component vectors
+    y₁ = state isa AbstractVector{<:AbstractVector} ? state[1] : state
+    y₂ = state isa AbstractVector{<:AbstractVector} ? state[2] : zeros(S, nv)
+    y₃ = (has_third && state isa AbstractVector{<:AbstractVector} && length(state) >= 3) ?
+         state[3] : zeros(S, nv)
+
+    dy₁dx = zeros(S, nv, n_x)
+    dy₂dx = zeros(S, nv, n_x)
+    dy₃dx = zeros(S, nv, n_x)
+
+    d_aug = zeros(S, n_aug)
+
+    # ── t = 0 ──
+    aug₁ = [y₁[past_idx]; one(S); shock_vals]
+    y₁_new = Ŝ₁̂ * aug₁
+
+    aug₂ = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
+    kron_aug₁ = ℒ.kron(aug₁, aug₁)
+    y₂_new = Ŝ₁̂ * aug₂ + 𝐒₂ * kron_aug₁ / 2
+
+    for j in 1:n_x
+        fill!(d_aug, zero(S))
+        d_aug[n_past + 1 + obc_idx[j]] = one(S)
+        dy₁dx[:, j] = Ŝ₁̂ * d_aug
+        # dy₂ only depends on aug₁ perturbation (aug₂ initial is independent of x)
+        dy₂dx[:, j] = 𝐒₂ * (ℒ.kron(d_aug, aug₁) + ℒ.kron(aug₁, d_aug)) / 2
+    end
+
+    if has_third
+        aug₁̂ = [y₁[past_idx]; zero(S); shock_vals]
+        aug₃ = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
+        y₃_new = Ŝ₁̂ * aug₃ + 𝐒₂ * ℒ.kron(aug₁̂, aug₂) + 𝐒₃ * ℒ.kron(kron_aug₁, aug₁) / 6
+
+        for j in 1:n_x
+            fill!(d_aug, zero(S))
+            d_aug[n_past + 1 + obc_idx[j]] = one(S)
+            d_aug₁̂ = copy(d_aug);  d_aug₁̂[n_past + 1] = zero(S)  # hat: zero for the "1" slot
+            dy₃dx[:, j] = 𝐒₂ * (ℒ.kron(d_aug₁̂, aug₂) + ℒ.kron(aug₁̂, zeros(S, n_aug))) +
+                          𝐒₃ * (ℒ.kron(ℒ.kron(d_aug, aug₁), aug₁) +
+                                 ℒ.kron(ℒ.kron(aug₁, d_aug), aug₁) +
+                                 ℒ.kron(kron_aug₁, d_aug)) / 6
+        end
+        y₃ = y₃_new
+    end
+
+    y₁ = y₁_new
+    y₂ = y₂_new
+    Y[:, 1] = y₁ + y₂
+    dYdx[:, :, 1] = dy₁dx + dy₂dx
+    if has_third; Y[:, 1] += y₃; dYdx[:, :, 1] += dy₃dx; end
+
+    # ── t > 0 ──
+    d_aug_t = zeros(S, n_aug)
+    for t in 1:periods
+        aug₁_t = [y₁[past_idx]; one(S); zeros(S, n_shocks)]
+        kron_aug₁_t = ℒ.kron(aug₁_t, aug₁_t)
+
+        y₁_new = Ŝ₁̂ * aug₁_t
+        aug₂_t = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
+        y₂_new = Ŝ₁̂ * aug₂_t + 𝐒₂ * kron_aug₁_t / 2
+
+        dy₁dx_new = zeros(S, nv, n_x)
+        dy₂dx_new = zeros(S, nv, n_x)
+
+        for j in 1:n_x
+            fill!(d_aug_t, zero(S))
+            d_aug_t[1:n_past] .= @view dy₁dx[past_idx, j]
+            dy₁dx_new[:, j] = Ŝ₁̂ * d_aug_t
+
+            d_aug₂_t = zeros(S, n_aug)
+            d_aug₂_t[1:n_past] .= @view dy₂dx[past_idx, j]
+            dy₂dx_new[:, j] = Ŝ₁̂ * d_aug₂_t +
+                              𝐒₂ * (ℒ.kron(d_aug_t, aug₁_t) + ℒ.kron(aug₁_t, d_aug_t)) / 2
+        end
+
+        if has_third
+            aug₁̂_t = [y₁[past_idx]; zero(S); zeros(S, n_shocks)]
+            aug₃_t = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
+            y₃_new = Ŝ₁̂ * aug₃_t + 𝐒₂ * ℒ.kron(aug₁̂_t, aug₂_t) + 𝐒₃ * ℒ.kron(kron_aug₁_t, aug₁_t) / 6
+
+            dy₃dx_new = zeros(S, nv, n_x)
+            for j in 1:n_x
+                fill!(d_aug_t, zero(S))
+                d_aug_t[1:n_past] .= @view dy₁dx[past_idx, j]
+                d_aug₁̂_t = copy(d_aug_t);  d_aug₁̂_t[n_past + 1] = zero(S)
+
+                d_aug₂_t = zeros(S, n_aug)
+                d_aug₂_t[1:n_past] .= @view dy₂dx[past_idx, j]
+
+                d_aug₃_t = zeros(S, n_aug)
+                d_aug₃_t[1:n_past] .= @view dy₃dx[past_idx, j]
+
+                dy₃dx_new[:, j] = Ŝ₁̂ * d_aug₃_t +
+                                  𝐒₂ * (ℒ.kron(d_aug₁̂_t, aug₂_t) + ℒ.kron(aug₁̂_t, d_aug₂_t)) +
+                                  𝐒₃ * (ℒ.kron(ℒ.kron(d_aug_t, aug₁_t), aug₁_t) +
+                                         ℒ.kron(ℒ.kron(aug₁_t, d_aug_t), aug₁_t) +
+                                         ℒ.kron(kron_aug₁_t, d_aug_t)) / 6
+            end
+            y₃ = y₃_new
+            dy₃dx .= dy₃dx_new
+        end
+
+        y₁ = y₁_new
+        y₂ = y₂_new
+        dy₁dx .= dy₁dx_new
+        dy₂dx .= dy₂dx_new
+
+        Y[:, t+1] = y₁ + y₂
+        dYdx[:, :, t+1] = dy₁dx + dy₂dx
+        if has_third; Y[:, t+1] += y₃; dYdx[:, :, t+1] += dy₃dx; end
+    end
+end
+
+
+# ── Fill NLopt Jacobian from dY/dx and constraint structure ──────────────────
+function _fill_obc_constraint_jacobian!(jac, Y, dYdx, constraint_info, n_x, P)
+    row_offset = 0
+    for (left_idx, right_idx, sign) in constraint_info
+        # Complementary-slackness scalar: sum(Y[left,1:P] .* Y[right,1:P])
+        for j in 1:n_x
+            val = zero(eltype(jac))
+            for t in 1:P
+                val += dYdx[left_idx, j, t] * Y[right_idx, t] +
+                       Y[left_idx, t] * dYdx[right_idx, j, t]
+            end
+            jac[j, row_offset + 1] = val
+        end
+
+        # Left argument: sign * Y[left, 1:P]
+        for j in 1:n_x
+            for t in 1:P
+                jac[j, row_offset + 1 + t] = sign * dYdx[left_idx, j, t]
+            end
+        end
+
+        # Right argument: sign * Y[right, 1:P]
+        for j in 1:n_x
+            for t in 1:P
+                jac[j, row_offset + 1 + P + t] = sign * dYdx[right_idx, j, t]
+            end
+        end
+
+        row_offset += 1 + 2 * P
+    end
 end
 
 function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
@@ -947,6 +1235,41 @@ function set_up_obc_violation_function!(𝓂)
     end)
 
     𝓂.functions.obc_violation = @RuntimeGeneratedFunction(calc_obc_violation)
+
+    # ── Extract OBC constraint metadata for the analytical Jacobian ──
+    # Build mapping: χᵒᵇᶜ variable name (without ₍₀₎) → Y row index
+    chi_row_map = Dict{String, Int}()
+    for (i, var) in enumerate(present_varss)
+        vstr = string(var)
+        if startswith(vstr, "χᵒᵇᶜ")
+            name = replace(vstr, "₍₀₎" => "")
+            chi_row_map[name] = dyn_var_present_idx[i]
+        end
+    end
+
+    # Pair left/right χᵒᵇᶜ variables by constraint key
+    left_vars  = Dict{String, String}()
+    right_vars = Dict{String, String}()
+    for name in keys(chi_row_map)
+        if endswith(name, "ˡ")
+            key = name[1:prevind(name, lastindex(name))]
+            left_vars[key] = name
+        elseif endswith(name, "ʳ")
+            key = name[1:prevind(name, lastindex(name))]
+            right_vars[key] = name
+        end
+    end
+
+    obc_info = Tuple{Int, Int, Float64}[]
+    for key in sort(collect(keys(left_vars)))
+        if haskey(right_vars, key)
+            left_idx  = chi_row_map[left_vars[key]]
+            right_idx = chi_row_map[right_vars[key]]
+            sign = contains(key, "⁺") ? 1.0 : -1.0   # max → +1, min → −1
+            push!(obc_info, (left_idx, right_idx, sign))
+        end
+    end
+    𝓂.functions.obc_constraint_info = obc_info
 
     return nothing
 end
@@ -8988,7 +9311,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         end
         copyto!(cache_ss, SS_and_pars)
         if solved
-            𝓂.caches.valid_for.non_stochastic_steady_state = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+            𝓂.caches.valid_for.non_stochastic_steady_state = Float64.(primal.(parameter_values))
         else
             𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
         end
@@ -9222,8 +9545,8 @@ end # dispatch_doctor
 # end
 
 # Include ForwardDiff Dual specializations for forward-mode AD
-# Must be at the end of the module because they depend on function definitions
-include("./custom_autodiff_rules/forwarddiff.jl")
+# Moved to ext/ForwardDiffExt.jl
+# include("./custom_autodiff_rules/forwarddiff.jl")
 
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions

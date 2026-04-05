@@ -221,7 +221,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 
     # Stamp cache validity for current parameters
     if caching && !isempty(parameter_values)
-        cache.valid_for.first_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+        cache.valid_for.first_order_solution = Float64.(primal.(parameter_values))
     end
 
     return S₁, sol, true
@@ -403,7 +403,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
             cache.second_order_solution = copy(𝐒₂)
         end
         if !isempty(parameter_values)
-            cache.valid_for.second_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+            cache.valid_for.second_order_solution = Float64.(primal.(parameter_values))
             cache.valid_for.pruned_second_order_solution = Float64[]
         end
     end
@@ -669,7 +669,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
             cache.third_order_solution = copy(𝐒₃)
         end
         if !isempty(parameter_values)
-            cache.valid_for.third_order_solution = eltype(parameter_values) <: ℱ.Dual ? Float64.(ℱ.value.(parameter_values)) : Float64.(parameter_values)
+            cache.valid_for.third_order_solution = Float64.(primal.(parameter_values))
             cache.valid_for.pruned_third_order_solution = Float64[]
         end
     end

@@ -919,6 +919,7 @@ macro model(𝓂,ex...)
                             hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
                             third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
                             x->x, # obc_violation
+                            Tuple{Int,Int,Float64}[], # obc_constraint_info
                             false # functions_written
                         ),
 
