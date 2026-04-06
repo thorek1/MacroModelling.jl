@@ -2582,7 +2582,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 deriv2_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                mean = :all_excluding_obc)[:mean], old_params)[1]
             end
 
             for i in 1:100
@@ -2615,7 +2615,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 deriv3_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)[1]
             end                    
 
             for i in 1:100        
@@ -2646,7 +2646,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 deriv4_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                variance = :all_excluding_obc)[:variance], old_params)[1]
             end
 
             for i in 1:100
@@ -2678,7 +2678,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
-                                                                covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                covariance = :all_excluding_obc)[:covariance], old_params)[1]
             end         
 
             for i in 1:100        
@@ -2711,7 +2711,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 deriv6_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
                 deriv6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)[1]
             end
 
             for i in 1:100
