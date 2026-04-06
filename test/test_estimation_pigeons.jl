@@ -3,6 +3,7 @@ using Test
 import Turing, Pigeons
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
+import StatsPlots
 
 include("test_helpers.jl")
 

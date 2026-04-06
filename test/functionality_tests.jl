@@ -1,5 +1,6 @@
 import Zygote, FiniteDifferences, ForwardDiff, Mooncake, DifferentiationInterface, ADTypes
-
+import MatrixEquations
+import LinearAlgebra as ℒ
 import StatsPlots
 
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
