@@ -17,6 +17,13 @@
 #   - Matrix equations: solve_sylvester_equation, solve_lyapunov_equation
 #   - Filters: calculate_loglikelihood, run_kalman_iterations, find_shocks
 
+# clear_solution_caches! is a pure side-effect (cache invalidation) with no
+# differentiable outputs, so the pullback is a no-op.
+function rrule(::typeof(clear_solution_caches!), 𝓂::ℳ, algorithm::Symbol)
+    clear_solution_caches!(𝓂, algorithm)
+    return nothing, _ -> (NoTangent(), NoTangent(), NoTangent())
+end
+
 function rrule(::typeof(mul_reverse_AD!),
                 C::Matrix{S},
                 A::AbstractMatrix{M},
