@@ -90,14 +90,14 @@ mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihoo
                                                 # show_trace = true,
                                                 initial_params = Turing.InitFromParams(mode_estimateNM))
 
-init_params = collect(mode_estimateLBFGS.params.data)
+init_params = collect(mode_estimateLBFGS.params.data.all_params)
 
 
 println("Mode variable values (L-BFGS): $(mode_estimateLBFGS.params)")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = init_params)))
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS))
 
 
 println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
