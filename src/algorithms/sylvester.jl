@@ -283,6 +283,20 @@ function solve_sylvester_equation(A::M,
 end
 
 
+# Keep the low-level bartels-stewart signature available in core so fallback
+# paths remain well-typed when MatrixEquations is not loaded.
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                                B::AbstractMatrix{T},
+                                                C::DenseMatrix{T},
+                                                ::Val{:bartels_stewart},
+                                                𝕊ℂ::sylvester_workspace;
+                                                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                                verbose::Bool = false,
+                                                tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+     return copy(C), 0, T(Inf)
+end
+
+
 
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     B::AbstractSparseMatrix{T},

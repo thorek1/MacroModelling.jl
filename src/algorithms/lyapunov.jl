@@ -167,6 +167,17 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
 end
 
 
+# Keep the low-level bartels-stewart signature available in core so fallback
+# paths remain well-typed when MatrixEquations is not loaded.
+function solve_lyapunov_equation(A::AbstractMatrix{T},
+                                          C::AbstractMatrix{T},
+                                          ::Val{:bartels_stewart},
+                                          workspace::lyapunov_workspace;
+                                          tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+     return Matrix(C), 0, T(Inf)
+end
+
+
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},

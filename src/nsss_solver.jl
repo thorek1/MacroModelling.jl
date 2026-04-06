@@ -1813,8 +1813,8 @@ function execute_step!(step_idx::Int,
 
         # Build cache entries for this block
         cache_entries = [
-            typeof(sol) == Vector{Float64} ? copy(sol) : ℱ.value.(sol),
-            typeof(params_and_solved_vars) == Vector{Float64} ? copy(params_and_solved_vars) : ℱ.value.(params_and_solved_vars)
+              eltype(sol) === Float64 ? copy(sol) : Float64.(primal.(sol)),
+              eltype(params_and_solved_vars) === Float64 ? copy(params_and_solved_vars) : Float64.(primal.(params_and_solved_vars))
         ]
 
         return error, iters, cache_entries
@@ -1983,7 +1983,7 @@ function solve_nsss_wrapper(
     # Type conversion for AD compatibility
     initial_parameters = parameter_values isa Vector{Float64} ? 
                         parameter_values : 
-                        ℱ.value.(parameter_values)
+                        Float64.(primal.(parameter_values))
     
     # Find closest cached solution as starting point
     expected_cache_length = 2 * n_numerical_steps + 1

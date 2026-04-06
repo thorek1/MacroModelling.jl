@@ -17,7 +17,7 @@ end
 # ── Sylvester: Bartels-Stewart via MatrixEquations.sylvd ──
 
 function MacroModelling.solve_sylvester_equation(A::DenseMatrix{T},
-                                    B::Union{ℒ.Adjoint{Float64, Matrix{T}}, DenseMatrix{T}},
+                                    B::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     C::DenseMatrix{T},
                                     ::Val{:bartels_stewart},
                                     𝕊ℂ::sylvester_workspace;
