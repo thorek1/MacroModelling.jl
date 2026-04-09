@@ -40,6 +40,9 @@ Common files in `src/`:
 - `perturbation.jl` (1st-3rd order solvers)
 - `moments.jl`, `structures.jl`, `options_and_caches.jl`
 - `dynare.jl`, `inspect.jl`, `solver_parameters.jl`, `default_options.jl`
+- `common_docstrings.jl` (shared docstring constants with `®` suffix)
+- `nsss_solver.jl` (non-stochastic steady state solver)
+- `obc.jl` (occasionally binding constraints)
 - `algorithms/`, `filter/`, `custom_autodiff_rules/`
 
 ## Model Syntax Quick Reference

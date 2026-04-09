@@ -42,9 +42,12 @@ Read this file first. Read the companion files only when needed.
 
 ## On-Demand Companion Guides (Read Only If Needed)
 
+All companion guides live in `docs/agent-guides/`:
+
 - Development setup, Revise workflow, testing, docs, benchmarking: `docs/agent-guides/development-workflow.md`
 - Project overview, structure, model syntax, design context: `docs/agent-guides/project-context.md`
 - Task runbook, orchestration heuristics, common change points: `docs/agent-guides/task-runbook.md`
+- Code style conventions, naming, formatting, performance patterns: `docs/agent-guides/STYLE_GUIDE.md`
 
 ## Additional Resources
 
