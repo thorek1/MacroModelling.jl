@@ -6,7 +6,7 @@
 
 using Documenter
 using MacroModelling
-import MatrixEquations, Optim, StatsPlots, Turing
+import MatrixEquations, ForwardDiff, Mooncake, Optim, StatsPlots, Turing
 using DocumenterCitations
 
 bib = CitationBibliography(
