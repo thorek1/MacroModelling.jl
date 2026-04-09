@@ -8,13 +8,13 @@ const SUITE = BenchmarkGroup()
 
 import LinearAlgebra as ℒ
 using MacroModelling
-import MatrixEquations
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, ℳ, merge_calculation_options
 
 # Workspace-enabled Lyapunov API exists in v0.1.46+.
 const HAS_WORKSPACE_API = isdefined(MacroModelling, :Lyapunov_workspace)
 if HAS_WORKSPACE_API
     import MacroModelling: Lyapunov_workspace, solve_lyapunov_equation
+    import MatrixEquations
 end
 
 # Timings live in different places across versions.
