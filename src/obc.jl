@@ -769,7 +769,7 @@ function obc_state_update(present_states, present_shocks::Vector{R}, state_updat
         opt.ftol_abs = eps(Float32)
         opt.maxeval = 500
 
-        upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+        upper_bounds = fill(eps(), num_shocks * (1 + 2 * max(unconditional_forecast_horizon, 1)))
 
         NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
