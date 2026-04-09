@@ -8,12 +8,12 @@ const SUITE = BenchmarkGroup()
 
 import LinearAlgebra as ℒ
 using MacroModelling
-import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, ℳ, merge_calculation_options
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, solve_lyapunov_equation, ℳ, merge_calculation_options
 
 # Workspace-enabled Lyapunov API exists in v0.1.46+.
 const HAS_WORKSPACE_API = isdefined(MacroModelling, :Lyapunov_workspace)
 if HAS_WORKSPACE_API
-    import MacroModelling: Lyapunov_workspace, solve_lyapunov_equation
+    import MacroModelling: Lyapunov_workspace
     import MatrixEquations
 end
 
@@ -25,16 +25,19 @@ function get_timings(𝓂::ℳ)
     return 𝓂.timings
 end
 
+has_model_field(𝓂::ℳ, field::Symbol) = hasfield(typeof(𝓂), field)
+has_nested_field(obj, field::Symbol) = hasfield(typeof(obj), field)
+
 # Dispatch to the matching jacobian API by method applicability.
 function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
-    if hasproperty(𝓂, :workspaces) && hasproperty(𝓂, :caches) && hasproperty(𝓂, :functions) &&
-       applicable(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
-        return calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces; caching = false)
-    end
-
-    if hasproperty(𝓂, :caches) && hasproperty(𝓂, :functions) &&
-       applicable(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
-        return calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian)
+    if has_model_field(𝓂, :caches) && has_model_field(𝓂, :functions) && has_model_field(𝓂, :workspaces) &&
+       has_nested_field(getfield(𝓂, :functions), :jacobian)
+        return calculate_jacobian(parameters,
+                                  SS_and_pars,
+                                  getfield(𝓂, :caches),
+                                  getfield(getfield(𝓂, :functions), :jacobian),
+                                  getfield(𝓂, :workspaces);
+                                  caching = false)
     end
 
     return calculate_jacobian(parameters, SS_and_pars, 𝓂)
@@ -42,18 +45,22 @@ end
 
 # Dispatch to the matching first-order API by method applicability.
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
-    if hasproperty(𝓂, :constants) && hasproperty(𝓂, :workspaces) && hasproperty(𝓂, :caches) &&
-       applicable(calculate_first_order_solution, ∇₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches)
-        return calculate_first_order_solution(∇₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, caching = false)
+    if has_model_field(𝓂, :constants) && has_model_field(𝓂, :workspaces) && has_model_field(𝓂, :caches)
+        return calculate_first_order_solution(∇₁,
+                                              getfield(𝓂, :constants),
+                                              getfield(𝓂, :workspaces),
+                                              getfield(𝓂, :caches);
+                                              opts = opts,
+                                              caching = false)
     end
 
-    if hasproperty(𝓂, :constants) && isdefined(MacroModelling, :ensure_qme_workspace!) && isdefined(MacroModelling, :ensure_sylvester_1st_order_workspace!)
+    if has_model_field(𝓂, :constants) && isdefined(MacroModelling, :ensure_qme_workspace!) && isdefined(MacroModelling, :ensure_sylvester_1st_order_workspace!)
         qme_ws_fn = getfield(MacroModelling, :ensure_qme_workspace!)
         sylv_ws_fn = getfield(MacroModelling, :ensure_sylvester_1st_order_workspace!)
         qme_ws = qme_ws_fn(𝓂)
         sylv_ws = sylv_ws_fn(𝓂)
-        if applicable(calculate_first_order_solution, ∇₁, 𝓂.constants, qme_ws, sylv_ws)
-            return calculate_first_order_solution(∇₁, 𝓂.constants, qme_ws, sylv_ws; opts = opts)
+        if applicable(calculate_first_order_solution, ∇₁, getfield(𝓂, :constants), qme_ws, sylv_ws)
+            return calculate_first_order_solution(∇₁, getfield(𝓂, :constants), qme_ws, sylv_ws; opts = opts)
         end
     end
 
