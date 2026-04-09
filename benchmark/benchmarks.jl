@@ -28,7 +28,7 @@ end
 has_model_field(𝓂::ℳ, field::Symbol) = hasfield(typeof(𝓂), field)
 has_nested_field(obj, field::Symbol) = hasfield(typeof(obj), field)
 
-# Dispatch to the matching jacobian API by method applicability.
+# Dispatch to the matching jacobian API by model layout first.
 function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
     if has_model_field(𝓂, :caches) && has_model_field(𝓂, :functions) && has_model_field(𝓂, :workspaces) &&
        has_nested_field(getfield(𝓂, :functions), :jacobian)
@@ -43,7 +43,7 @@ function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
     return calculate_jacobian(parameters, SS_and_pars, 𝓂)
 end
 
-# Dispatch to the matching first-order API by method applicability.
+# Dispatch to the matching first-order API by model layout first, then helper availability.
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
     if has_model_field(𝓂, :constants) && has_model_field(𝓂, :workspaces) && has_model_field(𝓂, :caches)
         return calculate_first_order_solution(∇₁,

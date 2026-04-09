@@ -34,12 +34,16 @@ jobs:
     - name: Add ~/.julia/bin to PATH
       run: |
         echo "$HOME/.julia/bin" >> $GITHUB_PATH
+    - name: Fetch PR benchmark script
+      run: |
+        git fetch origin ${{ github.event.pull_request.head.sha }} --depth=1
+        git checkout ${{ github.event.pull_request.head.sha }} -- benchmark/benchmarks.jl
     - name: Run benchmarks
       run: |
         echo $PATH
         ls -l ~/.julia/bin
         mkdir results
-        benchpkg ${{ steps.extract-package-name.outputs.package_name }} --rev="${{github.event.repository.default_branch}},${{github.event.pull_request.head.sha}}" --url=${{ github.event.repository.clone_url }} --bench-on="${{github.event.repository.default_branch}}" --add="MatrixEquations" --output-dir=results/
+        benchpkg ${{ steps.extract-package-name.outputs.package_name }} --rev="${{github.event.repository.default_branch}},${{github.event.pull_request.head.sha}}" --url=${{ github.event.repository.clone_url }} --bench-on="${{github.event.repository.default_branch}}" --script="benchmark/benchmarks.jl" --add="MatrixEquations" --output-dir=results/
     - name: Create plots from benchmarks
       run: |
         mkdir -p plots
