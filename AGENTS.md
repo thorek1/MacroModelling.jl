@@ -20,10 +20,12 @@ Read this file first. Read the companion files only when needed.
 - Keep changes minimal, focused, and at root cause.
 - Keep code parsimonious and readable; apply Occam's razor to code changes.
 - Preserve performance characteristics (type stability, allocations, threading behavior).
+- Performance-critical code should live inside functions, not global scope.
+- Avoid untyped global variables and abstractly typed containers in hot code paths.
 - Update user-facing docs/docstrings when public APIs change.
 - Avoid second-person phrasing ("you") in docs/docstrings.
 - Cache reusable constants lazily in model caches when appropriate.
-- Avoid try-catch statements except for catching numerical issues that would otherwise error. Use explicit checks and validation instead of relying on exception handling for control flow.
+- Avoid try-catch statements for control flow. Use explicit checks and validation; reserve try-catch for unavoidable numerical failures.
 - **rrule implementation:** Always derive analytical results for pullback functions. Never use AD inside a pullback—compute adjoints directly via mathematical derivation.
 
 ## Task Files (Required Discipline)

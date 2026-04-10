@@ -153,7 +153,7 @@ end
 
 ### Line Length
 
-There is no strict line-length limit. Long lines (200+ characters) are acceptable for complex mathematical expressions and function signatures. Prefer readability over arbitrary wrapping.
+Prefer lines <= 100 characters for general code and docs. For dense mathematical expressions and long signatures, longer lines are acceptable when wrapping harms readability.
 
 ### Whitespace
 
@@ -466,6 +466,8 @@ catch
 end
 ```
 
+Avoid `try/catch` in performance-critical loops and for normal control flow.
+
 ---
 
 ## Error Handling
@@ -586,15 +588,15 @@ Preserve commented-out alternative approaches for reference.
 
 ## Performance
 
-### `@inline`
+### Julia Performance Checklist
 
-Apply `@inline` to hot-path utility functions:
-
-```julia
-@inline function fast_lu!(ws, A::AbstractMatrix{T}) where T
-    ...
-end
-```
+- Put performance-critical logic inside functions (function barriers), not global scope.
+- Avoid untyped globals; use `const` for global constants.
+- Keep containers concrete (`Vector{T}`, `Dict{K,V}`), avoid abstract element types (`Vector{Any}`, `Vector{Real}`) in hot paths.
+- Keep return types predictable from input types; verify with `@code_warntype` on critical kernels.
+- Minimize allocations in iterative solvers by pre-allocation and in-place updates.
+- Access arrays in memory order when possible; prefer column-wise traversal for column-major arrays.
+- Measure before and after optimization (`BenchmarkTools.@btime`, `@allocated`).
 
 ### `@views`
 
@@ -622,7 +624,18 @@ end
 
 - Annotate return types on functions
 - Use parametric `where` clauses
-- Avoid untyped containers in hot paths
+- Avoid untyped containers in hot paths (e.g., `Vector{Any}`, `Dict{Symbol,Any}`)
+- Prefer concrete element types for arrays and dictionaries in solver kernels
+
+Example:
+
+```julia
+# Avoid
+cache = Dict()
+
+# Prefer
+cache::Dict{Symbol, Float64} = Dict()
+```
 
 ### Sparse Matrices
 
@@ -638,6 +651,14 @@ Use `ChainRulesCore.@ignore_derivatives` for code that should be invisible to AD
     # cache updates, logging, etc.
 end
 ```
+
+Keep `@ignore_derivatives` scopes narrow; do not wrap solver math that should contribute to gradients.
+
+### `@inline` and `@noinline`
+
+Use `@inline` sparingly for tiny, frequently called helper methods when profiling shows a benefit.
+Use `@noinline` to keep large diagnostics or cold paths out of hot kernels.
+Do not add either annotation by default without evidence.
 
 ---
 

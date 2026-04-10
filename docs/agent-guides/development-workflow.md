@@ -82,3 +82,17 @@ using BenchmarkTools
 include("benchmark/benchmarks.jl")
 run(SUITE)
 ```
+
+For targeted performance validation during development:
+
+```julia
+using BenchmarkTools
+
+@code_warntype kernel(args...)
+@btime kernel($args...)
+@allocated kernel(args...)
+```
+
+- Use `@code_warntype` to detect type instabilities in critical kernels.
+- Use `@btime` for robust timing (avoid relying on first-run `@time`).
+- Use `@allocated` to confirm allocation reductions from pre-allocation/in-place changes.
