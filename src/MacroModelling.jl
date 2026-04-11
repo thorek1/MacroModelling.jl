@@ -382,6 +382,26 @@ check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋�
 
 # end # dispatch_doctor
 
+"""
+Recursively flatten a nested tol dict into a flat `Dict{String, Any}`
+with human-readable keys (e.g. `"1st order QME atol" => 1e-8`).
+"""
+function _flatten_tol_dict(d::Dict;
+                           names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
+                           prefix::String = "")
+    result = Dict{String,Any}()
+    for (k, v) in d
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            merge!(result, _flatten_tol_dict(v; names = names, prefix = label))
+        else
+            result[label] = v
+        end
+    end
+    return result
+end
+
 function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
     N = length(dicts)
 
@@ -407,9 +427,7 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
 
     diffs = Dict{Symbol,Any}()
 
-    # use the union of all keys so dicts with different key sets
-    # (e.g. tol sub-dicts that conditionally include :dependencies_tol)
-    # are compared correctly
+    # use the union of all keys so dicts with different key sets are compared
     all_keys = reduce(union, keys.(dicts))
 
     for k in all_keys
@@ -427,7 +445,6 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
         vals = [d[k] for d in dicts]
 
         if all(v -> v isa Dict, vals)
-            # recurse into nested dictionaries
             nested = compare_args_and_kwargs(vals)
             if !isempty(nested)
                 diffs[k] = nested
@@ -463,18 +480,18 @@ end
 
 
 """
-    flatten_tol_diff(diff; names = DEFAULT_ARGS_AND_KWARGS_NAMES, prefix = "") -> Vector{Pair{String,Any}}
+    flatten_tol_diff(diff; names = TOL_DISPLAY_NAMES, prefix = "") -> Vector{Pair{String,Any}}
 
 Recursively walk a nested tolerance diff `Dict` (as returned by
 `compare_args_and_kwargs` on `tol_to_dict` outputs) and produce a flat vector
 of `"human-readable path" => values` pairs suitable for plot annotations.
 
 Path segments are translated through `names` (defaults to
-`DEFAULT_ARGS_AND_KWARGS_NAMES`).  For example a diff at
+`TOL_DISPLAY_NAMES`).  For example a diff at
 `:first_order => :qme => :atol` becomes `"1st order QME atol"`.
 """
 function flatten_tol_diff(diff::Dict;
-                          names::Dict{Symbol,String} = DEFAULT_ARGS_AND_KWARGS_NAMES,
+                          names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
                           prefix::String = "")
     result = Pair{String,Any}[]
     for (k, v) in sort(collect(diff), by = first)

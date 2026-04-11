@@ -105,6 +105,9 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
+)
+
+const TOL_DISPLAY_NAMES = Dict{Symbol,String}(
     :tol => "Tolerance",
     :nsss => "NSSS",
     :first_order => "1st order",
@@ -115,8 +118,8 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :lyapunov => "Lyapunov",
     :atol => "atol",
     :rtol => "rtol",
-    :initial_guess_acceptance_tol => "init. guess acc. tol",
-    :acceptance_tol => "acc. tol",
+    :initial_guess_acceptance_tol => "init. guess accept. tol",
+    :acceptance_tol => "accept. tol",
     :xtol => "xtol",
     :ftol => "ftol",
     :rel_xtol => "rel. xtol",

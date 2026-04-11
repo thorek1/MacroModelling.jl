@@ -1920,6 +1920,30 @@ function SolverTolerances(; atol::Float64 = 1e-14,
     return SolverTolerances(atol, rtol, initial_guess_acceptance_tol, acceptance_tol)
 end
 
+# Generic SolverTolerances keyword-constructor defaults, used by _resolve_tol to detect
+# which fields were left at their generic value and should be replaced by context defaults.
+const _GENERIC_SOLVER_TOL = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+
+# Merge a SolverTolerances with context-specific defaults.  Fields that still sit at the
+# generic SolverTolerances() defaults are replaced by the context base; explicitly changed
+# fields are kept.
+function _resolve_tol(override::SolverTolerances, base::SolverTolerances)
+    SolverTolerances(
+        override.atol != _GENERIC_SOLVER_TOL.atol ? override.atol : base.atol,
+        override.rtol != _GENERIC_SOLVER_TOL.rtol ? override.rtol : base.rtol,
+        override.initial_guess_acceptance_tol != _GENERIC_SOLVER_TOL.initial_guess_acceptance_tol ? override.initial_guess_acceptance_tol : base.initial_guess_acceptance_tol,
+        override.acceptance_tol != _GENERIC_SOLVER_TOL.acceptance_tol ? override.acceptance_tol : base.acceptance_tol)
+end
+
+# Merge a NamedTuple of partial overrides with a SolverTolerances base.
+function _resolve_tol(nt::NamedTuple, base::SolverTolerances)
+    SolverTolerances(
+        Float64(get(nt, :atol, base.atol)),
+        Float64(get(nt, :rtol, base.rtol)),
+        Float64(get(nt, :initial_guess_acceptance_tol, base.initial_guess_acceptance_tol)),
+        Float64(get(nt, :acceptance_tol, base.acceptance_tol)))
+end
+
 """
     NsssTolerances
 
@@ -1952,6 +1976,16 @@ function NsssTolerances(; acceptance_tol::Float64 = 1e-12,
     return NsssTolerances(acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)
 end
 
+_resolve_tol(s::NsssTolerances, ::NsssTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::NsssTolerances)
+    NsssTolerances(
+        Float64(get(nt, :acceptance_tol, base.acceptance_tol)),
+        Float64(get(nt, :initial_guess_acceptance_tol, base.initial_guess_acceptance_tol)),
+        Float64(get(nt, :xtol, base.xtol)),
+        Float64(get(nt, :ftol, base.ftol)),
+        Float64(get(nt, :rel_xtol, base.rel_xtol)))
+end
+
 """
     AdTolerances
 
@@ -1975,16 +2009,22 @@ struct AdTolerances
     lyapunov::SolverTolerances
 end
 
-function AdTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                  rtol = 1e-14,
-                                                                  initial_guess_acceptance_tol = 1e-8,
-                                                                  acceptance_tol = 1e-8),
-                      sylvester::SolverTolerances = SolverTolerances(),
-                      lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                     rtol = 1e-14,
-                                                                     initial_guess_acceptance_tol = 1e-12,
-                                                                     acceptance_tol = 1e-12))
-    return AdTolerances(qme, sylvester, lyapunov)
+function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    return AdTolerances(
+        _resolve_tol(qme, _base_qme),
+        _resolve_tol(sylvester, _base_sylv),
+        _resolve_tol(lyapunov, _base_lyap))
+end
+
+_resolve_tol(s::AdTolerances, ::AdTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::AdTolerances)
+    AdTolerances(
+        _resolve_tol(get(nt, :qme, (;)), base.qme),
+        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov))
 end
 
 """
@@ -2014,18 +2054,29 @@ struct FirstOrderTolerances
     ad::AdTolerances
 end
 
-function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                          rtol = 1e-14,
-                                                                          initial_guess_acceptance_tol = 1e-8,
-                                                                          acceptance_tol = 1e-8),
-                              lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                             rtol = 1e-14,
-                                                                             initial_guess_acceptance_tol = 1e-12,
-                                                                             acceptance_tol = 1e-12),
+function FirstOrderTolerances(; qme = (;),
+                              lyapunov = (;),
                               droptol::Float64 = 1e-14,
                               dependencies_tol::Float64 = 1e-12,
-                              ad::AdTolerances = AdTolerances())
-    return FirstOrderTolerances(qme, lyapunov, droptol, dependencies_tol, ad)
+                              ad = (;))
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    _base_ad   = AdTolerances()
+    return FirstOrderTolerances(
+        _resolve_tol(qme, _base_qme),
+        _resolve_tol(lyapunov, _base_lyap),
+        droptol, dependencies_tol,
+        _resolve_tol(ad, _base_ad))
+end
+
+_resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::FirstOrderTolerances)
+    FirstOrderTolerances(
+        _resolve_tol(get(nt, :qme, (;)), base.qme),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        Float64(get(nt, :droptol, base.droptol)),
+        Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
+        _resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 """
@@ -2055,15 +2106,29 @@ struct HigherOrderTolerances
     ad::AdTolerances
 end
 
-function HigherOrderTolerances(; sylvester::SolverTolerances = SolverTolerances(),
-                               lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                              rtol = 1e-14,
-                                                                              initial_guess_acceptance_tol = 1e-12,
-                                                                              acceptance_tol = 1e-12),
+function HigherOrderTolerances(; sylvester = (;),
+                               lyapunov = (;),
                                droptol::Float64 = 1e-14,
                                dependencies_tol::Float64 = 1e-12,
-                               ad::AdTolerances = AdTolerances())
-    return HigherOrderTolerances(sylvester, lyapunov, droptol, dependencies_tol, ad)
+                               ad = (;))
+    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    _base_ad   = AdTolerances()
+    return HigherOrderTolerances(
+        _resolve_tol(sylvester, _base_sylv),
+        _resolve_tol(lyapunov, _base_lyap),
+        droptol, dependencies_tol,
+        _resolve_tol(ad, _base_ad))
+end
+
+_resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::HigherOrderTolerances)
+    HigherOrderTolerances(
+        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        Float64(get(nt, :droptol, base.droptol)),
+        Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
+        _resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 struct Tolerances
@@ -2139,19 +2204,40 @@ tol = Tolerances()
 # tighten the NSSS solver
 tol = Tolerances(nsss = NsssTolerances(xtol = 1e-14))
 
+# tighten first-order Lyapunov acceptance_tol while preserving context defaults
+tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14)))
+
+# concise NamedTuple syntax — equivalent to the above
+tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),))
+
 # tighten second- and third-order Sylvester/Lyapunov solvers
-tight = SolverTolerances(acceptance_tol = 1e-14)
 tol = Tolerances(
-    second_order = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
-    third_order  = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+    second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14),
+                                         lyapunov  = SolverTolerances(acceptance_tol = 1e-14)),
+    third_order  = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14),
+                                         lyapunov  = SolverTolerances(acceptance_tol = 1e-14)),
 )
 ```
 """
-function Tolerances(; nsss::NsssTolerances = NsssTolerances(),
-                    first_order::FirstOrderTolerances = FirstOrderTolerances(),
-                    second_order::HigherOrderTolerances = HigherOrderTolerances(),
-                    third_order::HigherOrderTolerances = HigherOrderTolerances())
-    return Tolerances(nsss, first_order, second_order, third_order)
+function Tolerances(; nsss = (;),
+                    first_order = (;),
+                    second_order = (;),
+                    third_order = (;))
+    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(), HigherOrderTolerances())
+    return Tolerances(
+        _resolve_tol(nsss, _base.nsss),
+        _resolve_tol(first_order, _base.first_order),
+        _resolve_tol(second_order, _base.second_order),
+        _resolve_tol(third_order, _base.third_order))
+end
+
+_resolve_tol(s::Tolerances, ::Tolerances) = s
+function _resolve_tol(nt::NamedTuple, base::Tolerances)
+    Tolerances(
+        _resolve_tol(get(nt, :nsss, (;)), base.nsss),
+        _resolve_tol(get(nt, :first_order, (;)), base.first_order),
+        _resolve_tol(get(nt, :second_order, (;)), base.second_order),
+        _resolve_tol(get(nt, :third_order, (;)), base.third_order))
 end
 
 
