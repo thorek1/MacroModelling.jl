@@ -8553,12 +8553,10 @@ end # dispatch_doctor
 #     end
 # end
 
-# Include ForwardDiff Dual specializations for forward-mode AD
-# Moved to ext/ForwardDiffExt.jl
-# include("./custom_autodiff_rules/forwarddiff.jl")
+# ForwardDiff Dual specializations moved to ext/ForwardDiffExt.jl
 
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions
-include("./custom_autodiff_rules/rrules.jl")
+include("./rrules.jl")
 
 end
