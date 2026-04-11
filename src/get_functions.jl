@@ -3626,6 +3626,153 @@ function get_loglikelihood(𝓂::ℳ,
     return llh
 end
 
+function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
+    if !all(isfinite,parameter_values) return true end
+
+    if length(𝓂.constants.post_parameters_macro.bounds) > 0 
+        for (k,v) in 𝓂.constants.post_parameters_macro.bounds
+            if k ∈ 𝓂.constants.post_complete_parameters.parameters
+                if min(max(parameter_values[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false) where S <: Real
+                                                    # timer::TimerOutput = TimerOutput(), 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
+    
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
+        if opts.verbose println("Could not find 2nd order stochastic steady state") end
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+
+    state = collect(sss) - all_SS
+
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+end
+
+
+
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    # timer::TimerOutput = TimerOutput(), 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
+
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
+        if opts.verbose println("Could not find 2nd order stochastic steady state") end
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
+
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+end
+
+
+
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    # timer::TimerOutput = TimerOutput(), 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer,  
+
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
+        if opts.verbose println("Could not find 3rd order stochastic steady state") end
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+
+    state = collect(sss) - all_SS
+
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+end
+
+
+
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    # timer::TimerOutput = TimerOutput(), 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
+
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol
+        if opts.verbose println("Could not find 3rd order stochastic steady state") end
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
+    end
+
+    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    all_SS = expand_steady_state(SS_and_pars, ms)
+
+    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
+
+    return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+end
+
+
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ; 
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    # timer::TimerOutput = TimerOutput(), 
+    # Initialize constants at entry point
+    constants_obj = initialise_constants!(𝓂)
+
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts, estimation = estimation) # timer = timer,
+
+    state = zeros(𝓂.constants.post_model_macro.nVars)
+
+    if solution_error > opts.tol.nsss.acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
+        # println("NSSS not found")
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.nsss.acceptance_tol
+    end
+
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) # , timer = timer)# |> Matrix
+
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
+                                                        constants_obj,
+                                                        𝓂.workspaces,
+                                                        𝓂.caches;
+                                                        opts = opts,
+                                                        initial_guess = 𝓂.caches.qme_solution,
+                                                        parameter_values = parameter_values)
+
+
+    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+
+    if !solved
+        # println("NSSS not found")
+        return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solved
+    end
+
+    return 𝓂.constants, SS_and_pars, 𝐒₁, [state], solved
+end
+
 
 """
 $(SIGNATURES)

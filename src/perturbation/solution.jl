@@ -1,5 +1,210 @@
 # ── Compressed Kronecker & matrix utilities (moved from MacroModelling.jl) ──
 
+
+function create_second_order_auxiliary_matrices(constants::constants)
+    T = constants.post_model_macro
+    
+
+    # Indices and number of variables
+    n₋ = T.nPast_not_future_and_mixed
+    n = T.nVars
+    nₑ = T.nExo
+
+    # setup compression matrices for hessian matrix
+    nₑ₋ = T.nPast_not_future_and_mixed + T.nVars + T.nFuture_not_past_and_mixed + T.nExo
+    colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
+    𝐂∇₂ = sparse(colls2, 1:length(colls2), 1)
+    𝐔∇₂ = 𝐂∇₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
+
+    # set up vector to capture volatility effect
+    nₑ₋ = n₋ + 1 + nₑ
+    redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
+    redu_idxs = findnz(ℒ.kron(redu, redu))[1]
+    𝛔 = @views sparse(redu_idxs[Int.(range(1,nₑ^2,nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1, nₑ₋^2, nₑ₋^2)
+    # setup compression matrices for transition matrix
+    colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
+    𝐂₂ = sparse(colls2, 1:length(colls2), 1)
+    𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
+
+    # Build symmetrised volatility: 𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+    # P_swap is the commutation matrix swapping axes 1 and 2 in nₑ₋² space
+    swap_rows = Vector{Int}(undef, nₑ₋^2)
+    swap_cols = Vector{Int}(undef, nₑ₋^2)
+    @inbounds for a in 1:nₑ₋, b in 1:nₑ₋
+        idx = (a - 1) * nₑ₋ + b
+        swap_rows[idx] = idx
+        swap_cols[idx] = (b - 1) * nₑ₋ + a
+    end
+    P_swap = sparse(swap_rows, swap_cols, ones(Int, nₑ₋^2), nₑ₋^2, nₑ₋^2)
+    𝛔_sym = 𝛔 + P_swap * 𝛔 * P_swap
+
+    so = constants.second_order
+    so.𝛔 = 𝛔
+    so.𝛔_sym = 𝛔_sym
+    so.𝛔c₂ = 𝐔₂ * 𝛔 * 𝐂₂
+    so.𝛔𝐂₂ = 𝛔 * 𝐂₂
+    so.𝐂₂ = 𝐂₂
+    so.𝐔₂ = 𝐔₂
+    so.𝐔∇₂ = 𝐔∇₂
+    so.𝐈ₙ₊ = sparse(1:T.nFuture_not_past_and_mixed, T.future_not_past_and_mixed_idx, 1, T.nFuture_not_past_and_mixed, n)
+    so.𝐈ₙ₋ = sparse(1:T.nPast_not_future_and_mixed, T.past_not_future_and_mixed_idx, 1, T.nPast_not_future_and_mixed, n)
+    so.∇₂_nonempty_col_as_kron_rowmask = Int[]
+    sigma_row_lookup = falses(size(so.𝛔c₂, 1))
+    @inbounds for r in so.𝛔c₂.rowval
+        sigma_row_lookup[r] = true
+    end
+    so.𝛔𝐂₂_nonempty_row_as_kron_colmask = findall(sigma_row_lookup)
+    # Pre-transposed constants for rrule pullback (computed once)
+    so.𝛔ᵀ = sparse(𝛔')
+    so.𝐂₂ᵀ = sparse(𝐂₂')
+    so.𝐔₂ᵀ = sparse(𝐔₂')
+    so.𝐔∇₂ᵀ = sparse(𝐔∇₂')
+    return so
+end
+
+
+
+function add_sparse_entries!(P, perm)
+    n = size(P, 1)
+    for i in 1:n
+        P[perm[i], i] += 1.0
+    end
+end
+
+
+function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_indices::Vector{Int})
+    T = constants.post_model_macro
+    
+
+    # Indices and number of variables
+    n₋ = T.nPast_not_future_and_mixed
+    n₊ = T.nFuture_not_past_and_mixed
+    n = T.nVars
+    nₑ = T.nExo
+
+    n̄ = n₋ + n + n₊ + nₑ
+
+    # compression matrices for third order derivatives matrix
+    nₑ₋ = T.nPast_not_future_and_mixed + T.nVars + T.nFuture_not_past_and_mixed + T.nExo
+    colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
+    𝐂∇₃ = sparse(colls3, 1:length(colls3) , 1.0)
+    
+    idxs = Int[]
+    for k in 1:nₑ₋
+        for j in 1:nₑ₋
+            for i in 1:nₑ₋
+                sorted_ids = sort([k,j,i])
+                push!(idxs, (sorted_ids[3] - 1) * nₑ₋ ^ 2 + (sorted_ids[2] - 1) * nₑ₋ + sorted_ids[1])
+            end
+        end
+    end
+    
+    𝐔∇₃ = 𝐂∇₃' * sparse(idxs,1:nₑ₋ ^ 3, 1)
+
+    # compression matrices for third order transition matrix
+    nₑ₋ = n₋ + 1 + nₑ
+    colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
+    𝐂₃ = sparse(colls3, 1:length(colls3) , 1.0)
+    
+    idxs = Int[]
+    for k in 1:nₑ₋
+        for j in 1:nₑ₋
+            for i in 1:nₑ₋
+                sorted_ids = sort([k,j,i])
+                push!(idxs, (sorted_ids[3] - 1) * nₑ₋ ^ 2 + (sorted_ids[2] - 1) * nₑ₋ + sorted_ids[1])
+            end
+        end
+    end
+    
+    𝐔₃ = 𝐂₃' * sparse(idxs,1:nₑ₋ ^ 3, 1)
+    
+    # Precompute 𝐈₃
+    𝐈₃ = Dict{Vector{Int}, Int}()
+    idx = 1
+    for i in 1:nₑ₋
+        for k in 1:i 
+            for l in 1:k
+                𝐈₃[[i,k,l]] = idx
+                idx += 1
+            end
+        end
+    end
+
+    # permutation matrices
+    M = reshape(1:nₑ₋^3,1,nₑ₋,nₑ₋,nₑ₋)
+
+    𝐏 = spzeros(nₑ₋^3, nₑ₋^3)  # Preallocate the sparse matrix
+
+    # Create the permutations directly
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 4, 2, 3)))
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 2, 4, 3)))
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 2, 3, 4)))
+
+    # 𝐏 = @views sparse(reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 4, 2, 3])],nₑ₋^3,nₑ₋^3)
+    #                     + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
+    #                     + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
+
+    𝐏₁ₗ = sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3))),:])
+    𝐏₁ᵣ = sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3)))])
+
+    𝐏₁ₗ̂  = @views sparse(spdiagm(ones(n̄^3))[vec(permutedims(reshape(1:n̄^3,n̄,n̄,n̄),(1,3,2))),:])
+    𝐏₂ₗ̂  = @views sparse(spdiagm(ones(n̄^3))[vec(permutedims(reshape(1:n̄^3,n̄,n̄,n̄),(3,1,2))),:])
+
+    𝐏₁ₗ̄ = @views sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2))),:])
+    𝐏₂ₗ̄ = @views sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(3,1,2))),:])
+
+
+    𝐏₁ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2)))])
+    𝐏₂ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(3,1,2)))])
+
+    ∇₃_col_indices_extended = findnz(sparse(ones(Int,length(∇₃_col_indices)),∇₃_col_indices,ones(Int,length(∇₃_col_indices)),1,size(𝐔∇₃,1)) * 𝐔∇₃)[2]
+
+    nonnull_columns = Set{Int}()
+    for i in 1:n̄ 
+        for j in i:n̄ 
+            for k in j:n̄ 
+                if n̄^2 * (i - 1)  + n̄ * (j - 1) + k in ∇₃_col_indices_extended
+                    push!(nonnull_columns,i)
+                    push!(nonnull_columns,j)
+                    push!(nonnull_columns,k)
+                end
+            end
+        end
+    end
+    
+    𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
+
+    to = constants.third_order
+    to.𝐂₃ = 𝐂₃
+    to.𝐔₃ = 𝐔₃
+    to.𝐈₃ = 𝐈₃
+    to.𝐂∇₃ = 𝐂∇₃
+    to.𝐔∇₃ = 𝐔∇₃
+    to.∇₃_rowmask = sort!(unique(∇₃_col_indices))
+    to.𝐏 = 𝐏
+    to.𝐏𝐂₃ = 𝐏 * 𝐂₃
+    to.𝐏₁ₗ = 𝐏₁ₗ
+    to.𝐏₁ᵣ = 𝐏₁ᵣ
+    to.𝐏₁ₗ̂ = 𝐏₁ₗ̂
+    to.𝐏₂ₗ̂ = 𝐏₂ₗ̂
+    to.𝐏₁ₗ̄ = 𝐏₁ₗ̄
+    to.𝐏₂ₗ̄ = 𝐏₂ₗ̄
+    to.𝐏₁ᵣ̃ = 𝐏₁ᵣ̃
+    to.𝐏₂ᵣ̃ = 𝐏₂ᵣ̃
+    to.𝐒𝐏 = 𝐒𝐏
+    # Pre-transposed constants for rrule pullback (computed once)
+    to.𝐂₃ᵀ = sparse(𝐂₃')
+    to.𝐔₃ᵀ = sparse(𝐔₃')
+    to.𝐏𝐂₃ᵀ = sparse((to.𝐏𝐂₃)')
+    to.𝐏₁ₗᵀ = sparse(𝐏₁ₗ')
+    to.𝐏₁ᵣᵀ = sparse(𝐏₁ᵣ')
+    to.𝐏₁ₗ̄ᵀ = sparse(𝐏₁ₗ̄')
+    to.𝐏₂ₗ̄ᵀ = sparse(𝐏₂ₗ̄')
+    to.𝐏₁ᵣ̃ᵀ = sparse(𝐏₁ᵣ̃')
+    to.𝐏₂ᵣ̃ᵀ = sparse(𝐏₂ᵣ̃')
+    return to
+end
+
 function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
