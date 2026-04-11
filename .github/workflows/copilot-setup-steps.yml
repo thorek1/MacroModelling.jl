@@ -34,5 +34,5 @@ jobs:
           arch: x64
       - name: Set JULIA_NUM_THREADS
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1

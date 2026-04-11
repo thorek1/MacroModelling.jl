@@ -352,7 +352,7 @@ function get_dynamic_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing}
     
     # Parse filter term (uses user-friendly format with [-1], [0], etc.)
     sym, pattern = parse_filter_term(filter)
-    
+
     return [expr for expr in exprs if expr_contains(expr, sym, pattern)]
 end
 
