@@ -376,10 +376,6 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
                 )
 
-check_for_dynamic_variables(ex::Int) = false
-check_for_dynamic_variables(ex::Float64) = false
-check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
-
 # end # dispatch_doctor
 
 
@@ -394,25 +390,6 @@ end
 # ForwardDiffExt extends this for ForwardDiff.Dual numbers.
 primal(x::Real) = x
 
-
-function check_for_dynamic_variables(ex::Expr)
-    dynamic_indicator = Bool[]
-
-    postwalk(x -> 
-        x isa Expr ?
-            x.head == :ref ? 
-                occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                    x :
-                begin
-                    push!(dynamic_indicator,true)
-                    x
-                end :
-            x :
-        x,
-    ex)
-
-    any(dynamic_indicator)
-end
 
 function normalize_filtering_options(filter::Symbol,
                                       smooth::Bool,
@@ -483,74 +460,6 @@ end
 
 end # dispatch_doctor
 
-function transform_expression(expr::Expr)
-    # Dictionary to store the transformations for reversing
-    reverse_transformations = Dict{Symbol, Expr}()
-
-    # Counter for generating unique placeholders
-    unique_counter = Ref(0)
-
-    # Step 1: Replace min/max calls and record their original form
-    function replace_min_max(expr)
-        if expr isa Expr && expr.head == :call && (expr.args[1] == :min || expr.args[1] == :max)
-            # Replace min/max functions with a placeholder
-            # placeholder = Symbol("minimal__P", unique_counter[])
-            placeholder = :minmax__P
-            unique_counter[] += 1
-
-            # Store the original min/max call for reversal
-            reverse_transformations[placeholder] = expr
-
-            return placeholder
-        else
-            return expr
-        end
-    end
-
-    # Step 2: Transform :ref fields in the rest of the expression
-    function transform_ref_fields(expr)
-        if expr isa Expr && expr.head == :ref && isa(expr.args[1], Symbol)
-            # Handle :ref expressions
-            if isa(expr.args[2], Number) || isa(expr.args[2], Symbol)           
-                if expr.args[2] < 0
-                    new_symbol = Symbol(expr.args[1], "__", abs(expr.args[2]))
-                else
-                    new_symbol = Symbol(expr.args[1], "_", expr.args[2])
-                end
-            else
-                # Generate a unique placeholder for complex :ref
-                unique_counter[] += 1
-                placeholder = Symbol("__placeholder", unique_counter[])
-                new_symbol = placeholder
-            end
-
-            # Record the reverse transformation
-            reverse_transformations[new_symbol] = expr
-
-            return new_symbol
-        else
-            return expr
-        end
-    end
-
-
-    # Replace equality sign with minus
-    function replace_equality_with_minus(expr)
-        if expr isa Expr && expr.head == :(=)
-            return Expr(:call, :-, expr.args...)
-        else
-            return expr
-        end
-    end
-
-    # Apply transformations
-    expr = postwalk(replace_min_max, expr)
-    expr = postwalk(transform_ref_fields, expr)
-    transformed_expr = postwalk(replace_equality_with_minus, expr)
-    
-    return transformed_expr, reverse_transformations
-end
-
 function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
                                 shock_size::Real,
@@ -617,23 +526,6 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 end
 
 @stable default_mode = "disable" begin
-
-
-function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})
-    # Function to replace the transformed symbols with their original form
-    function revert_symbol(expr)
-        if expr isa Symbol && haskey(reverse_dict, expr)
-            return reverse_dict[expr]
-        else
-            return expr
-        end
-    end
-
-    # Revert the expression using postwalk
-    reverted_expr = postwalk(revert_symbol, transformed_expr)
-
-    return reverted_expr
-end
 
 
 function replace_with_one(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
@@ -835,6 +727,25 @@ end
 
 
 
+# Helper to convert dense matrix to sparse using I,J,V format (avoids Julia 1.12 SparseArrays bug)
+function dense_to_sparse(A::DenseMatrix{S}, tol::R) where {S <: Real, R <: AbstractFloat}
+    m, n = size(A)
+    I = Int[]
+    J = Int[]
+    V = S[]
+    @inbounds for j in 1:n
+        for i in 1:m
+            v = A[i,j]
+            if abs(v) > tol
+                push!(I, i)
+                push!(J, j)
+                push!(V, v)
+            end
+        end
+    end
+    return sparse(I, J, V, m, n)
+end
+
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
@@ -888,25 +799,6 @@ end
 #                         tol = tol)
 # end
 
-# Helper to convert dense matrix to sparse using I,J,V format (avoids Julia 1.12 SparseArrays bug)
-function dense_to_sparse(A::DenseMatrix{S}, tol::R) where {S <: Real, R <: AbstractFloat}
-    m, n = size(A)
-    I = Int[]
-    J = Int[]
-    V = S[]
-    @inbounds for j in 1:n
-        for i in 1:m
-            v = A[i,j]
-            if abs(v) > tol
-                push!(I, i)
-                push!(J, j)
-                push!(V, v)
-            end
-        end
-    end
-    return sparse(I, J, V, m, n)
-end
-
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
@@ -955,364 +847,6 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
     return a
 end
 
-function mat_mult_kron(A::AbstractSparseMatrix{R},
-                        B::AbstractMatrix{T},
-                        C::AbstractMatrix{T},
-                        D::AbstractMatrix{S};
-                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
-    n_rowB = size(B,1)
-    n_colB = size(B,2)
-
-    n_rowC = size(C,1)
-    n_colC = size(C,2)
-
-    estimated_nnz = 0
-    I = Vector{Int}()
-    J = Vector{Int}()
-    V = Vector{T}()
-    X = zeros(T, 0, 0)
-    reused_sparse_buffers = sparse && length(sparse_preallocation[1]) > 0
-
-    if sparse
-        nnzA = nnz(A)
-        nnzB = sum(abs.(B) .> eps())
-        nnzC = sum(abs.(C) .> eps())
-        nnzD = sum(abs.(D) .> eps())
-
-        p = Float64(nnzA) * Float64(nnzB) * Float64(nnzC) * Float64(nnzD) / (Float64(length(A)) * Float64(length(B)) * Float64(length(C)) * Float64(length(D)))
-
-        if length(sparse_preallocation[1]) == 0
-            estimated_nnz = Int(ceil((1 - (1 - p)^size(A,1)) * size(A,1) * size(D,2)))
-
-            resize!(sparse_preallocation[1], estimated_nnz)
-            resize!(sparse_preallocation[2], estimated_nnz)
-            resize!(sparse_preallocation[3], estimated_nnz)
-
-            I = sparse_preallocation[1]
-            J = sparse_preallocation[2]
-            V = sparse_preallocation[3]
-        else
-            estimated_nnz = length(sparse_preallocation[3])
-
-            resize!(sparse_preallocation[1], estimated_nnz)
-            resize!(sparse_preallocation[2], estimated_nnz)
-            resize!(sparse_preallocation[3], estimated_nnz)
-
-            I = sparse_preallocation[1]
-            J = sparse_preallocation[2]
-            V = sparse_preallocation[3]
-        end
-    else
-        X = zeros(T, size(A,1), size(D,2))
-    end
-
-    # vals = T[]
-    # rows = Int[]
-    # cols = Int[]
-
-    Ā = zeros(T, n_rowC, n_rowB)
-    ĀB = zeros(T, n_rowC, n_colB)
-    CĀB = zeros(T, n_colC, n_colB)
-    vCĀB = zeros(T, n_colB * n_colC)
-    vCĀBD = zeros(T, size(D,2))
-
-    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
-    rowmask = falses(size(A,1))
-    @inbounds for r in rv
-        rowmask[r] = true
-    end
-
-    α = .7
-    k = 0
-
-    @inbounds for row in eachindex(rowmask)
-        rowmask[row] || continue
-        @views copyto!(Ā, A[row, :])
-        ℒ.mul!(ĀB, Ā, B)
-        ℒ.mul!(CĀB, C', ĀB)
-        copyto!(vCĀB, CĀB)
-        ℒ.mul!(vCĀBD, D', vCĀB)
-
-        if sparse
-            for (i,v) in enumerate(vCĀBD)
-                if abs(v) > eps()
-                    k += 1
-
-                    if k > estimated_nnz
-                        increment = max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * size(A,1) * size(D,2))))
-                        estimated_nnz += min(size(A,1) * size(D,2), increment)
-
-                        resize!(I, estimated_nnz)
-                        resize!(J, estimated_nnz)
-                        resize!(V, estimated_nnz)
-                    end
-
-                    I[k] = row
-                    J[k] = i
-                    V[k] = v
-                end
-            end
-        else
-            @views copyto!(X[row,:], vCĀBD)
-        end
-    end
-
-    if sparse
-        resize!(I, k)
-        resize!(J, k)
-        resize!(V, k)
-
-        klasttouch = sparse_preallocation[4]
-        csrrowptr  = sparse_preallocation[5]
-        csrcolval  = sparse_preallocation[6]
-        csrnzval   = sparse_preallocation[7]
-
-        resize!(klasttouch, size(D,2))
-        resize!(csrrowptr, size(A, 1) + 1)
-        resize!(csrcolval, length(I))
-        resize!(csrnzval, length(I))
-
-        if length(I) >= size(D,2) + 1
-            out = sparse!(I, J, V, size(A, 1), size(D,2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-        else
-            out = SparseArrays.sparse(I, J, V, size(A, 1), size(D,2))
-        end
-        # if reused_sparse_buffers
-        #     out = copy(out)
-        # end
-    else
-        out = choose_matrix_format(X)
-    end
-
-    return out
-end
-
-
-
-
-function mat_mult_kron(A::DenseMatrix{R},
-                        B::AbstractMatrix{T},
-                        C::AbstractMatrix{T},
-                        D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
-    n_rowB = size(B,1)
-    n_colB = size(B,2)
-
-    n_rowC = size(C,1)
-    n_colC = size(C,2)
-
-    X = zeros(T, size(A,1), size(D,2))
-
-    # vals = T[]
-    # rows = Int[]
-    # cols = Int[]
-
-    Ā = zeros(T, n_rowC, n_rowB)
-    ĀB = zeros(T, n_rowC, n_colB)
-    CĀB = zeros(T, n_colC, n_colB)
-    vCĀB = zeros(T, n_colB * n_colC)
-    # vCĀBD = zeros(size(D,2))
-
-    # rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
-
-    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    r = 1
-    @inbounds for row in eachrow(A)
-        @views copyto!(Ā, row)
-        ℒ.mul!(ĀB, Ā, B)
-        ℒ.mul!(CĀB, C', ĀB)
-        copyto!(vCĀB, CĀB)
-        @views ℒ.mul!(X[row,:], D', vCĀB)
-        r += 1
-    end
-
-    return choose_matrix_format(X)
-    #     ℒ.mul!(vCĀBD, D', vCĀB)
-
-    #     for (i,v) in enumerate(vCĀBD)
-    #         if abs(v) > eps()
-    #             push!(rows, row)
-    #             push!(cols, i)
-    #             push!(vals, v)
-    #         end
-    #     end
-    # end
-
-    # if VERSION >= v"1.10"
-    #     return sparse!(rows, cols, vals, size(A,1), size(D,2))   
-    # else
-    #     return sparse(rows, cols, vals, size(A,1), size(D,2))   
-    # end
-end
-
-function mat_mult_kron(A::AbstractSparseMatrix{R},
-                        B::AbstractMatrix{T},
-                        C::AbstractMatrix{T};
-                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        sparse::Bool = false) where {R <: Real, T <: Real}
-    n_rowB = size(B,1)
-    n_colB = size(B,2)
-
-    n_rowC = size(C,1)
-    n_colC = size(C,2)
-
-    estimated_nnz = 0
-    I = Vector{Int}()
-    J = Vector{Int}()
-    V = Vector{T}()
-    X = zeros(T, 0, 0)
-    reused_sparse_buffers = sparse && length(sparse_preallocation[1]) > 0
-
-    if sparse
-        nnzA = nnz(A)
-        nnzB = sum(abs.(B) .> eps())
-        nnzC = sum(abs.(C) .> eps())
-
-        p = nnzA * nnzB * nnzC / (length(A) * length(B) * length(C))
-        
-        if length(sparse_preallocation[1]) == 0
-            estimated_nnz = Int(ceil((1-(1-p)^size(A,1))*size(A,1) * n_colB * n_colC))
-
-            resize!(sparse_preallocation[1], estimated_nnz)
-            resize!(sparse_preallocation[2], estimated_nnz)
-            resize!(sparse_preallocation[3], estimated_nnz)
-
-            I = sparse_preallocation[1]
-            J = sparse_preallocation[2]
-            V = sparse_preallocation[3]
-        else
-            estimated_nnz = length(sparse_preallocation[3])
-
-            resize!(sparse_preallocation[1], estimated_nnz)
-            resize!(sparse_preallocation[2], estimated_nnz)
-            resize!(sparse_preallocation[3], estimated_nnz)
-
-            I = sparse_preallocation[1]
-            J = sparse_preallocation[2]
-            V = sparse_preallocation[3]
-        end
-    else
-        X = zeros(T, size(A,1), n_colB * n_colC)
-    end
-
-    Ā = zeros(T, n_rowC, n_rowB)
-    ĀB = zeros(T, n_rowC, n_colB)
-    CĀB = zeros(T, n_colC, n_colB)
-
-    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
-
-    α = .7 # speed of Vector increase
-    k = 0
-
-    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    @inbounds for row in rv |> unique
-        @views copyto!(Ā, A[row, :])
-        ℒ.mul!(ĀB, Ā, B)
-        ℒ.mul!(CĀB, C', ĀB)
-        
-        if sparse
-            for (i,v) in enumerate(CĀB)
-                if abs(v) > eps()
-                    k += 1
-
-                    if k > estimated_nnz
-                        estimated_nnz += min(size(A,1) * n_colB * n_colC, max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * size(A,1) * n_colB * n_colC))))
-                        
-                        resize!(I, estimated_nnz)
-                        resize!(J, estimated_nnz)
-                        resize!(V, estimated_nnz)
-                    end
-
-                    I[k] = row
-                    J[k] = i
-                    V[k] = v
-                end
-            end
-        else
-            @views copyto!(X[row,:], CĀB)
-        end
-    end
-
-    if sparse
-        resize!(I, k)
-        resize!(J, k)
-        resize!(V, k)
-
-        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
-        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
-        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
-        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
-
-        resize!(klasttouch, n_colB * n_colC)
-        resize!(csrrowptr, size(A, 1) + 1)
-        resize!(csrcolval, length(I))
-        resize!(csrnzval, length(I))
-
-        if length(I) >= n_colB * n_colC + 1
-            out = sparse!(I, J, V, size(A, 1), n_colB * n_colC, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-        else
-            out = SparseArrays.sparse(I, J, V, size(A, 1), n_colB * n_colC)
-        end
-        # if reused_sparse_buffers
-        #     out = copy(out)
-        # end
-        # out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
-    else
-        out = choose_matrix_format(X)
-    end
-    
-    return out
-end
-
-
-
-
-function mat_mult_kron(A::DenseMatrix{R},
-                        B::AbstractMatrix{T},
-                        C::AbstractMatrix{T}) where {R <: Real, T <: Real}
-    n_rowB = size(B,1)
-    n_colB = size(B,2)
-
-    n_rowC = size(C,1)
-    n_colC = size(C,2)
-
-    X = zeros(T, size(A,1), n_colB * n_colC)
-
-    # vals = T[]
-    # rows = Int[]
-    # cols = Int[]
-
-    Ā = zeros(T, n_rowC, n_rowB)
-    ĀB = zeros(T, n_rowC, n_colB)
-    CĀB = zeros(T, n_colC, n_colB)
-
-    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    r = 1
-    @inbounds for row in eachrow(A)
-        @views copyto!(Ā, row)
-        ℒ.mul!(ĀB, Ā, B)
-        ℒ.mul!(CĀB, C', ĀB)
-        
-        @views copyto!(X[r,:], CĀB)
-        r += 1
-    end
-
-    return choose_matrix_format(X)
-    #     for (i,v) in enumerate(CĀB)
-    #         if abs(v) > eps()
-    #             push!(rows, row)
-    #             push!(cols, i)
-    #             push!(vals, v)
-    #         end
-    #     end
-    # end
-
-    # if VERSION >= v"1.10"
-    #     return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    # else
-    #     return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    # end
-end
 
 function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
@@ -1368,467 +902,10 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H}
 end
 
 
-# Loop-based compressed permuted mixed Kronecker product.
-# Computes  U₃ * (kron(A,σ) + P₁ₗ̄*kron(A,σ)*P₁ᵣ̃ + P₂ₗ̄*kron(A,σ)*P₂ᵣ̃) * C₃
-# directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
-#
-# A is nr×nc (may be rectangular),  σ is nr²×nc².
-# Output is mr₃×mc₃ sparse where mr₃ = nr(nr+1)(nr+2)/6, mc₃ = nc(nc+1)(nc+2)/6.
-#
-# The uncompressed entry at row (i,j,k) col (a,b,c) of the sum is:
-#   A[i,a]*σ[(j-1)*nr+k,(b-1)*nc+c]                   (identity)
-# + A[j,b]*σ[(i-1)*nr+k,(a-1)*nc+c]                   (P₁: swap i↔j rows, a↔b cols)
-# + A[j,b]*σ[(k-1)*nr+i,(c-1)*nc+a]                   (P₂: cycle (i,j,k)→(j,k,i), (a,b,c)→(b,c,a))
-#
-# Compression: U₃ sums over all row permutations that sort to (i₁≥j₁≥k₁);
-#              C₃ selects the sorted column representative (α≥β≥γ).
-function compressed_permuted_mixed_kron(A::AbstractMatrix{T}, σ::AbstractMatrix;
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
 
-    nr = size(A, 1)
-    nc = size(A, 2)
-    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
 
-    # Sparse copies for support-aware iteration.
-    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
-    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
-
-    rv_A = SparseArrays.rowvals(As)
-    nzv_A = nonzeros(As)
-    rv_σ = SparseArrays.rowvals(σs)
-    nzv_σ = nonzeros(σs)
-
-    ranges_A = Vector{UnitRange{Int}}(undef, nc)
-    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
-    @inbounds for col in 1:nc
-        ranges_A[col] = SparseArrays.nzrange(As, col)
-    end
-    @inbounds for col in 1:(nc^2)
-        ranges_σ[col] = SparseArrays.nzrange(σs, col)
-    end
-
-    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
-    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
-
-    # --- sparse buffer management (same pattern as compressed_kron³) ---
-    if length(sparse_preallocation[1]) == 0
-        estimated_nnz = max(min(mr₃, mc₃), 10000)
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    end
-
-    II = sparse_preallocation[1]
-    JJ = sparse_preallocation[2]
-    VV = sparse_preallocation[3]
-
-    cnt = 0   # non-zero counter
-
-    # Iterate sorted output columns first (α ≥ β ≥ γ). For each column triple,
-    # only traverse non-zero supports from the relevant A and σ columns.
-    for α in 1:nc
-        rng_Aα = ranges_A[α]
-        for β in 1:α
-            rng_Aβ = ranges_A[β]
-            for γ in 1:β
-                rng_Aγ = ranges_A[γ]
-
-                σ_col_βγ = (β - 1) * nc + γ
-                σ_col_αγ = (α - 1) * nc + γ
-                σ_col_αβ = (α - 1) * nc + β
-
-                rng_σβγ = ranges_σ[σ_col_βγ]
-                rng_σαγ = ranges_σ[σ_col_αγ]
-                rng_σαβ = ranges_σ[σ_col_αβ]
-
-                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
-                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
-                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
-
-                (has_t1 || has_t2 || has_t3) || continue
-
-                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
-
-                # term 1: A[p, α] * σ[(q, r), (β, γ)]
-                if has_t1
-                    @inbounds for ia in rng_Aα
-                        p = rv_A[ia]
-                        a_val = nzv_A[ia]
-
-                        for is in rng_σβγ
-                            qr = rv_σ[is]
-                            q = (qr - 1) ÷ nr + 1
-                            r = qr - (q - 1) * nr
-
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-
-                            i1 = p
-                            j1 = q
-                            k1 = r
-
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-                            if j1 < k1
-                                j1, k1 = k1, j1
-                            end
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-
-                            cnt += 1
-                            if cnt > estimated_nnz
-                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
-                                resize!(II, estimated_nnz)
-                                resize!(JJ, estimated_nnz)
-                                resize!(VV, estimated_nnz)
-                            end
-
-                            II[cnt] = row
-                            JJ[cnt] = col
-                            VV[cnt] = val
-                        end
-                    end
-                end
-
-                # term 2: A[q, β] * σ[(p, r), (α, γ)]
-                if has_t2
-                    @inbounds for ia in rng_Aβ
-                        q = rv_A[ia]
-                        a_val = nzv_A[ia]
-
-                        for is in rng_σαγ
-                            pr = rv_σ[is]
-                            p = (pr - 1) ÷ nr + 1
-                            r = pr - (p - 1) * nr
-
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-
-                            i1 = p
-                            j1 = q
-                            k1 = r
-
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-                            if j1 < k1
-                                j1, k1 = k1, j1
-                            end
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-
-                            cnt += 1
-                            if cnt > estimated_nnz
-                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
-                                resize!(II, estimated_nnz)
-                                resize!(JJ, estimated_nnz)
-                                resize!(VV, estimated_nnz)
-                            end
-
-                            II[cnt] = row
-                            JJ[cnt] = col
-                            VV[cnt] = val
-                        end
-                    end
-                end
-
-                # term 3: A[r, γ] * σ[(p, q), (α, β)]
-                if has_t3
-                    @inbounds for ia in rng_Aγ
-                        r = rv_A[ia]
-                        a_val = nzv_A[ia]
-
-                        for is in rng_σαβ
-                            pq = rv_σ[is]
-                            p = (pq - 1) ÷ nr + 1
-                            q = pq - (p - 1) * nr
-
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-
-                            i1 = p
-                            j1 = q
-                            k1 = r
-
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-                            if j1 < k1
-                                j1, k1 = k1, j1
-                            end
-                            if i1 < j1
-                                i1, j1 = j1, i1
-                            end
-
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-
-                            cnt += 1
-                            if cnt > estimated_nnz
-                                estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                                estimated_nnz = min(mr₃ * mc₃, estimated_nnz)
-                                resize!(II, estimated_nnz)
-                                resize!(JJ, estimated_nnz)
-                                resize!(VV, estimated_nnz)
-                            end
-
-                            II[cnt] = row
-                            JJ[cnt] = col
-                            VV[cnt] = val
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    resize!(II, cnt)
-    resize!(JJ, cnt)
-    resize!(VV, cnt)
-
-    # Assemble sparse matrix using preallocated CSR workspace
-    klasttouch = sparse_preallocation[4]
-    csrrowptr  = sparse_preallocation[5]
-    csrcolval  = sparse_preallocation[6]
-    csrnzval   = sparse_preallocation[7]
-
-    resize!(klasttouch, mc₃)
-    resize!(csrrowptr, mr₃ + 1)
-    resize!(csrcolval, length(II))
-    resize!(csrnzval, length(II))
-
-    out = if length(II) >= mc₃ + 1
-        sparse!(II, JJ, VV, mr₃, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
-    else
-        SparseArrays.sparse(II, JJ, VV, mr₃, mc₃)
-    end
-
-    if tol > 0
-        droptol!(out, tol)
-    end
-
-    return out
-end
-
-# Fused  M * compressed_permuted_mixed_kron(A, σ)
-# Computes the product without materializing the large mr₃×mc₃ intermediate.
-# M is m × mr₃ sparse, A is nr × nc, σ is nr² × nc².  Output: m × mc₃ sparse.
-function mul_compressed_permuted_mixed_kron(M::SparseMatrixCSC, A::AbstractMatrix{T}, σ::AbstractMatrix;
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
-
-    nr = size(A, 1)
-    nc = size(A, 2)
-    m  = size(M, 1)
-    mr₃ = nr * (nr + 1) * (nr + 2) ÷ 6
-    mc₃ = nc * (nc + 1) * (nc + 2) ÷ 6
-
-    size(σ) == (nr^2, nc^2) || throw(DimensionMismatch("σ must be $(nr^2)×$(nc^2), got $(size(σ))"))
-    size(M, 2) == mr₃ || throw(DimensionMismatch("M must have $mr₃ columns, got $(size(M, 2))"))
-
-    # Sparse copies for support-aware iteration
-    As = A isa SparseMatrixCSC{T, Int} ? A : sparse(T.(A))
-    σs = σ isa SparseMatrixCSC{T, Int} ? σ : sparse(T.(σ))
-
-    rv_A = SparseArrays.rowvals(As)
-    nzv_A = nonzeros(As)
-    rv_σ = SparseArrays.rowvals(σs)
-    nzv_σ = nonzeros(σs)
-    rv_M = SparseArrays.rowvals(M)
-    nzv_M = nonzeros(M)
-
-    ranges_A = Vector{UnitRange{Int}}(undef, nc)
-    ranges_σ = Vector{UnitRange{Int}}(undef, nc^2)
-    @inbounds for col in 1:nc
-        ranges_A[col] = SparseArrays.nzrange(As, col)
-    end
-    @inbounds for col in 1:(nc^2)
-        ranges_σ[col] = SparseArrays.nzrange(σs, col)
-    end
-
-    # Small result buffer (size m, not mr₃)
-    result_col = zeros(T, m)
-
-    # --- sparse IJV buffer management ---
-    if length(sparse_preallocation[1]) == 0
-        estimated_nnz = max(min(m * mc₃ ÷ 4, m * mc₃), 10000)
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    end
-
-    II = sparse_preallocation[1]
-    JJ = sparse_preallocation[2]
-    VV = sparse_preallocation[3]
-    cnt = 0
-
-    for α in 1:nc
-        rng_Aα = ranges_A[α]
-        for β in 1:α
-            rng_Aβ = ranges_A[β]
-            for γ in 1:β
-                rng_Aγ = ranges_A[γ]
-
-                σ_col_βγ = (β - 1) * nc + γ
-                σ_col_αγ = (α - 1) * nc + γ
-                σ_col_αβ = (α - 1) * nc + β
-
-                rng_σβγ = ranges_σ[σ_col_βγ]
-                rng_σαγ = ranges_σ[σ_col_αγ]
-                rng_σαβ = ranges_σ[σ_col_αβ]
-
-                has_t1 = !isempty(rng_Aα) && !isempty(rng_σβγ)
-                has_t2 = !isempty(rng_Aβ) && !isempty(rng_σαγ)
-                has_t3 = !isempty(rng_Aγ) && !isempty(rng_σαβ)
-
-                (has_t1 || has_t2 || has_t3) || continue
-
-                col = (α - 1) * α * (α + 1) ÷ 6 + (β - 1) * β ÷ 2 + γ
-
-                fill!(result_col, zero(T))
-
-                # term 1: A[p, α] * σ[(q,r), (β,γ)] — scatter through M
-                if has_t1
-                    @inbounds for ia in rng_Aα
-                        p = rv_A[ia]
-                        a_val = nzv_A[ia]
-                        for is in rng_σβγ
-                            qr = rv_σ[is]
-                            q = (qr - 1) ÷ nr + 1
-                            r = qr - (q - 1) * nr
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-                            i1 = p; j1 = q; k1 = r
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            if j1 < k1; j1, k1 = k1, j1; end
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                            rng_M = SparseArrays.nzrange(M, row)
-                            for p_M in rng_M
-                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
-                            end
-                        end
-                    end
-                end
-
-                # term 2: A[q, β] * σ[(p,r), (α,γ)] — scatter through M
-                if has_t2
-                    @inbounds for ia in rng_Aβ
-                        q = rv_A[ia]
-                        a_val = nzv_A[ia]
-                        for is in rng_σαγ
-                            pr = rv_σ[is]
-                            p = (pr - 1) ÷ nr + 1
-                            r = pr - (p - 1) * nr
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-                            i1 = p; j1 = q; k1 = r
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            if j1 < k1; j1, k1 = k1, j1; end
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                            rng_M = SparseArrays.nzrange(M, row)
-                            for p_M in rng_M
-                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
-                            end
-                        end
-                    end
-                end
-
-                # term 3: A[r, γ] * σ[(p,q), (α,β)] — scatter through M
-                if has_t3
-                    @inbounds for ia in rng_Aγ
-                        r = rv_A[ia]
-                        a_val = nzv_A[ia]
-                        for is in rng_σαβ
-                            pq = rv_σ[is]
-                            p = (pq - 1) ÷ nr + 1
-                            q = pq - (p - 1) * nr
-                            val = a_val * nzv_σ[is]
-                            abs(val) > tol || continue
-                            i1 = p; j1 = q; k1 = r
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            if j1 < k1; j1, k1 = k1, j1; end
-                            if i1 < j1; i1, j1 = j1, i1; end
-                            row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                            rng_M = SparseArrays.nzrange(M, row)
-                            for p_M in rng_M
-                                result_col[rv_M[p_M]] += nzv_M[p_M] * val
-                            end
-                        end
-                    end
-                end
-
-                # Extract nonzeros into IJV
-                @inbounds for i in 1:m
-                    v = result_col[i]
-                    if abs(v) > tol
-                        cnt += 1
-                        if cnt > estimated_nnz
-                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * 0.1)))
-                            estimated_nnz = min(m * mc₃, estimated_nnz)
-                            resize!(II, estimated_nnz)
-                            resize!(JJ, estimated_nnz)
-                            resize!(VV, estimated_nnz)
-                        end
-                        II[cnt] = i
-                        JJ[cnt] = col
-                        VV[cnt] = v
-                    end
-                end
-            end
-        end
-    end
-
-    resize!(II, cnt)
-    resize!(JJ, cnt)
-    resize!(VV, cnt)
-
-    # Sparse assembly
-    klasttouch = sparse_preallocation[4]
-    csrrowptr  = sparse_preallocation[5]
-    csrcolval  = sparse_preallocation[6]
-    csrnzval   = sparse_preallocation[7]
-
-    resize!(klasttouch, mc₃)
-    resize!(csrrowptr, m + 1)
-    resize!(csrcolval, length(II))
-    resize!(csrnzval, length(II))
-
-    out = if length(II) >= mc₃ + 1
-        sparse!(II, JJ, VV, m, mc₃, +, klasttouch, csrrowptr, csrcolval, csrnzval, II, JJ, VV)
-    else
-        SparseArrays.sparse(II, JJ, VV, m, mc₃)
-    end
-
-    if tol > 0
-        droptol!(out, tol)
-    end
-
-    return out
-end
-
+# Dead code: compressed_kron (2-arg) — never called anywhere; rrule also dead
+#=
 # 2-arg overload: compressed_kron(A, σ)
 # Computes  𝐔∇₃ * kron(A, σ) * 𝐂₃
 # directly in compressed (sorted-triple) space without forming any n³×n³ intermediates.
@@ -1983,602 +1060,11 @@ function compressed_kron(A::AbstractMatrix{TA},
 
     return out
 end
+=#
 
 
-function compressed_kron³(a::AbstractMatrix{T};
-                    rowmask::Vector{Int} = Int[],
-                    colmask::Vector{Int} = Int[],
-                    # timer::TimerOutput = TimerOutput(),
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
-    # @timeit_debug timer "Compressed 3rd kronecker power" begin
-          
-    # @timeit_debug timer "Preallocation" begin
-    
-    a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
-    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
-    
-    if a_is_adjoint
-        â = copy(a')
-        a = sparse(a')
-        
-        rmask = colmask
-        colmask = rowmask
-        rowmask = rmask
-    elseif typeof(a) <: DenseMatrix{T}
-        â = copy(a)
-        a = sparse(a)
-    else
-        â = convert(Matrix, a)  # Convert to dense matrix for faster access
-    end
-    # Get the number of rows and columns
-    n_rows, n_cols = size(a)
-    
-    # Calculate the number of unique triplet indices for rows and columns
-    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
-    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
-    if rowmask == Int[0] || colmask == Int[0]
-        if a_is_adjoint
-            return spzeros(T, m3_cols, m3_rows)
-        else
-            return spzeros(T, m3_rows, m3_cols)
-        end
-    end
-    # Initialize arrays to collect indices and values
-    # Estimate an upper bound for non-zero entries to preallocate arrays
-    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
-    m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
-    m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
-
-    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
-
-    if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    end
-
-    # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
-    # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
-
-    k = 0
-
-    # end # timeit_debug
-
-    # @timeit_debug timer "findnz" begin
-                
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
-       
-    # end # timeit_debug
-
-    # @timeit_debug timer "Loop" begin
-    # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
-    # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
-    # Polyester.@batch minbatch = 10 for i1 in ui
-    # Threads.@threads for i1 in ui
-    norowmask = length(rowmask) == 0
-    nocolmask = length(colmask) == 0
-    rowmask_lookup = norowmask ? BitVector() : falses(m3_rows)
-    colmask_lookup = nocolmask ? BitVector() : falses(m3_cols)
-
-    if !norowmask && rowmask != Int[0]
-        @inbounds for r in rowmask
-            if 1 <= r <= m3_rows
-                rowmask_lookup[r] = true
-            end
-        end
-    end
-    if !nocolmask && colmask != Int[0]
-        @inbounds for c in colmask
-            if 1 <= c <= m3_cols
-                colmask_lookup[c] = true
-            end
-        end
-    end
-
-    for i1 in ui
-        for j1 in ui
-            if j1 ≤ i1
-                for k1 in ui
-                    if k1 ≤ j1
-
-                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
-
-                        if norowmask || rowmask_lookup[row]
-                            for i2 in uj
-                                for j2 in uj
-                                    if j2 ≤ i2
-                                        for k2 in uj
-                                            if k2 ≤ j2
-
-                                                col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
-
-                                                if nocolmask || colmask_lookup[col]
-                                                    # @timeit_debug timer "Multiplication" begin
-                                                    @inbounds aii = â[i1, i2]
-                                                    @inbounds aij = â[i1, j2]
-                                                    @inbounds aik = â[i1, k2]
-                                                    @inbounds aji = â[j1, i2]
-                                                    @inbounds ajj = â[j1, j2]
-                                                    @inbounds ajk = â[j1, k2]
-                                                    @inbounds aki = â[k1, i2]
-                                                    @inbounds akj = â[k1, j2]
-                                                    @inbounds akk = â[k1, k2]
-
-                                                    # Compute the six unique products
-                                                    # val = 0.0
-                                                    # val += aii * ajj * akk
-                                                    # val += aij * aji * akk
-                                                    # val += aik * ajj * aki
-                                                    # val += aij * ajk * aki
-                                                    # val += aik * aji * akj
-                                                    # val += aii * ajk * akj
-
-                                                    val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
-                                                    # end # timeit_debug
-
-                                                    # @timeit_debug timer "Save in vector" begin
-                                                        
-                                                    # Only add non-zero values to the sparse matrix
-                                                    if abs(val) > tol
-                                                        # Threads.atomic_add!(k, 1)
-                                                        # Threads.atomic_max!(k̄, k[])
-
-                                                        if i1 == j1
-                                                            if i1 == k1
-                                                                divisor = 6
-                                                            else
-                                                                divisor = 2
-                                                            end
-                                                        else
-                                                            if i1 ≠ k1 && j1 ≠ k1
-                                                                divisor = 1
-                                                            else
-                                                                divisor = 2
-                                                            end
-                                                        end
-                                                        # push!(threadlocal[1],row)
-                                                        # push!(threadlocal[2],col)
-                                                        # push!(threadlocal[3],val / divisor)
-                                                        # I[k[]] = row
-                                                        # J[k[]] = col
-                                                        # V[k[]] = val / divisor 
-
-                                                        k += 1
-
-                                                        if k > estimated_nnz
-                                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
-                                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
-                                                            resize!(I, estimated_nnz)
-                                                            resize!(J, estimated_nnz)
-                                                            resize!(V, estimated_nnz)
-                                                        end
-
-                                                        I[k] = row
-                                                        J[k] = col
-                                                        V[k] = val / divisor 
-                                                    end
-
-                                                    # end # timeit_debug
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    # end # timeit_debug
-
-    # @timeit_debug timer "Resize" begin
-
-    # out = map(fetch, threadlocal)
-
-    # I = mapreduce(v -> v[1], vcat, out)
-    # J = mapreduce(v -> v[2], vcat, out)
-    # V = mapreduce(v -> v[3], vcat, out)
-
-    # # Resize the index and value arrays to the actual number of entries
-    # resize!(I, k̄[])
-    # resize!(J, k̄[])
-    # resize!(V, k̄[]) 
-    resize!(I, k)
-    resize!(J, k)
-    resize!(V, k)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # Create the sparse matrix from the collected indices and values
-    if a_is_adjoint
-        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
-        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
-        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
-        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
-
-        resize!(klasttouch, m3_rows)
-        resize!(csrrowptr, m3_cols + 1)
-        resize!(csrcolval, length(J))
-        resize!(csrnzval, length(J))
-
-        out = sparse!(J, I, V, m3_cols, m3_rows, +, klasttouch, csrrowptr, csrcolval, csrnzval, J, I, V)
-        # out = sparse!(J, I, V, m3_cols, m3_rows)
-    else
-        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
-        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
-        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
-        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
-
-        resize!(klasttouch, m3_cols)
-        resize!(csrrowptr, m3_rows + 1)
-        resize!(csrcolval, length(I))
-        resize!(csrnzval, length(I))
-
-        out = sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-        # out = sparse!(I, J, V, m3_rows, m3_cols)
-    end
-
-    # if reused_sparse_buffers
-    #     out = copy(out)
-    # end
-
-    return out
-end
-
-# Fused  M * compressed_kron³(a)
-# Computes the product without materializing the large mr₃×mc₃ intermediate.
-# M is m × mr₃ sparse, a is n_rows × n_cols.  Output: m × mc₃ sparse.
-# Row-outer / col-inner with sorted bounded ranges + direct IJV scatter.
-# nzrange(M, row) checked once per row triple — skips ALL col iterations.
-# Duplicate (I,J) entries resolved by sparse!(+).
-function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
-
-    if typeof(a) <: DenseMatrix{T}
-        â = a
-        a_sp = sparse(a)
-    else
-        â = convert(Matrix, a)
-        a_sp = a isa SparseMatrixCSC ? a : sparse(a)
-    end
-
-    n_rows, n_cols = size(a_sp)
-    m = size(M, 1)
-    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
-    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
-
-    size(M, 2) == m3_rows || throw(DimensionMismatch("M must have $m3_rows columns, got $(size(M, 2))"))
-
-    rv_M = SparseArrays.rowvals(M)
-    nzv_M = nonzeros(M)
-
-    # Find unique non-zero row and column indices (sorted for bounded iteration)
-    rowinds, colinds, _ = findnz(a_sp)
-    ui = sort!(unique(rowinds))
-    uj = sort!(unique(colinds))
-    n_ui = length(ui)
-    n_uj = length(uj)
-
-    # --- sparse IJV buffer management ---
-    if length(sparse_preallocation[1]) == 0
-        lennz = nnz(a_sp)
-        estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(a)) ^ 4, 10000))
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-    end
-
-    I = sparse_preallocation[1]
-    J = sparse_preallocation[2]
-    V = sparse_preallocation[3]
-    k = 0
-
-    # Row-outer loop: row triples (i1 ≥ j1 ≥ k1) with bounded index ranges
-    for idx_i1 in 1:n_ui
-        @inbounds i1 = ui[idx_i1]
-        for idx_j1 in 1:idx_i1                 # j1 ≤ i1 by construction
-            @inbounds j1 = ui[idx_j1]
-            for idx_k1 in 1:idx_j1             # k1 ≤ j1 by construction
-                @inbounds k1 = ui[idx_k1]
-
-                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-
-                # nzrange checked ONCE per row triple — skips ALL col iterations
-                rng_M = SparseArrays.nzrange(M, row)
-                isempty(rng_M) && continue
-
-                # Divisor depends only on row triple
-                if i1 == j1
-                    divisor = i1 == k1 ? 6 : 2
-                else
-                    divisor = (i1 ≠ k1 && j1 ≠ k1) ? 1 : 2
-                end
-
-                # Col-inner loop: column triples (i2 ≥ j2 ≥ k2) with bounded ranges
-                for idx_i2 in 1:n_uj
-                    @inbounds i2 = uj[idx_i2]
-                    for idx_j2 in 1:idx_i2     # j2 ≤ i2 by construction
-                        @inbounds j2 = uj[idx_j2]
-                        for idx_k2 in 1:idx_j2 # k2 ≤ j2 by construction
-                            @inbounds k2 = uj[idx_k2]
-
-                            @inbounds aii = â[i1, i2]
-                            @inbounds aij = â[i1, j2]
-                            @inbounds aik = â[i1, k2]
-                            @inbounds aji = â[j1, i2]
-                            @inbounds ajj = â[j1, j2]
-                            @inbounds ajk = â[j1, k2]
-                            @inbounds aki = â[k1, i2]
-                            @inbounds akj = â[k1, j2]
-                            @inbounds akk = â[k1, k2]
-
-                            val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
-
-                            if abs(val) > tol
-                                scaled_val = val / divisor
-                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
-
-                                # Direct IJV scatter through M[:, row]
-                                for p_M in rng_M
-                                    k += 1
-                                    if k > estimated_nnz
-                                        estimated_nnz = k + max(1000, k ÷ 10)
-                                        resize!(I, estimated_nnz)
-                                        resize!(J, estimated_nnz)
-                                        resize!(V, estimated_nnz)
-                                    end
-                                    I[k] = @inbounds rv_M[p_M]
-                                    J[k] = col
-                                    V[k] = @inbounds(nzv_M[p_M]) * scaled_val
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    resize!(I, k)
-    resize!(J, k)
-    resize!(V, k)
-
-    # Sparse assembly — sparse!(+) resolves duplicate (I,J) entries
-    klasttouch = sparse_preallocation[4]
-    csrrowptr  = sparse_preallocation[5]
-    csrcolval  = sparse_preallocation[6]
-    csrnzval   = sparse_preallocation[7]
-
-    resize!(klasttouch, m3_cols)
-    resize!(csrrowptr, m + 1)
-    resize!(csrcolval, length(I))
-    resize!(csrnzval, length(I))
-
-    out = if length(I) >= m3_cols + 1
-        sparse!(I, J, V, m, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-    else
-        SparseArrays.sparse(I, J, V, m, m3_cols)
-    end
-
-    if tol > 0
-        droptol!(out, tol)
-    end
-
-    return out
-end
-
-function compressed_kron²(a::AbstractMatrix{T};
-                    rowmask::Vector{Int} = Int[],
-                    colmask::Vector{Int} = Int[],
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
-
-    a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
-    reused_sparse_buffers = length(sparse_preallocation[1]) > 0
-
-    if a_is_adjoint
-        â = copy(a')
-        a = sparse(a')
-
-        rmask = colmask
-        colmask = rowmask
-        rowmask = rmask
-    elseif typeof(a) <: DenseMatrix{T}
-        â = copy(a)
-        a = sparse(a)
-    else
-        â = convert(Matrix, a)  # Convert to dense matrix for faster access
-    end
-
-    # Get the number of rows and columns
-    n_rows, n_cols = size(a)
-
-    # Calculate the number of unique pair indices for rows and columns
-    m2_rows = n_rows * (n_rows + 1) ÷ 2    # For rows: i ≤ j
-    m2_cols = n_cols * (n_cols + 1) ÷ 2    # For columns: i ≤ j
-
-    if rowmask == Int[0] || colmask == Int[0]
-        if a_is_adjoint
-            return spzeros(T, m2_cols, m2_rows)
-        else
-            return spzeros(T, m2_rows, m2_cols)
-        end
-    end
-
-    # Initialize arrays to collect indices and values
-    lennz = nnz(a)
-
-    m2_c = length(colmask) > 0 ? length(colmask) : m2_cols
-    m2_r = length(rowmask) > 0 ? length(rowmask) : m2_rows
-
-    m2_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2 : 3
-
-    if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m2_r * m2_c * (lennz / length(a)) ^ m2_exp, 10000))
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    end
-
-    k = 0
-
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
-
-    norowmask = length(rowmask) == 0
-    nocolmask = length(colmask) == 0
-    rowmask_lookup = norowmask ? BitVector() : falses(m2_rows)
-    colmask_lookup = nocolmask ? BitVector() : falses(m2_cols)
-
-    if !norowmask && rowmask != Int[0]
-        @inbounds for r in rowmask
-            if 1 <= r <= m2_rows
-                rowmask_lookup[r] = true
-            end
-        end
-    end
-    if !nocolmask && colmask != Int[0]
-        @inbounds for c in colmask
-            if 1 <= c <= m2_cols
-                colmask_lookup[c] = true
-            end
-        end
-    end
-
-    for i1 in ui
-        for j1 in ui
-            if j1 ≤ i1
-
-                row = (i1 - 1) * i1 ÷ 2 + j1
-
-                if norowmask || rowmask_lookup[row]
-                    for i2 in uj
-                        for j2 in uj
-                            if j2 ≤ i2
-
-                                col = (i2 - 1) * i2 ÷ 2 + j2
-
-                                if nocolmask || colmask_lookup[col]
-                                    @inbounds aii = â[i1, i2]
-                                    @inbounds aij = â[i1, j2]
-                                    @inbounds aji = â[j1, i2]
-                                    @inbounds ajj = â[j1, j2]
-
-                                    # Sum over both permutations of (i2, j2)
-                                    val = aii * ajj + aij * aji
-
-                                    if abs(val) > tol
-                                        divisor = i1 == j1 ? 2 : 1
-
-                                        k += 1
-
-                                        if k > estimated_nnz
-                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
-                                            estimated_nnz = min(m2_cols * m2_rows, estimated_nnz)
-                                            resize!(I, estimated_nnz)
-                                            resize!(J, estimated_nnz)
-                                            resize!(V, estimated_nnz)
-                                        end
-
-                                        I[k] = row
-                                        J[k] = col
-                                        V[k] = val / divisor
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    resize!(I, k)
-    resize!(J, k)
-    resize!(V, k)
-
-    # Create the sparse matrix from the collected indices and values
-    if a_is_adjoint
-        klasttouch = sparse_preallocation[4]
-        csrrowptr  = sparse_preallocation[5]
-        csrcolval  = sparse_preallocation[6]
-        csrnzval   = sparse_preallocation[7]
-
-        resize!(klasttouch, m2_rows)
-        resize!(csrrowptr, m2_cols + 1)
-        resize!(csrcolval, length(J))
-        resize!(csrnzval, length(J))
-
-        out = sparse!(J, I, V, m2_cols, m2_rows, +, klasttouch, csrrowptr, csrcolval, csrnzval, J, I, V)
-    else
-        klasttouch = sparse_preallocation[4]
-        csrrowptr  = sparse_preallocation[5]
-        csrcolval  = sparse_preallocation[6]
-        csrnzval   = sparse_preallocation[7]
-
-        resize!(klasttouch, m2_cols)
-        resize!(csrrowptr, m2_rows + 1)
-        resize!(csrcolval, length(I))
-        resize!(csrnzval, length(I))
-
-        out = sparse!(I, J, V, m2_rows, m2_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-    end
-
-    # if reused_sparse_buffers
-    #     out = copy(out)
-    # end
-
-    return out
-end
 # function kron³(A::AbstractSparseMatrix{T}, M₃::third_order) where T <: Real
 #     rows, cols, vals = findnz(A)
 
@@ -2640,43 +1126,44 @@ end
 #     return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
 # end
 
-function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
-                                B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
-                                tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
-    n_row = size(B,1)
-    n_col = size(B,2)
-
-    vals = T[]
-    rows = Int[]
-    cols = Int[]
-
-    Ar, Ac, Av = findnz(A)
-
-    for row in unique(Ar)
-        idx_mat, vals_mat = A[row,:] |> findnz
-
-        for col in 1:size(B,2)^3
-            col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
-            col_2 = ((col - 1) ÷ (n_col^2)) + 1
-
-            mult_val = 0.0
-
-            for (i,idx) in enumerate(idx_mat)
-                i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
-                i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                @inbounds mult_val += vals_mat[i] * B[i_1,col_1] * B[i_2,col_2] * B[i_3,col_3]
-            end
-
-            if abs(mult_val) > tol
-                push!(vals,mult_val)
-                push!(rows,row)
-                push!(cols,col)
-            end
-        end
-    end
-
-    sparse(rows,cols,vals,size(A,1),size(B,2)^3)
-end
+# Dead code: A_mult_kron_power_3_B — never called anywhere
+# function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
+#                                 B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
+#                                 tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+#     n_row = size(B,1)
+#     n_col = size(B,2)
+#
+#     vals = T[]
+#     rows = Int[]
+#     cols = Int[]
+#
+#     Ar, Ac, Av = findnz(A)
+#
+#     for row in unique(Ar)
+#         idx_mat, vals_mat = A[row,:] |> findnz
+#
+#         for col in 1:size(B,2)^3
+#             col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
+#             col_2 = ((col - 1) ÷ (n_col^2)) + 1
+#
+#             mult_val = 0.0
+#
+#             for (i,idx) in enumerate(idx_mat)
+#                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
+#                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
+#                 @inbounds mult_val += vals_mat[i] * B[i_1,col_1] * B[i_2,col_2] * B[i_3,col_3]
+#             end
+#
+#             if abs(mult_val) > tol
+#                 push!(vals,mult_val)
+#                 push!(rows,row)
+#                 push!(cols,col)
+#             end
+#         end
+#     end
+#
+#     sparse(rows,cols,vals,size(A,1),size(B,2)^3)
+# end
 
 
 
@@ -3179,137 +1666,133 @@ function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
     end
 end
 
-function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
-    if (moment[1] + moment[2]) % 2 == 1
-        return 0
-    end
-
-    result = 1
-    coefficient = 1
-    odd_value = 2 * (moment[1] % 2)
-
-    for j = 1:min(moment[1] ÷ 2, moment[2] ÷ 2)
-        coefficient *= 2 * (moment[1] ÷ 2 + 1 - j) * (moment[2] ÷ 2 + 1 - j) * rho^2 / (j * (2 * j - 1 + odd_value))
-        result += coefficient
-    end
-
-    if odd_value == 2
-        result *= rho
-    end
-
-    result *= prod(1:2:moment[1]) * prod(1:2:moment[2])
-
-    return result
-end
-
-
-function product_moments(V, ii, nu)::Int
-    s = sum(nu)
-
-    if s == 0
-        return 1
-    elseif isodd(s)
-        return 0
-    end
-
-    mask = .!(nu .== 0)
-    nu = nu[mask]
-    ii = ii[mask]
-    V = V[ii, ii]
-
-    m, s2 = length(ii), s / 2
-
-    if m == 1
-        return (V^s2 * prod(1:2:s-1))[1]
-    elseif m == 2
-        if V[1,1]==0 || V[2,2]==0
-            return 0
-        end
-        rho = V[1, 2] / sqrt(V[1, 1] * V[2, 2])
-        return (V[1, 1]^(nu[1] / 2) * V[2, 2]^(nu[2] / 2) * bivariate_moment(nu, Int(rho)))[1]
-    end
-
-    inu = sortperm(nu, rev=true)
-
-    sort!(nu, rev=true)
-
-    V = V[inu, inu]
-
-    x = zeros(Int, 1, m)
-    V = V / 2
-    nu2 = nu' / 2
-    p = 2
-    q = nu2 * V * nu2'
-    y = 0
-
-    for _ in 1:round(Int, prod(nu .+ 1) / 2)
-        y += p * q^s2
-        for j in 1:m
-            if x[j] < nu[j]
-                x[j] += 1
-                p = -round(p * (nu[j] + 1 - x[j]) / x[j])
-                q -= (2 * (nu2 - x) * V[:, j] .+ V[j, j])[1]
-                break
-            else
-                x[j] = 0
-                p = isodd(nu[j]) ? -p : p
-                q += (2 * nu[j] * (nu2 - x) * V[:, j] .- nu[j]^2 * V[j, j])[1]
-            end
-        end
-    end
-
-    return y / prod(1:s2)
-end
-
-
-function multiplicate(p::Int, order::Int)
-    # precompute p powers
-    pⁿ = [p^i for i in 0:order-1]
-
-    DP = spzeros(Bool, p^order, prod(p - 1 .+ (1:order)) ÷ factorial(order))
-
-    binom_p_ord = binomial(p + order - 1, order)
-
-    # Initialize index and binomial arrays
-    indexes = ones(Int, order)  # Vector to hold current indexes
-    binomials = zeros(Int, order)  # Vector to hold binomial values
-
-    # Helper function to handle the nested loops
-    function loop(level::Int)
-        for i=1:p
-            indexes[level] = i
-            binomials[level] = binomial(p + level - 1 - i, level)
-
-            if level < order  # If not at innermost loop yet, continue nesting
-                loop(level + 1)
-            else  # At innermost loop, perform calculation
-                n = sum((indexes[k] - 1) * pⁿ[k] for k in 1:order)
-                m = binom_p_ord - sum(binomials[k] for k in 1:order)
-                DP[n+1, m] = 1  # Arrays are 1-indexed in Julia
-            end
-        end
-    end
-
-    loop(1)  # Start the recursive loop
-
-    return DP
-end
-
-
-function generateSumVectors(vectorLength::Int, totalSum::Int)::Union{Vector{Int}, Vector{ℒ.Adjoint{Int, Vector{Int}}}}
-    # Base case: if vectorLength is 1, return totalSum
-    if vectorLength == 1
-        return [totalSum]
-    end
-
-    # Recursive case: generate all possible vectors for smaller values of vectorLength and totalSum
-    return [[currentInt; smallerVector...]' for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
-end
-
-
-function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) !== nothing, strings)
-end
+# Dead code: bivariate_moment, product_moments, multiplicate, generateSumVectors — never called anywhere
+# function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
+#     if (moment[1] + moment[2]) % 2 == 1
+#         return 0
+#     end
+#
+#     result = 1
+#     coefficient = 1
+#     odd_value = 2 * (moment[1] % 2)
+#
+#     for j = 1:min(moment[1] ÷ 2, moment[2] ÷ 2)
+#         coefficient *= 2 * (moment[1] ÷ 2 + 1 - j) * (moment[2] ÷ 2 + 1 - j) * rho^2 / (j * (2 * j - 1 + odd_value))
+#         result += coefficient
+#     end
+#
+#     if odd_value == 2
+#         result *= rho
+#     end
+#
+#     result *= prod(1:2:moment[1]) * prod(1:2:moment[2])
+#
+#     return result
+# end
+#
+#
+# function product_moments(V, ii, nu)::Int
+#     s = sum(nu)
+#
+#     if s == 0
+#         return 1
+#     elseif isodd(s)
+#         return 0
+#     end
+#
+#     mask = .!(nu .== 0)
+#     nu = nu[mask]
+#     ii = ii[mask]
+#     V = V[ii, ii]
+#
+#     m, s2 = length(ii), s / 2
+#
+#     if m == 1
+#         return (V^s2 * prod(1:2:s-1))[1]
+#     elseif m == 2
+#         if V[1,1]==0 || V[2,2]==0
+#             return 0
+#         end
+#         rho = V[1, 2] / sqrt(V[1, 1] * V[2, 2])
+#         return (V[1, 1]^(nu[1] / 2) * V[2, 2]^(nu[2] / 2) * bivariate_moment(nu, Int(rho)))[1]
+#     end
+#
+#     inu = sortperm(nu, rev=true)
+#
+#     sort!(nu, rev=true)
+#
+#     V = V[inu, inu]
+#
+#     x = zeros(Int, 1, m)
+#     V = V / 2
+#     nu2 = nu' / 2
+#     p = 2
+#     q = nu2 * V * nu2'
+#     y = 0
+#
+#     for _ in 1:round(Int, prod(nu .+ 1) / 2)
+#         y += p * q^s2
+#         for j in 1:m
+#             if x[j] < nu[j]
+#                 x[j] += 1
+#                 p = -round(p * (nu[j] + 1 - x[j]) / x[j])
+#                 q -= (2 * (nu2 - x) * V[:, j] .+ V[j, j])[1]
+#                 break
+#             else
+#                 x[j] = 0
+#                 p = isodd(nu[j]) ? -p : p
+#                 q += (2 * nu[j] * (nu2 - x) * V[:, j] .- nu[j]^2 * V[j, j])[1]
+#             end
+#         end
+#     end
+#
+#     return y / prod(1:s2)
+# end
+#
+#
+# function multiplicate(p::Int, order::Int)
+#     # precompute p powers
+#     pⁿ = [p^i for i in 0:order-1]
+#
+#     DP = spzeros(Bool, p^order, prod(p - 1 .+ (1:order)) ÷ factorial(order))
+#
+#     binom_p_ord = binomial(p + order - 1, order)
+#
+#     # Initialize index and binomial arrays
+#     indexes = ones(Int, order)  # Vector to hold current indexes
+#     binomials = zeros(Int, order)  # Vector to hold binomial values
+#
+#     # Helper function to handle the nested loops
+#     function loop(level::Int)
+#         for i=1:p
+#             indexes[level] = i
+#             binomials[level] = binomial(p + level - 1 - i, level)
+#
+#             if level < order  # If not at innermost loop yet, continue nesting
+#                 loop(level + 1)
+#             else  # At innermost loop, perform calculation
+#                 n = sum((indexes[k] - 1) * pⁿ[k] for k in 1:order)
+#                 m = binom_p_ord - sum(binomials[k] for k in 1:order)
+#                 DP[n+1, m] = 1  # Arrays are 1-indexed in Julia
+#             end
+#         end
+#     end
+#
+#     loop(1)  # Start the recursive loop
+#
+#     return DP
+# end
+#
+#
+# function generateSumVectors(vectorLength::Int, totalSum::Int)::Union{Vector{Int}, Vector{ℒ.Adjoint{Int, Vector{Int}}}}
+#     # Base case: if vectorLength is 1, return totalSum
+#     if vectorLength == 1
+#         return [totalSum]
+#     end
+#
+#     # Recursive case: generate all possible vectors for smaller values of vectorLength and totalSum
+#     return [[currentInt; smallerVector...]' for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
+# end
 
 
 function count_ops(expr)::Int
@@ -3399,183 +1882,9 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-function resolve_if_expr(ex::Expr)
-    prewalk(ex) do node
-        if node isa Expr && (node.head === :if || node.head === :elseif)
-            cond = node.args[1]
-            then_blk = node.args[2]
-            if length(node.args) == 3
-                else_blk = node.args[3]
-            end
-            val = evaluate_conditions(unblock(cond))
-
-            if val === true
-                # recurse into the selected branch
-                return resolve_if_expr(unblock(then_blk))
-            elseif val === false && length(node.args) == 3
-                return resolve_if_expr(unblock(else_blk))
-            elseif val === false && length(node.args) == 2
-                return nothing
-            elseif val === false && node.head === :elseif
-                return resolve_if_expr(unblock(else_blk))
-            end
-        end
-        return node
-    end
-end
-
-# function remove_nothing(ex::Expr)
-#     postwalk(ex) do node
-#         # Only consider call-nodes with exactly two arguments
-#         if node isa Expr && node.head === :call && length(node.args) == 3
-#             fn, lhs, rhs = node.args
-#             lhs2 = unblock(lhs)
-#             rhs2 = unblock(rhs)
-
-#             if rhs2 === :(nothing)
-#                 # strip the call and recurse to clean deeper
-#                 return remove_nothing(lhs2)
-#             elseif lhs2 === :(nothing)
-#                 return remove_nothing(rhs2)
-#             # else
-#             #     return remove_nothing(node.args)
-#             end
-#         end
-#         return node
-#     end
-# end
-
 end # dispatch_doctor
 
-function evaluate_conditions(cond)
-    if cond isa Bool
-        return cond
-    elseif cond isa Expr && cond.head == :call 
-        a, b = cond.args[2], cond.args[3]
-
-        if typeof(a) ∉ [Symbol, Number]
-            a = eval(a)
-        end
-
-        if typeof(b) ∉ [Symbol, Number]
-            b = eval(b)
-        end
-        
-        if cond.args[1] == :(==)
-            return a == b
-        elseif cond.args[1] == :(!=)
-            return a != b
-        elseif cond.args[1] == :(<)
-            return a < b
-        elseif cond.args[1] == :(<=)
-            return a <= b
-        elseif cond.args[1] == :(>)
-            return a > b
-        elseif cond.args[1] == :(>=)
-            return a >= b
-        end
-        # end
-    end
-    return nothing
-end
-
-function contains_equation(expr)
-    found = false
-    postwalk(expr) do x
-        if x isa Expr && x.head == :(=)
-            found = true
-        end
-        return x
-    end
-    return found
-end
-
-function remove_nothing(ex::Expr)
-    postwalk(ex) do node
-        # Only consider call-expressions
-        if node isa Expr && node.head === :call && any(node.args .=== nothing)
-            fn = node.args[1]
-            # Unblock and collect all the operands
-            # raw_args = map(arg -> unblock(arg), node.args[2:end])
-            # Drop any nothing
-            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
-            if isempty(kept)
-                return nothing
-            elseif length(kept) == 1
-                return kept[1]
-            else
-            # elseif length(kept) < length(raw_args)
-                return Expr(:call, fn, kept...)
-            # else
-            #     return node
-            end
-        end
-        return node
-    end
-end
-
 @stable default_mode = "disable" begin
-
-function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
-    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
-    calls = []
-    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
-    for idx in indices
-        push!(calls, postwalk(x -> begin
-            x isa Expr ?
-                x.head == :ref ?
-                    @capture(x, name_{index_}[time_]) ?
-                        index == index_variable ?
-                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            x :
-                        x :
-                    @capture(x, name_[time_]) ?
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            # occursin("{" * string(index_variable) * "}", string(name)) ?
-                            #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                            x :
-                        # occursin("{" * string(index_variable) * "}", string(name)) ?
-                        #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                        x :
-                    x :
-                x.head == :if ?
-                    length(x.args) > 2 ?
-                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
-                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
-                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
-                @capture(x, name_{index_}) ?
-                    index == index_variable ?
-                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
-                    x :
-                x :
-            @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
-                    :($idx) :
-                x isa Symbol ?
-                    occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
-                    x :
-                x :
-            x
-        end,
-        exxpr))
-    end
-    
-    if concatenate
-        return :($(Expr(:call, operator, calls...)))
-    else
-        return :($(Expr(:block, calls...)))
-        # return :($calls...)
-        # return calls
-    end
-end
 
 
 replace_indices(x::Symbol) = x
@@ -3612,270 +1921,6 @@ function replace_indices_special(exxpr::Expr)::Union{Expr,Symbol}
             x :
         x
     end, exxpr)
-end
-
-function write_out_for_loops(arg::Expr)::Expr
-    postwalk(x -> begin
-                    x = flatten(unblock(x))
-                    x isa Expr ?
-                        x.head == :for ?
-                            x.args[2] isa Array ?
-                                length(x.args[2]) >= 1 ?
-                                    x.args[1].head == :block ?
-                                        # begin println("here"); 
-                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] : # end :
-                                    # begin println("here2"); 
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] : # end :
-                                x :
-                            x.args[2].head ∉ [:(=), :block] ?
-                                x.args[1].head == :block ?
-                                    # begin println("here3"); 
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    true,
-                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
-                                x.args[2].head == :if ?
-                                    contains_equation(x.args[2]) ?
-                                        # begin println("here5"); println(x)
-                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                            Symbol(x.args[1].args[1]), 
-                                                            (x.args[1].args[2]),
-                                                            false,
-                                                            :+) : # end : # for loop part of equation
-                                    # begin println("here6"); println(x)
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[1]), 
-                                                        (x.args[1].args[2]),
-                                                        true,
-                                                        :+) : # end : # for loop part of equation
-                                # begin println("here4"); println(x)
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[1]), 
-                                                    (x.args[1].args[2]),
-                                                    true,
-                                                    :+) : # end : # for loop part of equation
-                            x.args[1].head == :block ?
-                                # begin println("here5"); 
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    false,
-                                                    x.args[1].args[1].args[2].value) : # end :
-                                                # end 
-                                                # : # for loop part of equation
-                            # begin println(x); 
-                            # begin println("here7"); println(x)
-                            replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                            Symbol(x.args[1].args[1]), 
-                                            (x.args[1].args[2]),
-                                            false,
-                                            :+) : # end :
-                                            # println(out); 
-                                            # return out end 
-                                            # :
-                        x :
-                    x
-                end,
-    arg) #|> unblock |> flatten
-end
-
-# function parse_for_loops(equations_block)
-#     eqs = Expr[]  # Initialize an empty array to collect expressions
-
-#     # Define a helper recursive function
-#     function recurse(arg)
-#             if arg isa Expr
-#                 if arg.head == :block
-#                     for b in arg.args
-#                         if b isa Expr
-#                             # If the result is an Expr, process and add to eqs
-#                             push!(eqs, unblock(replace_indices(b)))
-#                         elseif b isa Array
-#                             recurse(b)
-#                         end
-#                     end
-#                 end
-#             elseif arg isa Array
-#                 # If the result is an Array, iterate and recurse
-#                 for B in arg
-#                     println((B))
-#                     recurse(B)
-#                 end
-#             end
-#     end
-
-#     for arg in equations_block.args
-#         if isa(arg,Expr)
-#             parsed_eqs = write_out_for_loops(arg)
-#             recurse(parsed_eqs)
-#         end
-#     end
-
-#     # Return the collected expressions as a block
-#     return Expr(:block, eqs...)
-# end
-
-
-function parse_for_loops(equations_block)::Expr
-    eqs = Expr[]
-    for arg in equations_block.args
-        if isa(arg,Expr)
-            parsed_eqs = write_out_for_loops(arg)
-            # println(parsed_eqs)
-            if parsed_eqs isa Expr
-                push!(eqs,unblock(replace_indices(parsed_eqs)))
-            elseif parsed_eqs isa Array
-                for B in parsed_eqs
-                    if B isa Array
-                        for b in B
-                            push!(eqs,unblock(replace_indices(b)))
-                        end
-                    elseif B isa Expr
-                        if B.head == :block
-                            for b in B.args
-                                if b isa Expr
-                                    push!(eqs,replace_indices(b))
-                                end
-                            end
-                        else
-                            push!(eqs,unblock(replace_indices(B)))
-                        end
-                    else
-                        push!(eqs,unblock(replace_indices(B)))
-                    end
-                end
-            end
-
-        end
-    end
-    return Expr(:block,eqs...) |> flatten
-end
-
-
-
-function decompose_name(name::Symbol)
-    name = string(name)
-    matches = eachmatch(r"◖([\p{L}\p{N}]+)◗|([\p{L}\p{N}]+[^◖◗]*)", name)
-
-    result = []
-    nested = []
-
-    for m in matches
-        if m.captures[1] !== nothing
-            push!(nested, m.captures[1])
-        else
-            if !isempty(nested)
-                push!(result, Symbol.(nested))
-                nested = []
-            end
-            push!(result, Symbol(m.captures[2]))
-        end
-    end
-
-    if !isempty(nested)
-        push!(result, (nested))
-    end
-
-    return result
-end
-
-function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
-    indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
-
-    indexset = []
-
-    for i in indices
-        if length(i) > 1
-            push!(indexset, Symbol.(i[2])...)
-        end
-    end
-
-    return indexset
-end
-
-
-
-function expand_calibration_equations(calibration_equation_parameters::Vector{Symbol}, calibration_equations::Vector{Expr}, ss_calib_list::Vector, par_calib_list::Vector, all_names::Vector{Symbol})
-    expanded_parameters = Symbol[]
-    expanded_equations = Expr[]
-    expanded_ss_var_list = []
-    expanded_par_var_list = []
-
-    for (u,par) in enumerate(calibration_equation_parameters)
-        indices_in_calibration_equation = Set()
-        indexed_names = []
-        for i in get_symbols(calibration_equations[u])
-            indices = get_possible_indices_for_name(i, all_names)
-            if indices != Any[]
-                push!(indices_in_calibration_equation, indices)
-                push!(indexed_names,i)
-            end
-        end
-
-        par_indices = get_possible_indices_for_name(par, all_names)
-        
-        if length(par_indices) > 0
-            push!(indices_in_calibration_equation, par_indices)
-        end
-        
-        @assert length(indices_in_calibration_equation) <= 1 "Calibration equations cannot have more than one index in the equations or for the parameter."
-        
-        if length(indices_in_calibration_equation) == 0
-            push!(expanded_parameters,par)
-            push!(expanded_equations,calibration_equations[u])
-            push!(expanded_ss_var_list,ss_calib_list[u])
-            push!(expanded_par_var_list,par_calib_list[u])
-        else
-            for i in collect(indices_in_calibration_equation)[1]
-                expanded_ss_var = Set()
-                expanded_par_var = Set()
-                push!(expanded_parameters, Symbol(string(par) * "◖" * string(i) * "◗"))
-                push!(expanded_equations, postwalk(x -> x ∈ indexed_names ? Symbol(string(x) * "◖" * string(i) * "◗") : x, calibration_equations[u]))
-                for ss in ss_calib_list[u]
-                    if ss ∈ indexed_names
-                        push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
-                    else
-                        push!(expanded_ss_var,ss)
-                    end
-                end
-                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
-                for p in par_calib_list[u]
-                    if p ∈ indexed_names
-                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
-                    else
-                        push!(expanded_par_var, p)
-                    end
-                end
-                push!(expanded_ss_var_list, expanded_ss_var)
-                push!(expanded_par_var_list, expanded_par_var)
-            end
-        end
-    end
-
-    return expanded_parameters, expanded_equations, expanded_ss_var_list, expanded_par_var_list
-end
-
-
-
-function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Vector{T}, expanded_list::Vector{Symbol}) where T
-    expanded_inputs = Symbol[]
-    expanded_values = T[]
-
-    for (i,par) in enumerate(compressed_inputs)
-        par_idx = findall(x -> string(par) == x, first.(split.(string.(expanded_list ), "◖")))
-
-        if length(par_idx) > 1
-            for idx in par_idx
-                push!(expanded_inputs, expanded_list[idx])
-                push!(expanded_values, compressed_values[i])
-            end
-        else#if par ∈ expanded_list ## breaks parameters defined in parameter block
-            push!(expanded_inputs, par)
-            push!(expanded_values, compressed_values[i])
-        end
-    end
-    return expanded_inputs, expanded_values
 end
 
 
@@ -7803,36 +5848,38 @@ end
 
 # @stable default_mode = "disable" begin
 
-function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
-    # reduce system
-    vars_to_exclude = setdiff(𝓂.constants.post_model_macro.present_only, observables)
+# Dead code: find_variables_to_exclude — never called anywhere
+# function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
+#     # reduce system
+#     vars_to_exclude = setdiff(𝓂.constants.post_model_macro.present_only, observables)
+#
+#     # Mapping variables to their equation index
+#     variable_to_equation = Dict{Symbol, Vector{Int}}()
+#     for var in vars_to_exclude
+#         for (eq_idx, vars_set) in enumerate(𝓂.constants.post_model_macro.dyn_var_present_list)
+#         # for var in vars_set
+#             if var in vars_set
+#                 if haskey(variable_to_equation, var)
+#                     push!(variable_to_equation[var],eq_idx)
+#                 else
+#                     variable_to_equation[var] = [eq_idx]
+#                 end
+#             end
+#         end
+#     end
+#
+#     return variable_to_equation
+# end
 
-    # Mapping variables to their equation index
-    variable_to_equation = Dict{Symbol, Vector{Int}}()
-    for var in vars_to_exclude
-        for (eq_idx, vars_set) in enumerate(𝓂.constants.post_model_macro.dyn_var_present_list)
-        # for var in vars_set
-            if var in vars_set
-                if haskey(variable_to_equation, var)
-                    push!(variable_to_equation[var],eq_idx)
-                else
-                    variable_to_equation[var] = [eq_idx]
-                end
-            end
-        end
-    end
 
-    return variable_to_equation
-end
-
-
-function create_broadcaster(indices::Vector{Int}, n::Int)
-    broadcaster = spzeros(n, length(indices))
-    for (i, vid) in enumerate(indices)
-        broadcaster[vid,i] = 1.0
-    end
-    return broadcaster  
-end
+# Dead code: create_broadcaster — never called anywhere
+# function create_broadcaster(indices::Vector{Int}, n::Int)
+#     broadcaster = spzeros(n, length(indices))
+#     for (i, vid) in enumerate(indices)
+#         broadcaster[vid,i] = 1.0
+#     end
+#     return broadcaster
+# end
 
 """
     update_perturbation_counter!(counters::SolveCounters, solved::Bool; estimation::Bool = false, order::Int = 1)

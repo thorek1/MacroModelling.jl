@@ -6429,6 +6429,8 @@ function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
     end
 end
 
+# Dead code: compressed_kron_pullback_2arg! — never called anywhere (2-arg compressed_kron is also dead)
+#=
 # Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
 # Forward contribution for each sorted output column triple (α≥β≥γ) is:
 #   Y[row,col] += A[i,α] * σ[(j-1)*nᵣ+k, (β-1)*nᶜ+γ]
@@ -6505,6 +6507,7 @@ function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
 
     return
 end
+=#
 
 # Helper: adjoint of compressed_permuted_mixed_kron(A, σ; tol) w.r.t. A and σ.
 function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
