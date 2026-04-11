@@ -107,26 +107,6 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :lyapunov_algorithm => "Lyapunov Algorithm",
 )
 
-const TOL_DISPLAY_NAMES = Dict{Symbol,String}(
-    :tol => "Tolerance",
-    :nsss => "NSSS",
-    :first_order => "1st order",
-    :second_order => "2nd order",
-    :third_order => "3rd order",
-    :qme => "QME",
-    :sylvester => "Sylvester",
-    :lyapunov => "Lyapunov",
-    :atol => "atol",
-    :rtol => "rtol",
-    :initial_guess_acceptance_tol => "init. guess accept. tol",
-    :acceptance_tol => "accept. tol",
-    :xtol => "xtol",
-    :ftol => "ftol",
-    :rel_xtol => "rel. xtol",
-    :droptol => "droptol",
-    :dependencies_tol => "dep. tol",
-)
-
 # Turing distribution wrapper defaults
 const DEFAULT_TURING_USE_MEAN_STD = false
 
