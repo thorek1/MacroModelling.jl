@@ -613,12 +613,12 @@ function make_equation_robust_to_domain_errors(eqs,
 
                                         :($(replacement) ^ $(x.args[3]))
                                     end :
-                                x.args[2] isa Float64 ?
+                                x.args[2] isa Number ?
                                     x :
                                 x.args[2].head == :call ?
                                     begin
                                         if precompile
-                                            replacement = x.args[2]
+                                            replacement = trivial_simplify(x.args[2])
                                         else
                                             replacement = simplify(x.args[2])
                                         end
@@ -680,7 +680,7 @@ function make_equation_robust_to_domain_errors(eqs,
                             x.args[2].head == :call ?
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -739,7 +739,7 @@ function make_equation_robust_to_domain_errors(eqs,
                             x.args[2].head == :call ?
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -798,7 +798,7 @@ function make_equation_robust_to_domain_errors(eqs,
                             x.args[2].head == :call ?
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
@@ -857,7 +857,7 @@ function make_equation_robust_to_domain_errors(eqs,
                             x.args[2].head == :call ?
                                 begin
                                     if precompile
-                                        replacement = x.args[2]
+                                        replacement = trivial_simplify(x.args[2])
                                     else
                                         replacement = simplify(x.args[2])
                                     end
