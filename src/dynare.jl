@@ -252,3 +252,52 @@ write_to_dynare = write_mod_file
 See [`write_mod_file`](@ref)
 """
 export_model = write_mod_file
+
+
+
+
+function translate_symbol_to_ascii(x::Symbol)
+    ss = Unicode.normalize(replace(string(x),  "◖" => "__", "◗" => "__"), :NFD)
+
+    outstr = ""
+
+    for i in ss
+        out = REPL.symbol_latex(string(i))[2:end]
+        if out == ""
+            outstr *= string(i)
+        else
+            outstr *= replace(out,  
+                        r"\!" => s"_",
+                        r"\(" => s"_",
+                        r"\)" => s"_",
+                        r"\^" => s"_",
+                        r"\_\^" => s"_",
+                        r"\+" => s"plus",
+                        r"\-" => s"minus",
+                        r"\*" => s"times")
+            if i != ss[end]
+                outstr *= "_"
+            end
+        end
+    end
+
+    return outstr
+end
+
+
+function translate_expression_to_ascii(exp::Expr)
+    postwalk(x -> 
+                x isa Symbol ?
+                    begin
+                        x_tmp = translate_symbol_to_ascii(x)
+
+                        if x_tmp == string(x)
+                            x
+                        else
+                            Symbol(x_tmp)
+                        end
+                    end :
+                x,
+    exp)
+end
+
