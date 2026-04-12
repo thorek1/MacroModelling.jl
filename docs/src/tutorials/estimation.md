@@ -127,6 +127,8 @@ end
 
 The No-U-Turn Sampler (NUTS) is used to obtain the posterior distribution of the parameters. It exploits gradients of the posterior log‑likelihood with respect to model parameters to navigate the parameter space efficiently. NUTS is regarded as robust and fast, and it simplifies tuning by automatically adapting its hyperparameters.
 
+[Mooncake.jl](https://github.com/compintell/Mooncake.jl) is the recommended reverse-mode automatic differentiation backend for gradient-based sampling. The package provides custom `rrule` definitions (via ChainRulesCore) for all solvers and filters, so other ChainRules-compatible backends (e.g. Zygote.jl) also work. For forward-mode AD (e.g. computing Jacobians of solutions or moments), [ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl) is supported via a package extension.
+
 First the loglikelihood model is defined with the specific data, and model. Next, 1000 samples are drawn from the model:
 
 ```@repl tutorial_2

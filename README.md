@@ -28,7 +28,7 @@ As of now the package can:
 - calibrate parameters using (non-stochastic) steady state relationships
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
-- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- **differentiate** the model solution, loglikelihood (Kalman and inversion filters), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
 
 The package is not:
 
@@ -48,6 +48,22 @@ Once set up `MacroModelling.jl` can be installed (and `StatsPlots` in order to p
 ```julia
 using Pkg; Pkg.add(["MacroModelling", "StatsPlots"])
 ```
+
+### Optional extensions
+
+`MacroModelling.jl` uses Julia's package extension mechanism to provide additional functionality when certain packages are loaded. Install the ones relevant for the intended workflow:
+
+```julia
+using Pkg; Pkg.add(["Turing", "Mooncake"])         # Bayesian estimation with gradient-based samplers
+using Pkg; Pkg.add("ForwardDiff")                   # Forward-mode AD for derivatives of loglikelihood, solutions, IRFs, and moments
+using Pkg; Pkg.add("MatrixEquations")               # Bartels-Stewart algorithm for Sylvester/Lyapunov equations
+using Pkg; Pkg.add("Optim")                         # LBFGS for conditional forecasts; SAMIN for steady state solver tuning
+```
+
+**Automatic differentiation backends:**
+
+- **[Mooncake.jl](https://github.com/compintell/Mooncake.jl)** (reverse-mode) is the recommended backend for gradient-based estimation with Turing.jl (NUTS, HMC). Custom ChainRules `rrule` definitions ensure efficient reverse-mode differentiation through all solvers and filters. Other ChainRules-compatible backends (e.g. Zygote.jl) also work through these same rrules.
+- **[ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)** (forward-mode) is supported via a package extension and provides `ForwardDiff.jacobian` / `ForwardDiff.gradient` compatibility for `get_solution`, `get_irf`, and `get_statistics` (steady state, mean, variance, standard deviation, covariance, autocorrelation) across all perturbation orders (first, second, third, and pruned variants), as well as `get_loglikelihood` (Kalman filter only; the inversion filter is not supported with ForwardDiff).
 
 ### Example
 

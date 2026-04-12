@@ -18,7 +18,7 @@ As of now the package can:
 - calibrate parameters using (non-stochastic) steady state relationships
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet)) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
-- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- **differentiate** the model solution, loglikelihood (Kalman and inversion filters), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
 
 The package is not:
 
