@@ -105,23 +105,6 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
-    :tol => "Tolerance",
-    :nsss => "NSSS",
-    :first_order => "1st order",
-    :second_order => "2nd order",
-    :third_order => "3rd order",
-    :qme => "QME",
-    :sylvester => "Sylvester",
-    :lyapunov => "Lyapunov",
-    :atol => "atol",
-    :rtol => "rtol",
-    :initial_guess_acceptance_tol => "init. guess acc. tol",
-    :acceptance_tol => "acc. tol",
-    :xtol => "xtol",
-    :ftol => "ftol",
-    :rel_xtol => "rel. xtol",
-    :droptol => "droptol",
-    :dependencies_tol => "dep. tol",
 )
 
 # Turing distribution wrapper defaults

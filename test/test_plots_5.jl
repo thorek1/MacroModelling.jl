@@ -223,6 +223,99 @@ Random.seed!(1)
 
     plot_solution!(Smets_Wouters_2007, :y, algorithm = :second_order, variables = [:y, :k, :c])
 
+
+    # tol-only and tol-varying tests (struct and NamedTuple formulations)
+    plot_model_estimates(Smets_Wouters_2007, data,
+        tol = Tolerances(nsss = NsssTolerances(acceptance_tol = 1e-10)))
+
+    plot_model_estimates!(Smets_Wouters_2007, data,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+    plot_model_estimates!(Smets_Wouters_2007, data,
+        tol = Tolerances(first_order = FirstOrderTolerances(qme = SolverTolerances(acceptance_tol = 1e-12))))
+
+
+    plot_shock_decomposition(FS2000, dataFS2000_rekey,
+        tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_shock_decomposition(FS2000, dataFS2000_rekey,
+        tol = Tolerances(nsss = (acceptance_tol = 1e-10,)))
+
+
+    plot_irf(Smets_Wouters_2007, shocks = :em,
+        tol = Tolerances(first_order = FirstOrderTolerances(qme = SolverTolerances(acceptance_tol = 1e-12))))
+
+    plot_irf!(Smets_Wouters_2007, shocks = :em,
+        tol = Tolerances(nsss = (xtol = 1e-14,)))
+
+    plot_irf!(FS2000, shocks = :e_m,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)),
+        rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+
+    cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+    cndtns_lvl[1,8] = 1.4
+
+    plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl,
+        tol = Tolerances(nsss = NsssTolerances(ftol = 1e-16)))
+
+    plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+
+    plot_solution(FS2000, :y,
+        tol = Tolerances(nsss = NsssTolerances(acceptance_tol = 1e-10)))
+    
+    plot_solution!(FS2000, :y,
+        tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_solution!(FS2000, :y,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+
+    plot_solution(Smets_Wouters_2007, :y, algorithm = :second_order,
+        tol = Tolerances(second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_solution!(Smets_Wouters_2007, :y, algorithm = :second_order,
+        tol = Tolerances(second_order = (sylvester = (acceptance_tol = 1e-14,), lyapunov = (acceptance_tol = 1e-14,))))
+
+
+    # combined tol + other argument tests
+    plot_model_estimates(Smets_Wouters_2007, data,
+        parameters = [:csadjcost => 5, :calfa => 0.22],
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+    plot_model_estimates!(Smets_Wouters_2007, data,
+        parameters = [:csadjcost => 3, :calfa => 0.28], filter = :inversion,
+        tol = Tolerances(nsss = NsssTolerances(acceptance_tol = 1e-10)))
+
+    plot_shock_decomposition(FS2000, dataFS2000_rekey,
+        tol = Tolerances(first_order = FirstOrderTolerances(qme = SolverTolerances(acceptance_tol = 1e-12))),
+        rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+    plot_irf(Smets_Wouters_2007, shocks = :em, periods = 10, variables = [:y, :k, :c],
+        tol = Tolerances(first_order = FirstOrderTolerances(qme = SolverTolerances(acceptance_tol = 1e-12))))
+
+    plot_irf!(FS2000, shocks = :e_m, shock_size = 10, periods = 5,
+        tol = Tolerances(nsss = (xtol = 1e-14,)),
+        rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+    cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+    cndtns_lvl[1,8] = 1.35
+
+    plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl,
+        initial_state = collect(estims[:,end]),
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+    plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, variables = [:y, :k],
+        tol = Tolerances(nsss = NsssTolerances(ftol = 1e-16)))
+
+    plot_solution(FS2000, :k, algorithm = :second_order,
+        tol = Tolerances(second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_solution!(Smets_Wouters_2007, :pinf, algorithm = :second_order, variables = [:pinf, :y],
+        tol = Tolerances(second_order = (sylvester = (acceptance_tol = 1e-14,),)))
+
 end
 
 # multiple models
@@ -275,6 +368,40 @@ end
     plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
 
     plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true, generalised_irf = true)
+
+
+    # tol-only and tol-varying tests
+    Random.seed!(14)
+    plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0,
+        tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14))))
+
+    Random.seed!(14)
+    plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0,
+        tol = Tolerances(first_order = (qme = (acceptance_tol = 1e-12,),)))
+
+
+    plot_irf(Gali_2015_chapter_3_obc,
+        tol = Tolerances(nsss = NsssTolerances(acceptance_tol = 1e-10)))
+
+    plot_irf!(Gali_2015_chapter_3_obc,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),)))
+
+
+    # combined tol + other argument tests
+    Random.seed!(14)
+    plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0025, ignore_obc = true,
+        tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14))))
+
+    Random.seed!(13)
+    plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0,
+        tol = Tolerances(first_order = (qme = (acceptance_tol = 1e-12,),)))
+
+    plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.5,
+        tol = Tolerances(nsss = NsssTolerances(acceptance_tol = 1e-10)))
+
+    plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5, algorithm = :pruned_second_order,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),),
+                         second_order = (sylvester = (acceptance_tol = 1e-14,),)))
 end
 
 @testset verbose = true "Caldara et al 2012 plots" begin
@@ -329,4 +456,36 @@ end
     plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.25])
 
     plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.35])
+
+
+    # tol-only and tol-varying tests
+    plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order,
+        tol = Tolerances(second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order,
+        tol = Tolerances(second_order = (sylvester = (acceptance_tol = 1e-14,), lyapunov = (acceptance_tol = 1e-14,))))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order,
+        tol = Tolerances(third_order = (sylvester = (acceptance_tol = 1e-14,),)))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order,
+        tol = Tolerances(nsss = (xtol = 1e-14,),
+                         third_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14),
+                                                             lyapunov  = SolverTolerances(acceptance_tol = 1e-14))))
+
+
+    # combined tol + other argument tests
+    plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order, parameters = :ψ => 0.8,
+        tol = Tolerances(second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 2,
+        tol = Tolerances(third_order = (sylvester = (acceptance_tol = 1e-14,), lyapunov = (acceptance_tol = 1e-14,))))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.3],
+        tol = Tolerances(nsss = (xtol = 1e-14,),
+                         third_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14))))
+
+    plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, generalised_irf = true,
+        tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),),
+                         third_order = (sylvester = (acceptance_tol = 1e-14,),)))
 end

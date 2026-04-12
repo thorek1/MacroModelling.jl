@@ -1920,6 +1920,30 @@ function SolverTolerances(; atol::Float64 = 1e-14,
     return SolverTolerances(atol, rtol, initial_guess_acceptance_tol, acceptance_tol)
 end
 
+# Generic SolverTolerances keyword-constructor defaults, used by _resolve_tol to detect
+# which fields were left at their generic value and should be replaced by context defaults.
+const _GENERIC_SOLVER_TOL = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+
+# Merge a SolverTolerances with context-specific defaults.  Fields that still sit at the
+# generic SolverTolerances() defaults are replaced by the context base; explicitly changed
+# fields are kept.
+function _resolve_tol(override::SolverTolerances, base::SolverTolerances)
+    SolverTolerances(
+        override.atol != _GENERIC_SOLVER_TOL.atol ? override.atol : base.atol,
+        override.rtol != _GENERIC_SOLVER_TOL.rtol ? override.rtol : base.rtol,
+        override.initial_guess_acceptance_tol != _GENERIC_SOLVER_TOL.initial_guess_acceptance_tol ? override.initial_guess_acceptance_tol : base.initial_guess_acceptance_tol,
+        override.acceptance_tol != _GENERIC_SOLVER_TOL.acceptance_tol ? override.acceptance_tol : base.acceptance_tol)
+end
+
+# Merge a NamedTuple of partial overrides with a SolverTolerances base.
+function _resolve_tol(nt::NamedTuple, base::SolverTolerances)
+    SolverTolerances(
+        Float64(get(nt, :atol, base.atol)),
+        Float64(get(nt, :rtol, base.rtol)),
+        Float64(get(nt, :initial_guess_acceptance_tol, base.initial_guess_acceptance_tol)),
+        Float64(get(nt, :acceptance_tol, base.acceptance_tol)))
+end
+
 """
     NsssTolerances
 
@@ -1952,6 +1976,16 @@ function NsssTolerances(; acceptance_tol::Float64 = 1e-12,
     return NsssTolerances(acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)
 end
 
+_resolve_tol(s::NsssTolerances, ::NsssTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::NsssTolerances)
+    NsssTolerances(
+        Float64(get(nt, :acceptance_tol, base.acceptance_tol)),
+        Float64(get(nt, :initial_guess_acceptance_tol, base.initial_guess_acceptance_tol)),
+        Float64(get(nt, :xtol, base.xtol)),
+        Float64(get(nt, :ftol, base.ftol)),
+        Float64(get(nt, :rel_xtol, base.rel_xtol)))
+end
+
 """
     AdTolerances
 
@@ -1975,16 +2009,22 @@ struct AdTolerances
     lyapunov::SolverTolerances
 end
 
-function AdTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                  rtol = 1e-14,
-                                                                  initial_guess_acceptance_tol = 1e-8,
-                                                                  acceptance_tol = 1e-8),
-                      sylvester::SolverTolerances = SolverTolerances(),
-                      lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                     rtol = 1e-14,
-                                                                     initial_guess_acceptance_tol = 1e-12,
-                                                                     acceptance_tol = 1e-12))
-    return AdTolerances(qme, sylvester, lyapunov)
+function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    return AdTolerances(
+        _resolve_tol(qme, _base_qme),
+        _resolve_tol(sylvester, _base_sylv),
+        _resolve_tol(lyapunov, _base_lyap))
+end
+
+_resolve_tol(s::AdTolerances, ::AdTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::AdTolerances)
+    AdTolerances(
+        _resolve_tol(get(nt, :qme, (;)), base.qme),
+        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov))
 end
 
 """
@@ -2014,18 +2054,29 @@ struct FirstOrderTolerances
     ad::AdTolerances
 end
 
-function FirstOrderTolerances(; qme::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                          rtol = 1e-14,
-                                                                          initial_guess_acceptance_tol = 1e-8,
-                                                                          acceptance_tol = 1e-8),
-                              lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                             rtol = 1e-14,
-                                                                             initial_guess_acceptance_tol = 1e-12,
-                                                                             acceptance_tol = 1e-12),
+function FirstOrderTolerances(; qme = (;),
+                              lyapunov = (;),
                               droptol::Float64 = 1e-14,
                               dependencies_tol::Float64 = 1e-12,
-                              ad::AdTolerances = AdTolerances())
-    return FirstOrderTolerances(qme, lyapunov, droptol, dependencies_tol, ad)
+                              ad = (;))
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    _base_ad   = AdTolerances()
+    return FirstOrderTolerances(
+        _resolve_tol(qme, _base_qme),
+        _resolve_tol(lyapunov, _base_lyap),
+        droptol, dependencies_tol,
+        _resolve_tol(ad, _base_ad))
+end
+
+_resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::FirstOrderTolerances)
+    FirstOrderTolerances(
+        _resolve_tol(get(nt, :qme, (;)), base.qme),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        Float64(get(nt, :droptol, base.droptol)),
+        Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
+        _resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 """
@@ -2055,15 +2106,29 @@ struct HigherOrderTolerances
     ad::AdTolerances
 end
 
-function HigherOrderTolerances(; sylvester::SolverTolerances = SolverTolerances(),
-                               lyapunov::SolverTolerances = SolverTolerances(atol = 1e-14,
-                                                                              rtol = 1e-14,
-                                                                              initial_guess_acceptance_tol = 1e-12,
-                                                                              acceptance_tol = 1e-12),
+function HigherOrderTolerances(; sylvester = (;),
+                               lyapunov = (;),
                                droptol::Float64 = 1e-14,
                                dependencies_tol::Float64 = 1e-12,
-                               ad::AdTolerances = AdTolerances())
-    return HigherOrderTolerances(sylvester, lyapunov, droptol, dependencies_tol, ad)
+                               ad = (;))
+    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    _base_ad   = AdTolerances()
+    return HigherOrderTolerances(
+        _resolve_tol(sylvester, _base_sylv),
+        _resolve_tol(lyapunov, _base_lyap),
+        droptol, dependencies_tol,
+        _resolve_tol(ad, _base_ad))
+end
+
+_resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
+function _resolve_tol(nt::NamedTuple, base::HigherOrderTolerances)
+    HigherOrderTolerances(
+        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        Float64(get(nt, :droptol, base.droptol)),
+        Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
+        _resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 struct Tolerances
@@ -2139,148 +2204,40 @@ tol = Tolerances()
 # tighten the NSSS solver
 tol = Tolerances(nsss = NsssTolerances(xtol = 1e-14))
 
+# tighten first-order Lyapunov acceptance_tol while preserving context defaults
+tol = Tolerances(first_order = FirstOrderTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-14)))
+
+# concise NamedTuple syntax — equivalent to the above
+tol = Tolerances(first_order = (lyapunov = (acceptance_tol = 1e-14,),))
+
 # tighten second- and third-order Sylvester/Lyapunov solvers
-tight = SolverTolerances(acceptance_tol = 1e-14)
 tol = Tolerances(
-    second_order = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
-    third_order  = HigherOrderTolerances(sylvester = tight, lyapunov = tight),
+    second_order = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14),
+                                         lyapunov  = SolverTolerances(acceptance_tol = 1e-14)),
+    third_order  = HigherOrderTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-14),
+                                         lyapunov  = SolverTolerances(acceptance_tol = 1e-14)),
 )
 ```
 """
-function Tolerances(; nsss::NsssTolerances = NsssTolerances(),
-                    first_order::FirstOrderTolerances = FirstOrderTolerances(),
-                    second_order::HigherOrderTolerances = HigherOrderTolerances(),
-                    third_order::HigherOrderTolerances = HigherOrderTolerances())
-    return Tolerances(nsss, first_order, second_order, third_order)
+function Tolerances(; nsss = (;),
+                    first_order = (;),
+                    second_order = (;),
+                    third_order = (;))
+    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(), HigherOrderTolerances())
+    return Tolerances(
+        _resolve_tol(nsss, _base.nsss),
+        _resolve_tol(first_order, _base.first_order),
+        _resolve_tol(second_order, _base.second_order),
+        _resolve_tol(third_order, _base.third_order))
 end
 
-
-const HIGHER_ORDER_ALGORITHMS = (:second_order, :pruned_second_order, :third_order, :pruned_third_order)
-const THIRD_ORDER_ALGORITHMS  = (:third_order, :pruned_third_order)
-
-"""
-    solver_tol_to_dict(st::SolverTolerances) -> Dict{Symbol,Any}
-
-Convert a [`SolverTolerances`](@ref) struct to a flat `Dict`.
-"""
-function solver_tol_to_dict(st::SolverTolerances)
-    return Dict{Symbol,Any}(
-        :atol => st.atol,
-        :rtol => st.rtol,
-        :initial_guess_acceptance_tol => st.initial_guess_acceptance_tol,
-        :acceptance_tol => st.acceptance_tol,
-    )
-end
-
-"""
-    nsss_tol_to_dict(nt::NsssTolerances) -> Dict{Symbol,Any}
-
-Convert a [`NsssTolerances`](@ref) struct to a flat `Dict`.
-"""
-function nsss_tol_to_dict(nt::NsssTolerances)
-    return Dict{Symbol,Any}(
-        :acceptance_tol => nt.acceptance_tol,
-        :initial_guess_acceptance_tol => nt.initial_guess_acceptance_tol,
-        :xtol => nt.xtol,
-        :ftol => nt.ftol,
-        :rel_xtol => nt.rel_xtol,
-    )
-end
-
-"""
-    tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false) -> Dict{Symbol,Any}
-
-Build a nested `Dict` of tolerance values that are **relevant** for the given
-`algorithm` and covariance requirement.  Irrelevant sub-trees (e.g. third-order
-tolerances when running a first-order solve) are omitted so that
-`compare_args_and_kwargs` never reports spurious differences in unused settings.
-
-AD sub-tolerances are always excluded (too internal for plot annotations).
-"""
-function tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
-    d = Dict{Symbol,Any}()
-
-    # NSSS — always relevant
-    d[:nsss] = nsss_tol_to_dict(tol.nsss)
-
-    # First-order — always relevant
-    fo = Dict{Symbol,Any}(:qme => solver_tol_to_dict(tol.first_order.qme),
-                           :droptol => tol.first_order.droptol)
-    if needs_covariance
-        fo[:lyapunov] = solver_tol_to_dict(tol.first_order.lyapunov)
-        fo[:dependencies_tol] = tol.first_order.dependencies_tol
-    end
-    d[:first_order] = fo
-
-    # Second-order — only for higher-order algorithms
-    if algorithm in HIGHER_ORDER_ALGORITHMS
-        so = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.second_order.sylvester),
-                               :droptol => tol.second_order.droptol)
-        if needs_covariance
-            so[:lyapunov] = solver_tol_to_dict(tol.second_order.lyapunov)
-            so[:dependencies_tol] = tol.second_order.dependencies_tol
-        end
-        d[:second_order] = so
-    end
-
-    # Third-order — only for third-order algorithms
-    if algorithm in THIRD_ORDER_ALGORITHMS
-        to = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.third_order.sylvester),
-                               :droptol => tol.third_order.droptol)
-        if needs_covariance
-            to[:lyapunov] = solver_tol_to_dict(tol.third_order.lyapunov)
-            to[:dependencies_tol] = tol.third_order.dependencies_tol
-        end
-        d[:third_order] = to
-    end
-
-    return d
-end
-
-"""
-    warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
-
-Emit `@info` messages when `tol` contains non-default values in sub-trees that
-have **no effect** for the given `algorithm` and covariance setting.  This gives
-users immediate feedback that their custom tolerances are being ignored.
-"""
-function warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
-    defaults = Tolerances()
-
-    # --- order-based irrelevance ---
-    if algorithm ∉ HIGHER_ORDER_ALGORITHMS
-        if tol.second_order != defaults.second_order
-            @info "Second-order tolerances have no effect with algorithm = :$algorithm and are ignored."
-        end
-    end
-
-    if algorithm ∉ THIRD_ORDER_ALGORITHMS
-        if tol.third_order != defaults.third_order
-            @info "Third-order tolerances have no effect with algorithm = :$algorithm and are ignored."
-        end
-    end
-
-    # --- covariance-based irrelevance ---
-    if !needs_covariance
-        if tol.first_order.lyapunov != defaults.first_order.lyapunov ||
-           tol.first_order.dependencies_tol != defaults.first_order.dependencies_tol
-            @info "First-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
-        end
-
-        if algorithm in HIGHER_ORDER_ALGORITHMS
-            if tol.second_order.lyapunov != defaults.second_order.lyapunov ||
-               tol.second_order.dependencies_tol != defaults.second_order.dependencies_tol
-                @info "Second-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
-            end
-        end
-
-        if algorithm in THIRD_ORDER_ALGORITHMS
-            if tol.third_order.lyapunov != defaults.third_order.lyapunov ||
-               tol.third_order.dependencies_tol != defaults.third_order.dependencies_tol
-                @info "Third-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
-            end
-        end
-    end
+_resolve_tol(s::Tolerances, ::Tolerances) = s
+function _resolve_tol(nt::NamedTuple, base::Tolerances)
+    Tolerances(
+        _resolve_tol(get(nt, :nsss, (;)), base.nsss),
+        _resolve_tol(get(nt, :first_order, (;)), base.first_order),
+        _resolve_tol(get(nt, :second_order, (;)), base.second_order),
+        _resolve_tol(get(nt, :third_order, (;)), base.third_order))
 end
 
 

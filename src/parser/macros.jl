@@ -1,3 +1,442 @@
+# ── Macro helper functions (moved from MacroModelling.jl) ──
+
+function evaluate_conditions(cond)
+    if cond isa Bool
+        return cond
+    elseif cond isa Expr && cond.head == :call 
+        a, b = cond.args[2], cond.args[3]
+
+        if typeof(a) ∉ [Symbol, Number]
+            a = eval(a)
+        end
+
+        if typeof(b) ∉ [Symbol, Number]
+            b = eval(b)
+        end
+        
+        if cond.args[1] == :(==)
+            return a == b
+        elseif cond.args[1] == :(!=)
+            return a != b
+        elseif cond.args[1] == :(<)
+            return a < b
+        elseif cond.args[1] == :(<=)
+            return a <= b
+        elseif cond.args[1] == :(>)
+            return a > b
+        elseif cond.args[1] == :(>=)
+            return a >= b
+        end
+        # end
+    end
+    return nothing
+end
+
+function resolve_if_expr(ex::Expr)
+    prewalk(ex) do node
+        if node isa Expr && (node.head === :if || node.head === :elseif)
+            cond = node.args[1]
+            then_blk = node.args[2]
+            if length(node.args) == 3
+                else_blk = node.args[3]
+            end
+            val = evaluate_conditions(unblock(cond))
+
+            if val === true
+                # recurse into the selected branch
+                return resolve_if_expr(unblock(then_blk))
+            elseif val === false && length(node.args) == 3
+                return resolve_if_expr(unblock(else_blk))
+            elseif val === false && length(node.args) == 2
+                return nothing
+            elseif val === false && node.head === :elseif
+                return resolve_if_expr(unblock(else_blk))
+            end
+        end
+        return node
+    end
+end
+
+function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
+    return filter(r -> match(pattern, string(r)) !== nothing, strings)
+end
+
+function contains_equation(expr)
+    found = false
+    postwalk(expr) do x
+        if x isa Expr && x.head == :(=)
+            found = true
+        end
+        return x
+    end
+    return found
+end
+
+# function remove_nothing(ex::Expr)
+#     postwalk(ex) do node
+#         # Only consider call-nodes with exactly two arguments
+#         if node isa Expr && node.head === :call && length(node.args) == 3
+#             fn, lhs, rhs = node.args
+#             lhs2 = unblock(lhs)
+#             rhs2 = unblock(rhs)
+
+#             if rhs2 === :(nothing)
+#                 # strip the call and recurse to clean deeper
+#                 return remove_nothing(lhs2)
+#             elseif lhs2 === :(nothing)
+#                 return remove_nothing(rhs2)
+#             # else
+#             #     return remove_nothing(node.args)
+#             end
+#         end
+#         return node
+#     end
+# end
+
+function remove_nothing(ex::Expr)
+    postwalk(ex) do node
+        # Only consider call-expressions
+        if node isa Expr && node.head === :call && any(node.args .=== nothing)
+            fn = node.args[1]
+            # Unblock and collect all the operands
+            # raw_args = map(arg -> unblock(arg), node.args[2:end])
+            # Drop any nothing
+            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
+            if isempty(kept)
+                return nothing
+            elseif length(kept) == 1
+                return kept[1]
+            else
+            # elseif length(kept) < length(raw_args)
+                return Expr(:call, fn, kept...)
+            # else
+            #     return node
+            end
+        end
+        return node
+    end
+end
+
+function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
+    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
+    calls = []
+    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
+    for idx in indices
+        push!(calls, postwalk(x -> begin
+            x isa Expr ?
+                x.head == :ref ?
+                    @capture(x, name_{index_}[time_]) ?
+                        index == index_variable ?
+                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ get_symbols(time) ?
+                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            x :
+                        x :
+                    @capture(x, name_[time_]) ?
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ get_symbols(time) ?
+                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            # occursin("{" * string(index_variable) * "}", string(name)) ?
+                            #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
+                            x :
+                        # occursin("{" * string(index_variable) * "}", string(name)) ?
+                        #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
+                        x :
+                    x :
+                x.head == :if ?
+                    length(x.args) > 2 ?
+                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
+                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
+                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
+                @capture(x, name_{index_}) ?
+                    index == index_variable ?
+                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
+                    x :
+                x :
+            @capture(x, name_) ?
+                name == index_variable && idx isa Int ?
+                    :($idx) :
+                x isa Symbol ?
+                    occursin("{" * string(index_variable) * "}", string(x)) ?
+                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
+                    x :
+                x :
+            x
+        end,
+        exxpr))
+    end
+    
+    if concatenate
+        return :($(Expr(:call, operator, calls...)))
+    else
+        return :($(Expr(:block, calls...)))
+        # return :($calls...)
+        # return calls
+    end
+end
+
+function write_out_for_loops(arg::Expr)::Expr
+    postwalk(x -> begin
+                    x = flatten(unblock(x))
+                    x isa Expr ?
+                        x.head == :for ?
+                            x.args[2] isa Array ?
+                                length(x.args[2]) >= 1 ?
+                                    x.args[1].head == :block ?
+                                        # begin println("here"); 
+                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] : # end :
+                                    # begin println("here2"); 
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] : # end :
+                                x :
+                            x.args[2].head ∉ [:(=), :block] ?
+                                x.args[1].head == :block ?
+                                    # begin println("here3"); 
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    true,
+                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                x.args[2].head == :if ?
+                                    contains_equation(x.args[2]) ?
+                                        # begin println("here5"); println(x)
+                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                            Symbol(x.args[1].args[1]), 
+                                                            (x.args[1].args[2]),
+                                                            false,
+                                                            :+) : # end : # for loop part of equation
+                                    # begin println("here6"); println(x)
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        (x.args[1].args[2]),
+                                                        true,
+                                                        :+) : # end : # for loop part of equation
+                                # begin println("here4"); println(x)
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[1]), 
+                                                    (x.args[1].args[2]),
+                                                    true,
+                                                    :+) : # end : # for loop part of equation
+                            x.args[1].head == :block ?
+                                # begin println("here5"); 
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    false,
+                                                    x.args[1].args[1].args[2].value) : # end :
+                                                # end 
+                                                # : # for loop part of equation
+                            # begin println(x); 
+                            # begin println("here7"); println(x)
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                            Symbol(x.args[1].args[1]), 
+                                            (x.args[1].args[2]),
+                                            false,
+                                            :+) : # end :
+                                            # println(out); 
+                                            # return out end 
+                                            # :
+                        x :
+                    x
+                end,
+    arg) #|> unblock |> flatten
+end
+
+# function parse_for_loops(equations_block)
+#     eqs = Expr[]  # Initialize an empty array to collect expressions
+
+#     # Define a helper recursive function
+#     function recurse(arg)
+#             if arg isa Expr
+#                 if arg.head == :block
+#                     for b in arg.args
+#                         if b isa Expr
+#                             # If the result is an Expr, process and add to eqs
+#                             push!(eqs, unblock(replace_indices(b)))
+#                         elseif b isa Array
+#                             recurse(b)
+#                         end
+#                     end
+#                 end
+#             elseif arg isa Array
+#                 # If the result is an Array, iterate and recurse
+#                 for B in arg
+#                     println((B))
+#                     recurse(B)
+#                 end
+#             end
+#     end
+
+#     for arg in equations_block.args
+#         if isa(arg,Expr)
+#             parsed_eqs = write_out_for_loops(arg)
+#             recurse(parsed_eqs)
+#         end
+#     end
+
+#     # Return the collected expressions as a block
+#     return Expr(:block, eqs...)
+# end
+
+
+function parse_for_loops(equations_block)::Expr
+    eqs = Expr[]
+    for arg in equations_block.args
+        if isa(arg,Expr)
+            parsed_eqs = write_out_for_loops(arg)
+            # println(parsed_eqs)
+            if parsed_eqs isa Expr
+                push!(eqs,unblock(replace_indices(parsed_eqs)))
+            elseif parsed_eqs isa Array
+                for B in parsed_eqs
+                    if B isa Array
+                        for b in B
+                            push!(eqs,unblock(replace_indices(b)))
+                        end
+                    elseif B isa Expr
+                        if B.head == :block
+                            for b in B.args
+                                if b isa Expr
+                                    push!(eqs,replace_indices(b))
+                                end
+                            end
+                        else
+                            push!(eqs,unblock(replace_indices(B)))
+                        end
+                    else
+                        push!(eqs,unblock(replace_indices(B)))
+                    end
+                end
+            end
+
+        end
+    end
+    return Expr(:block,eqs...) |> flatten
+end
+
+function decompose_name(name::Symbol)
+    name = string(name)
+    matches = eachmatch(r"◖([\p{L}\p{N}]+)◗|([\p{L}\p{N}]+[^◖◗]*)", name)
+
+    result = []
+    nested = []
+
+    for m in matches
+        if m.captures[1] !== nothing
+            push!(nested, m.captures[1])
+        else
+            if !isempty(nested)
+                push!(result, Symbol.(nested))
+                nested = []
+            end
+            push!(result, Symbol(m.captures[2]))
+        end
+    end
+
+    if !isempty(nested)
+        push!(result, (nested))
+    end
+
+    return result
+end
+
+function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
+    indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
+
+    indexset = []
+
+    for i in indices
+        if length(i) > 1
+            push!(indexset, Symbol.(i[2])...)
+        end
+    end
+
+    return indexset
+end
+
+function expand_calibration_equations(calibration_equation_parameters::Vector{Symbol}, calibration_equations::Vector{Expr}, ss_calib_list::Vector, par_calib_list::Vector, all_names::Vector{Symbol})
+    expanded_parameters = Symbol[]
+    expanded_equations = Expr[]
+    expanded_ss_var_list = []
+    expanded_par_var_list = []
+
+    for (u,par) in enumerate(calibration_equation_parameters)
+        indices_in_calibration_equation = Set()
+        indexed_names = []
+        for i in get_symbols(calibration_equations[u])
+            indices = get_possible_indices_for_name(i, all_names)
+            if indices != Any[]
+                push!(indices_in_calibration_equation, indices)
+                push!(indexed_names,i)
+            end
+        end
+
+        par_indices = get_possible_indices_for_name(par, all_names)
+        
+        if length(par_indices) > 0
+            push!(indices_in_calibration_equation, par_indices)
+        end
+        
+        @assert length(indices_in_calibration_equation) <= 1 "Calibration equations cannot have more than one index in the equations or for the parameter."
+        
+        if length(indices_in_calibration_equation) == 0
+            push!(expanded_parameters,par)
+            push!(expanded_equations,calibration_equations[u])
+            push!(expanded_ss_var_list,ss_calib_list[u])
+            push!(expanded_par_var_list,par_calib_list[u])
+        else
+            for i in collect(indices_in_calibration_equation)[1]
+                expanded_ss_var = Set()
+                expanded_par_var = Set()
+                push!(expanded_parameters, Symbol(string(par) * "◖" * string(i) * "◗"))
+                push!(expanded_equations, postwalk(x -> x ∈ indexed_names ? Symbol(string(x) * "◖" * string(i) * "◗") : x, calibration_equations[u]))
+                for ss in ss_calib_list[u]
+                    if ss ∈ indexed_names
+                        push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_ss_var,ss)
+                    end
+                end
+                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
+                for p in par_calib_list[u]
+                    if p ∈ indexed_names
+                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_par_var, p)
+                    end
+                end
+                push!(expanded_ss_var_list, expanded_ss_var)
+                push!(expanded_par_var_list, expanded_par_var)
+            end
+        end
+    end
+
+    return expanded_parameters, expanded_equations, expanded_ss_var_list, expanded_par_var_list
+end
+
+function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Vector{T}, expanded_list::Vector{Symbol}) where T
+    expanded_inputs = Symbol[]
+    expanded_values = T[]
+
+    for (i,par) in enumerate(compressed_inputs)
+        par_idx = findall(x -> string(par) == x, first.(split.(string.(expanded_list ), "◖")))
+
+        if length(par_idx) > 1
+            for idx in par_idx
+                push!(expanded_inputs, expanded_list[idx])
+                push!(expanded_values, compressed_values[i])
+            end
+        else#if par ∈ expanded_list ## breaks parameters defined in parameter block
+            push!(expanded_inputs, par)
+            push!(expanded_values, compressed_values[i])
+        end
+    end
+    return expanded_inputs, expanded_values
+end
+
+
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 

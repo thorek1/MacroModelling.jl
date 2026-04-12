@@ -6,6 +6,116 @@
 
 # ── Parsing & transformation ─────────────────────────────────────────────────
 
+check_for_dynamic_variables(ex::Int) = false
+check_for_dynamic_variables(ex::Float64) = false
+check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
+
+function check_for_dynamic_variables(ex::Expr)
+    dynamic_indicator = Bool[]
+
+    postwalk(x -> 
+        x isa Expr ?
+            x.head == :ref ? 
+                occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                    x :
+                begin
+                    push!(dynamic_indicator,true)
+                    x
+                end :
+            x :
+        x,
+    ex)
+
+    any(dynamic_indicator)
+end
+
+
+function transform_expression(expr::Expr)
+    # Dictionary to store the transformations for reversing
+    reverse_transformations = Dict{Symbol, Expr}()
+
+    # Counter for generating unique placeholders
+    unique_counter = Ref(0)
+
+    # Step 1: Replace min/max calls and record their original form
+    function replace_min_max(expr)
+        if expr isa Expr && expr.head == :call && (expr.args[1] == :min || expr.args[1] == :max)
+            # Replace min/max functions with a placeholder
+            # placeholder = Symbol("minimal__P", unique_counter[])
+            placeholder = :minmax__P
+            unique_counter[] += 1
+
+            # Store the original min/max call for reversal
+            reverse_transformations[placeholder] = expr
+
+            return placeholder
+        else
+            return expr
+        end
+    end
+
+    # Step 2: Transform :ref fields in the rest of the expression
+    function transform_ref_fields(expr)
+        if expr isa Expr && expr.head == :ref && isa(expr.args[1], Symbol)
+            # Handle :ref expressions
+            if isa(expr.args[2], Number) || isa(expr.args[2], Symbol)           
+                if expr.args[2] < 0
+                    new_symbol = Symbol(expr.args[1], "__", abs(expr.args[2]))
+                else
+                    new_symbol = Symbol(expr.args[1], "_", expr.args[2])
+                end
+            else
+                # Generate a unique placeholder for complex :ref
+                unique_counter[] += 1
+                placeholder = Symbol("__placeholder", unique_counter[])
+                new_symbol = placeholder
+            end
+
+            # Record the reverse transformation
+            reverse_transformations[new_symbol] = expr
+
+            return new_symbol
+        else
+            return expr
+        end
+    end
+
+
+    # Replace equality sign with minus
+    function replace_equality_with_minus(expr)
+        if expr isa Expr && expr.head == :(=)
+            return Expr(:call, :-, expr.args...)
+        else
+            return expr
+        end
+    end
+
+    # Apply transformations
+    expr = postwalk(replace_min_max, expr)
+    expr = postwalk(transform_ref_fields, expr)
+    transformed_expr = postwalk(replace_equality_with_minus, expr)
+    
+    return transformed_expr, reverse_transformations
+end
+
+
+function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})
+    # Function to replace the transformed symbols with their original form
+    function revert_symbol(expr)
+        if expr isa Symbol && haskey(reverse_dict, expr)
+            return reverse_dict[expr]
+        else
+            return expr
+        end
+    end
+
+    # Revert the expression using postwalk
+    reverted_expr = postwalk(revert_symbol, transformed_expr)
+
+    return reverted_expr
+end
+
+
 function check_for_minmax(expr)
     contains_minmax = Bool[]
 

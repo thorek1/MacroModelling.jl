@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, tol_to_dict, warn_irrelevant_tol, flatten_tol_diff, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step, SteadyStateFunctionType, normalize_superscript, apply_custom_name
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, SteadyStateFunctionType
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -17,11 +17,338 @@ import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
+import Dates
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
+import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, get_irf
 
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper functions moved from core (only used by the plotting extension)
+# ──────────────────────────────────────────────────────────────────────────────
+
+const HIGHER_ORDER_ALGORITHMS = (:second_order, :pruned_second_order, :third_order, :pruned_third_order)
+const THIRD_ORDER_ALGORITHMS  = (:third_order, :pruned_third_order)
+
+const TOL_DISPLAY_NAMES = Dict{Symbol,String}(
+    :tol => "Tolerance",
+    :nsss => "NSSS",
+    :first_order => "1st order",
+    :second_order => "2nd order",
+    :third_order => "3rd order",
+    :qme => "QME",
+    :sylvester => "Sylvester",
+    :lyapunov => "Lyapunov",
+    :atol => "atol",
+    :rtol => "rtol",
+    :initial_guess_acceptance_tol => "init. guess accept. tol",
+    :acceptance_tol => "accept. tol",
+    :xtol => "xtol",
+    :ftol => "ftol",
+    :rel_xtol => "rel. xtol",
+    :droptol => "droptol",
+    :dependencies_tol => "dep. tol",
+)
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Number}
+    x_axis[end] - x_axis[end-1]
+end
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Dates.TimeType}
+    d1 = x_axis[end-1]
+    d2 = x_axis[end]
+
+    # try to infer a monthly step if aligned by day-of-month
+    if Dates.day(d1) == Dates.day(d2)
+        m1 = 12 * Dates.year(d1) + Dates.month(d1)
+        m2 = 12 * Dates.year(d2) + Dates.month(d2)
+        mstep = m2 - m1
+        if mstep != 0
+            return Dates.Month(mstep)
+        end
+    end
+
+    # fall back to the raw difference (in days, milliseconds, …)
+    return d2 - d1
+end
+
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where {R <: Union{Symbol, String}, S, T}
+    # First, check for an exact match with the original symbol
+    if haskey(custom_names, symbol)
+        return R(custom_names[symbol])
+    end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
+        return R(custom_names[String(replace_indices_in_symbol(symbol))])
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return R(custom_names[Symbol(symbol)])
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return R(string(value) * lag_part)
+        end
+    end
+
+    return symbol
+end
+
+function normalize_superscript(x::Symbol)
+    return normalize_superscript(string(x))
+end
+
+function normalize_superscript(x::AbstractString)
+    sub_map = Dict(
+        '₀' => '0', '₁' => '1', '₂' => '2', '₃' => '3', '₄' => '4',
+        '₅' => '5', '₆' => '6', '₇' => '7', '₈' => '8', '₉' => '9',
+        '₊' => '+', '₋' => '-', '₌' => '=', '₍' => '(', '₎' => ')',
+        'ₐ' => 'a', 'ₑ' => 'e', 'ₕ' => 'h', 'ᵢ' => 'i', 'ⱼ' => 'j',
+        'ₖ' => 'k', 'ₗ' => 'l', 'ₘ' => 'm', 'ₙ' => 'n', 'ₒ' => 'o',
+        'ₚ' => 'p', 'ᵣ' => 'r', 'ₛ' => 's', 'ₜ' => 't', 'ᵤ' => 'u',
+        'ᵥ' => 'v', 'ₓ' => 'x'
+    )
+    super_map = Dict(
+        '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+        '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9',
+        '⁺' => '+', '⁻' => '-', '⁼' => '=', '⁽' => '(', '⁾' => ')',
+        'ᵃ' => 'a', 'ᵇ' => 'b', 'ᶜ' => 'c', 'ᵈ' => 'd', 'ᵉ' => 'e',
+        'ᶠ' => 'f', 'ᵍ' => 'g', 'ʰ' => 'h', 'ᶦ' => 'i', 'ʲ' => 'j',
+        'ᵏ' => 'k', 'ˡ' => 'l', 'ᵐ' => 'm', 'ⁿ' => 'n', 'ᵒ' => 'o',
+        'ᵖ' => 'p', 'ʳ' => 'r', 'ˢ' => 's', 'ᵗ' => 't', 'ᵘ' => 'u',
+        'ᵛ' => 'v', 'ʷ' => 'w', 'ˣ' => 'x', 'ʸ' => 'y', 'ᶻ' => 'z'
+    )
+
+    buf = IOBuffer()
+    for c in x
+        if haskey(sub_map, c)
+            write(buf, sub_map[c])
+        elseif haskey(super_map, c)
+            write(buf, super_map[c])
+        else
+            write(buf, c)
+        end
+    end
+    return String(take!(buf))
+end
+
+function solver_tol_to_dict(st::SolverTolerances)
+    return Dict{Symbol,Any}(
+        :atol => st.atol,
+        :rtol => st.rtol,
+        :initial_guess_acceptance_tol => st.initial_guess_acceptance_tol,
+        :acceptance_tol => st.acceptance_tol,
+    )
+end
+
+function nsss_tol_to_dict(nt::NsssTolerances)
+    return Dict{Symbol,Any}(
+        :acceptance_tol => nt.acceptance_tol,
+        :initial_guess_acceptance_tol => nt.initial_guess_acceptance_tol,
+        :xtol => nt.xtol,
+        :ftol => nt.ftol,
+        :rel_xtol => nt.rel_xtol,
+    )
+end
+
+function tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    d = Dict{Symbol,Any}()
+
+    # NSSS — always relevant
+    d[:nsss] = nsss_tol_to_dict(tol.nsss)
+
+    # First-order — always relevant
+    fo = Dict{Symbol,Any}(:qme => solver_tol_to_dict(tol.first_order.qme),
+                           :droptol => tol.first_order.droptol)
+    if needs_covariance
+        fo[:lyapunov] = solver_tol_to_dict(tol.first_order.lyapunov)
+        fo[:dependencies_tol] = tol.first_order.dependencies_tol
+    end
+    d[:first_order] = fo
+
+    # Second-order — only for higher-order algorithms
+    if algorithm in HIGHER_ORDER_ALGORITHMS
+        so = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.second_order.sylvester),
+                               :droptol => tol.second_order.droptol)
+        if needs_covariance
+            so[:lyapunov] = solver_tol_to_dict(tol.second_order.lyapunov)
+            so[:dependencies_tol] = tol.second_order.dependencies_tol
+        end
+        d[:second_order] = so
+    end
+
+    # Third-order — only for third-order algorithms
+    if algorithm in THIRD_ORDER_ALGORITHMS
+        to = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.third_order.sylvester),
+                               :droptol => tol.third_order.droptol)
+        if needs_covariance
+            to[:lyapunov] = solver_tol_to_dict(tol.third_order.lyapunov)
+            to[:dependencies_tol] = tol.third_order.dependencies_tol
+        end
+        d[:third_order] = to
+    end
+
+    return d
+end
+
+function warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    defaults = Tolerances()
+
+    # --- order-based irrelevance ---
+    if algorithm ∉ HIGHER_ORDER_ALGORITHMS
+        if tol.second_order != defaults.second_order
+            @info "Second-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    if algorithm ∉ THIRD_ORDER_ALGORITHMS
+        if tol.third_order != defaults.third_order
+            @info "Third-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    # --- covariance-based irrelevance ---
+    if !needs_covariance
+        if tol.first_order.lyapunov != defaults.first_order.lyapunov ||
+           tol.first_order.dependencies_tol != defaults.first_order.dependencies_tol
+            @info "First-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+        end
+
+        if algorithm in HIGHER_ORDER_ALGORITHMS
+            if tol.second_order.lyapunov != defaults.second_order.lyapunov ||
+               tol.second_order.dependencies_tol != defaults.second_order.dependencies_tol
+                @info "Second-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+
+        if algorithm in THIRD_ORDER_ALGORITHMS
+            if tol.third_order.lyapunov != defaults.third_order.lyapunov ||
+               tol.third_order.dependencies_tol != defaults.third_order.dependencies_tol
+                @info "Third-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+    end
+end
+
+function _flatten_tol_dict(d::Dict;
+                           names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
+                           prefix::String = "")
+    result = Dict{String,Any}()
+    for (k, v) in d
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            merge!(result, _flatten_tol_dict(v; names = names, prefix = label))
+        else
+            result[label] = v
+        end
+    end
+    return result
+end
+
+function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
+    N = length(dicts)
+
+    if N ≤ 1
+        diffs = Dict{Symbol,Any}()
+        if N == 1
+            for k in keys(dicts[1])
+                k in (:plot_data, :plot_type) && continue
+                v = dicts[1][k]
+                if v isa Dict
+                    diffs[k] = compare_args_and_kwargs([v])
+                else
+                    diffs[k] = [v]
+                end
+            end
+        end
+        return diffs
+    end
+
+    diffs = Dict{Symbol,Any}()
+
+    all_keys = reduce(union, keys.(dicts))
+
+    for k in all_keys
+        if k in [:plot_data, :plot_type]
+            continue
+        end
+
+        if !all(haskey(d, k) for d in dicts)
+            diffs[k] = [get(d, k, missing) for d in dicts]
+            continue
+        end
+
+        vals = [d[k] for d in dicts]
+
+        if all(v -> v isa Dict, vals)
+            nested = compare_args_and_kwargs(vals)
+            if !isempty(nested)
+                diffs[k] = nested
+            end
+
+        elseif all(v -> v isa KeyedArray, vals)
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(collect(v) .== collect(base)), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        elseif all(v -> v isa AbstractArray, vals)
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(v .== base), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        else
+            identical = all(v -> v == vals[1], vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+        end
+    end
+
+    return diffs
+end
+
+function flatten_tol_diff(diff::Dict;
+                          names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
+                          prefix::String = "")
+    result = Pair{String,Any}[]
+    for (k, v) in sort(collect(diff), by = first)
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            append!(result, flatten_tol_diff(v; names = names, prefix = label))
+        else
+            push!(result, label => reduce(vcat, v))
+        end
+    end
+    return result
+end
 
 @stable default_mode = "disable" begin
 
@@ -1003,6 +1330,7 @@ function plot_model_estimates!(𝓂::ℳ,
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
             get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
+            get(dict, :tol, nothing) == args_and_kwargs[:tol],
             # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
             # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
             all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
@@ -1029,7 +1357,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     for d in model_estimates_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:tol]) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -1182,8 +1510,15 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
 
-    if haskey(diffdict, :tol)
-        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
+    if length(model_estimates_active_plot_container) > 1
+        flat_tols = [_flatten_tol_dict(d[:tol]) for d in model_estimates_active_plot_container]
+        shared_tol_keys = reduce(intersect, keys.(flat_tols))
+        for fk in sort(collect(shared_tol_keys))
+            fvals = [ft[fk] for ft in flat_tols]
+            if !all(v -> v == fvals[1], fvals[2:end])
+                push!(annotate_diff_input, fk => fvals)
+            end
+        end
     end
     
     if haskey(diffdict, :shock_names)
@@ -2613,6 +2948,7 @@ function plot_irf!(𝓂::ℳ;
             get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
+            get(dict, :tol, nothing) == args_and_kwargs[:tol],
             all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
         )))
         for dict in irf_active_plot_container
@@ -2637,7 +2973,7 @@ function plot_irf!(𝓂::ℳ;
 
     for d in irf_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:tol]) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -2787,8 +3123,15 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    if haskey(diffdict, :tol)
-        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
+    if length(irf_active_plot_container) > 1
+        flat_tols = [_flatten_tol_dict(d[:tol]) for d in irf_active_plot_container]
+        shared_tol_keys = reduce(intersect, keys.(flat_tols))
+        for fk in sort(collect(shared_tol_keys))
+            fvals = [ft[fk] for ft in flat_tols]
+            if !all(v -> v == fvals[1], fvals[2:end])
+                push!(annotate_diff_input, fk => fvals)
+            end
+        end
     end
 
 
@@ -3974,6 +4317,7 @@ function _plot_solution_from_container(;
                 get(dict, :model_name, nothing) == solution_active_plot_container[end][:model_name],
                 get(dict, :algorithm, nothing) == solution_active_plot_container[end][:algorithm],
                 get(dict, :ignore_obc, nothing) == solution_active_plot_container[end][:ignore_obc],
+                get(dict, :tol, nothing) == solution_active_plot_container[end][:tol],
                 all(get(dict, k, nothing) == get(solution_active_plot_container[end], k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
             )))
             for dict in solution_active_plot_container[1:end-1]
@@ -4001,7 +4345,7 @@ function _plot_solution_from_container(;
 
             for d in solution_active_plot_container#[1:end-1]
                 model = d[:model_name]
-                d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+                d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:tol]) if haskey(d, k))
                 push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
             end
 
@@ -4083,8 +4427,15 @@ function _plot_solution_from_container(;
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
     end
 
-    if haskey(diffdict, :tol)
-        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
+    if length(solution_active_plot_container) > 1
+        flat_tols = [_flatten_tol_dict(d[:tol]) for d in solution_active_plot_container]
+        shared_tol_keys = reduce(intersect, keys.(flat_tols))
+        for fk in sort(collect(shared_tol_keys))
+            fvals = [ft[fk] for ft in flat_tols]
+            if !all(v -> v == fvals[1], fvals[2:end])
+                push!(annotate_diff_input, fk => fvals)
+            end
+        end
     end
 
     # Determine legend labels based on what differs
@@ -5440,6 +5791,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
+            get(dict, :tol, nothing) == args_and_kwargs[:tol],
             all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
         )))
         for dict in conditional_forecast_active_plot_container
@@ -5464,7 +5816,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     for d in conditional_forecast_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:tol]) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -5670,8 +6022,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
         end
     end
 
-    if haskey(diffdict, :tol)
-        append!(annotate_diff_input, flatten_tol_diff(diffdict[:tol]))
+    if length(conditional_forecast_active_plot_container) > 1
+        flat_tols = [_flatten_tol_dict(d[:tol]) for d in conditional_forecast_active_plot_container]
+        shared_tol_keys = reduce(intersect, keys.(flat_tols))
+        for fk in sort(collect(shared_tol_keys))
+            fvals = [ft[fk] for ft in flat_tols]
+            if !all(v -> v == fvals[1], fvals[2:end])
+                push!(annotate_diff_input, fk => fvals)
+            end
+        end
     end
 
     if haskey(diffdict, :shock_names)

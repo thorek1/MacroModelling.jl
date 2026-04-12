@@ -10,7 +10,7 @@
 #   4. Use implicit differentiation for iterative solvers and matrix equations
 #
 # Functions covered:
-#   - Basic operations: mul_reverse_AD!, mat_mult_kron, sparse_preallocated!
+#   - Basic operations: mat_mult_kron, sparse_preallocated!
 #   - Steady states: get_NSSS_and_parameters, calculate_second/third_order_stochastic_steady_state
 #   - Derivatives: calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 #   - Solutions: calculate_first/second/third_order_solution
@@ -22,23 +22,6 @@
 function rrule(::typeof(clear_solution_caches!), 𝓂::ℳ, algorithm::Symbol)
     clear_solution_caches!(𝓂, algorithm)
     return nothing, _ -> (NoTangent(), NoTangent(), NoTangent())
-end
-
-function rrule(::typeof(mul_reverse_AD!),
-                C::Matrix{S},
-                A::AbstractMatrix{M},
-                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
-    project_A = ProjectTo(A)
-    project_B = ProjectTo(B)
-
-    function times_pullback(ȳ)
-        Ȳ = unthunk(ȳ)
-        dA = @thunk(project_A(Ȳ * B'))
-        dB = @thunk(project_B(A' * Ȳ))
-        return (NoTangent(), NoTangent(), dA, dB)
-    end
-
-    return ℒ.mul!(C,A,B), times_pullback
 end
 
 function rrule(::typeof(mat_mult_kron),
@@ -6429,6 +6412,8 @@ function mul_fill_kron_adjoint_∂A_with_perm!(M1::AbstractMatrix,
     end
 end
 
+# Dead code: compressed_kron_pullback_2arg! — never called anywhere (2-arg compressed_kron is also dead)
+#=
 # Helper: adjoint of compressed_kron(A, σ; tol) w.r.t. A and σ.
 # Forward contribution for each sorted output column triple (α≥β≥γ) is:
 #   Y[row,col] += A[i,α] * σ[(j-1)*nᵣ+k, (β-1)*nᶜ+γ]
@@ -6505,6 +6490,7 @@ function compressed_kron_pullback_2arg!(∂A::AbstractMatrix{T},
 
     return
 end
+=#
 
 # Helper: adjoint of compressed_permuted_mixed_kron(A, σ; tol) w.r.t. A and σ.
 function compressed_permuted_mixed_kron_pullback!(∂A::AbstractMatrix{T},
