@@ -2175,7 +2175,7 @@ Tolerances
 │   ├── droptol / dependencies_tol
 │   └── ad        :: AdTolerances
 └── third_order   :: HigherOrderTolerances   — third-order perturbation solution
-    └── (same structure as second_order)
+    └── (same structure as second_order, except lyapunov acceptance_tol defaults to 1e-8 on primal and AD paths)
 ```
 
 Each [`SolverTolerances`](@ref) carries four values:
@@ -2223,7 +2223,10 @@ function Tolerances(; nsss = (;),
                     first_order = (;),
                     second_order = (;),
                     third_order = (;))
-    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(), HigherOrderTolerances())
+    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(),
+                       HigherOrderTolerances(
+                           lyapunov = SolverTolerances(acceptance_tol = 1e-8),
+                           ad = AdTolerances(lyapunov = SolverTolerances(acceptance_tol = 1e-8))))
     return Tolerances(
         _resolve_tol(nsss, _base.nsss),
         _resolve_tol(first_order, _base.first_order),
