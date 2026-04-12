@@ -1,3 +1,118 @@
+"""
+    sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
+                tol::Real = eps(T)) -> SparseMatrixCSC{T}
+
+Compute `C = A * B * A'` returning a sparse symmetric matrix, where `B` is
+symmetric.  Uses a column-by-column sparse-accumulator (SPA) kernel that
+computes only the lower triangle with advancing-pointer row pruning, then
+emits both `(i,j)` and `(j,i)` entries into COO vectors for direct CSC
+assembly.
+
+`tol` controls the drop tolerance during assembly (entries with `|v| < tol`
+are discarded).
+"""
+function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
+                     tol::Real = eps(T)) where T <: Real
+    m, n = size(A)
+    @assert size(B) == (n, n) "B must be n×n where A is m×n"
+
+    At      = sparse(A')
+    At_rows = SparseArrays.rowvals(At)
+    At_vals = nonzeros(At)
+
+    B_rows  = SparseArrays.rowvals(B)
+    B_vals  = nonzeros(B)
+
+    A_rows  = SparseArrays.rowvals(A)
+    A_vals  = nonzeros(A)
+    A_colptr = SparseArrays.getcolptr(A)
+
+    # SPA workspace: generation-marker pattern avoids zeroing w each column
+    w      = Vector{T}(undef, n)
+    mark_w = zeros(Int, n)
+    w_nz   = Vector{Int}(undef, n)
+
+    # Dense accumulator for output column (lower triangle only)
+    c = zeros(T, m)
+
+    # Advancing pointers: A_start[k] tracks first unconsumed position in A[:,k].
+    # Monotonic j means pointers only advance; total work bounded by nnz(A).
+    A_start = A_colptr[1:n]
+
+    # COO output: emit both (i,j) and (j,i) for off-diagonal entries.
+    # Upper bound: m*(m+1)/2 lower-triangle entries + m*(m-1)/2 mirrors = m²
+    max_entries = m * m
+    coo_I = Vector{Int}(undef, max_entries)
+    coo_J = Vector{Int}(undef, max_entries)
+    coo_V = Vector{T}(undef, max_entries)
+    cnt   = 0
+
+    @inbounds for j in 1:m
+        isempty(SparseArrays.nzrange(At, j)) && continue
+
+        # Phase A: w = B * Aᵀ[:,j]  via SPA
+        w_cnt = 0
+        for p in SparseArrays.nzrange(At, j)
+            l    = At_rows[p]
+            a_jl = At_vals[p]
+            for q in SparseArrays.nzrange(B, l)
+                k    = B_rows[q]
+                b_kl = B_vals[q]
+                if mark_w[k] != j
+                    mark_w[k] = j
+                    w_cnt += 1
+                    w_nz[w_cnt] = k
+                    w[k] = b_kl * a_jl
+                else
+                    w[k] += b_kl * a_jl
+                end
+            end
+        end
+
+        # Sort for sequential A-column access (cache-friendly advancing pointers)
+        sort!(view(w_nz, 1:w_cnt))
+
+        # Phase B: c[i] += (A * w)[i] for i ≥ j  (lower triangle only)
+        for idx in 1:w_cnt
+            k    = w_nz[idx]
+            wk   = w[k]
+            hi_k = A_colptr[k + 1] - 1
+            p    = A_start[k]
+            while p ≤ hi_k && A_rows[p] < j
+                p += 1
+            end
+            A_start[k] = p
+            for q in p:hi_k
+                c[A_rows[q]] += A_vals[q] * wk
+            end
+        end
+
+        # Phase C: gather nonzeros from c[j:m], emit both (i,j) and (j,i)
+        for i in j:m
+            val  = c[i]
+            c[i] = zero(T)
+            if abs(val) >= tol
+                cnt += 1
+                coo_I[cnt] = i
+                coo_J[cnt] = j
+                coo_V[cnt] = val
+                if i != j
+                    cnt += 1
+                    coo_I[cnt] = j
+                    coo_J[cnt] = i
+                    coo_V[cnt] = val
+                end
+            end
+        end
+    end
+
+    resize!(coo_I, cnt)
+    resize!(coo_J, cnt)
+    resize!(coo_V, cnt)
+
+    return sparse(coo_I, coo_J, coo_V, m, m)
+end
+
 @stable default_mode = "disable" begin
 
 function calculate_covariance(parameters::Vector{R}, 
@@ -790,7 +905,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             Q = E_cU * A_LU' + E_cL * A_LL'
             R = E_cU * A_UU'
             C_LU = ê_L * (Γ₃ * ê_U' + R) + Q' * ê_U'
-            C_LL = ê_L * (Γ₃ * ê_L' + Q) + Q' * ê_L'
+            eQ = ê_L * Q
+            C_LL = sparse_ABAt(ê_L, Γ₃) + eQ + eQ'
             droptol!(C_LU, eps())
             droptol!(C_LL, eps())
 
@@ -807,7 +923,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
             droptol!(A, eps())
 
-            C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
             droptol!(C, eps())
 
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
@@ -823,7 +939,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.constants.post_model_macro.var), indexin(variance_observable, 𝓂.constants.post_model_macro.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
@@ -1101,7 +1217,8 @@ function calculate_third_order_moments(parameters::Vector{T},
             Q = E_cU * A_LU' + E_cL * A_LL'
             R = E_cU * A_UU'
             C_LU = ê_L * (Γ₃ * ê_U' + R) + Q' * ê_U'
-            C_LL = ê_L * (Γ₃ * ê_L' + Q) + Q' * ê_L'
+            eQ = ê_L * Q
+            C_LL = sparse_ABAt(ê_L, Γ₃) + eQ + eQ'
             droptol!(C_LU, eps())
             droptol!(C_LL, eps())
 
@@ -1115,7 +1232,7 @@ function calculate_third_order_moments(parameters::Vector{T},
             A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
             droptol!(A, eps())
 
-            C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
             droptol!(C, eps())
 
             lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
@@ -1132,7 +1249,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.constants.post_model_macro.var), indexin(variance_observable, 𝓂.constants.post_model_macro.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
         end
