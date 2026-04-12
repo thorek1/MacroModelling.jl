@@ -2,7 +2,11 @@
 
 ## High priority
 
-- [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
+- [ ] make package work with semi structural expectations models
+- [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
+- [ ] try nested samplers for estimation (use the python packages) at first, then implement in Julia if they are promising
+- [ ] include dynare computation in tests
+- [ ] Move mean, second-order moments, and third-order moments to compressed space end-to-end; they still use uncompressed-space matrices, and the third-order solution still uses uncompressed second-order matrices.
 - [ ] add FRB US model
 - [ ] check allocations of jacobian in sparse case (NAWM)
 - [ ] write another seciton in the docs explaining the parameters macro and what you can do (calibration equations, parameters as functions of other parameters, delayed definition of parameters)
@@ -13,14 +17,11 @@
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] allow to define y[ss] = 1 in parameters block
 
-- [ ] add caches to lyapunov krylov solvers
-- [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
 - [ ] separate docs from main package as all the plots get too big
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] collect helper function only used in statsplots extension in that script
 - [ ] collect the argument wrangling functions in functions instead of them being in function bodies
 - [ ] apply sort by normalised superscript across functions
-- [ ] make package mooncake compatible. write custom pullback functions where necessary (all in one for llh)
 - [ ] print out the OBC shocks as auxilliary shocks
 - [ ] generalised higher order IRF is around mean not SSS. plot mean line?
 - [ ] set irrelevant arguments back to default and inform user
@@ -28,7 +29,6 @@
 - [ ] consider making sympy an extension or try to partially replace with Symbolics
 - [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
 - [ ] switch from sympy to Symbolics
-- [ ] replace RF with LinearSolve codes (RF has too many dependencies)
 - [ ] check again return value when NSSS not found, maybe NaN is better here
 - [ ] use isfresh flag on dense linear solves
 - [ ] implement check for plots, that they always return a plot (shocks = :none didn't return a plot)
@@ -37,8 +37,6 @@
 - [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
 - [ ] add correlation and other moments to get statistics
 - [ ] get irf with parameters for higher order and make it zygote compatible
-- [ ] implement rrule for higher order moments
-- [ ] add derivatives wrt covariance in get_moments
 - [ ] recheck function examples and docs (include output description)
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] write documentation/docstrings using copilot
@@ -53,17 +51,13 @@
 - [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
 - [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
 - [ ] check tols throughout. adopt max(abs,rel*norm) tols
-- [ ] redo diffs (DiffInt or ForwardDiff or FastDiff)
 - [ ] optimize second order estim with SW07 or NAWM
 - [ ] optimize third order with smaller model
 - [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
-- [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
 - [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
 - [ ] check out dense sparse matmul on transposed matrices
-- [ ] check out DiffInterface for NSSS solver
 - [ ] write plotting callback for NSSS solver
 - [ ] time NSSS solver and estimation codes
-- [ ] move korn_s_s_s to higher order aux variables
 - [ ] write own interior point solver
 - [ ] write more tests for the plots
 - [ ] add background part in docs on NSSS solver (use material from presentation)
@@ -76,7 +70,6 @@
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
 - [ ] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
-- [ ] use faster derivatives for SS solver (currently forward diff)
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
@@ -84,14 +77,9 @@
 - [ ] take apart solve_matrix_equation for various cases
 - [ ] try static arrays in KF
 - [ ] check derivatives of erfcinv with Symbolics. seems off
-- [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
-- [ ] check why PG samples are off
 - [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
 - [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
 - [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
-- [ ] figure out why PG and IS return basically the prior | related to context but also that they need to be somewhat close to the posterior, if they aren't the sampler has a hard time finding it
-- [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
-- [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
 - [ ] SS solver with less equations than variables
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
@@ -100,17 +88,15 @@
 - [ ] check whether its possible to run parameters macro/block without rerunning model block
 - [ ] eliminate possible log, ^ terms in parameters block equations - because of nonnegativity errors
 - [ ] throw error when equations appear more than once
-- [ ] make SS calc faster (func and optim, maybe inplace ops)
 - [ ] check obc once more
 - [ ] rm obc vars from get_SS
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
-- [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
 - [ ] info on when what filter is used and chosen options are overridden
 - [ ] check warnings, errors throughout. check suppress not interfering with pigeons
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
-- [ ] autocorr and covariance with derivatives. return 3d array
+- [ ] autocorr and corr with derivatives. return 3d array
 - [ ] add pydsge and econpizza to overview
 - [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
@@ -120,8 +106,6 @@
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
 - [ ] have get_std take variables as an input
 - [ ] initial state accept keyed array, SS and SSS as arguments
-- [ ] kick out unused parameters from m.parameters
-- [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] implement global solution methods - Julien Pascal, QuantEcon
@@ -138,6 +122,27 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] kick out unused parameters from m.parameters
+- [x] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
+- [x] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
+- [x] make SS calc faster (func and optim, maybe inplace ops)
+- [x] figure out why PG and IS return basically the prior | related to context but also that they need to be somewhat close to the posterior, if they aren't the sampler has a hard time finding it
+- [x] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
+- [x] go through custom SS solver once more and try to find parameters and logic that achieves best results
+- [x] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
+- [x] check why PG samples are off
+- [x] use faster derivatives for SS solver (currently forward diff)
+- [x] move korn_s_s_s to higher order aux variables
+- [x] check out DiffInterface for NSSS solver
+- [x] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
+- [x] redo diffs (DiffInt or ForwardDiff or FastDiff)
+- [x] implement rrule for higher order moments
+- [x] add derivatives wrt covariance in get_moments
+- [x] replace RF with LinearSolve codes (RF has too many dependencies)
+- [x] make package mooncake compatible. write custom pullback functions where necessary (all in one for llh)
+- [x] add caches to lyapunov krylov solvers
+- [x] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
+- [x] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
 - [x] separate estimation test using Pigeons from normal tests so that newest version of Turing can be tested and maintained
 - [x] fix borrowing_constraint how-to
 - [x] append forecast (no shocks) after estimated variables
