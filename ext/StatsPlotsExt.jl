@@ -483,8 +483,14 @@ function plot_model_estimates(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -625,7 +631,9 @@ function plot_model_estimates(𝓂::ℳ,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
                                tol = tol,
-                               verbose = verbose)
+                               verbose = verbose,
+                               caching = caching,
+                               use_workspaces = use_workspaces)
 
         forecast_data = collect(forecast_irf)
         
@@ -990,6 +998,8 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return return_plots
 end
 
@@ -1126,8 +1136,14 @@ function plot_model_estimates!(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1267,7 +1283,9 @@ function plot_model_estimates!(𝓂::ℳ,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
                                tol = tol,
-                               verbose = verbose)
+                               verbose = verbose,
+                               caching = caching,
+                               use_workspaces = use_workspaces)
         
         forecast_data = collect(forecast_irf)
         
@@ -1988,6 +2006,8 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return return_plots
 end
 
@@ -2084,8 +2104,14 @@ function plot_irf(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2367,6 +2393,8 @@ function plot_irf(𝓂::ℳ;
             end
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -2768,8 +2796,14 @@ function plot_irf!(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
 
@@ -3435,6 +3469,8 @@ function plot_irf!(𝓂::ℳ;
         annotate_ss_page = Pair{String,Any}[]
     end
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return return_plots
 end
 
@@ -3816,8 +3852,14 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
-                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM)
+                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                                caching::Bool = DEFAULT_CACHING,
+                                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
@@ -3842,7 +3884,9 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                     steady_state_function = steady_state_function,
                                                     verbose = verbose,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    tol = tol)
+                                                    tol = tol,
+                                                    caching = caching,
+                                                    use_workspaces = use_workspaces)
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -3980,6 +4024,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return return_plots
 end
 
@@ -4087,9 +4133,15 @@ function plot_solution(𝓂::ℳ,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                    
     
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
@@ -4130,7 +4182,9 @@ function plot_solution(𝓂::ℳ,
                             sylvester_algorithm = sylvester_algorithm,
                             lyapunov_algorithm = lyapunov_algorithm,
                             tol = tol,
-                            verbose = verbose)
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
 
     SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
     
@@ -4180,7 +4234,9 @@ function plot_solution(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     full_SS_current = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
@@ -4189,7 +4245,9 @@ function plot_solution(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
@@ -4207,7 +4265,7 @@ function plot_solution(𝓂::ℳ,
             initial_state = collect(full_SS_current) .+ state_selector * x
         end
 
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all, caching = caching, use_workspaces = use_workspaces)[:,1,1] |> collect)
     end
 
     var_state_range = hcat(var_state_range...)
@@ -4252,6 +4310,8 @@ function plot_solution(𝓂::ℳ,
     push!(solution_active_plot_container, args_and_kwargs)
 
     # Generate plots from container
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return _plot_solution_from_container(;
                                          show_plots = show_plots,
                                          save_plots = save_plots,
@@ -4827,9 +4887,15 @@ function plot_solution!(𝓂::ℳ,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
     
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     # Do NOT clear container - add to existing
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -4872,7 +4938,9 @@ function plot_solution!(𝓂::ℳ,
                             sylvester_algorithm = sylvester_algorithm,
                             lyapunov_algorithm = lyapunov_algorithm,
                             tol = tol,
-                            verbose = verbose)
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
 
     SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
     
@@ -4917,7 +4985,9 @@ function plot_solution!(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     full_SS_current = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
@@ -4926,7 +4996,9 @@ function plot_solution!(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
@@ -4944,7 +5016,7 @@ function plot_solution!(𝓂::ℳ,
             initial_state = collect(full_SS_current) .+ state_selector * x
         end
 
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all, caching = caching, use_workspaces = use_workspaces)[:,1,1] |> collect)
     end
 
     var_state_range = hcat(var_state_range...)
@@ -4987,6 +5059,8 @@ function plot_solution!(𝓂::ℳ,
                            :rename_dictionary => processed_rename_dictionary)
 
     push!(solution_active_plot_container, args_and_kwargs)
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     # Generate plots from container
     return _plot_solution_from_container(;
@@ -5115,9 +5189,15 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    caching::Bool = DEFAULT_CACHING,
+                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
     
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -5154,7 +5234,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 tol = tol,
-                                verbose = verbose)
+                                verbose = verbose,
+                                caching = caching,
+                                use_workspaces = use_workspaces)
     warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
@@ -5183,7 +5265,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     tol = tol,
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
@@ -5446,6 +5530,8 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
     end
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     return return_plots
 end
 
@@ -5568,9 +5654,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    caching::Bool = DEFAULT_CACHING,
+                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
                  
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
                    
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -5609,7 +5701,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 tol = tol,
-                                verbose = verbose)
+                                verbose = verbose,
+                                caching = caching,
+                                use_workspaces = use_workspaces)
 
     warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
@@ -5638,7 +5732,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     tol = tol,
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
@@ -6342,6 +6438,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
             StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end

@@ -532,25 +532,8 @@ end
 
 
 
-function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
-    end
-
-    𝓂.caches.first_order_solution_matrix = zeros(0,0)
-    𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
-    𝓂.caches.qme_solution = zeros(0,0)
-    𝓂.caches.second_order_solution = spzeros(0,0)
-    𝓂.caches.third_order_solution = spzeros(0,0)
-
-    𝓂.caches.second_order_stochastic_steady_state = Float64[]
-    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
-    𝓂.caches.third_order_stochastic_steady_state = Float64[]
-    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
-
-    resize!(𝓂.caches.non_stochastic_steady_state, 0)
+function invalidate_cache_validity!(𝓂::ℳ)
     𝓂.caches.valid_for.non_stochastic_steady_state = Float64[]
-
     𝓂.caches.valid_for.jacobian = Float64[]
     𝓂.caches.valid_for.hessian = Float64[]
     𝓂.caches.valid_for.third_order_derivatives = Float64[]
@@ -571,6 +554,29 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.caches.valid_for.covariance_third_order_autocorr = Float64[]
     𝓂.caches.valid_for.covariance_third_order_autocorr_obs_key = Int[]
     𝓂.caches.valid_for.covariance_third_order_autocorr_periods = Int[]
+    return nothing
+end
+
+
+function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
+    while length(𝓂.caches.solver) > 1
+        pop!(𝓂.caches.solver)
+    end
+
+    𝓂.caches.first_order_solution_matrix = zeros(0,0)
+    𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
+    𝓂.caches.qme_solution = zeros(0,0)
+    𝓂.caches.second_order_solution = spzeros(0,0)
+    𝓂.caches.third_order_solution = spzeros(0,0)
+
+    𝓂.caches.second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
+
+    resize!(𝓂.caches.non_stochastic_steady_state, 0)
+
+    invalidate_cache_validity!(𝓂)
 
     return nothing
 end

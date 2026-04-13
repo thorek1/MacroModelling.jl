@@ -952,6 +952,18 @@ function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
                 NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
+"""
+Create a fresh `Workspaces` instance that preserves the NSSS solver workspace from `orig`.
+
+The NSSS solver workspace contains buffers sized during model compilation that cannot be
+lazily re-created, unlike other workspace fields which are lazily allocated via `ensure_*!`.
+"""
+function fresh_workspaces(orig::workspaces)
+    ws = Workspaces()
+    ws.nsss_solver = orig.nsss_solver
+    return ws
+end
+
 function Constants(model_struct; T::Type = Float64, S::Type = Float64)
     constants( model_struct,
             post_parameters_macro(
