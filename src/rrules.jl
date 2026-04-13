@@ -3308,7 +3308,7 @@ function rrule(::typeof(calculate_third_order_moments),
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
         A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
-        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
+        C_dense = Matrix{Float64}(sparse_ABAt(ê_to_ŝ₃, Γ₃)) + A_cross + A_cross'
 
         N_total = N_upper + N_lower
         lyap_ws_3rd = Lyapunov_workspace(N_total)
@@ -3326,7 +3326,7 @@ function rrule(::typeof(calculate_third_order_moments),
 
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], T_pm.var), indexin(variance_observable, T_pm.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
@@ -4155,7 +4155,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         N_total = N_upper + N_lower
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
         A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
-        C_dense = Matrix{Float64}(ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃') + A_cross + A_cross'
+        C_dense = Matrix{Float64}(sparse_ABAt(ê_to_ŝ₃, Γ₃)) + A_cross + A_cross'
 
         lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
@@ -4172,7 +4172,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
         solved_lyapunov = solved_lyapunov && info
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], T_pm.var), indexin(variance_observable, T_pm.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
