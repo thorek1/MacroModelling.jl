@@ -870,6 +870,13 @@ mutable struct valid_for_caches
     pruned_third_order_solution::Vector{Float64}
     third_order_stochastic_steady_state::Vector{Float64}
     pruned_third_order_stochastic_steady_state::Vector{Float64}
+    covariance_first_order::Vector{Float64}
+    covariance_second_order::Vector{Float64}
+    covariance_third_order::Vector{Float64}
+    covariance_third_order_obs_key::Vector{Int}
+    covariance_third_order_autocorr::Vector{Float64}
+    covariance_third_order_autocorr_obs_key::Vector{Int}
+    covariance_third_order_autocorr_periods::Vector{Int}
 end
 
 
@@ -888,6 +895,13 @@ valid_for_caches() = valid_for_caches(
     Float64[],
     Float64[],
     Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Int[],
+    Float64[],
+    Int[],
+    Int[],
 )
 
 
@@ -951,6 +965,15 @@ mutable struct caches
     solver::CircularBuffer{Vector{Vector{Float64}}}  # Recent solver guesses
     NSSS_∂equations_∂parameters::AbstractMatrix{<: Real}  # Dedicated NSSS SS sensitivity
     NSSS_∂equations_∂SS_and_pars::AbstractMatrix{<: Real} # Dedicated NSSS SS Jacobian
+    
+    # =========================================================================
+    # LYAPUNOV SOLUTION CACHES
+    # Covariance matrices from Lyapunov equation solves
+    # =========================================================================
+    covariance_first_order::Matrix{Float64}                # 1st order Lyapunov solution
+    covariance_second_order::Matrix{Float64}               # 2nd order Lyapunov solution
+    covariance_third_order::Matrix{Float64}                # 3rd order assembled Σʸ₃
+    covariance_third_order_autocorr::Matrix{Float64}       # 3rd order autocorrelation matrix
 end
 
 # Structs for perturbation derivative functions (used for AD)

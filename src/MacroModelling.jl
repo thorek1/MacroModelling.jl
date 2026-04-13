@@ -562,6 +562,13 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.caches.valid_for.pruned_third_order_solution = Float64[]
     𝓂.caches.valid_for.third_order_stochastic_steady_state = Float64[]
     𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.valid_for.covariance_first_order = Float64[]
+    𝓂.caches.valid_for.covariance_second_order = Float64[]
+    𝓂.caches.valid_for.covariance_third_order = Float64[]
+    𝓂.caches.valid_for.covariance_third_order_obs_key = Int[]
+    𝓂.caches.valid_for.covariance_third_order_autocorr = Float64[]
+    𝓂.caches.valid_for.covariance_third_order_autocorr_obs_key = Int[]
+    𝓂.caches.valid_for.covariance_third_order_autocorr_periods = Int[]
 
     return nothing
 end
@@ -582,6 +589,9 @@ const CACHE_VALIDITY_FIELDS = (
     :pruned_third_order_solution,
     :third_order_stochastic_steady_state,
     :pruned_third_order_stochastic_steady_state,
+    :covariance_first_order,
+    :covariance_second_order,
+    :covariance_third_order,
 )
 
 

@@ -1330,6 +1330,10 @@ macro model(𝓂,ex...)
                             $nsss_solver_cache,  # solver
                             $NSSS_∂equations_∂parameters,  # NSSS_∂equations_∂parameters
                             $NSSS_∂equations_∂SS_and_pars,  # NSSS_∂equations_∂SS_and_pars
+                            zeros(0,0),  # covariance_first_order
+                            zeros(0,0),  # covariance_second_order
+                            zeros(0,0),  # covariance_third_order
+                            zeros(0,0),  # covariance_third_order_autocorr
                         ),
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian

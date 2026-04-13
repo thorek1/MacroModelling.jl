@@ -2164,11 +2164,21 @@ function rrule(::typeof(calculate_covariance),
     lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
 
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
+                                initial_guess = 𝓂.caches.covariance_first_order,
                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                 tol = opts.tol.first_order.ad.lyapunov,
                                 verbose = opts.verbose)
     covar_raw = lyap_out[1]
     solved_lyap = lyap_out[2]
+
+    # Cache the Lyapunov result for reuse
+    if solved_lyap
+        if size(𝓂.caches.covariance_first_order) != size(covar_raw)
+            𝓂.caches.covariance_first_order = Matrix{Float64}(undef, size(covar_raw)...)
+        end
+        copyto!(𝓂.caches.covariance_first_order, covar_raw)
+        𝓂.caches.valid_for.covariance_first_order = Float64.(parameters)
+    end
 
     solved = solved_first && solved_lyap
 
@@ -2850,11 +2860,21 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
 
     lyap_out, lyap_pb = rrule(solve_lyapunov_equation,
                               Float64.(ŝ_to_ŝ₂), Float64.(CC), lyap_ws_2nd;
+                              initial_guess = 𝓂.caches.covariance_second_order,
                               lyapunov_algorithm = opts.lyapunov_algorithm,
                               tol = opts.tol.second_order.ad.lyapunov,
                               verbose = opts.verbose)
     Σᶻ₂ = lyap_out[1]
     info = lyap_out[2]
+
+    # Cache the 2nd-order Lyapunov result for reuse
+    if info
+        if size(𝓂.caches.covariance_second_order) != size(Σᶻ₂)
+            𝓂.caches.covariance_second_order = Matrix{Float64}(undef, size(Σᶻ₂)...)
+        end
+        copyto!(𝓂.caches.covariance_second_order, Σᶻ₂)
+        𝓂.caches.valid_for.covariance_second_order = Float64.(parameters)
+    end
 
     if !info; return zero_15(), zero_pb; end
 
@@ -3386,7 +3406,30 @@ function rrule(::typeof(calculate_third_order_moments),
         )
     end
 
-    result = (Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && solved_lyapunov)
+    # Cache the 3rd-order covariance for reuse
+    all_solved_3rd = solved && solved3 && solved_lyapunov
+    if all_solved_3rd
+        if size(𝓂.caches.covariance_third_order) != size(Σʸ₃)
+            𝓂.caches.covariance_third_order = Matrix{Float64}(undef, size(Σʸ₃)...)
+        end
+        copyto!(𝓂.caches.covariance_third_order, Σʸ₃)
+        𝓂.caches.valid_for.covariance_third_order = Float64.(parameters)
+        nVars_rrule = T_pm.nVars
+        obs_key_rrule = if observables == :full_covar
+            collect(1:nVars_rrule)
+        else
+            obs_idx = parse_variables_input_to_index(observables, 𝓂.constants) |> sort
+            if covariance == Symbol[]
+                collect(obs_idx)
+            else
+                covar_idx = parse_variables_input_to_index(covariance, 𝓂.constants) |> sort
+                sort(union(obs_idx, covar_idx))
+            end
+        end
+        𝓂.caches.valid_for.covariance_third_order_obs_key = obs_key_rrule
+    end
+
+    result = (Σʸ₃, μʸ₂, SS_and_pars, all_solved_3rd)
 
     # ── Pullback ──
     function calculate_third_order_moments_pullback(∂out)
@@ -4275,7 +4318,39 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         )
     end
 
-    result = (Σʸ₃, μʸ₂, autocorr, SS_and_pars, solved && solved3 && solved_lyapunov)
+    # Cache the 3rd-order covariance for reuse
+    all_solved_3rd = solved && solved3 && solved_lyapunov
+    if all_solved_3rd
+        if size(𝓂.caches.covariance_third_order) != size(Σʸ₃)
+            𝓂.caches.covariance_third_order = Matrix{Float64}(undef, size(Σʸ₃)...)
+        end
+        copyto!(𝓂.caches.covariance_third_order, Σʸ₃)
+        𝓂.caches.valid_for.covariance_third_order = Float64.(parameters)
+        nVars_rrule = T_pm.nVars
+        obs_key_rrule = if observables == :full_covar
+            collect(1:nVars_rrule)
+        else
+            obs_idx = parse_variables_input_to_index(observables, 𝓂.constants) |> sort
+            if covariance == Symbol[]
+                collect(obs_idx)
+            else
+                covar_idx = parse_variables_input_to_index(covariance, 𝓂.constants) |> sort
+                sort(union(obs_idx, covar_idx))
+            end
+        end
+        𝓂.caches.valid_for.covariance_third_order_obs_key = obs_key_rrule
+
+        # Cache autocorrelation
+        if size(𝓂.caches.covariance_third_order_autocorr) != size(autocorr)
+            𝓂.caches.covariance_third_order_autocorr = Matrix{Float64}(undef, size(autocorr)...)
+        end
+        copyto!(𝓂.caches.covariance_third_order_autocorr, autocorr)
+        𝓂.caches.valid_for.covariance_third_order_autocorr = Float64.(parameters)
+        𝓂.caches.valid_for.covariance_third_order_autocorr_obs_key = obs_key_rrule
+        𝓂.caches.valid_for.covariance_third_order_autocorr_periods = collect(Int, autocorrelation_periods)
+    end
+
+    result = (Σʸ₃, μʸ₂, autocorr, SS_and_pars, all_solved_3rd)
 
     # ── Pullback ──
     function calculate_third_order_moments_with_autocorrelation_pullback(∂out)
