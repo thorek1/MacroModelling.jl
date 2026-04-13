@@ -572,6 +572,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
         dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
+                                                preconditioner = opts.sylvester_preconditioner,
                                                 tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
     
@@ -705,6 +706,7 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
+                                    preconditioner::Symbol = :ilu,
                                     tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
@@ -722,6 +724,7 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
 
     P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
+                                        preconditioner = preconditioner,
                                         tol = tol, 
                                         verbose = verbose, 
                                         initial_guess = initial_guess_value)
@@ -773,6 +776,7 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
 
         P, slvd = solve_sylvester_equation(Â, B̂, X, 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            preconditioner = preconditioner,
                                             tol = tol, 
                                             verbose = verbose)
 

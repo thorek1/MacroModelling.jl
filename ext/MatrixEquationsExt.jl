@@ -22,6 +22,7 @@ function MacroModelling.solve_sylvester_equation(A::DenseMatrix{T},
                                     ::Val{:bartels_stewart},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
 

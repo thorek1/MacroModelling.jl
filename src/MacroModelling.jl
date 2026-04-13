@@ -46,6 +46,8 @@ import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
+import KrylovPreconditioners
+import KrylovPreconditioners: ilu, forward_substitution!, backward_substitution!
 import LinearOperators
 import DataStructures: CircularBuffer, OrderedDict
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten

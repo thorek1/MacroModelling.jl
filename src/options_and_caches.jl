@@ -2144,6 +2144,8 @@ struct CalculationOptions
     sylvester_algorithm²::Symbol
     sylvester_algorithm³::Symbol
     
+    sylvester_preconditioner::Symbol
+    
     lyapunov_algorithm::Symbol
     
     tol::Tolerances
@@ -2249,6 +2251,7 @@ end
 function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
+                                    sylvester_preconditioner::Symbol = :ilu,
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::Tolerances = Tolerances(),
                                     verbose::Bool = false)
@@ -2256,6 +2259,7 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
+                                sylvester_preconditioner, 
                                 lyapunov_algorithm, 
                                 tol, 
                                 verbose)

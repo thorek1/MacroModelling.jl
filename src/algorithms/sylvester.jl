@@ -16,6 +16,7 @@ function solve_sylvester_equation(A::M,
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
+                                    preconditioner::Symbol = :ilu,
                                     tol::SolverTolerances = SolverTolerances(),
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{SparseMatrixCSC{Float64, Int}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
@@ -102,6 +103,7 @@ function solve_sylvester_equation(A::M,
 
     x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 𝕊ℂ,
                                                         initial_guess = initial_guess, 
+                                                        preconditioner = preconditioner,
                                                         tol = tol,
                                                         # timer = timer, 
                                                         verbose = verbose)
@@ -123,6 +125,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
                                                             Val(:bartels_stewart), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
+                                                            preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
@@ -143,6 +146,7 @@ function solve_sylvester_equation(A::M,
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
+                                                            preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
@@ -166,6 +170,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:gmres), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
+                                                            preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
@@ -186,6 +191,7 @@ function solve_sylvester_equation(A::M,
         X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 𝕊ℂ,
                                                             initial_guess = x, 
+                                                            preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
@@ -209,6 +215,7 @@ function solve_sylvester_equation(A::M,
         x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:doubling), 𝕊ℂ,
                                                             initial_guess = zeros(0,0), 
+                                                            preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
                                                             verbose = verbose)
@@ -291,6 +298,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                                 ::Val{:bartels_stewart},
                                                 𝕊ℂ::sylvester_workspace;
                                                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                                preconditioner::Symbol = :none,
                                                 verbose::Bool = false,
                                                 tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
      return copy(C), 0, T(Inf)
@@ -305,6 +313,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -373,6 +382,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012    
@@ -459,6 +469,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -561,6 +572,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{T} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
@@ -645,6 +657,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -729,6 +742,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -811,6 +825,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -893,6 +908,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -999,6 +1015,120 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 end
 
 
+# ─── ILU preconditioner builders for Krylov Sylvester solvers ────────────────
+#
+# Both functions approximate the block-diagonal of the Sylvester operator
+#   L(X) = X − AXB
+# When B has diagonal entries dⱼ the j-th diagonal block is (I − dⱼ A).
+# An incomplete LU factorisation of these blocks serves as a right
+# preconditioner (N) for bicgstab / dqgmres / gmres.
+#
+# `build_ilu_preconditioner_per_column` deduplicates identical dⱼ values and
+# applies the factorisation column-by-column (lower setup cost).
+#
+# `build_ilu_preconditioner_simple` forms the full nm × nm block-diagonal
+# matrix in one shot and factorises it in a single ilu() call (lower solve
+# cost because the Krylov solver passes a full-length vector).
+
+const DEFAULT_ILU_TAU = 1e-3
+
+function _extract_sparse_B(B::SparseMatrixCSC)
+    return B
+end
+
+function _extract_sparse_B(B::ThreadedSparseArrays.ThreadedSparseMatrixCSC)
+    return B.A
+end
+
+function _extract_sparse_B(B::AbstractMatrix)
+    return sparse(B)
+end
+
+
+"""
+    build_ilu_preconditioner_per_column(A, B; τ) → LinearOperator
+
+Build an ILU(τ) right preconditioner for the vectorised Sylvester operator by
+factorising one n×n block per unique diagonal entry of B.  Application loops
+over the m columns of the solution matrix.
+"""
+function build_ilu_preconditioner_per_column(A::DenseMatrix{T},
+                                             B::AbstractMatrix{T};
+                                             τ::Float64 = DEFAULT_ILU_TAU) where T <: AbstractFloat
+    n = size(A, 1)
+    B_sp = _extract_sparse_B(B)
+    m = size(B_sp, 2)
+    diag_B = collect(ℒ.diag(B_sp))
+
+    unique_diagonal = unique(diag_B)
+    A_sparse = sparse(A)
+    I_n = sparse(one(T) * ℒ.I, n, n)
+
+    factorizations = Dict{T, Any}()
+    for d in unique_diagonal
+        block = I_n - d .* A_sparse
+        droptol!(block, eps())
+        factorizations[d] = ilu(block; τ = τ)
+    end
+
+    factors_by_col = Vector{Any}(undef, m)
+    for col in 1:m
+        factors_by_col[col] = factorizations[diag_B[col]]
+    end
+
+    function precondition_ldiv!(y, x)
+        X = reshape(x, n, m)
+        Y = reshape(y, n, m)
+        for col in 1:m
+            ℒ.ldiv!(view(Y, :, col), factors_by_col[col], view(X, :, col))
+        end
+        return y
+    end
+
+    nm = n * m
+    return LinearOperators.LinearOperator(T, nm, nm, false, false, precondition_ldiv!)
+end
+
+
+"""
+    build_ilu_preconditioner_simple(A, B; τ) → LinearOperator
+
+Build an ILU(τ) right preconditioner for the vectorised Sylvester operator by
+assembling the full nm × nm block-diagonal sparse matrix blkdiag(I − dⱼ A)
+and factorising it in a single call.
+"""
+function build_ilu_preconditioner_simple(A::DenseMatrix{T},
+                                         B::AbstractMatrix{T};
+                                         τ::Float64 = DEFAULT_ILU_TAU) where T <: AbstractFloat
+    n = size(A, 1)
+    B_sp = _extract_sparse_B(B)
+    m = size(B_sp, 2)
+    diag_B = collect(ℒ.diag(B_sp))
+
+    A_sparse = sparse(A)
+    I_n = sparse(one(T) * ℒ.I, n, n)
+    nm = n * m
+
+    rows = Int[]
+    cols = Int[]
+    vals = T[]
+    for j in 1:m
+        block = I_n - diag_B[j] .* A_sparse
+        droptol!(block, eps())
+        Ib, Jb, Vb = findnz(block)
+        offset = (j - 1) * n
+        append!(rows, Ib .+ offset)
+        append!(cols, Jb .+ offset)
+        append!(vals, Vb)
+    end
+    M_approx = sparse(rows, cols, vals, nm, nm)
+
+    F = ilu(M_approx; τ = τ)
+
+    return LinearOperators.LinearOperator(T, nm, nm, false, false, (y, v) -> ℒ.ldiv!(y, F, v))
+end
+
+
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::AbstractMatrix{T},
                                     C::DenseMatrix{T},
@@ -1006,6 +1136,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :ilu,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
@@ -1095,17 +1226,18 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     if 𝕊ℂ.krylov.bicgstab.m == 0
         𝕊ℂ.krylov.bicgstab =  BicgstabWorkspace(length(C), length(C), Vector{T})
     end
-    # @timeit_debug timer "BICGSTAB solve" begin
-    # if length(init) == 0
-        # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        # 𝐂, info = Krylov.bicgstab(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.bicgstab!(   𝕊ℂ.krylov.bicgstab,
+    preconditioner = :ilu
+    # Build ILU right preconditioner for large problems (opt-in)
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+
+    Krylov.bicgstab!(   𝕊ℂ.krylov.bicgstab,
                             sylvester, [vec(𝐂¹);], 
-                            # [vec(initial_guess);], 
+                            N = N_precond,
+                            ldiv = false,
                             itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                             timemax = 10.0,
                             rtol = tol.rtol, 
-                            atol = tol.atol)#, M = precond)
+                            atol = tol.atol)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1159,6 +1291,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :ilu,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
@@ -1248,17 +1381,18 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     if 𝕊ℂ.krylov.dqgmres.m == 0
         𝕊ℂ.krylov.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
     end
-    # @timeit_debug timer "DQGMRES solve" begin
-    # if length(init) == 0
-        # 𝐂, info = Krylov.dqgmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        # 𝐂, info = Krylov.dqgmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.dqgmres!(𝕊ℂ.krylov.dqgmres,
+
+    # Build ILU right preconditioner for large problems (opt-in)
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+
+    Krylov.dqgmres!(𝕊ℂ.krylov.dqgmres,
                         sylvester, [vec(𝐂¹);], 
-                        # [vec(initial_guess);], 
+                        N = N_precond,
+                        ldiv = false,
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
                         rtol = tol.rtol, 
-                        atol = tol.atol)#, M = precond)
+                        atol = tol.atol)
     # else
     #     𝐂, info = Krylov.dqgmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -1312,6 +1446,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
+                                    preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer 𝕊ℂ.𝐗.
@@ -1401,17 +1536,18 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     if 𝕊ℂ.krylov.gmres.m == 0
         𝕊ℂ.krylov.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
     end
-    # @timeit_debug timer "GMRES solve" begin
-    # if length(init) == 0
-        # 𝐂, info = Krylov.gmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        # 𝐂, info = Krylov.gmres(sylvester, [vec(𝕊ℂ.𝐂);], 
-        Krylov.gmres!(𝕊ℂ.krylov.gmres,
+
+    # Build ILU right preconditioner for large problems (opt-in)
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+
+    Krylov.gmres!(𝕊ℂ.krylov.gmres,
                         sylvester, [vec(𝐂¹);], 
-                        # [vec(initial_guess);], 
+                        N = N_precond,
+                        ldiv = false,
                         itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
                         timemax = 10.0,
                         rtol = tol.rtol, 
-                        atol = tol.atol)#, M = precond)
+                        atol = tol.atol)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end

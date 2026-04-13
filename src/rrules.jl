@@ -5303,6 +5303,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', tmp1, sylv_ws,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
+                                                preconditioner = opts.sylvester_preconditioner,
                                                 tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
@@ -5461,6 +5462,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
+                                            preconditioner = opts.sylvester_preconditioner,
                                             tol = opts.tol.second_order.ad.sylvester,
                                             verbose = opts.verbose)
     𝐒₂_stable = copy(𝐒₂)
@@ -5547,6 +5549,7 @@ function rrule(::typeof(calculate_second_order_solution),
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
+                                                preconditioner = opts.sylvester_preconditioner,
                                                 tol = opts.tol.second_order.ad.sylvester,
                                                 verbose = opts.verbose)
 
@@ -7365,6 +7368,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
+                                            preconditioner = opts.sylvester_preconditioner,
                                             tol = opts.tol.third_order.ad.sylvester,
                                             verbose = opts.verbose)
 
@@ -7439,6 +7443,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
         ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
                                                   sylvester_algorithm = opts.sylvester_algorithm³,
+                                                  preconditioner = opts.sylvester_preconditioner,
                                                   tol = opts.tol.third_order.ad.sylvester,
                                                   verbose = opts.verbose)
         if !slvd
@@ -7715,12 +7720,14 @@ function rrule(::typeof(solve_sylvester_equation),
     𝕊ℂ::sylvester_workspace;
     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
     sylvester_algorithm::Symbol = :doubling,
+    preconditioner::Symbol = :ilu,
     tol::SolverTolerances = SolverTolerances(),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
     P, solved = solve_sylvester_equation(A, B, C, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
+                                        preconditioner = preconditioner,
                                         tol = tol, 
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
@@ -7739,6 +7746,7 @@ function rrule(::typeof(solve_sylvester_equation),
 
         ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            preconditioner = preconditioner,
                                             tol = tol, 
                                             verbose = verbose)
 

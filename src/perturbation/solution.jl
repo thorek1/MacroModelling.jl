@@ -1986,6 +1986,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
+                                            preconditioner = opts.sylvester_preconditioner,
                                             tol = opts.tol.second_order.sylvester,
                                             verbose = opts.verbose)
 
@@ -2250,6 +2251,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                             initial_guess = initial_guess_sylv,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
+                                            preconditioner = opts.sylvester_preconditioner,
                                             tol = opts.tol.third_order.sylvester,
                                             verbose = opts.verbose)
     
