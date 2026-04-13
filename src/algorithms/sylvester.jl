@@ -1015,120 +1015,6 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 end
 
 
-# ─── ILU preconditioner builders for Krylov Sylvester solvers ────────────────
-#
-# Both functions approximate the block-diagonal of the Sylvester operator
-#   L(X) = X − AXB
-# When B has diagonal entries dⱼ the j-th diagonal block is (I − dⱼ A).
-# An incomplete LU factorisation of these blocks serves as a right
-# preconditioner (N) for bicgstab / dqgmres / gmres.
-#
-# `build_ilu_preconditioner_per_column` deduplicates identical dⱼ values and
-# applies the factorisation column-by-column (lower setup cost).
-#
-# `build_ilu_preconditioner_simple` forms the full nm × nm block-diagonal
-# matrix in one shot and factorises it in a single ilu() call (lower solve
-# cost because the Krylov solver passes a full-length vector).
-
-const DEFAULT_ILU_TAU = 1e-3
-
-function _extract_sparse_B(B::SparseMatrixCSC)
-    return B
-end
-
-function _extract_sparse_B(B::ThreadedSparseArrays.ThreadedSparseMatrixCSC)
-    return B.A
-end
-
-function _extract_sparse_B(B::AbstractMatrix)
-    return sparse(B)
-end
-
-
-"""
-    build_ilu_preconditioner_per_column(A, B; τ) → LinearOperator
-
-Build an ILU(τ) right preconditioner for the vectorised Sylvester operator by
-factorising one n×n block per unique diagonal entry of B.  Application loops
-over the m columns of the solution matrix.
-"""
-function build_ilu_preconditioner_per_column(A::DenseMatrix{T},
-                                             B::AbstractMatrix{T};
-                                             τ::Float64 = DEFAULT_ILU_TAU) where T <: AbstractFloat
-    n = size(A, 1)
-    B_sp = _extract_sparse_B(B)
-    m = size(B_sp, 2)
-    diag_B = collect(ℒ.diag(B_sp))
-
-    unique_diagonal = unique(diag_B)
-    A_sparse = sparse(A)
-    I_n = sparse(one(T) * ℒ.I, n, n)
-
-    factorizations = Dict{T, Any}()
-    for d in unique_diagonal
-        block = I_n - d .* A_sparse
-        droptol!(block, eps())
-        factorizations[d] = ilu(block; τ = τ)
-    end
-
-    factors_by_col = Vector{Any}(undef, m)
-    for col in 1:m
-        factors_by_col[col] = factorizations[diag_B[col]]
-    end
-
-    function precondition_ldiv!(y, x)
-        X = reshape(x, n, m)
-        Y = reshape(y, n, m)
-        for col in 1:m
-            ℒ.ldiv!(view(Y, :, col), factors_by_col[col], view(X, :, col))
-        end
-        return y
-    end
-
-    nm = n * m
-    return LinearOperators.LinearOperator(T, nm, nm, false, false, precondition_ldiv!)
-end
-
-
-"""
-    build_ilu_preconditioner_simple(A, B; τ) → LinearOperator
-
-Build an ILU(τ) right preconditioner for the vectorised Sylvester operator by
-assembling the full nm × nm block-diagonal sparse matrix blkdiag(I − dⱼ A)
-and factorising it in a single call.
-"""
-function build_ilu_preconditioner_simple(A::DenseMatrix{T},
-                                         B::AbstractMatrix{T};
-                                         τ::Float64 = DEFAULT_ILU_TAU) where T <: AbstractFloat
-    n = size(A, 1)
-    B_sp = _extract_sparse_B(B)
-    m = size(B_sp, 2)
-    diag_B = collect(ℒ.diag(B_sp))
-
-    A_sparse = sparse(A)
-    I_n = sparse(one(T) * ℒ.I, n, n)
-    nm = n * m
-
-    rows = Int[]
-    cols = Int[]
-    vals = T[]
-    for j in 1:m
-        block = I_n - diag_B[j] .* A_sparse
-        droptol!(block, eps())
-        Ib, Jb, Vb = findnz(block)
-        offset = (j - 1) * n
-        append!(rows, Ib .+ offset)
-        append!(cols, Jb .+ offset)
-        append!(vals, Vb)
-    end
-    M_approx = sparse(rows, cols, vals, nm, nm)
-
-    F = ilu(M_approx; τ = τ)
-
-    return LinearOperators.LinearOperator(T, nm, nm, false, false, (y, v) -> ℒ.ldiv!(y, F, v))
-end
-
-
 function solve_sylvester_equation(A::DenseMatrix{T},
                                     B::AbstractMatrix{T},
                                     C::DenseMatrix{T},
@@ -1228,7 +1114,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     end
     preconditioner = :ilu
     # Build ILU right preconditioner for large problems (opt-in)
-    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner(A, B) : ℒ.I
 
     Krylov.bicgstab!(   𝕊ℂ.krylov.bicgstab,
                             sylvester, [vec(𝐂¹);], 
@@ -1383,7 +1269,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     end
 
     # Build ILU right preconditioner for large problems (opt-in)
-    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner(A, B) : ℒ.I
 
     Krylov.dqgmres!(𝕊ℂ.krylov.dqgmres,
                         sylvester, [vec(𝐂¹);], 
@@ -1538,7 +1424,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     end
 
     # Build ILU right preconditioner for large problems (opt-in)
-    N_precond = preconditioner == :ilu ? build_ilu_preconditioner_per_column(A, B) : ℒ.I
+    N_precond = preconditioner == :ilu ? build_ilu_preconditioner(A, B) : ℒ.I
 
     Krylov.gmres!(𝕊ℂ.krylov.gmres,
                         sylvester, [vec(𝐂¹);], 

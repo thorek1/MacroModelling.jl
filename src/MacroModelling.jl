@@ -46,8 +46,6 @@ import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
-import KrylovPreconditioners
-import KrylovPreconditioners: ilu, forward_substitution!, backward_substitution!
 import LinearOperators
 import DataStructures: CircularBuffer, OrderedDict
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten
@@ -183,6 +181,7 @@ include("impulse_response_function.jl")
 const _BARTELS_STEWART_AVAILABLE = Ref(false)
 _has_bartels_stewart() = _BARTELS_STEWART_AVAILABLE[]
 
+include("./algorithms/preconditioner.jl")
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
 include("./algorithms/nonlinear_solver.jl")
