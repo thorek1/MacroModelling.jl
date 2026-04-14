@@ -1,5 +1,25 @@
 # ── Compressed Kronecker & matrix utilities (moved from MacroModelling.jl) ──
 
+# Extract unique nonzero row indices, column indices, and nnz count from a dense
+# matrix without allocating a sparse copy.  Returns sorted unique indices.
+function _dense_nz_structure(â::AbstractMatrix{T}) where T
+    nrows, ncols = size(â)
+    row_has_nz = falses(nrows)
+    col_has_nz = falses(ncols)
+    lennz = 0
+    @inbounds for j in 1:ncols
+        for i in 1:nrows
+            if !iszero(â[i, j])
+                lennz += 1
+                row_has_nz[i] = true
+                col_has_nz[j] = true
+            end
+        end
+    end
+    ui = findall(row_has_nz)
+    uj = findall(col_has_nz)
+    return ui, uj, lennz
+end
 
 function create_second_order_auxiliary_matrices(constants::constants)
     T = constants.post_model_macro
@@ -257,28 +277,42 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         X = zeros(T, size(A,1), size(D,2))
     end
 
-    # vals = T[]
-    # rows = Int[]
-    # cols = Int[]
-
     Ā = zeros(T, n_rowC, n_rowB)
     ĀB = zeros(T, n_rowC, n_colB)
     CĀB = zeros(T, n_colC, n_colB)
     vCĀB = zeros(T, n_colB * n_colC)
     vCĀBD = zeros(T, size(D,2))
 
-    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
-    rowmask = falses(size(A,1))
-    @inbounds for r in rv
-        rowmask[r] = true
+    # Linked-list row index: O(nnz_in_row) per row instead of O(nnz) for A[row,:]
+    A_csc = A isa SparseMatrixCSC ? A : A.A
+    A_rv   = SparseArrays.rowvals(A_csc)
+    A_nzv  = nonzeros(A_csc)
+    A_cp   = SparseArrays.getcolptr(A_csc)
+    nnzA_ll = nnz(A_csc)
+    n_cols_A = size(A_csc, 2)
+    row_head = zeros(Int, size(A_csc, 1))
+    row_next = zeros(Int, nnzA_ll)
+    nz_col   = Vector{Int}(undef, nnzA_ll)
+    @inbounds for col in n_cols_A:-1:1
+        for idx in A_cp[col]:(A_cp[col + 1] - 1)
+            r = A_rv[idx]
+            row_next[idx] = row_head[r]
+            row_head[r] = idx
+            nz_col[idx] = col
+        end
     end
 
     α = .7
     k = 0
 
-    @inbounds for row in eachindex(rowmask)
-        rowmask[row] || continue
-        @views copyto!(Ā, A[row, :])
+    @inbounds for row in eachindex(row_head)
+        row_head[row] == 0 && continue
+        fill!(Ā, zero(T))
+        p = row_head[row]
+        while p != 0
+            Ā[nz_col[p]] = T(A_nzv[p])
+            p = row_next[p]
+        end
         ℒ.mul!(ĀB, Ā, B)
         ℒ.mul!(CĀB, C', ĀB)
         copyto!(vCĀB, CĀB)
@@ -449,14 +483,36 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     ĀB = zeros(T, n_rowC, n_colB)
     CĀB = zeros(T, n_colC, n_colB)
 
-    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+    # Linked-list row index: O(nnz_in_row) per row instead of O(nnz) for A[row,:]
+    A_csc = A isa SparseMatrixCSC ? A : A.A
+    A_rv   = SparseArrays.rowvals(A_csc)
+    A_nzv  = nonzeros(A_csc)
+    A_cp   = SparseArrays.getcolptr(A_csc)
+    nnzA_ll = nnz(A_csc)
+    n_cols_A = size(A_csc, 2)
+    row_head = zeros(Int, size(A_csc, 1))
+    row_next = zeros(Int, nnzA_ll)
+    nz_col   = Vector{Int}(undef, nnzA_ll)
+    @inbounds for col in n_cols_A:-1:1
+        for idx in A_cp[col]:(A_cp[col + 1] - 1)
+            r = A_rv[idx]
+            row_next[idx] = row_head[r]
+            row_head[r] = idx
+            nz_col[idx] = col
+        end
+    end
 
     α = .7 # speed of Vector increase
     k = 0
 
-    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    @inbounds for row in rv |> unique
-        @views copyto!(Ā, A[row, :])
+    @inbounds for row in eachindex(row_head)
+        row_head[row] == 0 && continue
+        fill!(Ā, zero(T))
+        p = row_head[row]
+        while p != 0
+            Ā[nz_col[p]] = T(A_nzv[p])
+            p = row_next[p]
+        end
         ℒ.mul!(ĀB, Ā, B)
         ℒ.mul!(CĀB, C', ĀB)
         
@@ -1040,19 +1096,17 @@ function compressed_kron³(a::AbstractMatrix{T};
     
     if a_is_adjoint
         â = copy(a')
-        a = sparse(a')
         
         rmask = colmask
         colmask = rowmask
         rowmask = rmask
     elseif typeof(a) <: DenseMatrix{T}
         â = copy(a)
-        a = sparse(a)
     else
         â = convert(Matrix, a)  # Convert to dense matrix for faster access
     end
     # Get the number of rows and columns
-    n_rows, n_cols = size(a)
+    n_rows, n_cols = size(â)
     
     # Calculate the number of unique triplet indices for rows and columns
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
@@ -1065,9 +1119,8 @@ function compressed_kron³(a::AbstractMatrix{T};
             return spzeros(T, m3_rows, m3_cols)
         end
     end
-    # Initialize arrays to collect indices and values
-    # Estimate an upper bound for non-zero entries to preallocate arrays
-    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
+    # Extract unique nonzero row/col indices directly from dense matrix
+    ui, uj, lennz = _dense_nz_structure(â)
 
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
@@ -1075,7 +1128,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
 
     if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
+        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(â)) ^ m3_exp, 10000))
 
         resize!(sparse_preallocation[1], estimated_nnz)
         resize!(sparse_preallocation[2], estimated_nnz)
@@ -1101,16 +1154,6 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     k = 0
 
-    # end # timeit_debug
-
-    # @timeit_debug timer "findnz" begin
-                
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
-       
-    # end # timeit_debug
 
     # @timeit_debug timer "Loop" begin
     # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
@@ -1303,13 +1346,11 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
 
     if typeof(a) <: DenseMatrix{T}
         â = a
-        a_sp = sparse(a)
     else
         â = convert(Matrix, a)
-        a_sp = a isa SparseMatrixCSC ? a : sparse(a)
     end
 
-    n_rows, n_cols = size(a_sp)
+    n_rows, n_cols = size(â)
     m = size(M, 1)
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
     m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
@@ -1319,17 +1360,14 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
     rv_M = SparseArrays.rowvals(M)
     nzv_M = nonzeros(M)
 
-    # Find unique non-zero row and column indices (sorted for bounded iteration)
-    rowinds, colinds, _ = findnz(a_sp)
-    ui = sort!(unique(rowinds))
-    uj = sort!(unique(colinds))
+    # Extract unique nonzero row/col indices directly from dense matrix
+    ui, uj, lennz = _dense_nz_structure(â)
     n_ui = length(ui)
     n_uj = length(uj)
 
     # --- sparse IJV buffer management ---
     if length(sparse_preallocation[1]) == 0
-        lennz = nnz(a_sp)
-        estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(a)) ^ 4, 10000))
+        estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(â)) ^ 4, 10000))
         resize!(sparse_preallocation[1], estimated_nnz)
         resize!(sparse_preallocation[2], estimated_nnz)
         resize!(sparse_preallocation[3], estimated_nnz)
@@ -1450,20 +1488,18 @@ function compressed_kron²(a::AbstractMatrix{T};
 
     if a_is_adjoint
         â = copy(a')
-        a = sparse(a')
 
         rmask = colmask
         colmask = rowmask
         rowmask = rmask
     elseif typeof(a) <: DenseMatrix{T}
         â = copy(a)
-        a = sparse(a)
     else
         â = convert(Matrix, a)  # Convert to dense matrix for faster access
     end
 
     # Get the number of rows and columns
-    n_rows, n_cols = size(a)
+    n_rows, n_cols = size(â)
 
     # Calculate the number of unique pair indices for rows and columns
     m2_rows = n_rows * (n_rows + 1) ÷ 2    # For rows: i ≤ j
@@ -1478,7 +1514,8 @@ function compressed_kron²(a::AbstractMatrix{T};
     end
 
     # Initialize arrays to collect indices and values
-    lennz = nnz(a)
+    # Extract unique nonzero row/col indices directly from dense matrix
+    ui, uj, lennz = _dense_nz_structure(â)
 
     m2_c = length(colmask) > 0 ? length(colmask) : m2_cols
     m2_r = length(rowmask) > 0 ? length(rowmask) : m2_rows
@@ -1486,7 +1523,7 @@ function compressed_kron²(a::AbstractMatrix{T};
     m2_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2 : 3
 
     if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m2_r * m2_c * (lennz / length(a)) ^ m2_exp, 10000))
+        estimated_nnz = floor(Int, max(m2_r * m2_c * (lennz / length(â)) ^ m2_exp, 10000))
 
         resize!(sparse_preallocation[1], estimated_nnz)
         resize!(sparse_preallocation[2], estimated_nnz)
@@ -1509,10 +1546,6 @@ function compressed_kron²(a::AbstractMatrix{T};
 
     k = 0
 
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
 
     norowmask = length(rowmask) == 0
     nocolmask = length(colmask) == 0
