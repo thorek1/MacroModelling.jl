@@ -7150,30 +7150,37 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatr
         for k2 in 1:j2
             col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
             sparse_cols[col] || continue
-            for i1 in 1:n_rows, j1 in 1:i1
-                @inbounds for k1 in 1:j1
-                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                    g = ∂Y[row, col]
-                    abs(g) <= tol && continue
-                    # divisor for row symmetry
-                    if i1 == j1
-                        divisor = (j1 == k1) ? 6 : 2
-                    else
-                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+            for i1 in 1:n_rows
+                # Hoist i1-dependent reads (column indices fixed by outer loop)
+                @inbounds aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                for j1 in 1:i1
+                    # Hoist j1-dependent reads
+                    @inbounds aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    # Precompute sub-expressions for ∂X[k1, ...] updates
+                    q_i2 = aij * ajk + aik * ajj
+                    q_j2 = aik * aji + aii * ajk
+                    q_k2 = aii * ajj + aij * aji
+                    @inbounds for k1 in 1:j1
+                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                        g = ∂Y[row, col]
+                        abs(g) <= tol && continue
+                        if i1 == j1
+                            divisor = (j1 == k1) ? 6 : 2
+                        else
+                            divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                        end
+                        g_d = g / divisor
+                        aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                        ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                        ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                        ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+                        ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                        ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                        ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+                        ∂X[k1, i2] += g_d * q_i2
+                        ∂X[k1, j2] += g_d * q_j2
+                        ∂X[k1, k2] += g_d * q_k2
                     end
-                    g_d = g / divisor
-                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
-                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
-                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
-                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
-                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
-                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
-                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
-                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
-                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
-                    ∂X[k1, i2] += g_d * (aij * ajk + aik * ajj)
-                    ∂X[k1, j2] += g_d * (aik * aji + aii * ajk)
-                    ∂X[k1, k2] += g_d * (aii * ajj + aij * aji)
                 end
             end
         end
@@ -7202,30 +7209,37 @@ function mul_compressed_kron³_pullback!(∂X::AbstractMatrix{T},
             # Compute g_col = M1 * M2[:, col] lazily for this triple
             ℒ.mul!(g_col, M1, view(M2, :, col))
 
-            for i1 in 1:n_rows, j1 in 1:i1
-                @inbounds for k1 in 1:j1
-                    row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                    g = g_col[row]
-                    abs(g) <= tol && continue
-                    # divisor for row symmetry
-                    if i1 == j1
-                        divisor = (j1 == k1) ? 6 : 2
-                    else
-                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+            for i1 in 1:n_rows
+                # Hoist i1-dependent reads
+                @inbounds aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
+                for j1 in 1:i1
+                    # Hoist j1-dependent reads
+                    @inbounds aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
+                    # Precompute sub-expressions for ∂X[k1, ...] updates
+                    q_i2 = aij * ajk + aik * ajj
+                    q_j2 = aik * aji + aii * ajk
+                    q_k2 = aii * ajj + aij * aji
+                    @inbounds for k1 in 1:j1
+                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                        g = g_col[row]
+                        abs(g) <= tol && continue
+                        if i1 == j1
+                            divisor = (j1 == k1) ? 6 : 2
+                        else
+                            divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                        end
+                        g_d = g / divisor
+                        aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
+                        ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                        ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                        ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+                        ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                        ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                        ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+                        ∂X[k1, i2] += g_d * q_i2
+                        ∂X[k1, j2] += g_d * q_j2
+                        ∂X[k1, k2] += g_d * q_k2
                     end
-                    g_d = g / divisor
-                    aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
-                    aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
-                    aki = Xd[k1, i2]; akj = Xd[k1, j2]; akk = Xd[k1, k2]
-                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
-                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
-                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
-                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
-                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
-                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
-                    ∂X[k1, i2] += g_d * (aij * ajk + aik * ajj)
-                    ∂X[k1, j2] += g_d * (aik * aji + aii * ajk)
-                    ∂X[k1, k2] += g_d * (aii * ajj + aij * aji)
                 end
             end
         end

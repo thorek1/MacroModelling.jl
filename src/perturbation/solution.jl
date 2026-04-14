@@ -1554,46 +1554,48 @@ function compressed_kron²(a::AbstractMatrix{T};
         end
     end
 
-    for i1 in ui
-        for j1 in ui
-            if j1 ≤ i1
+    n_ui = length(ui)
+    n_uj = length(uj)
 
-                row = (i1 - 1) * i1 ÷ 2 + j1
+    for idx_i1 in 1:n_ui
+        @inbounds i1 = ui[idx_i1]
+        for idx_j1 in 1:idx_i1
+            @inbounds j1 = ui[idx_j1]
 
-                if norowmask || rowmask_lookup[row]
-                    for i2 in uj
-                        for j2 in uj
-                            if j2 ≤ i2
+            row = (i1 - 1) * i1 ÷ 2 + j1
 
-                                col = (i2 - 1) * i2 ÷ 2 + j2
+            if norowmask || rowmask_lookup[row]
+                divisor = i1 == j1 ? 2 : 1
 
-                                if nocolmask || colmask_lookup[col]
-                                    @inbounds aii = â[i1, i2]
-                                    @inbounds aij = â[i1, j2]
-                                    @inbounds aji = â[j1, i2]
-                                    @inbounds ajj = â[j1, j2]
+                for idx_i2 in 1:n_uj
+                    @inbounds i2 = uj[idx_i2]
+                    @inbounds aii = â[i1, i2]
+                    @inbounds aji = â[j1, i2]
 
-                                    # Sum over both permutations of (i2, j2)
-                                    val = aii * ajj + aij * aji
+                    for idx_j2 in 1:idx_i2
+                        @inbounds j2 = uj[idx_j2]
+                        @inbounds aij = â[i1, j2]
+                        @inbounds ajj = â[j1, j2]
 
-                                    if abs(val) > tol
-                                        divisor = i1 == j1 ? 2 : 1
+                        val = aii * ajj + aij * aji
 
-                                        k += 1
+                        if abs(val) > tol
+                            col = (i2 - 1) * i2 ÷ 2 + j2
 
-                                        if k > estimated_nnz
-                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
-                                            estimated_nnz = min(m2_cols * m2_rows, estimated_nnz)
-                                            resize!(I, estimated_nnz)
-                                            resize!(J, estimated_nnz)
-                                            resize!(V, estimated_nnz)
-                                        end
+                            if nocolmask || colmask_lookup[col]
+                                k += 1
 
-                                        I[k] = row
-                                        J[k] = col
-                                        V[k] = val / divisor
-                                    end
+                                if k > estimated_nnz
+                                    estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
+                                    estimated_nnz = min(m2_cols * m2_rows, estimated_nnz)
+                                    resize!(I, estimated_nnz)
+                                    resize!(J, estimated_nnz)
+                                    resize!(V, estimated_nnz)
                                 end
+
+                                I[k] = row
+                                J[k] = col
+                                V[k] = val / divisor
                             end
                         end
                     end
