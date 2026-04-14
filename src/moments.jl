@@ -16,16 +16,31 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
     m, n = size(A)
     @assert size(B) == (n, n) "B must be n×n where A is m×n"
 
-    At      = sparse(A')
-    At_rows = SparseArrays.rowvals(At)
-    At_vals = nonzeros(At)
+    # Linked-list row index for A: avoids allocating sparse(A').
+    # row_head[row] -> first nz index in that row; row_next[nz] -> next nz in same row;
+    # row_col[nz] -> column of that nonzero entry.
+    A_rv   = SparseArrays.rowvals(A)
+    A_nz   = nonzeros(A)
+    A_cp   = SparseArrays.getcolptr(A)
+    nnzA   = nnz(A)
+    row_head = zeros(Int, m)
+    row_next = zeros(Int, nnzA)
+    row_col  = Vector{Int}(undef, nnzA)
+    @inbounds for col in n:-1:1
+        for idx in A_cp[col]:(A_cp[col + 1] - 1)
+            row = A_rv[idx]
+            row_next[idx] = row_head[row]
+            row_head[row] = idx
+            row_col[idx]  = col
+        end
+    end
 
     B_rows  = SparseArrays.rowvals(B)
     B_vals  = nonzeros(B)
 
-    A_rows  = SparseArrays.rowvals(A)
-    A_vals  = nonzeros(A)
-    A_colptr = SparseArrays.getcolptr(A)
+    A_rows  = A_rv
+    A_vals  = A_nz
+    A_colptr = A_cp
 
     # SPA workspace: generation-marker pattern avoids zeroing w each column
     w      = Vector{T}(undef, n)
@@ -48,13 +63,14 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
     cnt   = 0
 
     @inbounds for j in 1:m
-        isempty(SparseArrays.nzrange(At, j)) && continue
+        row_head[j] == 0 && continue
 
-        # Phase A: w = B * Aᵀ[:,j]  via SPA
+        # Phase A: w = B * Aᵀ[:,j]  via SPA (iterate row j of A via linked-list)
         w_cnt = 0
-        for p in SparseArrays.nzrange(At, j)
-            l    = At_rows[p]
-            a_jl = At_vals[p]
+        p = row_head[j]
+        while p != 0
+            l    = row_col[p]
+            a_jl = A_nz[p]
             for q in SparseArrays.nzrange(B, l)
                 k    = B_rows[q]
                 b_kl = B_vals[q]
@@ -67,6 +83,7 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
                     w[k] += b_kl * a_jl
                 end
             end
+            p = row_next[p]
         end
 
         # Sort for sequential A-column access (cache-friendly advancing pointers)

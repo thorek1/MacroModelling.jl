@@ -52,23 +52,31 @@ function rrule(::typeof(mat_mult_kron),
         A_csc = A isa SparseMatrixCSC ? A : A.A
         nnzA = nnz(A_csc)
         nz_col = Vector{Int}(undef, nnzA)
-        row_to_nzinds = Dict{Int, Vector{Int}}()
 
-        for col in 1:size(A_csc, 2)
+        # Linked-list row index: avoids Dict{Int,Vector{Int}} allocation
+        n_rows_A = size(A_csc, 1)
+        row_head = zeros(Int, n_rows_A)
+        row_next = zeros(Int, nnzA)
+        @inbounds for col in size(A_csc, 2):-1:1
             for k in A_csc.colptr[col]:(A_csc.colptr[col + 1] - 1)
                 nz_col[k] = col
                 r = A_csc.rowval[k]
-                push!(get!(row_to_nzinds, r, Int[]), k)
+                row_next[k] = row_head[r]
+                row_head[r] = k
             end
         end
 
         ∂A_nz = zeros(G, nnzA)
         Abar_vec = zeros(G, size(A_csc, 2))
 
-        for (r, ks) in row_to_nzinds
+        @inbounds for r in 1:n_rows_A
+            row_head[r] == 0 && continue
+
             fill!(Abar_vec, zero(G))
-            @inbounds for k in ks
+            k = row_head[r]
+            while k != 0
                 Abar_vec[nz_col[k]] = A_csc.nzval[k]
+                k = row_next[k]
             end
 
             Abar = reshape(Abar_vec, n_rowC, n_rowB)
@@ -90,8 +98,10 @@ function rrule(::typeof(mat_mult_kron),
 
             Abar̄ = AbarB̄ * B'
             vecAbar̄ = vec(Abar̄)
-            @inbounds for k in ks
+            k = row_head[r]
+            while k != 0
                 ∂A_nz[k] += vecAbar̄[nz_col[k]]
+                k = row_next[k]
             end
         end
 
