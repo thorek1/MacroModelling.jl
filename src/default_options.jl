@@ -111,3 +111,7 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
 const DEFAULT_TURING_USE_MEAN_STD = false
 
 const DEFAULT_MAXLOG = 3
+
+# Caching and workspace defaults
+const DEFAULT_CACHING = true
+const DEFAULT_USE_WORKSPACES = true

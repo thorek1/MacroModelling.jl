@@ -89,8 +89,14 @@ function get_shock_decomposition(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
     # @nospecialize # reduce compile time
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -142,6 +148,8 @@ function get_shock_decomposition(𝓂::ℳ,
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
         decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
     end
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
 end
@@ -218,8 +226,14 @@ function get_estimated_shocks(𝓂::ℳ,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
     # @nospecialize # reduce compile time
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -259,6 +273,8 @@ function get_estimated_shocks(𝓂::ℳ,
     
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
@@ -342,8 +358,14 @@ function get_estimated_variables(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
     # @nospecialize # reduce compile time                         
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -384,7 +406,11 @@ function get_estimated_variables(𝓂::ℳ,
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
-    return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
+    result = KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+    return result
 end
 
 
@@ -467,7 +493,9 @@ function get_model_estimates(𝓂::ℳ,
                              tol::Tolerances = Tolerances(),
                              quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                              sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                             caching::Bool = DEFAULT_CACHING,
+                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
@@ -482,7 +510,9 @@ function get_model_estimates(𝓂::ℳ,
                                    tol = tol,
                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                    sylvester_algorithm = sylvester_algorithm,
-                                   lyapunov_algorithm = lyapunov_algorithm)
+                                   lyapunov_algorithm = lyapunov_algorithm,
+                                   caching = caching,
+                                   use_workspaces = use_workspaces)
 
     shks = get_estimated_shocks(𝓂, data;
                                 parameters = parameters,
@@ -496,7 +526,9 @@ function get_model_estimates(𝓂::ℳ,
                                 tol = tol,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
-                                lyapunov_algorithm = lyapunov_algorithm)
+                                lyapunov_algorithm = lyapunov_algorithm,
+                                caching = caching,
+                                use_workspaces = use_workspaces)
 
     # Build unified first axis and concatenate data
     est_labels = vcat(collect(axiskeys(vars, 1)), collect(axiskeys(shks, 1)))
@@ -572,8 +604,14 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     verbose::Bool = DEFAULT_VERBOSE,
                                                     tol::Tolerances = Tolerances(),
                                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                                    caching::Bool = DEFAULT_CACHING,
+                                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                                               
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -609,6 +647,8 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
 end
@@ -732,8 +772,14 @@ function get_conditional_forecast(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)
+                                conditional_forecast_solver::Symbol = :LagrangeNewton,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                        
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -994,6 +1040,8 @@ function get_conditional_forecast(𝓂::ℳ,
         axis1 = [𝓂.constants.post_model_macro.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.constants.post_model_macro.exo)]
     end
 
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
     return KeyedArray([Y[var_idx,:] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)[var_idx]; convert(Matrix{Float64}, shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
 end
 
@@ -1063,7 +1111,13 @@ function get_irf(𝓂::ℳ,
                     levels::Bool = false,
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
-                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM) where S <: Real
+                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
@@ -1088,6 +1142,7 @@ function get_irf(𝓂::ℳ,
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
     
     if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
@@ -1104,6 +1159,7 @@ function get_irf(𝓂::ℳ,
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
@@ -1136,8 +1192,10 @@ function get_irf(𝓂::ℳ,
     deviations = reshape(reduce(hcat,Ŷ),𝓂.constants.post_model_macro.nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
 
     if levels
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations .+ reference_steady_state[var_idx]
     else
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations
     end
 end
@@ -1231,8 +1289,14 @@ function get_irf(𝓂::ℳ;
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray where R <: Real
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                caching::Bool = DEFAULT_CACHING,
+                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray where R <: Real
     # @nospecialize # reduce compile time            
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1323,6 +1387,8 @@ function get_irf(𝓂::ℳ;
                                         generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
                                         algorithm = algorithm)
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return responses
 
@@ -1449,8 +1515,14 @@ function get_steady_state(𝓂::ℳ;
                             silent::Bool = DEFAULT_SILENT_FLAG,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
     # @nospecialize # reduce compile time
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
                             
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1573,6 +1645,7 @@ function get_steady_state(𝓂::ℳ;
 
                 SS_and_pars = SSS_result[3]
                 steady_state_column = vcat(SSS[var_idx], SS_and_pars[calib_idx])
+                if !use_workspaces; 𝓂.workspaces = orig_ws; end
                 return KeyedArray(hcat(steady_state_column, dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
             (nsss_result, nsss_pb) = rrule(get_NSSS_and_parameters, 𝓂, 𝓂.parameter_values, opts = opts)
@@ -1593,12 +1666,14 @@ function get_steady_state(𝓂::ℳ;
             # else
             # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.constants.post_complete_parameters.parameters)),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
             # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters)), ("Var. and par.", "∂x/∂y"))
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return KeyedArray(hcat(SS[[var_idx...,calib_idx...]],dSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
             # end
         end
     else
         # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
         # return NamedArray(collect(NSSS), [sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return KeyedArray(SS[[var_idx...,calib_idx...]];  Variables_and_calibrated_parameters = axis1)
     end
     # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.constants.post_model_macro.exo_present,var)))),
@@ -1728,8 +1803,14 @@ function get_solution(𝓂::ℳ;
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
     # @nospecialize # reduce compile time      
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1765,6 +1846,8 @@ function get_solution(𝓂::ℳ;
         axis2_decomposed = decompose_name.(axis2)
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
     end
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     if algorithm == :second_order
         return KeyedArray(permutedims(reshape(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂, 
@@ -1905,7 +1988,13 @@ function get_solution(𝓂::ℳ,
                         verbose::Bool = DEFAULT_VERBOSE, 
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂)) where S <: Real
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1927,6 +2016,7 @@ function get_solution(𝓂::ℳ,
         for (k,v) in 𝓂.constants.post_parameters_macro.bounds
             if k ∈ 𝓂.constants.post_complete_parameters.parameters
                 if min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
+                    if !use_workspaces; 𝓂.workspaces = orig_ws; end
                     return -Inf
                 end
             end
@@ -1936,6 +2026,7 @@ function get_solution(𝓂::ℳ,
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
         elseif algorithm in [:third_order, :pruned_third_order]
@@ -1958,6 +2049,7 @@ function get_solution(𝓂::ℳ,
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         if algorithm in [:second_order, :pruned_second_order]
             return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), false
         elseif algorithm in [:third_order, :pruned_third_order]
@@ -1976,6 +2068,7 @@ function get_solution(𝓂::ℳ,
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
@@ -1998,8 +2091,10 @@ function get_solution(𝓂::ℳ,
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, true
     end
 end
@@ -2097,8 +2192,14 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                                caching::Bool = DEFAULT_CACHING,
+                                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                                            
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2170,6 +2271,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     KeyedArray(cond_var_decomp; Variables = axis1, Shocks = axis2, Periods = periods)
 end
@@ -2262,9 +2365,15 @@ function get_variance_decomposition(𝓂::ℳ;
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                    caching::Bool = DEFAULT_CACHING,
+                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
                                     
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
@@ -2322,6 +2431,8 @@ function get_variance_decomposition(𝓂::ℳ;
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
 end
@@ -2397,8 +2508,14 @@ function get_correlation(𝓂::ℳ;
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                         verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = Tolerances())
+                        tol::Tolerances = Tolerances(),
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                    
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2434,6 +2551,8 @@ function get_correlation(𝓂::ℳ;
 
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
 end
@@ -2515,8 +2634,14 @@ function get_autocorrelation(𝓂::ℳ;
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                             verbose::Bool = DEFAULT_VERBOSE,
-                            tol::Tolerances = Tolerances())
+                            tol::Tolerances = Tolerances(),
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2570,6 +2695,8 @@ function get_autocorrelation(𝓂::ℳ;
 
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
 end
@@ -2683,8 +2810,14 @@ function get_moments(𝓂::ℳ;
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                     verbose::Bool = DEFAULT_VERBOSE,
-                    tol::Tolerances = Tolerances())#limit output by selecting pars and vars like for plots and irfs!?
+                    tol::Tolerances = Tolerances(),
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)#limit output by selecting pars and vars like for plots and irfs!?
     # @nospecialize # reduce compile time          
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3121,6 +3254,8 @@ function get_moments(𝓂::ℳ;
         end
     end
 
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
     return ret
 end
 
@@ -3278,7 +3413,13 @@ function get_statistics(𝓂::ℳ,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                         verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = Tolerances()) where T
+                        tol::Tolerances = Tolerances(),
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where T
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3334,6 +3475,7 @@ function get_statistics(𝓂::ℳ,
 
         ret[:non_stochastic_steady_state] = solution_error < opts.tol.nsss.acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return ret
     end
 
@@ -3467,6 +3609,8 @@ function get_statistics(𝓂::ℳ,
         ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx,:] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
     end
 
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
     return ret
 end
 
@@ -3542,8 +3686,14 @@ function get_loglikelihood(𝓂::ℳ,
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM, 
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                            verbose::Bool = DEFAULT_VERBOSE)::S where {S <: Real, U <: AbstractFloat}
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3576,6 +3726,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if bounds_violated 
         # println("Bounds violated")
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return on_failure_loglikelihood
     end
 
@@ -3592,6 +3743,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if !solved 
         # println("Main call: 1st order solution not found")
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return on_failure_loglikelihood 
     end
  
@@ -3622,6 +3774,8 @@ function get_loglikelihood(𝓂::ℳ,
                                 on_failure_loglikelihood = on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return llh
 end
@@ -3840,8 +3994,14 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     tol::Tolerances = Tolerances(),
-                                                    verbose::Bool = DEFAULT_VERBOSE)
+                                                    verbose::Bool = DEFAULT_VERBOSE,
+                                                    caching::Bool = DEFAULT_CACHING,
+                                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                                             
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
@@ -3888,6 +4048,8 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
     residual = zeros(length(vals))
 
     𝓂.functions.NSSS_check(residual, 𝓂.parameter_values, vals)
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     KeyedArray(abs.(residual), Equation = axis1)
 end
