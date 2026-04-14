@@ -3010,7 +3010,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 # n_samples = 100
 
-# chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = FS2000.parameter_values)
+# chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 
 # h5open("docs/src/assets/chain_NUTS.h5", "w") do f
 #   write(f, chain_NUTS)
