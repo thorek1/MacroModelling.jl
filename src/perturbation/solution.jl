@@ -1180,93 +1180,71 @@ function compressed_kron³(a::AbstractMatrix{T};
         end
     end
 
-    for i1 in ui
-        for j1 in ui
-            if j1 ≤ i1
-                for k1 in ui
-                    if k1 ≤ j1
+    n_ui = length(ui)
+    n_uj = length(uj)
 
-                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
+    for idx_i1 in 1:n_ui
+        @inbounds i1 = ui[idx_i1]
+        for idx_j1 in 1:idx_i1
+            @inbounds j1 = ui[idx_j1]
+            for idx_k1 in 1:idx_j1
+                @inbounds k1 = ui[idx_k1]
 
-                        if norowmask || rowmask_lookup[row]
-                            for i2 in uj
-                                for j2 in uj
-                                    if j2 ≤ i2
-                                        for k2 in uj
-                                            if k2 ≤ j2
+                row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
 
-                                                col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
+                if norowmask || rowmask_lookup[row]
+                    # Divisor depends only on the row triple
+                    if i1 == j1
+                        divisor = i1 == k1 ? 6 : 2
+                    else
+                        divisor = (i1 ≠ k1 && j1 ≠ k1) ? 1 : 2
+                    end
 
-                                                if nocolmask || colmask_lookup[col]
-                                                    # @timeit_debug timer "Multiplication" begin
-                                                    @inbounds aii = â[i1, i2]
-                                                    @inbounds aij = â[i1, j2]
-                                                    @inbounds aik = â[i1, k2]
-                                                    @inbounds aji = â[j1, i2]
-                                                    @inbounds ajj = â[j1, j2]
-                                                    @inbounds ajk = â[j1, k2]
-                                                    @inbounds aki = â[k1, i2]
-                                                    @inbounds akj = â[k1, j2]
-                                                    @inbounds akk = â[k1, k2]
+                    for idx_i2 in 1:n_uj
+                        @inbounds i2 = uj[idx_i2]
+                        # Hoist i2-dependent reads
+                        @inbounds aii = â[i1, i2]
+                        @inbounds aji = â[j1, i2]
+                        @inbounds aki = â[k1, i2]
 
-                                                    # Compute the six unique products
-                                                    # val = 0.0
-                                                    # val += aii * ajj * akk
-                                                    # val += aij * aji * akk
-                                                    # val += aik * ajj * aki
-                                                    # val += aij * ajk * aki
-                                                    # val += aik * aji * akj
-                                                    # val += aii * ajk * akj
+                        for idx_j2 in 1:idx_i2
+                            @inbounds j2 = uj[idx_j2]
+                            # Hoist j2-dependent reads
+                            @inbounds aij = â[i1, j2]
+                            @inbounds ajj = â[j1, j2]
+                            @inbounds akj = â[k1, j2]
 
-                                                    val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
-                                                    # end # timeit_debug
+                            # Precompute sub-expressions for the k2 inner loop
+                            p1 = aii * ajj + aij * aji  # coefficient of akk
+                            p2 = aii * akj + aij * aki  # coefficient of ajk
+                            p3 = aji * akj + ajj * aki  # coefficient of aik
+                            col_partial = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2
 
-                                                    # @timeit_debug timer "Save in vector" begin
-                                                        
-                                                    # Only add non-zero values to the sparse matrix
-                                                    if abs(val) > tol
-                                                        # Threads.atomic_add!(k, 1)
-                                                        # Threads.atomic_max!(k̄, k[])
+                            for idx_k2 in 1:idx_j2
+                                @inbounds k2 = uj[idx_k2]
+                                @inbounds aik = â[i1, k2]
+                                @inbounds ajk = â[j1, k2]
+                                @inbounds akk = â[k1, k2]
 
-                                                        if i1 == j1
-                                                            if i1 == k1
-                                                                divisor = 6
-                                                            else
-                                                                divisor = 2
-                                                            end
-                                                        else
-                                                            if i1 ≠ k1 && j1 ≠ k1
-                                                                divisor = 1
-                                                            else
-                                                                divisor = 2
-                                                            end
-                                                        end
-                                                        # push!(threadlocal[1],row)
-                                                        # push!(threadlocal[2],col)
-                                                        # push!(threadlocal[3],val / divisor)
-                                                        # I[k[]] = row
-                                                        # J[k[]] = col
-                                                        # V[k[]] = val / divisor 
+                                val = akk * p1 + ajk * p2 + aik * p3
 
-                                                        k += 1
+                                if abs(val) > tol
+                                    col = col_partial + k2
 
-                                                        if k > estimated_nnz
-                                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
-                                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
-                                                            resize!(I, estimated_nnz)
-                                                            resize!(J, estimated_nnz)
-                                                            resize!(V, estimated_nnz)
-                                                        end
+                                    if nocolmask || colmask_lookup[col]
+                                        k += 1
 
-                                                        I[k] = row
-                                                        J[k] = col
-                                                        V[k] = val / divisor 
-                                                    end
-
-                                                    # end # timeit_debug
-                                                end
-                                            end
+                                        if k > estimated_nnz
+                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
+                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
+                                            resize!(I, estimated_nnz)
+                                            resize!(J, estimated_nnz)
+                                            resize!(V, estimated_nnz)
                                         end
+
+                                        I[k] = row
+                                        J[k] = col
+                                        V[k] = val / divisor
                                     end
                                 end
                             end
@@ -1407,26 +1385,35 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
                 # Col-inner loop: column triples (i2 ≥ j2 ≥ k2) with bounded ranges
                 for idx_i2 in 1:n_uj
                     @inbounds i2 = uj[idx_i2]
-                    for idx_j2 in 1:idx_i2     # j2 ≤ i2 by construction
-                        @inbounds j2 = uj[idx_j2]
-                        for idx_k2 in 1:idx_j2 # k2 ≤ j2 by construction
-                            @inbounds k2 = uj[idx_k2]
+                    # Hoist i2-dependent reads
+                    @inbounds aii = â[i1, i2]
+                    @inbounds aji = â[j1, i2]
+                    @inbounds aki = â[k1, i2]
 
-                            @inbounds aii = â[i1, i2]
-                            @inbounds aij = â[i1, j2]
+                    for idx_j2 in 1:idx_i2
+                        @inbounds j2 = uj[idx_j2]
+                        # Hoist j2-dependent reads
+                        @inbounds aij = â[i1, j2]
+                        @inbounds ajj = â[j1, j2]
+                        @inbounds akj = â[k1, j2]
+
+                        # Precompute sub-expressions for the k2 inner loop
+                        p1 = aii * ajj + aij * aji
+                        p2 = aii * akj + aij * aki
+                        p3 = aji * akj + ajj * aki
+                        col_partial = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2
+
+                        for idx_k2 in 1:idx_j2
+                            @inbounds k2 = uj[idx_k2]
                             @inbounds aik = â[i1, k2]
-                            @inbounds aji = â[j1, i2]
-                            @inbounds ajj = â[j1, j2]
                             @inbounds ajk = â[j1, k2]
-                            @inbounds aki = â[k1, i2]
-                            @inbounds akj = â[k1, j2]
                             @inbounds akk = â[k1, k2]
 
-                            val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
+                            val = akk * p1 + ajk * p2 + aik * p3
 
                             if abs(val) > tol
                                 scaled_val = val / divisor
-                                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+                                col = col_partial + k2
 
                                 # Direct IJV scatter through M[:, row]
                                 for p_M in rng_M
