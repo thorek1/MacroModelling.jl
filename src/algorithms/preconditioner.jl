@@ -7,8 +7,7 @@
 # ─── Sparse-vector accumulator (Gustavson's O(1)-reset technique) ────────────
 #
 # Dense-length vectors with a generation counter avoid O(n) zeroing each step.
-# An entry is "live" when occupied[i] == gen.  No SparseArrays equivalent exists
-# for this O(1)-reset pattern; SparseVector would require O(nnz) reset per step.
+# An entry is "live" when occupied[i] == gen.
 
 mutable struct SparseAccum{Tv,Ti}
     occupied::Vector{Ti}
@@ -45,13 +44,12 @@ function _flush_column!(A::SparseMatrixCSC, v::SparseAccum, j::Integer,
         end
     end
     sort!(v.nzind, 1, total, Base.Sort.QuickSort, Base.Order.Forward)
-    rv = SparseArrays.rowvals(A);  nz = nonzeros(A);  cp = SparseArrays.getcolptr(A)
     @inbounds for i = 1:total
         row = v.nzind[i]
-        push!(rv, row)
-        push!(nz, scale * v.nzval[row])
+        push!(A.rowval, row)
+        push!(A.nzval, scale * v.nzval[row])
     end
-    @inbounds cp[j + 1] = cp[j] + total
+    @inbounds A.colptr[j + 1] = A.colptr[j] + total
     v.gen += 1;  v.nnz = 0
     nothing
 end
@@ -64,19 +62,20 @@ struct ILUFactorization{Tv,Ti} <: ℒ.Factorization{Tv}
 end
 
 function ℒ.ldiv!(F::ILUFactorization, y::AbstractVecOrMat)
-    L = F.L;  Lrows = SparseArrays.rowvals(L);  Lvals = nonzeros(L)
-    @inbounds for col in 1:size(L, 2) - 1          # forward (unit lower)
-        for idx in SparseArrays.nzrange(L, col)
-            y[Lrows[idx]] -= Lvals[idx] * y[col]
+    # Forward substitution (unit lower-triangular L, no stored diagonal)
+    L = F.L
+    @inbounds for col = 1 : L.n - 1
+        for idx = L.colptr[col] : L.colptr[col + 1] - 1
+            y[L.rowval[idx]] -= L.nzval[idx] * y[col]
         end
     end
-    U = F.U;  Urows = SparseArrays.rowvals(U);  Uvals = nonzeros(U)
-    @inbounds for col in size(U, 2):-1:1            # backward (upper)
-        rng = SparseArrays.nzrange(U, col)
-        for idx in last(rng):-1:first(rng) + 1
-            y[col] -= Uvals[idx] * y[Urows[idx]]
+    # Backward substitution (upper-triangular U with stored diagonal)
+    U = F.U
+    @inbounds for col = U.n : -1 : 1
+        for idx = U.colptr[col + 1] - 1 : -1 : U.colptr[col] + 1
+            y[col] -= U.nzval[idx] * y[U.rowval[idx]]
         end
-        y[col] /= Uvals[first(rng)]
+        y[col] /= U.nzval[U.colptr[col]]
     end
     y
 end
@@ -88,60 +87,60 @@ end
 
 # ─── Crout ILU(τ) factorisation ─────────────────────────────────────────────
 #
-# Row access to A uses its precomputed transpose (At) with SparseArrays.nzrange.
-# Row access to L and U (built incrementally) uses linked-list indices:
-#   nxt[c]  – cursor: next nz-index to visit in column c
-#   head[r] – first column with a pending nonzero in row r
-#   rnxt[c] – next column after c in the same row chain
+# Row access to all matrices (A, L, U) uses linked-list indices over the
+# CSC structure.  Direct .colptr/.rowval/.nzval field access is used
+# throughout for minimal overhead in tight loops.
 
 function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
     n  = size(A, 1)
     Tv = typeof(oneunit(ATv) / (oneunit(ATv) + zero(ATv)))
 
-    # Transpose gives row access to A via standard SparseArrays.nzrange on At
-    At = sparse(A')
-    At_rows = SparseArrays.rowvals(At);  At_vals = nonzeros(At)
-    Arows   = SparseArrays.rowvals(A);   Avals   = nonzeros(A)
-
     L  = spzeros(Tv, Ti, n, n)
     U  = spzeros(Tv, Ti, n, n)
-    Ur = SparseAccum{Tv,Ti}(n)              # row accumulator  (builds U)
-    Lc = SparseAccum{Tv,Ti}(n)              # column accumulator (builds L)
+    Ur = SparseAccum{Tv,Ti}(n)
+    Lc = SparseAccum{Tv,Ti}(n)
 
-    # Linked-list row index for L and U (built incrementally)
+    # Linked-list row index for A (pre-populated)
+    A_nxt = A.colptr[1:n]
+    A_head = zeros(Ti, n);  A_rnxt = zeros(Ti, n)
+    @inbounds for i = Ti(1):Ti(n)
+        row = A.rowval[A.colptr[i]]
+        A_head[row], A_rnxt[i] = i, A_head[row]
+    end
+
+    # Linked-list row index for L and U (start empty, built incrementally)
     L_nxt = zeros(Ti, n);  L_head = zeros(Ti, n);  L_rnxt = zeros(Ti, n)
-    Lrows = SparseArrays.rowvals(L);    Lvals  = nonzeros(L);   Lcp    = SparseArrays.getcolptr(L)
-
     U_nxt = zeros(Ti, n);  U_head = zeros(Ti, n);  U_rnxt = zeros(Ti, n)
-    Urows = SparseArrays.rowvals(U);    Uvals  = nonzeros(U);   Ucp    = SparseArrays.getcolptr(U)
 
     @inbounds for k = Ti(1):Ti(n)
 
-        # --- Scatter row k of A (upper triangle, c ≥ k) into Ur ---
-        for idx in SparseArrays.nzrange(At, k)
-            c = At_rows[idx]
-            c >= k || continue
-            _scatter!(Ur, At_vals[idx], c)
+        # --- Scatter row k of A into Ur, column k of A into Lc ---
+        c = A_head[k]
+        while c != 0
+            _scatter!(Ur, A.nzval[A_nxt[c]], c)
+            nc = A_rnxt[c]
+            A_nxt[c] += 1
+            if A_nxt[c] < A.colptr[c + 1] && A.rowval[A_nxt[c]] <= c
+                row = A.rowval[A_nxt[c]]
+                A_head[row], A_rnxt[c] = c, A_head[row]
+            end
+            c = nc
         end
-
-        # --- Scatter column k of A (lower triangle, row > k) into Lc ---
-        for idx in SparseArrays.nzrange(A, k)
-            row = Arows[idx]
-            row > k || continue
-            _scatter!(Lc, Avals[idx], row)
+        for idx = A_nxt[k] : A.colptr[k + 1] - 1
+            _scatter!(Lc, A.nzval[idx], A.rowval[idx])
         end
 
         # --- Ur[k:n] -= L[k,i] * U[i, k:n]  for i < k ---
         c = L_head[k]
         while c != 0
-            a = -Lvals[L_nxt[c]]
-            for idx = U_nxt[c]:Ucp[c + 1] - 1
-                _scatter!(Ur, a * Uvals[idx], Urows[idx])
+            a = -L.nzval[L_nxt[c]]
+            for idx = U_nxt[c] : U.colptr[c + 1] - 1
+                _scatter!(Ur, a * U.nzval[idx], U.rowval[idx])
             end
             nc = L_rnxt[c]
             L_nxt[c] += 1
-            if L_nxt[c] < Lcp[c + 1]
-                row = Lrows[L_nxt[c]]
+            if L_nxt[c] < L.colptr[c + 1]
+                row = L.rowval[L_nxt[c]]
                 L_head[row], L_rnxt[c] = c, L_head[row]
             end
             c = nc
@@ -151,14 +150,14 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
         if k < n
             c = U_head[k]
             while c != 0
-                a = -Uvals[U_nxt[c]]
-                for idx = L_nxt[c]:Lcp[c + 1] - 1
-                    _scatter!(Lc, a * Lvals[idx], Lrows[idx])
+                a = -U.nzval[U_nxt[c]]
+                for idx = L_nxt[c] : L.colptr[c + 1] - 1
+                    _scatter!(Lc, a * L.nzval[idx], L.rowval[idx])
                 end
                 nc = U_rnxt[c]
                 U_nxt[c] += 1
-                if U_nxt[c] < Ucp[c + 1]
-                    row = Urows[U_nxt[c]]
+                if U_nxt[c] < U.colptr[c + 1]
+                    row = U.rowval[U_nxt[c]]
                     U_head[row], U_rnxt[c] = c, U_head[row]
                 end
                 c = nc
@@ -170,14 +169,16 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
         _flush_column!(L, Lc, k, τ, inv(Ur.nzval[k]))
 
         # Register new entries in row-traversal index
-        U_nxt[k] = Ucp[k] + 1
-        if Ucp[k] < Ucp[k + 1] - 1
-            row = Urows[U_nxt[k]]; U_head[row], U_rnxt[k] = k, U_head[row]
+        U_nxt[k] = U.colptr[k] + 1
+        if U.colptr[k] < U.colptr[k + 1] - 1
+            row = U.rowval[U_nxt[k]]
+            U_head[row], U_rnxt[k] = k, U_head[row]
         end
 
-        L_nxt[k] = Lcp[k]
-        if Lcp[k] < Lcp[k + 1]
-            row = Lrows[L_nxt[k]]; L_head[row], L_rnxt[k] = k, L_head[row]
+        L_nxt[k] = L.colptr[k]
+        if L.colptr[k] < L.colptr[k + 1]
+            row = L.rowval[L_nxt[k]]
+            L_head[row], L_rnxt[k] = k, L_head[row]
         end
     end
 
