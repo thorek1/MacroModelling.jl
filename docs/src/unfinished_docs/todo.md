@@ -1,5 +1,4 @@
-# Todo list
-
+# Todo lis
 ## High priority
 
 - [ ] make package work with semi structural expectations models
