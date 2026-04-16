@@ -1920,122 +1920,45 @@ function rrule(::typeof(get_loglikelihood),
 end
 
 
-# ── get_irf rrule helpers: algorithm-dispatched forward simulation and BPTT ──
 
-# Extract initial state from SSS output
-function irf_initial_state(::Val{:pruned_second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
-    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2]]
-end
-
-function irf_initial_state(::Val{:pruned_third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
-    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2], state[3]]
-end
-
-function irf_initial_state(::Val{:second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
-    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
-end
-
-function irf_initial_state(::Val{:third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
-    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
-end
-
-
-# Forward simulation storing states for BPTT
-function irf_forward_simulate!(::Val{:pruned_second_order},
-        Y_all::Array{S,3}, states_store, shocks_store,
-        init_st, shock_idx, shocks_input, negative_shock, shock_history,
-        nExo, periods, past_idx, nVars, 𝐒) where S
-    𝐒₁, 𝐒₂ = 𝐒
-    for (si, ii) in enumerate(shock_idx)
-        shock_hist = zeros(nExo, periods)
-        if shocks_input isa Union{Symbol_input,String_input}
-            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
-        else
-            shock_hist = shock_history
-        end
-        states_store[si, 1] = init_st
-        for t in 1:periods
-            shocks_store[si, t] = shock_hist[:, t]
-            new_st = pruned_second_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂)
-            states_store[si, t+1] = new_st
-            Y_all[:, t, si] = sum(new_st)
-        end
-    end
-end
-
-function irf_forward_simulate!(::Val{:pruned_third_order},
-        Y_all::Array{S,3}, states_store, shocks_store,
-        init_st, shock_idx, shocks_input, negative_shock, shock_history,
-        nExo, periods, past_idx, nVars, 𝐒) where S
-    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
-    for (si, ii) in enumerate(shock_idx)
-        shock_hist = zeros(nExo, periods)
-        if shocks_input isa Union{Symbol_input,String_input}
-            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
-        else
-            shock_hist = shock_history
-        end
-        states_store[si, 1] = init_st
-        for t in 1:periods
-            shocks_store[si, t] = shock_hist[:, t]
-            new_st = pruned_third_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
-            states_store[si, t+1] = new_st
-            Y_all[:, t, si] = sum(new_st)
-        end
-    end
-end
-
-function irf_forward_simulate!(::Val{:second_order},
-        Y_all::Array{S,3}, states_store, shocks_store,
-        init_st, shock_idx, shocks_input, negative_shock, shock_history,
-        nExo, periods, past_idx, nVars, 𝐒) where S
-    𝐒₁, 𝐒₂ = 𝐒
-    for (si, ii) in enumerate(shock_idx)
-        shock_hist = zeros(nExo, periods)
-        if shocks_input isa Union{Symbol_input,String_input}
-            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
-        else
-            shock_hist = shock_history
-        end
-        states_store[si, 1] = init_st
-        for t in 1:periods
-            shocks_store[si, t] = shock_hist[:, t]
-            prev = states_store[si, t]
-            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            y_t = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / 2
-            states_store[si, t+1] = y_t
-            Y_all[:, t, si] = y_t
-        end
-    end
-end
-
-function irf_forward_simulate!(::Val{:third_order},
-        Y_all::Array{S,3}, states_store, shocks_store,
-        init_st, shock_idx, shocks_input, negative_shock, shock_history,
-        nExo, periods, past_idx, nVars, 𝐒) where S
-    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
-    for (si, ii) in enumerate(shock_idx)
-        shock_hist = zeros(nExo, periods)
-        if shocks_input isa Union{Symbol_input,String_input}
-            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
-        else
-            shock_hist = shock_history
-        end
-        states_store[si, 1] = init_st
-        for t in 1:periods
-            shocks_store[si, t] = shock_hist[:, t]
-            prev = states_store[si, t]
-            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            kaug = ℒ.kron(aug, aug)
-            y_t = 𝐒₁ * aug + 𝐒₂ * kaug / 2 + 𝐒₃ * ℒ.kron(kaug, aug) / 6
-            states_store[si, t+1] = y_t
-            Y_all[:, t, si] = y_t
-        end
-    end
-end
-
+# ── get_irf rrule BPTT helpers ──
 
 # BPTT pullback: returns (∂𝐒_list, ∂state_init, ∂SS_and_pars_from_init)
+function irf_bptt(::Val{:first_order},
+        ∂Y_all::Array{S,3}, states_store, shocks_store,
+        nShocks, periods, past_idx, nPast, nVars, nExo,
+        𝐒, initial_state, nVar_len) where S
+    sol_mat = 𝐒
+    ∂sol_mat = zeros(S, size(sol_mat))
+    ∂state_init = zeros(S, nVars)
+    ∂SS_from_init = zeros(S, nVar_len)
+
+    for si in 1:nShocks
+        ∂y_accum = zeros(S, nVars)
+
+        for t in periods:-1:1
+            ∂y_t = ∂Y_all[:, t, si] + ∂y_accum
+
+            prev_st = states_store[si, t]
+            shock_t = shocks_store[si, t]
+            input_t = [prev_st[past_idx]; shock_t]
+
+            ∂sol_mat .+= ∂y_t * input_t'
+            ∂input_t = sol_mat' * ∂y_t
+
+            ∂y_accum = zeros(S, nVars)
+            ∂y_accum[past_idx] .+= ∂input_t[1:nPast]
+        end
+
+        ∂state_init .+= ∂y_accum
+        if initial_state != [0.0]
+            ∂SS_from_init[1:nVar_len] .-= ∂y_accum[1:nVar_len]
+        end
+    end
+
+    return [∂sol_mat], ∂state_init, ∂SS_from_init
+end
+
 function irf_bptt(::Val{:pruned_second_order},
         ∂Y_all::Array{S,3}, states_store, shocks_store,
         nShocks, periods, past_idx, nPast, nVars, nExo,
@@ -2465,40 +2388,17 @@ function rrule(::typeof(get_irf),
         return zero_result(), zero_pullback
     end
 
-    # ── step 4: Forward simulation (mutation-free, storing inputs for pullback) ──
-    init_state = initial_state == [0.0] ? zeros(S, nVars) : initial_state - reference_steady_state[1:length(𝓂.constants.post_model_macro.var)]
+    # ── step 4: Forward simulation using dispatched helpers ──
+    val_alg = Val(:first_order)
+    init_state = irf_initial_state(val_alg, nothing, reference_steady_state, initial_state, nVars, S)
 
-    # Pre-allocate output and input storage
     Y_all = zeros(S, nVars, periods, nShocks)
-    # Store the input vectors [state[past_idx]; shock] for each (shock_i, t) — needed for pullback
-    inputs_all = Array{Vector{S}}(undef, nShocks, periods)
+    states_store = Array{Any}(undef, nShocks, periods + 1)
+    shocks_store = Array{Vector{S}}(undef, nShocks, periods)
 
-    for (si, ii) in enumerate(shock_idx)
-        # Build shock history for this shock index
-        if shocks isa Union{Symbol_input,String_input}
-            shock_hist = zeros(nExo, periods)
-            if shocks ≠ :none
-                shock_hist[ii, 1] = negative_shock ? -1.0 : 1.0
-            end
-        else
-            shock_hist = shock_history
-        end
-
-        # t = 1
-        prev_state = init_state
-        input_vec = vcat(prev_state[past_idx], shock_hist[:, 1])
-        y_t = sol_mat * input_vec
-        inputs_all[si, 1] = input_vec
-        Y_all[:, 1, si] = y_t
-
-        # t = 2:periods
-        for t in 2:periods
-            input_vec = vcat(y_t[past_idx], shock_hist[:, t])
-            y_t = sol_mat * input_vec
-            inputs_all[si, t] = input_vec
-            Y_all[:, t, si] = y_t
-        end
-    end
+    irf_forward_simulate!(val_alg, Y_all, states_store, shocks_store,
+        init_state, shock_idx, shocks, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, sol_mat)
 
     # ── step 5: Assemble output ──
     deviations = Y_all[var_idx, :, :]
@@ -2509,6 +2409,8 @@ function rrule(::typeof(get_irf),
         deviations
     end
 
+    nVar_len = length(𝓂.constants.post_model_macro.var)
+
     # ── step 6: Pullback ──
     pullback = function (∂result_bar)
         ∂result = unthunk(∂result_bar)
@@ -2517,52 +2419,24 @@ function rrule(::typeof(get_irf),
             return NoTangent(), NoTangent(), zeros(S, length(parameters))
         end
 
-        # Scatter var_idx back to full nVars dimension
         ∂Y_all = zeros(S, nVars, periods, nShocks)
         ∂Y_all[var_idx, :, :] .= ∂result
 
-        # SS gradient from levels mode
         ∂SS_and_pars = zeros(S, length(reference_steady_state))
         if levels
             ∂SS_and_pars[var_idx] .+= dropdims(sum(∂result, dims = (2, 3)), dims = (2, 3))
         end
 
-        # BPTT through the linear simulation to get ∂sol_mat
-        ∂sol_mat = zeros(S, size(sol_mat))
+        # Dispatched BPTT
+        ∂𝐒_list, ∂state_init, ∂SS_from_init = irf_bptt(val_alg,
+            ∂Y_all, states_store, shocks_store,
+            nShocks, periods, past_idx, nPast, nVars, nExo,
+            sol_mat, initial_state, nVar_len)
 
-        for si in 1:nShocks
-            # Accumulated gradient flowing backward through states
-            ∂y_accum = zeros(S, nVars)
-
-            for t in periods:-1:1
-                # Total gradient at time t = direct gradient + propagated from t+1
-                ∂y_t = ∂Y_all[:, t, si] .+ ∂y_accum
-
-                # ∂sol_mat += ∂y_t * input_t'
-                input_t = inputs_all[si, t]
-                ∂sol_mat .+= ∂y_t * input_t'
-
-                # Propagate gradient to previous state through sol_mat
-                # input_t = [y_{t-1}[past_idx]; shock_t]
-                # ∂input_t = sol_mat' * ∂y_t
-                ∂input_t = sol_mat' * ∂y_t
-
-                # Only the first nPast entries of ∂input_t flow to ∂y_{t-1}[past_idx]
-                ∂y_accum = zeros(S, nVars)
-                ∂y_accum[past_idx] .+= ∂input_t[1:nPast]
-            end
-
-            # After BPTT for this shock, ∂y_accum is the gradient w.r.t. init_state.
-            # When init_state = initial_state - reference_steady_state[1:nVar],
-            # propagate gradient to reference_steady_state with negative sign.
-            if initial_state != [0.0]
-                nVar_len = length(𝓂.constants.post_model_macro.var)
-                ∂SS_and_pars[1:nVar_len] .-= ∂y_accum[1:nVar_len]
-            end
-        end
+        ∂SS_and_pars[1:nVar_len] .+= ∂SS_from_init
+        ∂sol_mat = ∂𝐒_list[1]
 
         # ── Chain backward through sub-pullbacks ──
-        # first_pb expects cotangent tuple: (∂sol_mat, ∂qme_sol, ∂solved)
         first_grads = first_pb((∂sol_mat, NoTangent(), NoTangent()))
         ∂∇₁ = first_grads[2]
 

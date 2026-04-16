@@ -123,7 +123,7 @@ samps = @time sample(gali_model,
                      NUTS(adtype = AutoForwardDiff()),
                      n_samples,
                      progress = true,
-                     initial_params = true_params[estimated_param_indices])
+                     initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
 
 println("Mean estimated values (ForwardDiff): $(mean(samps).nt.mean)")
 

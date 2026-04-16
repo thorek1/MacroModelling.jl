@@ -1103,6 +1103,149 @@ get_irf(RBC, RBC.parameter_values)
  0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
 ```
 """
+
+# ── IRF helpers: algorithm-dispatched initial state and forward simulation ──
+
+# Extract/compute initial state for IRF from SSS output
+function irf_initial_state(::Val{:first_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? zeros(S, nVars) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+function irf_initial_state(::Val{:pruned_second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2]]
+end
+
+function irf_initial_state(::Val{:pruned_third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2], state[3]]
+end
+
+function irf_initial_state(::Val{:second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+function irf_initial_state(::Val{:third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+
+# Forward simulation storing intermediate states and shocks
+function irf_forward_simulate!(::Val{:first_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    sol_mat = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            y_t = sol_mat * [prev[past_idx]; shocks_store[si, t]]
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:pruned_second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_second_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:pruned_third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_third_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            y_t = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / 2
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            kaug = ℒ.kron(aug, aug)
+            y_t = 𝐒₁ * aug + 𝐒₂ * kaug / 2 + 𝐒₃ * ℒ.kron(kaug, aug) / 6
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     steady_state_function::SteadyStateFunctionType = missing,
@@ -1160,80 +1303,29 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-    pruning = algorithm ∈ [:pruned_second_order, :pruned_third_order]
+    nExo = 𝓂.constants.post_model_macro.nExo
+    nShocks = shocks == :none ? 1 : length(shock_idx)
 
-    # Build state_update function from solution matrices
-    if algorithm == :first_order
-        sol_mat = 𝐒
-        state_update = function(st::Vector, shock::Vector)
-            sol_mat * [st[past_idx]; shock]
-        end
-        init_state = initial_state == [0.0] ? zeros(S, nVars) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
-    elseif algorithm == :pruned_second_order
-        𝐒₁, 𝐒₂ = 𝐒
-        # 𝐒₁ is already augmented (nVars × nPast+1+nExo) and 𝐒₂ already expanded by 𝐔₂
-        state_update = (st, shock) -> pruned_second_order_state_update(st, shock, past_idx, nVars, 𝐒₁, 𝐒₂)
-        init_state = initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2]]
-    elseif algorithm == :pruned_third_order
-        𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
-        # Already augmented/expanded by calculate_stochastic_steady_state
-        state_update = (st, shock) -> pruned_third_order_state_update(st, shock, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
-        init_state = initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2], state[3]]
-    elseif algorithm ∈ [:second_order, :third_order]
-        𝐒₁, 𝐒₂ = 𝐒[1], 𝐒[2]
-        # Already augmented/expanded by calculate_stochastic_steady_state
-        if algorithm == :second_order
-            state_update = function(st::Vector, shock::Vector)
-                aug_state = [st[past_idx]; one(S); shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-            end
-        else
-            𝐒₃ = 𝐒[3]
-            state_update = function(st::Vector, shock::Vector)
-                aug_state = [st[past_idx]; one(S); shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state, aug_state), aug_state) / 6
-            end
-        end
-        init_state = initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
-    else
-        error("Unsupported algorithm: $algorithm")
-    end
+    # Dispatched initial state and forward simulation
+    val_alg = Val(algorithm)
+    init_state = irf_initial_state(val_alg, state, SS_and_pars, initial_state, nVars, S)
 
-    # Compute reference steady state for levels output
+    Y_all = zeros(S, nVars, periods, nShocks)
+    states_store = Array{Any}(undef, nShocks, periods + 1)
+    shocks_store = Array{Vector{S}}(undef, nShocks, periods)
+
+    irf_forward_simulate!(val_alg, Y_all, states_store, shocks_store,
+        init_state, shock_idx, shocks, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒)
+
     reference_steady_state = SS_and_pars[1:nVars]
+    deviations = Y_all[var_idx, :, :]
 
-    Ŷ = []
-
-    for ii in shock_idx
-        Y = []
-
-        if shocks isa Union{Symbol_input,String_input}
-            shock_history = zeros(𝓂.constants.post_model_macro.nExo,periods)
-            if shocks ≠ :none
-                shock_history[ii,1] = negative_shock ? -1 : 1
-            end
-        end
-
-        push!(Y, state_update(init_state, shock_history[:,1]))
-
-        for t in 1:periods-1
-            push!(Y, state_update(Y[end], shock_history[:,t+1]))
-        end
-
-        if pruning
-            push!(Ŷ, reduce(hcat, [sum(y) for y in Y]))
-        else
-            push!(Ŷ, reduce(hcat, Y))
-        end
-    end
-
-    deviations = reshape(reduce(hcat,Ŷ), nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     if levels
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations .+ reference_steady_state[var_idx]
     else
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations
     end
 end
