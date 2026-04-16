@@ -1875,7 +1875,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = fail_fast_solvers_only ? (false,) : (false, T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
+        start_vals = fail_fast_solvers_only ? (false,) : (false, T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
             for i in 1:n_solver_parameters
                 p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
@@ -1901,13 +1901,14 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         end
     else !cold_start
 
-        start_vals = Vector{Union{Bool, T}}(undef, 7)
+        start_vals = Vector{Union{Bool, T}}(undef, 8)
         start_vals[1] = false
-        start_vals[3] = T(1.206)
-        start_vals[4] = T(1.5)
-        start_vals[5] = T(0.7688)
-        start_vals[6] = T(2.0)
-        start_vals[7] = T(0.897)
+        start_vals[3] = T(0.0)
+        start_vals[4] = T(1.206)
+        start_vals[5] = T(1.5)
+        start_vals[6] = T(0.7688)
+        start_vals[7] = T(2.0)
+        start_vals[8] = T(0.897)
 
         s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
         n_parameter_iters = fail_fast_solvers_only ? 1 : n_solver_parameters
@@ -2091,7 +2092,12 @@ function execute_step!(step_idx::Int,
         guess_buf = @view w.guess_buffer[1:guess_len]
         copy_len = min(length(cache_sol), guess_len)
         @inbounds for i in 1:copy_len
-            guess_buf[i] = clamp(cache_sol[i], c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
+            v = cache_sol[i]
+            if !isfinite(v)
+                # No prior cached solution; use sol_vec value (starts at 0.0, filled by earlier steps)
+                v = sol_vec[c.write_indices[wr[i]]]
+            end
+            guess_buf[i] = clamp(v, c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
         end
         @inbounds for i in (copy_len + 1):guess_len
             guess_buf[i] = clamp(0.5 * (c.numerical_lbs[nbr[i]] + c.numerical_ubs[nbr[i]]),
