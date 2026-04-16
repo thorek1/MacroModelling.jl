@@ -28,7 +28,7 @@ import MacroModelling:
     ensure_sylvester_doubling_buffers!, ensure_qme_doubling_workspace!,
     ensure_lyapunov_workspace!, evaluate_custom_steady_state_function,
     solve_nsss_wrapper, update_ss_counter!, factorize_lu!, solve_lu_left!,
-    get_initial_covariance,
+    get_initial_covariance, find_shocks,
     # Constants
     DEFAULT_SOLVER_PARAMETERS, DEFAULT_QME_ALGORITHM
 
@@ -988,5 +988,142 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
 end
+
+
+# ── find_shocks (LagrangeNewton, 2nd order) for Dual numbers ──
+# Iterative solvers diverge with Dual numbers due to generic LU vs LAPACK
+# numerical differences. Solve with Float64 primals, then compute partials
+# via the implicit function theorem.
+
+function MacroModelling.find_shocks(::Val{:LagrangeNewton},
+                    initial_guess::Vector{ℱ.Dual{Z,V,N}},
+                    kron_buffer::Vector{ℱ.Dual{Z,V,N}},
+                    kron_buffer2::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
+                    𝐒ⁱ::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    shock_independent::Vector{ℱ.Dual{Z,V,N}};
+                    kwargs...) where {Z,V,N}
+
+    # Extract Float64 primals
+    ig_f   = ℱ.value.(initial_guess)
+    kb_f   = ℱ.value.(kron_buffer)
+    kb2_f  = ℱ.value.(kron_buffer2)
+    Si_f   = ℱ.value.(𝐒ⁱ)
+    Si2e_f = ℱ.value.(𝐒ⁱ²ᵉ)
+    si_f   = ℱ.value.(shock_independent)
+
+    # Solve with Float64 (uses LAPACK, numerically stable)
+    x_f, matched = find_shocks(Val(:LagrangeNewton),
+        ig_f, kb_f, kb2_f, J, Si_f, Si2e_f, si_f; kwargs...)
+
+    if !matched
+        return ℱ.Dual{Z,V,N}.(x_f), false
+    end
+
+    # Implicit function theorem for partials:
+    # g(x; Si, Si2e, si) = si - Si*x - Si2e*kron(x,x) = 0
+    # dg/dx = -(Si + 2*Si2e*kron(I,x)) = -jacc
+    # dx = jacc \ (d_si - d_Si*x - d_Si2e*kron(x,x))
+    kx  = ℒ.kron(J, x_f)
+    jacc_f = Si_f + 2 * Si2e_f * kx
+    kxx = ℒ.kron(x_f, x_f)
+
+    n_x = length(x_f)
+    partials_matrix = zeros(V, n_x, N)
+
+    jacc_lu = ℒ.lu(jacc_f)
+
+    for k in 1:N
+        d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
+        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k] for i in eachindex(𝐒ⁱ)]
+        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k] for i in eachindex(𝐒ⁱ²ᵉ)]
+
+        rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f - reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx
+        partials_matrix[:, k] = jacc_lu \ rhs
+    end
+
+    x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)
+    for i in 1:n_x
+        x_dual[i] = ℱ.Dual{Z,V,N}(x_f[i],
+            ℱ.Partials{N,V}(NTuple{N,V}(partials_matrix[i, k] for k in 1:N)))
+    end
+
+    return x_dual, matched
+end
+
+
+# ── find_shocks (LagrangeNewton, 3rd order) for Dual numbers ──
+# Same implicit-differentiation strategy as the 2nd-order variant.
+# Residual: g(x) = si - Si*x - Si2e*kron(x,x) - Si3e*kron(x,kron(x,x)) = 0
+# Jacobian: Si + 2*Si2e*kron(I,x) + 3*Si3e*kron(I,kron(x,x))
+
+function MacroModelling.find_shocks(::Val{:LagrangeNewton},
+                    initial_guess::Vector{ℱ.Dual{Z,V,N}},
+                    kron_buffer::Vector{ℱ.Dual{Z,V,N}},
+                    kron_buffer²::Vector{ℱ.Dual{Z,V,N}},
+                    kron_buffer2::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    kron_buffer3::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    kron_buffer4::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
+                    𝐒ⁱ::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    𝐒ⁱ³ᵉ::AbstractMatrix{ℱ.Dual{Z,V,N}},
+                    shock_independent::Vector{ℱ.Dual{Z,V,N}};
+                    kwargs...) where {Z,V,N}
+
+    # Extract Float64 primals
+    ig_f   = ℱ.value.(initial_guess)
+    kb_f   = ℱ.value.(kron_buffer)
+    kb²_f  = ℱ.value.(kron_buffer²)
+    kb2_f  = ℱ.value.(kron_buffer2)
+    kb3_f  = ℱ.value.(kron_buffer3)
+    kb4_f  = ℱ.value.(kron_buffer4)
+    Si_f   = ℱ.value.(𝐒ⁱ)
+    Si2e_f = ℱ.value.(𝐒ⁱ²ᵉ)
+    Si3e_f = ℱ.value.(𝐒ⁱ³ᵉ)
+    si_f   = ℱ.value.(shock_independent)
+
+    # Solve with Float64 (uses LAPACK, numerically stable)
+    x_f, matched = find_shocks(Val(:LagrangeNewton),
+        ig_f, kb_f, kb²_f, kb2_f, kb3_f, kb4_f, J, Si_f, Si2e_f, Si3e_f, si_f; kwargs...)
+
+    if !matched
+        return ℱ.Dual{Z,V,N}.(x_f), false
+    end
+
+    # Implicit function theorem for partials
+    kxx = ℒ.kron(x_f, x_f)
+    kxxx = ℒ.kron(x_f, kxx)
+    kIx  = ℒ.kron(J, x_f)
+    kIxx = ℒ.kron(J, kxx)
+    jacc_f = Si_f + 2 * Si2e_f * kIx + 3 * Si3e_f * kIxx
+
+    n_x = length(x_f)
+    partials_matrix = zeros(V, n_x, N)
+
+    jacc_lu = ℒ.lu(jacc_f)
+
+    for k in 1:N
+        d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
+        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k] for i in eachindex(𝐒ⁱ)]
+        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k] for i in eachindex(𝐒ⁱ²ᵉ)]
+        d_Si3e = V[ℱ.partials(𝐒ⁱ³ᵉ[i])[k] for i in eachindex(𝐒ⁱ³ᵉ)]
+
+        rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f -
+              reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx -
+              reshape(d_Si3e, size(𝐒ⁱ³ᵉ)) * kxxx
+        partials_matrix[:, k] = jacc_lu \ rhs
+    end
+
+    x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)
+    for i in 1:n_x
+        x_dual[i] = ℱ.Dual{Z,V,N}(x_f[i],
+            ℱ.Partials{N,V}(NTuple{N,V}(partials_matrix[i, k] for k in 1:N)))
+    end
+
+    return x_dual, matched
+end
+
 
 end # module ForwardDiffExt

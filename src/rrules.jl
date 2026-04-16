@@ -1919,11 +1919,367 @@ function rrule(::typeof(get_loglikelihood),
     return llh, pullback
 end
 
+
+# ── get_irf rrule helpers: algorithm-dispatched forward simulation and BPTT ──
+
+# Extract initial state from SSS output
+function irf_initial_state(::Val{:pruned_second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2]]
+end
+
+function irf_initial_state(::Val{:pruned_third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2], state[3]]
+end
+
+function irf_initial_state(::Val{:second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+function irf_initial_state(::Val{:third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+
+# Forward simulation storing states for BPTT
+function irf_forward_simulate!(::Val{:pruned_second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_second_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:pruned_third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_third_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            y_t = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / 2
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            kaug = ℒ.kron(aug, aug)
+            y_t = 𝐒₁ * aug + 𝐒₂ * kaug / 2 + 𝐒₃ * ℒ.kron(kaug, aug) / 6
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+
+# BPTT pullback: returns (∂𝐒_list, ∂state_init, ∂SS_and_pars_from_init)
+function irf_bptt(::Val{:pruned_second_order},
+        ∂Y_all::Array{S,3}, states_store, shocks_store,
+        nShocks, periods, past_idx, nPast, nVars, nExo,
+        𝐒, initial_state, nVar_len) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    ∂𝐒₁ = zeros(S, size(𝐒₁))
+    ∂𝐒₂ = zeros(S, size(𝐒₂))
+    ∂state_init = [zeros(S, nVars), zeros(S, nVars)]
+    ∂SS_from_init = zeros(S, nVar_len)
+    n_aug = nPast + 1 + nExo
+
+    for si in 1:nShocks
+        ∂y₁_accum = zeros(S, nVars)
+        ∂δ_accum  = zeros(S, nVars)
+
+        for t in periods:-1:1
+            ∂out_t = ∂Y_all[:, t, si]
+            ∂y₁_t = ∂out_t + ∂y₁_accum
+            ∂δ_t  = ∂out_t + ∂δ_accum
+
+            prev_st = states_store[si, t]
+            shock_t = shocks_store[si, t]
+
+            aug₁ = [prev_st[1][past_idx]; one(S); shock_t]
+            aug₂ = [prev_st[2][past_idx]; zero(S); zero(shock_t)]
+            kaug₁ = ℒ.kron(aug₁, aug₁)
+
+            # y₁_new = 𝐒₁ * aug₁
+            ∂𝐒₁ .+= ∂y₁_t * aug₁'
+            ∂aug₁ = 𝐒₁' * ∂y₁_t
+
+            # δ_new = 𝐒₁ * aug₂ + 𝐒₂ * kron(aug₁,aug₁) / 2
+            ∂𝐒₁ .+= ∂δ_t * aug₂'
+            ∂aug₂ = 𝐒₁' * ∂δ_t
+            ∂𝐒₂ .+= ∂δ_t * kaug₁' / 2
+            ∂kaug₁ = 𝐒₂' * ∂δ_t / 2
+            ∂kaug₁_mat = reshape(∂kaug₁, n_aug, n_aug)
+            ∂aug₁ .+= ∂kaug₁_mat' * aug₁ + ∂kaug₁_mat * aug₁
+
+            ∂y₁_accum = zeros(S, nVars)
+            ∂δ_accum  = zeros(S, nVars)
+            ∂y₁_accum[past_idx] .+= ∂aug₁[1:nPast]
+            ∂δ_accum[past_idx]  .+= ∂aug₂[1:nPast]
+        end
+
+        ∂state_init[1] .+= ∂y₁_accum
+        ∂state_init[2] .+= ∂δ_accum
+        if initial_state != [0.0]
+            ∂SS_from_init[1:nVar_len] .-= ∂y₁_accum[1:nVar_len]
+        end
+    end
+
+    return [∂𝐒₁, ∂𝐒₂], ∂state_init, ∂SS_from_init
+end
+
+function irf_bptt(::Val{:pruned_third_order},
+        ∂Y_all::Array{S,3}, states_store, shocks_store,
+        nShocks, periods, past_idx, nPast, nVars, nExo,
+        𝐒, initial_state, nVar_len) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    ∂𝐒₁ = zeros(S, size(𝐒₁))
+    ∂𝐒₂ = zeros(S, size(𝐒₂))
+    ∂𝐒₃ = zeros(S, size(𝐒₃))
+    ∂state_init = [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)]
+    ∂SS_from_init = zeros(S, nVar_len)
+    n_aug = nPast + 1 + nExo
+
+    for si in 1:nShocks
+        ∂y₁_accum = zeros(S, nVars)
+        ∂δ_accum  = zeros(S, nVars)
+        ∂ξ_accum  = zeros(S, nVars)
+
+        for t in periods:-1:1
+            ∂out_t = ∂Y_all[:, t, si]
+            ∂y₁_t = ∂out_t + ∂y₁_accum
+            ∂δ_t  = ∂out_t + ∂δ_accum
+            ∂ξ_t  = ∂out_t + ∂ξ_accum
+
+            prev_st = states_store[si, t]
+            shock_t = shocks_store[si, t]
+
+            aug₁  = [prev_st[1][past_idx]; one(S); shock_t]
+            aug₁̂  = [prev_st[1][past_idx]; zero(S); shock_t]
+            aug₂  = [prev_st[2][past_idx]; zero(S); zero(shock_t)]
+            aug₃  = [prev_st[3][past_idx]; zero(S); zero(shock_t)]
+            kaug₁ = ℒ.kron(aug₁, aug₁)
+            kaug₁₁ = ℒ.kron(kaug₁, aug₁)
+
+            # y₁_new = 𝐒₁ * aug₁
+            ∂𝐒₁ .+= ∂y₁_t * aug₁'
+            ∂aug₁ = 𝐒₁' * ∂y₁_t
+
+            # δ_new = 𝐒₁ * aug₂ + 𝐒₂ * kron(aug₁,aug₁) / 2
+            ∂𝐒₁ .+= ∂δ_t * aug₂'
+            ∂aug₂ = 𝐒₁' * ∂δ_t
+            ∂𝐒₂ .+= ∂δ_t * kaug₁' / 2
+            ∂kaug₁_from_δ = 𝐒₂' * ∂δ_t / 2
+            ∂kaug₁_mat = reshape(∂kaug₁_from_δ, n_aug, n_aug)
+            ∂aug₁ .+= ∂kaug₁_mat' * aug₁ + ∂kaug₁_mat * aug₁
+
+            # ξ_new = 𝐒₁ * aug₃ + 𝐒₂ * kron(aug₁̂, aug₂) + 𝐒₃ * kron(kaug₁, aug₁) / 6
+            ∂𝐒₁ .+= ∂ξ_t * aug₃'
+            ∂aug₃ = 𝐒₁' * ∂ξ_t
+
+            k_aug₁̂_aug₂ = ℒ.kron(aug₁̂, aug₂)
+            ∂𝐒₂ .+= ∂ξ_t * k_aug₁̂_aug₂'
+            ∂k12 = 𝐒₂' * ∂ξ_t
+            ∂k12_mat = reshape(∂k12, n_aug, n_aug)
+            ∂aug₁̂ = ∂k12_mat * aug₂
+            ∂aug₂ .+= ∂k12_mat' * aug₁̂
+
+            ∂𝐒₃ .+= ∂ξ_t * kaug₁₁' / 6
+            ∂kaug₁₁ = 𝐒₃' * ∂ξ_t / 6
+            n_aug2 = n_aug * n_aug
+            ∂kaug₁₁_mat = reshape(∂kaug₁₁, n_aug2, n_aug)
+            ∂kaug₁_from_ξ = ∂kaug₁₁_mat * aug₁
+            ∂aug₁ .+= ∂kaug₁₁_mat' * kaug₁
+            ∂kaug₁_mat2 = reshape(∂kaug₁_from_ξ, n_aug, n_aug)
+            ∂aug₁ .+= ∂kaug₁_mat2' * aug₁ + ∂kaug₁_mat2 * aug₁
+
+            # aug₁̂ shares past_idx and shock with aug₁
+            ∂aug₁[1:nPast] .+= ∂aug₁̂[1:nPast]
+            ∂aug₁[nPast+2:end] .+= ∂aug₁̂[nPast+2:end]
+
+            ∂y₁_accum = zeros(S, nVars)
+            ∂δ_accum  = zeros(S, nVars)
+            ∂ξ_accum  = zeros(S, nVars)
+            ∂y₁_accum[past_idx] .+= ∂aug₁[1:nPast]
+            ∂δ_accum[past_idx]  .+= ∂aug₂[1:nPast]
+            ∂ξ_accum[past_idx]  .+= ∂aug₃[1:nPast]
+        end
+
+        ∂state_init[1] .+= ∂y₁_accum
+        ∂state_init[2] .+= ∂δ_accum
+        ∂state_init[3] .+= ∂ξ_accum
+        if initial_state != [0.0]
+            ∂SS_from_init[1:nVar_len] .-= ∂y₁_accum[1:nVar_len]
+        end
+    end
+
+    return [∂𝐒₁, ∂𝐒₂, ∂𝐒₃], ∂state_init, ∂SS_from_init
+end
+
+function irf_bptt(::Val{:second_order},
+        ∂Y_all::Array{S,3}, states_store, shocks_store,
+        nShocks, periods, past_idx, nPast, nVars, nExo,
+        𝐒, initial_state, nVar_len) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    ∂𝐒₁ = zeros(S, size(𝐒₁))
+    ∂𝐒₂ = zeros(S, size(𝐒₂))
+    ∂state_init = zeros(S, nVars)
+    ∂SS_from_init = zeros(S, nVar_len)
+    n_aug = nPast + 1 + nExo
+
+    for si in 1:nShocks
+        ∂y_accum = zeros(S, nVars)
+
+        for t in periods:-1:1
+            ∂y_t = ∂Y_all[:, t, si] + ∂y_accum
+
+            prev_st = states_store[si, t]
+            shock_t = shocks_store[si, t]
+            aug = [prev_st[past_idx]; one(S); shock_t]
+            kaug = ℒ.kron(aug, aug)
+
+            ∂𝐒₁ .+= ∂y_t * aug'
+            ∂aug = 𝐒₁' * ∂y_t
+            ∂𝐒₂ .+= ∂y_t * kaug' / 2
+            ∂kaug = 𝐒₂' * ∂y_t / 2
+            ∂kaug_mat = reshape(∂kaug, n_aug, n_aug)
+            ∂aug .+= ∂kaug_mat' * aug + ∂kaug_mat * aug
+
+            ∂y_accum = zeros(S, nVars)
+            ∂y_accum[past_idx] .+= ∂aug[1:nPast]
+        end
+
+        ∂state_init .+= ∂y_accum
+        if initial_state != [0.0]
+            ∂SS_from_init[1:nVar_len] .-= ∂y_accum[1:nVar_len]
+        end
+    end
+
+    return [∂𝐒₁, ∂𝐒₂], ∂state_init, ∂SS_from_init
+end
+
+function irf_bptt(::Val{:third_order},
+        ∂Y_all::Array{S,3}, states_store, shocks_store,
+        nShocks, periods, past_idx, nPast, nVars, nExo,
+        𝐒, initial_state, nVar_len) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    ∂𝐒₁ = zeros(S, size(𝐒₁))
+    ∂𝐒₂ = zeros(S, size(𝐒₂))
+    ∂𝐒₃ = zeros(S, size(𝐒₃))
+    ∂state_init = zeros(S, nVars)
+    ∂SS_from_init = zeros(S, nVar_len)
+    n_aug = nPast + 1 + nExo
+
+    for si in 1:nShocks
+        ∂y_accum = zeros(S, nVars)
+
+        for t in periods:-1:1
+            ∂y_t = ∂Y_all[:, t, si] + ∂y_accum
+
+            prev_st = states_store[si, t]
+            shock_t = shocks_store[si, t]
+            aug = [prev_st[past_idx]; one(S); shock_t]
+            kaug = ℒ.kron(aug, aug)
+            kaug3 = ℒ.kron(kaug, aug)
+
+            ∂𝐒₁ .+= ∂y_t * aug'
+            ∂aug = 𝐒₁' * ∂y_t
+            ∂𝐒₂ .+= ∂y_t * kaug' / 2
+            ∂kaug = 𝐒₂' * ∂y_t / 2
+            ∂𝐒₃ .+= ∂y_t * kaug3' / 6
+            ∂kaug3 = 𝐒₃' * ∂y_t / 6
+
+            n_aug2 = n_aug * n_aug
+            ∂kaug3_mat = reshape(∂kaug3, n_aug2, n_aug)
+            ∂kaug .+= ∂kaug3_mat * aug
+            ∂aug .+= ∂kaug3_mat' * kaug
+
+            ∂kaug_mat = reshape(∂kaug, n_aug, n_aug)
+            ∂aug .+= ∂kaug_mat' * aug + ∂kaug_mat * aug
+
+            ∂y_accum = zeros(S, nVars)
+            ∂y_accum[past_idx] .+= ∂aug[1:nPast]
+        end
+
+        ∂state_init .+= ∂y_accum
+        if initial_state != [0.0]
+            ∂SS_from_init[1:nVar_len] .-= ∂y_accum[1:nVar_len]
+        end
+    end
+
+    return [∂𝐒₁, ∂𝐒₂, ∂𝐒₃], ∂state_init, ∂SS_from_init
+end
+
+
 function rrule(::typeof(get_irf),
                 𝓂::ℳ,
                 parameters::Vector{S};
                 steady_state_function::SteadyStateFunctionType = missing,
                 periods::Int = DEFAULT_PERIODS,
+                algorithm::Symbol = :first_order,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
@@ -1931,7 +2287,116 @@ function rrule(::typeof(get_irf),
                 levels::Bool = false,
                 verbose::Bool = DEFAULT_VERBOSE,
                 tol::Tolerances = Tolerances(),
-                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM) where S <: Real
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                caching::Bool = DEFAULT_CACHING,
+                use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+
+    # For non-first-order algorithms, use analytical BPTT
+    # chaining through the existing get_relevant_steady_state_and_state_update rrule.
+    if algorithm != :first_order
+        if !caching; invalidate_cache_validity!(𝓂); end
+        orig_ws = 𝓂.workspaces
+        if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+
+        opts_ho = merge_calculation_options(tol = tol, verbose = verbose,
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+            lyapunov_algorithm = lyapunov_algorithm)
+
+        initialise_constants!(𝓂)
+
+        solve!(𝓂,
+               steady_state_function = steady_state_function,
+               opts = opts_ho,
+               algorithm = algorithm)
+
+        shocks_ho = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
+        shocks_ho, negative_shock_ho, _, periods_ho, shock_idx_ho, shock_history_ho = process_shocks_input(shocks_ho, negative_shock, 1.0, periods, 𝓂)
+        var_idx_ho = parse_variables_input_to_index(variables, 𝓂) |> sort
+
+        nVars_ho  = 𝓂.constants.post_model_macro.nVars
+        past_idx_ho = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+        nPast_ho = length(past_idx_ho)
+        nExo_ho  = 𝓂.constants.post_model_macro.nExo
+        nShocks_ho = shocks_ho == :none ? 1 : length(shock_idx_ho)
+
+        # Forward pass through rrule chain
+        ss_rrule = rrule(get_relevant_steady_state_and_state_update,
+                         Val(algorithm), parameters, 𝓂;
+                         opts = opts_ho, estimation = true)
+
+        zero_result_ho() = zeros(S, length(var_idx_ho), periods_ho, nShocks_ho)
+        zero_pb_ho(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+
+        if ss_rrule === nothing
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return zero_result_ho(), zero_pb_ho
+        end
+
+        ss_out_ho, ss_pb_ho = ss_rrule
+        SS_and_pars_ho = ss_out_ho[2]
+        𝐒_ho           = ss_out_ho[3]
+        state_ho       = ss_out_ho[4]
+        solved_ho      = ss_out_ho[5]
+
+        if !solved_ho
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return zero_result_ho(), zero_pb_ho
+        end
+
+        reference_ss_ho = SS_and_pars_ho[1:nVars_ho]
+
+        # Dispatched initial state and forward simulation
+        val_alg = Val(algorithm)
+        init_st = irf_initial_state(val_alg, state_ho, SS_and_pars_ho, initial_state, nVars_ho, S)
+
+        Y_all_ho = zeros(S, nVars_ho, periods_ho, nShocks_ho)
+        states_store = Array{Any}(undef, nShocks_ho, periods_ho + 1)
+        shocks_store = Array{Vector{S}}(undef, nShocks_ho, periods_ho)
+
+        irf_forward_simulate!(val_alg, Y_all_ho, states_store, shocks_store,
+            init_st, shock_idx_ho, shocks_ho, negative_shock_ho, shock_history_ho,
+            nExo_ho, periods_ho, past_idx_ho, nVars_ho, 𝐒_ho)
+
+        deviations_ho = Y_all_ho[var_idx_ho, :, :]
+        result_ho = levels ? deviations_ho .+ reference_ss_ho[var_idx_ho] : deviations_ho
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        nVar_len = length(𝓂.constants.post_model_macro.var)
+
+        # Pullback
+        function get_irf_higher_order_pullback(∂result_bar)
+            ∂result = unthunk(∂result_bar)
+
+            if ∂result isa Union{NoTangent, AbstractZero}
+                return NoTangent(), NoTangent(), zeros(S, length(parameters))
+            end
+
+            ∂Y_all = zeros(S, nVars_ho, periods_ho, nShocks_ho)
+            ∂Y_all[var_idx_ho, :, :] .= ∂result
+
+            ∂SS_and_pars = zeros(S, length(SS_and_pars_ho))
+            if levels
+                ∂SS_and_pars[var_idx_ho] .+= dropdims(sum(∂result, dims = (2, 3)), dims = (2, 3))
+            end
+
+            # Dispatched BPTT
+            ∂𝐒_list, ∂state_init, ∂SS_from_init = irf_bptt(val_alg,
+                ∂Y_all, states_store, shocks_store,
+                nShocks_ho, periods_ho, past_idx_ho, nPast_ho, nVars_ho, nExo_ho,
+                𝐒_ho, initial_state, nVar_len)
+
+            ∂SS_and_pars[1:nVar_len] .+= ∂SS_from_init
+
+            ss_grads = ss_pb_ho((NoTangent(), ∂SS_and_pars, ∂𝐒_list, ∂state_init, NoTangent()))
+            return NoTangent(), NoTangent(), ss_grads[3]
+        end
+
+        return result_ho, get_irf_higher_order_pullback
+    end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)

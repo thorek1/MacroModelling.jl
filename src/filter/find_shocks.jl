@@ -882,19 +882,19 @@ solver started at the origin (not just LagrangeNewton) will converge to the root
 basin contains the origin rather than guaranteeing the global optimum.
 """
 function find_shocks(::Val{:LagrangeNewton},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
+                    initial_guess::Vector{R},
+                    kron_buffer::Vector{R},
+                    kron_buffer2::AbstractMatrix{R},
                     J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
+                    𝐒ⁱ::AbstractMatrix{R},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{R},
+                    shock_independent::Vector{R};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13,
-                    verbose::Bool = false) # will fail for higher or lower precision
+                    tol::AbstractFloat = 1e-13,
+                    verbose::Bool = false) where R <: Real
     x = copy(initial_guess)
     
-    λ = zeros(size(𝐒ⁱ, 1))
+    λ = zeros(R, size(𝐒ⁱ, 1))
     
     xλ = [  x
             λ   ]
@@ -903,23 +903,23 @@ function find_shocks(::Val{:LagrangeNewton},
 
     norm1 = ℒ.norm(shock_independent) 
 
-    norm2 = 1.0
+    norm2 = one(R)
     
-    Δnorm = 1e12
+    Δnorm = R(1e12)
 
     x̂ = copy(shock_independent)
 
-    x̄ = zeros(size(𝐒ⁱ,2))
+    x̄ = zeros(R, size(𝐒ⁱ,2))
 
     ∂x = zero(𝐒ⁱ)
     
-    fxλ = zeros(length(xλ))
+    fxλ = zeros(R, length(xλ))
     
-    fxλp = zeros(length(xλ), length(xλ))
+    fxλp = zeros(R, length(xλ), length(xλ))
 
-    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    tmp = zeros(R, size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
-    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    lI = R(-2) * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
     iter = 0
     @inbounds for i in 1:max_iter
@@ -961,8 +961,6 @@ function find_shocks(::Val{:LagrangeNewton},
             f̂xλp = ℒ.factorize(fxλp)
             ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         catch
-            # ℒ.svd(fxλp)
-            # println("factorization fails")
             return x, false
         end
         
@@ -1019,23 +1017,23 @@ end
 
 
 function find_shocks(::Val{:LagrangeNewton},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer²::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
-                    kron_buffer3::AbstractMatrix{Float64},
-                    kron_buffer4::AbstractMatrix{Float64},
+                    initial_guess::Vector{R},
+                    kron_buffer::Vector{R},
+                    kron_buffer²::Vector{R},
+                    kron_buffer2::AbstractMatrix{R},
+                    kron_buffer3::AbstractMatrix{R},
+                    kron_buffer4::AbstractMatrix{R},
                     J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
+                    𝐒ⁱ::AbstractMatrix{R},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{R},
+                    𝐒ⁱ³ᵉ::AbstractMatrix{R},
+                    shock_independent::Vector{R};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13,
-                    verbose::Bool = false) # will fail for higher or lower precision
+                    tol::AbstractFloat = 1e-13,
+                    verbose::Bool = false) where R <: Real
     x = copy(initial_guess)
 
-    λ = zeros(size(𝐒ⁱ, 1))
+    λ = zeros(R, size(𝐒ⁱ, 1))
     
     xλ = [  x
             λ   ]
@@ -1044,29 +1042,29 @@ function find_shocks(::Val{:LagrangeNewton},
 
     norm1 = ℒ.norm(shock_independent) 
 
-    norm2 = 1.0
+    norm2 = one(R)
     
-    Δnorm = 1e12
+    Δnorm = R(1e12)
 
     x̂ = copy(shock_independent)
 
-    x̄ = zeros(size(𝐒ⁱ,2))
+    x̄ = zeros(R, size(𝐒ⁱ,2))
 
     ∂x = zero(𝐒ⁱ)
 
     ∂x̂ = zero(𝐒ⁱ)
     
-    fxλ = zeros(length(xλ))
+    fxλ = zeros(R, length(xλ))
     
-    fxλp = zeros(length(xλ), length(xλ))
+    fxλp = zeros(R, length(xλ), length(xλ))
 
-    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    tmp = zeros(R, size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
-    tmp2 = zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    tmp2 = zeros(R, size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
     II = sparse(ℒ.I(length(x)^2))
 
-    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    lI = R(-2) * vec(ℒ.I(size(𝐒ⁱ, 2)))
     
     iter = 0
     @inbounds for i in 1:max_iter
