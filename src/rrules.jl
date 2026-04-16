@@ -2197,6 +2197,83 @@ function irf_bptt(::Val{:third_order},
 end
 
 
+# ── Dispatched rrule chain helpers for get_irf ───────────────────────────────────
+
+# Forward chain: set up the rrule sub-calls and return standardized output.
+# Returns (𝐒, SS_and_pars, state, solved, chain_ctx) or nothing on failure.
+function irf_rrule_forward_chain(::Val{:first_order}, parameters::Vector{S},
+        𝓂, constants_obj, opts, tol) where S
+    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters, 𝓂, parameters;
+                                opts = opts, estimation = true)
+    reference_steady_state = nsss_out[1]
+    solution_error = nsss_out[2][1]
+
+    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
+        return nothing
+    end
+
+    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, reference_steady_state,
+                        𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+
+    first_out, first_pb = rrule(calculate_first_order_solution, ∇₁, constants_obj,
+                                𝓂.workspaces, 𝓂.caches;
+                                opts = opts, initial_guess = 𝓂.caches.qme_solution,
+                                parameter_values = parameters)
+
+    sol_mat = first_out[1]
+    solved  = first_out[3]
+    update_perturbation_counter!(𝓂.counters, solved, estimation = true, order = 1)
+
+    return (sol_mat, reference_steady_state, nothing, solved, (nsss_pb, jac_pb, first_pb))
+end
+
+function irf_rrule_forward_chain(val_alg::Val, parameters::Vector{S},
+        𝓂, constants_obj, opts, tol) where S
+    ss_rrule = rrule(get_relevant_steady_state_and_state_update,
+                     val_alg, parameters, 𝓂;
+                     opts = opts, estimation = true)
+
+    if ss_rrule === nothing
+        return nothing
+    end
+
+    ss_out, ss_pb = ss_rrule
+    SS_and_pars = ss_out[2]
+    𝐒           = ss_out[3]
+    state       = ss_out[4]
+    solved      = ss_out[5]
+
+    return (𝐒, SS_and_pars, state, solved, (ss_pb,))
+end
+
+# Backward chain: propagate gradients through sub-rrule pullbacks.
+# Returns ∂parameters vector.
+function irf_rrule_backward_chain(::Val{:first_order}, ∂SS_and_pars, ∂𝐒_list, ∂state_init, chain_ctx)
+    nsss_pb, jac_pb, first_pb = chain_ctx
+    ∂sol_mat = ∂𝐒_list[1]
+
+    first_grads = first_pb((∂sol_mat, NoTangent(), NoTangent()))
+    ∂∇₁ = first_grads[2]
+
+    jac_grads = jac_pb(∂∇₁)
+    ∂parameters_from_jac = jac_grads[2]
+    ∂SS_from_jac = jac_grads[3]
+
+    ∂SS_and_pars .+= ∂SS_from_jac
+
+    nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
+    ∂parameters_from_nsss = nsss_grads[3]
+
+    return ∂parameters_from_jac .+ ∂parameters_from_nsss
+end
+
+function irf_rrule_backward_chain(::Val, ∂SS_and_pars, ∂𝐒_list, ∂state_init, chain_ctx)
+    ss_pb = chain_ctx[1]
+    ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒_list, ∂state_init, NoTangent()))
+    return ss_grads[3]
+end
+
+
 function rrule(::typeof(get_irf),
                 𝓂::ℳ,
                 parameters::Vector{S};
@@ -2216,203 +2293,82 @@ function rrule(::typeof(get_irf),
                 caching::Bool = DEFAULT_CACHING,
                 use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
 
-    # For non-first-order algorithms, use analytical BPTT
-    # chaining through the existing get_relevant_steady_state_and_state_update rrule.
-    if algorithm != :first_order
-        if !caching; invalidate_cache_validity!(𝓂); end
-        orig_ws = 𝓂.workspaces
-        if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+    val_alg = Val(algorithm)
 
-        opts_ho = merge_calculation_options(tol = tol, verbose = verbose,
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-            lyapunov_algorithm = lyapunov_algorithm)
-
-        initialise_constants!(𝓂)
-
-        solve!(𝓂,
-               steady_state_function = steady_state_function,
-               opts = opts_ho,
-               algorithm = algorithm)
-
-        shocks_ho = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
-        shocks_ho, negative_shock_ho, _, periods_ho, shock_idx_ho, shock_history_ho = process_shocks_input(shocks_ho, negative_shock, 1.0, periods, 𝓂)
-        var_idx_ho = parse_variables_input_to_index(variables, 𝓂) |> sort
-
-        nVars_ho  = 𝓂.constants.post_model_macro.nVars
-        past_idx_ho = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
-        nPast_ho = length(past_idx_ho)
-        nExo_ho  = 𝓂.constants.post_model_macro.nExo
-        nShocks_ho = shocks_ho == :none ? 1 : length(shock_idx_ho)
-
-        # Forward pass through rrule chain
-        ss_rrule = rrule(get_relevant_steady_state_and_state_update,
-                         Val(algorithm), parameters, 𝓂;
-                         opts = opts_ho, estimation = true)
-
-        zero_result_ho() = zeros(S, length(var_idx_ho), periods_ho, nShocks_ho)
-        zero_pb_ho(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
-
-        if ss_rrule === nothing
-            if !use_workspaces; 𝓂.workspaces = orig_ws; end
-            return zero_result_ho(), zero_pb_ho
-        end
-
-        ss_out_ho, ss_pb_ho = ss_rrule
-        SS_and_pars_ho = ss_out_ho[2]
-        𝐒_ho           = ss_out_ho[3]
-        state_ho       = ss_out_ho[4]
-        solved_ho      = ss_out_ho[5]
-
-        if !solved_ho
-            if !use_workspaces; 𝓂.workspaces = orig_ws; end
-            return zero_result_ho(), zero_pb_ho
-        end
-
-        reference_ss_ho = SS_and_pars_ho[1:nVars_ho]
-
-        # Dispatched initial state and forward simulation
-        val_alg = Val(algorithm)
-        init_st = irf_initial_state(val_alg, state_ho, SS_and_pars_ho, initial_state, nVars_ho, S)
-
-        Y_all_ho = zeros(S, nVars_ho, periods_ho, nShocks_ho)
-        states_store = Array{Any}(undef, nShocks_ho, periods_ho + 1)
-        shocks_store = Array{Vector{S}}(undef, nShocks_ho, periods_ho)
-
-        irf_forward_simulate!(val_alg, Y_all_ho, states_store, shocks_store,
-            init_st, shock_idx_ho, shocks_ho, negative_shock_ho, shock_history_ho,
-            nExo_ho, periods_ho, past_idx_ho, nVars_ho, 𝐒_ho)
-
-        deviations_ho = Y_all_ho[var_idx_ho, :, :]
-        result_ho = levels ? deviations_ho .+ reference_ss_ho[var_idx_ho] : deviations_ho
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
-
-        nVar_len = length(𝓂.constants.post_model_macro.var)
-
-        # Pullback
-        function get_irf_higher_order_pullback(∂result_bar)
-            ∂result = unthunk(∂result_bar)
-
-            if ∂result isa Union{NoTangent, AbstractZero}
-                return NoTangent(), NoTangent(), zeros(S, length(parameters))
-            end
-
-            ∂Y_all = zeros(S, nVars_ho, periods_ho, nShocks_ho)
-            ∂Y_all[var_idx_ho, :, :] .= ∂result
-
-            ∂SS_and_pars = zeros(S, length(SS_and_pars_ho))
-            if levels
-                ∂SS_and_pars[var_idx_ho] .+= dropdims(sum(∂result, dims = (2, 3)), dims = (2, 3))
-            end
-
-            # Dispatched BPTT
-            ∂𝐒_list, ∂state_init, ∂SS_from_init = irf_bptt(val_alg,
-                ∂Y_all, states_store, shocks_store,
-                nShocks_ho, periods_ho, past_idx_ho, nPast_ho, nVars_ho, nExo_ho,
-                𝐒_ho, initial_state, nVar_len)
-
-            ∂SS_and_pars[1:nVar_len] .+= ∂SS_from_init
-
-            ss_grads = ss_pb_ho((NoTangent(), ∂SS_and_pars, ∂𝐒_list, ∂state_init, NoTangent()))
-            return NoTangent(), NoTangent(), ss_grads[3]
-        end
-
-        return result_ho, get_irf_higher_order_pullback
-    end
-
+    # Construct calculation options (sylvester/lyapunov fields ignored for first-order)
+    nPnExo = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo
+    syl_sum = sum(k * (k + 1) ÷ 2 for k in 1:nPnExo)
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ?
+            syl_sum > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM :
+            sylvester_algorithm[2],
+        lyapunov_algorithm = lyapunov_algorithm)
 
-    estimation = true
+    # Pre-solve setup
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     constants_obj = initialise_constants!(𝓂)
 
     solve!(𝓂,
-            steady_state_function = steady_state_function,
-            opts = opts)
+           steady_state_function = steady_state_function,
+           opts = opts,
+           algorithm = algorithm)
 
+    # Common shock/variable processing
     shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
-
     shocks, negative_shock, _, periods, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, 1.0, periods, 𝓂)
-
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
-    nVars = 𝓂.constants.post_model_macro.nVars
-    nExo  = 𝓂.constants.post_model_macro.nExo
+    nVars    = 𝓂.constants.post_model_macro.nVars
     past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
-    nPast = length(past_idx)
-    nShocks = shocks == :none ? 1 : length(shock_idx)
+    nPast    = length(past_idx)
+    nExo     = 𝓂.constants.post_model_macro.nExo
+    nShocks  = shocks == :none ? 1 : length(shock_idx)
+    nVar_len = length(𝓂.constants.post_model_macro.var)
 
     zero_result() = zeros(S, length(var_idx), periods, nShocks)
-    zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+    zero_pb(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
 
-    # ── step 1: NSSS ──
-    nsss_out, nsss_pb = rrule(get_NSSS_and_parameters,
-                                𝓂,
-                                parameters;
-                                opts = opts,
-                                estimation = estimation)
+    # Dispatched rrule chain forward
+    chain_result = irf_rrule_forward_chain(val_alg, parameters, 𝓂, constants_obj, opts, tol)
 
-    reference_steady_state = nsss_out[1]
-    solution_error = nsss_out[2][1]
-
-    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
-        return zero_result(), zero_pullback
+    if chain_result === nothing
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return zero_result(), zero_pb
     end
 
-    # ── step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian,
-                        parameters,
-                        reference_steady_state,
-                        𝓂.caches,
-                        𝓂.functions.jacobian,
-                        𝓂.workspaces)
-
-    # ── step 3: First-order solution ──
-    first_out, first_pb = rrule(calculate_first_order_solution,
-                                ∇₁,
-                                constants_obj,
-                                𝓂.workspaces,
-                                𝓂.caches;
-                                opts = opts,
-                                initial_guess = 𝓂.caches.qme_solution,
-                                parameter_values = parameters)
-
-    sol_mat = first_out[1]
-    solved  = first_out[3]
-
-    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    𝐒, SS_and_pars, state, solved, chain_ctx = chain_result
 
     if !solved
-        return zero_result(), zero_pullback
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return zero_result(), zero_pb
     end
 
-    # ── step 4: Forward simulation using dispatched helpers ──
-    val_alg = Val(:first_order)
-    init_state = irf_initial_state(val_alg, nothing, reference_steady_state, initial_state, nVars, S)
+    reference_ss = SS_and_pars[1:nVars]
+
+    # Forward simulation (already dispatched via irf_initial_state / irf_forward_simulate!)
+    init_st = irf_initial_state(val_alg, state, SS_and_pars, initial_state, nVars, S)
 
     Y_all = zeros(S, nVars, periods, nShocks)
     states_store = Array{Any}(undef, nShocks, periods + 1)
     shocks_store = Array{Vector{S}}(undef, nShocks, periods)
 
     irf_forward_simulate!(val_alg, Y_all, states_store, shocks_store,
-        init_state, shock_idx, shocks, negative_shock, shock_history,
-        nExo, periods, past_idx, nVars, sol_mat)
+        init_st, shock_idx, shocks, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒)
 
-    # ── step 5: Assemble output ──
+    # Assemble output
     deviations = Y_all[var_idx, :, :]
+    result = levels ? deviations .+ reference_ss[var_idx] : deviations
 
-    result = if levels
-        deviations .+ reference_steady_state[var_idx]
-    else
-        deviations
-    end
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
-    nVar_len = length(𝓂.constants.post_model_macro.var)
-
-    # ── step 6: Pullback ──
-    pullback = function (∂result_bar)
+    # Pullback (common structure, algorithm-specific parts dispatched)
+    function get_irf_pullback(∂result_bar)
         ∂result = unthunk(∂result_bar)
 
         if ∂result isa Union{NoTangent, AbstractZero}
@@ -2422,7 +2378,7 @@ function rrule(::typeof(get_irf),
         ∂Y_all = zeros(S, nVars, periods, nShocks)
         ∂Y_all[var_idx, :, :] .= ∂result
 
-        ∂SS_and_pars = zeros(S, length(reference_steady_state))
+        ∂SS_and_pars = zeros(S, length(SS_and_pars))
         if levels
             ∂SS_and_pars[var_idx] .+= dropdims(sum(∂result, dims = (2, 3)), dims = (2, 3))
         end
@@ -2431,30 +2387,17 @@ function rrule(::typeof(get_irf),
         ∂𝐒_list, ∂state_init, ∂SS_from_init = irf_bptt(val_alg,
             ∂Y_all, states_store, shocks_store,
             nShocks, periods, past_idx, nPast, nVars, nExo,
-            sol_mat, initial_state, nVar_len)
+            𝐒, initial_state, nVar_len)
 
         ∂SS_and_pars[1:nVar_len] .+= ∂SS_from_init
-        ∂sol_mat = ∂𝐒_list[1]
 
-        # ── Chain backward through sub-pullbacks ──
-        first_grads = first_pb((∂sol_mat, NoTangent(), NoTangent()))
-        ∂∇₁ = first_grads[2]
+        # Dispatched backward chain through sub-rrule pullbacks
+        ∂parameters = irf_rrule_backward_chain(val_alg, ∂SS_and_pars, ∂𝐒_list, ∂state_init, chain_ctx)
 
-        jac_grads = jac_pb(∂∇₁)
-        ∂parameters_from_jac = jac_grads[2]
-        ∂SS_from_jac = jac_grads[3]
-
-        ∂SS_and_pars .+= ∂SS_from_jac
-
-        nsss_grads = nsss_pb((∂SS_and_pars, NoTangent()))
-        ∂parameters_from_nsss = nsss_grads[3]
-
-        ∂parameters_total = ∂parameters_from_jac .+ ∂parameters_from_nsss
-
-        return NoTangent(), NoTangent(), ∂parameters_total
+        return NoTangent(), NoTangent(), ∂parameters
     end
 
-    return result, pullback
+    return result, get_irf_pullback
 end
 
 # ── calculate_covariance rrule ──────────────────────────────────────────────────
