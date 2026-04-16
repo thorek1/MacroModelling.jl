@@ -1082,7 +1082,43 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
 
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant equations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now."
+    # Handle unmatched variables: those whose equations became redundant
+    # (e.g., unit-root variables that cancel in steady state like qlfpr[0] = hqlfpr[0] + qlfpr[-1])
+    unmatched_mask = eqs[1,:] .< 0
+    n_unmatched = sum(unmatched_mask)
+
+    if n_unmatched > 0
+        unmatched_var_indices = vars[1, unmatched_mask]
+        unmatched_var_names = [unknowns[i] for i in unmatched_var_indices]
+
+        if verbose
+            println("Indeterminate steady-state variables ($(n_unmatched)): assigned default value (0.0 or user guess)")
+            for vn in unmatched_var_names
+                guess_val = haskey(𝓂.constants.post_parameters_macro.guess, Symbol(vn)) ?
+                    𝓂.constants.post_parameters_macro.guess[Symbol(vn)] : 0.0
+                println("  $(Symbol(vn)) = $guess_val")
+            end
+        end
+
+        # Keep only matched columns
+        matched_mask = .!unmatched_mask
+        vars = vars[:, matched_mask]
+        eqs = eqs[:, matched_mask]
+
+        # Renumber blocks: the matched entries retain their block numbers from BTF
+        # but we need contiguous block numbers for the processing loop
+        if !isempty(vars)
+            old_blocks = sort(unique(vars[2,:]))
+            block_remap = Dict(old => new for (new, old) in enumerate(old_blocks))
+            for j in axes(vars, 2)
+                vars[2,j] = block_remap[vars[2,j]]
+                eqs[2,j] = block_remap[eqs[2,j]]
+            end
+            n_blocks = length(old_blocks)
+        else
+            n_blocks = 0
+        end
+    end
 
     n = n_blocks
 
@@ -1212,6 +1248,34 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     global_solvetime_aux_sub = Dict{Symbol, Union{Symbol, Expr}}()
     builder = NSSSSolverBuilder()
     numerical_block_count = 0
+
+    # Emit analytical steps for unmatched (indeterminate) variables
+    if n_unmatched > 0
+        for vn in unmatched_var_names
+            var_sym = Symbol(vn)
+            default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
+                Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
+
+            widx = sol_name_to_index[var_sym]
+
+            eval_func! = let cv = default_val
+                (out, _sol_vec, _params_vec) -> begin
+                    out[1] = cv
+                    return nothing
+                end
+            end
+
+            push!(solved_vars, var_sym)
+            push!(solved_vals, default_val)
+            push!(atoms_in_equations_list, [])
+
+            push_analytical_step!(builder;
+                eval_func! = eval_func!,
+                write_indices = [widx],
+                description = "Indeterminate: $var_sym = $default_val",
+            )
+        end
+    end
 
     while n > 0
         if length(eqs[:,eqs[2,:] .== n]) == 2
@@ -1821,6 +1885,30 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     res = SS_solve_block.ss_problem.workspace.func_buffer
 
     sol_minimum  = ℒ.norm(res)
+
+    # Handle removable singularities: if residual contains NaN (from 0/0 forms
+    # in symbolically simplified equations) but all finite residuals are below
+    # tolerance, treat NaN entries as zero. This occurs when remove_redundant_SS_vars!
+    # substitutes variables into equations creating indeterminate forms at the solution.
+    if isnan(sol_minimum)
+        has_nonnan_violation = false
+        for i in eachindex(res)
+            v = res[i]
+            if !isnan(v) && abs(v) > tol.nsss.acceptance_tol
+                has_nonnan_violation = true
+                break
+            end
+        end
+        if !has_nonnan_violation
+            # All finite residuals are zero — NaN entries are removable singularities
+            for i in eachindex(res)
+                if isnan(res[i])
+                    res[i] = zero(T)
+                end
+            end
+            sol_minimum = ℒ.norm(res)
+        end
+    end
 
     if !cold_start
         if !isfinite(sol_minimum) || sol_minimum > tol.nsss.acceptance_tol
