@@ -54,4 +54,6 @@ elseif test_set == "higher_order_3"
     include("test_higher_order_3.jl")
 elseif test_set == "basic"
     include("test_basic.jl")
+elseif test_set == "dynare_comparison"
+    include("test_dynare_comparison.jl")
 end
