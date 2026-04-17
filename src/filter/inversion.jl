@@ -178,8 +178,8 @@ function calculate_loglikelihood(::Val{:inversion},
 
     cond_var_idx = observables_index
 
-    shocks² = 0.0
-    logabsdets = 0.0
+    shocks² = zero(R)
+    logabsdets = zero(R)
 
     cc = ensure_computational_constants!(constants)
     s_in_s⁺  = cc.s_in_s
@@ -220,44 +220,63 @@ function calculate_loglikelihood(::Val{:inversion},
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
 
-    # Use workspaces for model-constant allocations
-    state¹⁻_vol = ws.state_vol
-    copyto!(state¹⁻_vol, 1, state₁, 1)
-    state¹⁻_vol[end] = 1
+    n_state_vol = n_past + 1
+    n_aug = n_past + 1 + n_exo
+    n_cond = length(cond_var_idx)
 
-    aug_state₁ = ws.aug_state₁
-    copyto!(aug_state₁, 1, state₁, 1)
-    aug_state₁[length(state₁) + 1] = 1
-    fill!(view(aug_state₁, length(state₁) + 2:length(aug_state₁)), 1)
-    
-    aug_state₂ = ws.aug_state₂
-    copyto!(aug_state₂, 1, state₂, 1)
-    aug_state₂[length(state₂) + 1] = 0
-    fill!(view(aug_state₂, length(state₂) + 2:length(aug_state₂)), 0)
+    if R === Float64
+        # Use workspaces for model-constant allocations
+        state¹⁻_vol = ws.state_vol
+        copyto!(state¹⁻_vol, 1, state₁, 1)
+        state¹⁻_vol[end] = 1
 
-    kronaug_state₁ = ws.kronaug_state
+        aug_state₁ = ws.aug_state₁
+        copyto!(aug_state₁, 1, state₁, 1)
+        aug_state₁[length(state₁) + 1] = 1
+        fill!(view(aug_state₁, length(state₁) + 2:length(aug_state₁)), 1)
+        
+        aug_state₂ = ws.aug_state₂
+        copyto!(aug_state₂, 1, state₂, 1)
+        aug_state₂[length(state₂) + 1] = 0
+        fill!(view(aug_state₂, length(state₂) + 2:length(aug_state₂)), 0)
+
+        kronaug_state₁ = ws.kronaug_state
+
+        kron_buffer = ws.kron_buffer
+        kron_buffer2 = ws.kron_buffer2
+        kron_buffer3 = ws.kron_buffer_state
+        kronstate¹⁻_vol = ws.kronstate_vol
+
+        shock_independent = ws.shock_independent
+        fill!(shock_independent, zero(R))
+
+        𝐒ⁱ = ws.Si_buffer
+        copyto!(𝐒ⁱ, 𝐒¹ᵉ)
+
+        jacc = ws.jacc_buffer
+        copyto!(jacc, 𝐒¹ᵉ)
+
+        init_guess = ws.init_guess
+        fill!(init_guess, zero(R))
+    else
+        # Allocate R-typed buffers for AD compatibility (e.g. ForwardDiff Dual)
+        state¹⁻_vol = vcat(state₁, one(R))
+        aug_state₁ = vcat(state₁, one(R), ones(R, n_exo))
+        aug_state₂ = vcat(state₂, zero(R), zeros(R, n_exo))
+        kronaug_state₁ = zeros(R, n_aug^2)
+        kron_buffer = zeros(R, n_exo^2)
+        kron_buffer2 = zeros(R, n_exo^2, n_exo)
+        kron_buffer3 = zeros(R, n_exo * n_state_vol, n_exo)
+        kronstate¹⁻_vol = zeros(R, n_state_vol^2)
+        shock_independent = zeros(R, n_cond)
+        𝐒ⁱ = Matrix{R}(𝐒¹ᵉ)
+        jacc = Matrix{R}(𝐒¹ᵉ)
+        init_guess = zeros(R, n_exo)
+    end
 
     J = ℒ.I(T.nExo)
 
-    kron_buffer = ws.kron_buffer
-    kron_buffer2 = ws.kron_buffer2
-    kron_buffer3 = ws.kron_buffer_state
-    kronstate¹⁻_vol = ws.kronstate_vol
-
-    # Use workspace buffers instead of fresh allocations
-    shock_independent = ws.shock_independent
-    fill!(shock_independent, 0.0)
-
-    𝐒ⁱ = ws.Si_buffer
-    copyto!(𝐒ⁱ, 𝐒¹ᵉ)
-
-    jacc = ws.jacc_buffer
-    copyto!(jacc, 𝐒¹ᵉ)
-
-    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
-        
-    init_guess = ws.init_guess
-    fill!(init_guess, 0.0)
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
 
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin

@@ -1064,7 +1064,10 @@ If occasionally binding constraints are present in the model, they are not taken
 - $NEGATIVE_SHOCK®
 - $INITIAL_STATE®1
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
+- $ALGORITHM®
 - $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -1100,10 +1103,154 @@ get_irf(RBC, RBC.parameter_values)
  0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
 ```
 """
+
+# ── IRF helpers: algorithm-dispatched initial state and forward simulation ──
+
+# Extract/compute initial state for IRF from SSS output
+function irf_initial_state(::Val{:first_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? zeros(S, nVars) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+function irf_initial_state(::Val{:pruned_second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2]]
+end
+
+function irf_initial_state(::Val{:pruned_third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? state : [convert(Vector{S}, initial_state) - SS_and_pars[1:nVars], state[2], state[3]]
+end
+
+function irf_initial_state(::Val{:second_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+function irf_initial_state(::Val{:third_order}, state, SS_and_pars, initial_state::Vector{Float64}, nVars::Int, ::Type{S}) where S
+    initial_state == [0.0] ? (state isa Vector{<:Vector} ? state[1] : state) : convert(Vector{S}, initial_state) - SS_and_pars[1:nVars]
+end
+
+
+# Forward simulation storing intermediate states and shocks
+function irf_forward_simulate!(::Val{:first_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    sol_mat = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            y_t = sol_mat * [prev[past_idx]; shocks_store[si, t]]
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:pruned_second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_second_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:pruned_third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            new_st = pruned_third_order_state_update(states_store[si, t], shocks_store[si, t], past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+            states_store[si, t+1] = new_st
+            Y_all[:, t, si] = sum(new_st)
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:second_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            y_t = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / 2
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+function irf_forward_simulate!(::Val{:third_order},
+        Y_all::Array{S,3}, states_store, shocks_store,
+        init_st, shock_idx, shocks_input, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒) where S
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    for (si, ii) in enumerate(shock_idx)
+        shock_hist = zeros(nExo, periods)
+        if shocks_input isa Union{Symbol_input,String_input}
+            shocks_input ≠ :none && (shock_hist[ii, 1] = negative_shock ? -1 : 1)
+        else
+            shock_hist = shock_history
+        end
+        states_store[si, 1] = init_st
+        for t in 1:periods
+            shocks_store[si, t] = shock_hist[:, t]
+            prev = states_store[si, t]
+            aug = [prev[past_idx]; one(S); shocks_store[si, t]]
+            kaug = ℒ.kron(aug, aug)
+            y_t = 𝐒₁ * aug + 𝐒₂ * kaug / 2 + 𝐒₃ * ℒ.kron(kaug, aug) / 6
+            states_store[si, t+1] = y_t
+            Y_all[:, t, si] = y_t
+        end
+    end
+end
+
+
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
+                    algorithm::Symbol = :first_order,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
                     negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
@@ -1112,6 +1259,8 @@ function get_irf(𝓂::ℳ,
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                     caching::Bool = DEFAULT_CACHING,
                     use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
 
@@ -1120,7 +1269,10 @@ function get_irf(𝓂::ℳ,
     if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+        lyapunov_algorithm = lyapunov_algorithm)
 
     estimation = true
 
@@ -1129,7 +1281,8 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂, 
            steady_state_function = steady_state_function,
-           opts = opts)
+           opts = opts,
+           algorithm = algorithm)
 
     shocks = 𝓂.constants.post_model_macro.nExo == 0 ? :none : shocks
 
@@ -1139,63 +1292,40 @@ function get_irf(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
-    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
-    
-    if (solution_error > tol.nsss.acceptance_tol) || isnan(solution_error)
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
-    end
+    nVars = 𝓂.constants.post_model_macro.nVars
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
 
-    ∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
-
-    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        constants,
-                                                        𝓂.workspaces,
-                                                        𝓂.caches;
-                                                        opts = opts,
-                                                        initial_guess = 𝓂.caches.qme_solution,
-                                                        parameter_values = parameters)
-    
-    update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
+    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameters, 𝓂, opts = opts, estimation = estimation)
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-    state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx]; shock] end
+    nExo = 𝓂.constants.post_model_macro.nExo
+    nShocks = shocks == :none ? 1 : length(shock_idx)
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.constants.post_model_macro.nVars) : initial_state - reference_steady_state[1:length(𝓂.constants.post_model_macro.var)]
+    # Dispatched initial state and forward simulation
+    val_alg = Val(algorithm)
+    init_state = irf_initial_state(val_alg, state, SS_and_pars, initial_state, nVars, S)
 
-    # Y = zeros(𝓂.constants.post_model_macro.nVars,periods,𝓂.constants.post_model_macro.nExo)
-    Ŷ = []
+    Y_all = zeros(S, nVars, periods, nShocks)
+    states_store = Array{Any}(undef, nShocks, periods + 1)
+    shocks_store = Array{Vector{S}}(undef, nShocks, periods)
 
-    for ii in shock_idx
-        Y = []
+    irf_forward_simulate!(val_alg, Y_all, states_store, shocks_store,
+        init_state, shock_idx, shocks, negative_shock, shock_history,
+        nExo, periods, past_idx, nVars, 𝐒)
 
-        if shocks isa Union{Symbol_input,String_input}
-            shock_history = zeros(𝓂.constants.post_model_macro.nExo,periods)
-            if shocks ≠ :none
-                shock_history[ii,1] = negative_shock ? -1 : 1
-            end
-        end
+    reference_steady_state = SS_and_pars[1:nVars]
+    deviations = Y_all[var_idx, :, :]
 
-        push!(Y, state_update(initial_state,shock_history[:,1]))
-
-        for t in 1:periods-1
-            push!(Y, state_update(Y[end],shock_history[:,t+1]))
-        end
-
-        push!(Ŷ, reduce(hcat,Y))
-    end
-
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.constants.post_model_macro.nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     if levels
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations .+ reference_steady_state[var_idx]
     else
-        if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return deviations
     end
 end
@@ -3830,13 +3960,13 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
 
     if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
+    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
 
     return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
@@ -3876,13 +4006,13 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
 
     if !converged || solution_error > opts.tol.nsss.acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars)], converged
+        return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(𝓂.constants.post_model_macro.nVars)]
+    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(S, 𝓂.constants.post_model_macro.nVars)]
 
     return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end

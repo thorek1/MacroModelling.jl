@@ -48,7 +48,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer, OrderedDict
-import MacroTools: unblock, postwalk, prewalk, @capture, flatten
+import MacroTools: unblock, postwalk, prewalk, @capture, flatten, rmlines
 
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
@@ -165,7 +165,9 @@ include("options_and_caches.jl")
 include("./steady_state/nsss_solver.jl")
 include("occasionally_binding_constraints.jl")
 include("./parser/macros.jl")
+include("./parser/equation_processing.jl")
 include("./parser/model_setup.jl")
+include("./parser/equation_modification.jl")
 include("get_functions.jl")
 include("dynare.jl")
 include("inspect.jl")
@@ -221,6 +223,8 @@ export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
 export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters, get_solution_counts, print_solution_counts
+export write_julia_model_file, replace_equations!, replace_calibration_equations!
+export update_equations!, update_calibration_equations!, add_equation!, add_calibration_equation!, remove_equation!, remove_calibration_equation!, get_revision_history
 # Internal
 export irf, girf
 

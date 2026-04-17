@@ -2036,7 +2036,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved && caching
+    if solved && caching && S === Float64
         if 𝐒₂ isa Matrix{S} && cache.second_order_solution isa Matrix{S} && size(cache.second_order_solution) == size(𝐒₂)
             copyto!(cache.second_order_solution, 𝐒₂)
         elseif 𝐒₂ isa SparseMatrixCSC{S, Int} && cache.second_order_solution isa SparseMatrixCSC{S, Int} &&
@@ -2303,7 +2303,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # end # timeit_debug
 
-    if solved && caching
+    if solved && caching && S === Float64
         if 𝐒₃ isa Matrix{S} && cache.third_order_solution isa Matrix{S} && size(cache.third_order_solution) == size(𝐒₃)
             copyto!(cache.third_order_solution, 𝐒₃)
         elseif 𝐒₃ isa SparseMatrixCSC{S, Int} && cache.third_order_solution isa SparseMatrixCSC{S, Int} &&

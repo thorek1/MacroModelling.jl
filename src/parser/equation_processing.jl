@@ -1,538 +1,27 @@
-# ── Macro helper functions (moved from MacroModelling.jl) ──
-
-function evaluate_conditions(cond)
-    if cond isa Bool
-        return cond
-    elseif cond isa Expr && cond.head == :call 
-        a, b = cond.args[2], cond.args[3]
-
-        if typeof(a) ∉ [Symbol, Number]
-            a = eval(a)
-        end
-
-        if typeof(b) ∉ [Symbol, Number]
-            b = eval(b)
-        end
-        
-        if cond.args[1] == :(==)
-            return a == b
-        elseif cond.args[1] == :(!=)
-            return a != b
-        elseif cond.args[1] == :(<)
-            return a < b
-        elseif cond.args[1] == :(<=)
-            return a <= b
-        elseif cond.args[1] == :(>)
-            return a > b
-        elseif cond.args[1] == :(>=)
-            return a >= b
-        end
-        # end
-    end
-    return nothing
-end
-
-function resolve_if_expr(ex::Expr)
-    prewalk(ex) do node
-        if node isa Expr && (node.head === :if || node.head === :elseif)
-            cond = node.args[1]
-            then_blk = node.args[2]
-            if length(node.args) == 3
-                else_blk = node.args[3]
-            end
-            val = evaluate_conditions(unblock(cond))
-
-            if val === true
-                # recurse into the selected branch
-                return resolve_if_expr(unblock(then_blk))
-            elseif val === false && length(node.args) == 3
-                return resolve_if_expr(unblock(else_blk))
-            elseif val === false && length(node.args) == 2
-                return nothing
-            elseif val === false && node.head === :elseif
-                return resolve_if_expr(unblock(else_blk))
-            end
-        end
-        return node
-    end
-end
-
-function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) !== nothing, strings)
-end
-
-function contains_equation(expr)
-    found = false
-    postwalk(expr) do x
-        if x isa Expr && x.head == :(=)
-            found = true
-        end
-        return x
-    end
-    return found
-end
-
-# function remove_nothing(ex::Expr)
-#     postwalk(ex) do node
-#         # Only consider call-nodes with exactly two arguments
-#         if node isa Expr && node.head === :call && length(node.args) == 3
-#             fn, lhs, rhs = node.args
-#             lhs2 = unblock(lhs)
-#             rhs2 = unblock(rhs)
-
-#             if rhs2 === :(nothing)
-#                 # strip the call and recurse to clean deeper
-#                 return remove_nothing(lhs2)
-#             elseif lhs2 === :(nothing)
-#                 return remove_nothing(rhs2)
-#             # else
-#             #     return remove_nothing(node.args)
-#             end
-#         end
-#         return node
-#     end
-# end
-
-function remove_nothing(ex::Expr)
-    postwalk(ex) do node
-        # Only consider call-expressions
-        if node isa Expr && node.head === :call && any(node.args .=== nothing)
-            fn = node.args[1]
-            # Unblock and collect all the operands
-            # raw_args = map(arg -> unblock(arg), node.args[2:end])
-            # Drop any nothing
-            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
-            if isempty(kept)
-                return nothing
-            elseif length(kept) == 1
-                return kept[1]
-            else
-            # elseif length(kept) < length(raw_args)
-                return Expr(:call, fn, kept...)
-            # else
-            #     return node
-            end
-        end
-        return node
-    end
-end
-
-function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
-    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
-    calls = []
-    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
-    for idx in indices
-        push!(calls, postwalk(x -> begin
-            x isa Expr ?
-                x.head == :ref ?
-                    @capture(x, name_{index_}[time_]) ?
-                        index == index_variable ?
-                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            x :
-                        x :
-                    @capture(x, name_[time_]) ?
-                        time isa Expr || time isa Symbol ?
-                            index_variable ∈ get_symbols(time) ?
-                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
-                            # occursin("{" * string(index_variable) * "}", string(name)) ?
-                            #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                            x :
-                        # occursin("{" * string(index_variable) * "}", string(name)) ?
-                        #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
-                        x :
-                    x :
-                x.head == :if ?
-                    length(x.args) > 2 ?
-                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
-                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
-                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
-                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
-                @capture(x, name_{index_}) ?
-                    index == index_variable ?
-                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
-                    x :
-                x :
-            @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
-                    :($idx) :
-                x isa Symbol ?
-                    occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
-                    x :
-                x :
-            x
-        end,
-        exxpr))
-    end
-    
-    if concatenate
-        return :($(Expr(:call, operator, calls...)))
-    else
-        return :($(Expr(:block, calls...)))
-        # return :($calls...)
-        # return calls
-    end
-end
-
-function write_out_for_loops(arg::Expr)::Expr
-    postwalk(x -> begin
-                    x = flatten(unblock(x))
-                    x isa Expr ?
-                        x.head == :for ?
-                            x.args[2] isa Array ?
-                                length(x.args[2]) >= 1 ?
-                                    x.args[1].head == :block ?
-                                        # begin println("here"); 
-                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] : # end :
-                                    # begin println("here2"); 
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] : # end :
-                                x :
-                            x.args[2].head ∉ [:(=), :block] ?
-                                x.args[1].head == :block ?
-                                    # begin println("here3"); 
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    true,
-                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
-                                x.args[2].head == :if ?
-                                    contains_equation(x.args[2]) ?
-                                        # begin println("here5"); println(x)
-                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                            Symbol(x.args[1].args[1]), 
-                                                            (x.args[1].args[2]),
-                                                            false,
-                                                            :+) : # end : # for loop part of equation
-                                    # begin println("here6"); println(x)
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[1]), 
-                                                        (x.args[1].args[2]),
-                                                        true,
-                                                        :+) : # end : # for loop part of equation
-                                # begin println("here4"); println(x)
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[1]), 
-                                                    (x.args[1].args[2]),
-                                                    true,
-                                                    :+) : # end : # for loop part of equation
-                            x.args[1].head == :block ?
-                                # begin println("here5"); 
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[2].args[1]), 
-                                                    (x.args[1].args[2].args[2]),
-                                                    false,
-                                                    x.args[1].args[1].args[2].value) : # end :
-                                                # end 
-                                                # : # for loop part of equation
-                            # begin println(x); 
-                            # begin println("here7"); println(x)
-                            replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                            Symbol(x.args[1].args[1]), 
-                                            (x.args[1].args[2]),
-                                            false,
-                                            :+) : # end :
-                                            # println(out); 
-                                            # return out end 
-                                            # :
-                        x :
-                    x
-                end,
-    arg) #|> unblock |> flatten
-end
-
-# function parse_for_loops(equations_block)
-#     eqs = Expr[]  # Initialize an empty array to collect expressions
-
-#     # Define a helper recursive function
-#     function recurse(arg)
-#             if arg isa Expr
-#                 if arg.head == :block
-#                     for b in arg.args
-#                         if b isa Expr
-#                             # If the result is an Expr, process and add to eqs
-#                             push!(eqs, unblock(replace_indices(b)))
-#                         elseif b isa Array
-#                             recurse(b)
-#                         end
-#                     end
-#                 end
-#             elseif arg isa Array
-#                 # If the result is an Array, iterate and recurse
-#                 for B in arg
-#                     println((B))
-#                     recurse(B)
-#                 end
-#             end
-#     end
-
-#     for arg in equations_block.args
-#         if isa(arg,Expr)
-#             parsed_eqs = write_out_for_loops(arg)
-#             recurse(parsed_eqs)
-#         end
-#     end
-
-#     # Return the collected expressions as a block
-#     return Expr(:block, eqs...)
-# end
-
-
-function parse_for_loops(equations_block)::Expr
-    eqs = Expr[]
-    for arg in equations_block.args
-        if isa(arg,Expr)
-            parsed_eqs = write_out_for_loops(arg)
-            # println(parsed_eqs)
-            if parsed_eqs isa Expr
-                push!(eqs,unblock(replace_indices(parsed_eqs)))
-            elseif parsed_eqs isa Array
-                for B in parsed_eqs
-                    if B isa Array
-                        for b in B
-                            push!(eqs,unblock(replace_indices(b)))
-                        end
-                    elseif B isa Expr
-                        if B.head == :block
-                            for b in B.args
-                                if b isa Expr
-                                    push!(eqs,replace_indices(b))
-                                end
-                            end
-                        else
-                            push!(eqs,unblock(replace_indices(B)))
-                        end
-                    else
-                        push!(eqs,unblock(replace_indices(B)))
-                    end
-                end
-            end
-
-        end
-    end
-    return Expr(:block,eqs...) |> flatten
-end
-
-function decompose_name(name::Symbol)
-    name = string(name)
-    matches = eachmatch(r"◖([\p{L}\p{N}]+)◗|([\p{L}\p{N}]+[^◖◗]*)", name)
-
-    result = []
-    nested = []
-
-    for m in matches
-        if m.captures[1] !== nothing
-            push!(nested, m.captures[1])
-        else
-            if !isempty(nested)
-                push!(result, Symbol.(nested))
-                nested = []
-            end
-            push!(result, Symbol(m.captures[2]))
-        end
-    end
-
-    if !isempty(nested)
-        push!(result, (nested))
-    end
-
-    return result
-end
-
-function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
-    indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
-
-    indexset = []
-
-    for i in indices
-        if length(i) > 1
-            push!(indexset, Symbol.(i[2])...)
-        end
-    end
-
-    return indexset
-end
-
-function expand_calibration_equations(calibration_equation_parameters::Vector{Symbol}, calibration_equations::Vector{Expr}, ss_calib_list::Vector, par_calib_list::Vector, all_names::Vector{Symbol})
-    expanded_parameters = Symbol[]
-    expanded_equations = Expr[]
-    expanded_ss_var_list = []
-    expanded_par_var_list = []
-
-    for (u,par) in enumerate(calibration_equation_parameters)
-        indices_in_calibration_equation = Set()
-        indexed_names = []
-        for i in get_symbols(calibration_equations[u])
-            indices = get_possible_indices_for_name(i, all_names)
-            if indices != Any[]
-                push!(indices_in_calibration_equation, indices)
-                push!(indexed_names,i)
-            end
-        end
-
-        par_indices = get_possible_indices_for_name(par, all_names)
-        
-        if length(par_indices) > 0
-            push!(indices_in_calibration_equation, par_indices)
-        end
-        
-        @assert length(indices_in_calibration_equation) <= 1 "Calibration equations cannot have more than one index in the equations or for the parameter."
-        
-        if length(indices_in_calibration_equation) == 0
-            push!(expanded_parameters,par)
-            push!(expanded_equations,calibration_equations[u])
-            push!(expanded_ss_var_list,ss_calib_list[u])
-            push!(expanded_par_var_list,par_calib_list[u])
-        else
-            for i in collect(indices_in_calibration_equation)[1]
-                expanded_ss_var = Set()
-                expanded_par_var = Set()
-                push!(expanded_parameters, Symbol(string(par) * "◖" * string(i) * "◗"))
-                push!(expanded_equations, postwalk(x -> x ∈ indexed_names ? Symbol(string(x) * "◖" * string(i) * "◗") : x, calibration_equations[u]))
-                for ss in ss_calib_list[u]
-                    if ss ∈ indexed_names
-                        push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
-                    else
-                        push!(expanded_ss_var,ss)
-                    end
-                end
-                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
-                for p in par_calib_list[u]
-                    if p ∈ indexed_names
-                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
-                    else
-                        push!(expanded_par_var, p)
-                    end
-                end
-                push!(expanded_ss_var_list, expanded_ss_var)
-                push!(expanded_par_var_list, expanded_par_var)
-            end
-        end
-    end
-
-    return expanded_parameters, expanded_equations, expanded_ss_var_list, expanded_par_var_list
-end
-
-function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Vector{T}, expanded_list::Vector{Symbol}) where T
-    expanded_inputs = Symbol[]
-    expanded_values = T[]
-
-    for (i,par) in enumerate(compressed_inputs)
-        par_idx = findall(x -> string(par) == x, first.(split.(string.(expanded_list ), "◖")))
-
-        if length(par_idx) > 1
-            for idx in par_idx
-                push!(expanded_inputs, expanded_list[idx])
-                push!(expanded_values, compressed_values[i])
-            end
-        else#if par ∈ expanded_list ## breaks parameters defined in parameter block
-            push!(expanded_inputs, par)
-            push!(expanded_values, compressed_values[i])
-        end
-    end
-    return expanded_inputs, expanded_values
-end
-
-
-const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-
+# Pure-function equation processing helpers used by both the equation
+# modification pipeline and (potentially) the model macros.
+#
+# `process_model_equations` reproduces the work the `@model` macro performs on
+# its equation block, returning a `post_model_macro` struct and an `equations`
+# struct so the model state can be updated without re-invoking the macro.
+#
+# `process_parameter_definitions` reproduces the work the `@parameters` macro
+# performs on the parameter block. It takes a `post_model_macro` describing the
+# current model (used for variable name lookups, index expansion, etc.) and
+# returns the pieces needed to update `post_parameters_macro`, the equations
+# struct's calibration fields, and `post_complete_parameters`.
 
 """
-$(SIGNATURES)
-Parses the model equations and assigns them to an object.
+    process_model_equations(model_block::Expr, max_obc_horizon::Int, precompile::Bool)
 
-# Arguments
-- `𝓂`: name of the object to be created containing the model information.
-- `ex`: equations
-
-# Optional arguments to be placed between `𝓂` and `ex`
-- `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
-
-Variables must be defined with their time subscript in square brackets.
-Endogenous variables can have the following:
-- present: `c[0]`
-- non-stochastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
-- past: `c[-1]` or any negative Integer: e.g. `c[-12]`
-- future: `c[1]` or any positive Integer: e.g. `c[16]` or `c[+16]`
-Signed integers are recognised and parsed as such.
-
-Exogenous variables (shocks) can have the following:
-- present: `eps_z[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
-- past: `eps_z[x-1]`
-- future: `eps_z[x+1]`
-
-Parameters enter the equations without square brackets.
-
-If an equation contains a `max` or `min` operator, the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. This enforcement can be disabled by setting `ignore_obc = true` in the relevant function calls.
-
-# Examples
-```julia
-using MacroModelling
-
-@model RBC begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end
-```
-
-# Programmatic model writing
-
-Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps_z{F}[x]`, or `α{H}`.
-
-`for` loops can be used to write models programmatically. They can either be used to generate expressions where the time index or the index in curly braces is iterated over:
-- generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
-- generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
-- generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
-
-# Returns
-- `Nothing`. The macro creates the model `𝓂` in the calling scope.
+Parse a `@model`-style equation block and return `(T, equations_struct)` where
+`T::post_model_macro` is the parsed model structure and `equations_struct::equations`
+is a freshly constructed equations container with dynamic, steady-state and
+original equations populated. Calibration fields on the returned equations
+struct are left empty and must be populated by
+`process_parameter_definitions` before the model can be solved.
 """
-macro model(𝓂,ex...)
-    # parse options
-    verbose = false
-    precompile = false
-    max_obc_horizon = 40
-
-    for exp in ex[1:end-1]
-        postwalk(x -> 
-            x isa Expr ?
-                x.head == :(=) ?  
-                    x.args[1] == :verbose && x.args[2] isa Bool ?
-                        verbose = x.args[2] :
-                    x.args[1] == :precompile && x.args[2] isa Bool ?
-                        precompile = x.args[2] :
-                    x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
-                        max_obc_horizon = x.args[2] :
-                    begin
-                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@model` for valid options."
-                        x
-                    end :
-                x :
-            x,
-        exp)
-    end
-
-    # create data containers
-    parameters = []
-    parameter_values = Vector{Float64}(undef,0)
-
-    ss_calib_list = []
-    par_calib_list = []
-    
-    # NSSS struct fields
-    nsss_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    NSSS_check_func = x->x
-    NSSS_custom_function = nothing
-    NSSS_∂equations_∂parameters = zeros(0,0)
-    NSSS_∂equations_∂parameters_func = x->x
-    NSSS_∂equations_∂SS_and_pars = zeros(0,0)
-    NSSS_∂equations_∂SS_and_pars_func = x->x
-
+function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, precompile::Bool)
     original_equations = []
     calibration_equations = []
     calibration_equations_parameters = []
@@ -551,7 +40,7 @@ macro model(𝓂,ex...)
     ss_equations_with_aux_variables = Int[]
     dyn_eq_aux_ind = Int[]
 
-    model_ex = parse_for_loops(ex[end])
+    model_ex = parse_for_loops(model_block_in)
     
     model_ex = resolve_if_expr(model_ex::Expr)::Expr
 
@@ -1290,165 +779,51 @@ macro model(𝓂,ex...)
     end
     
     @assert length(duplicate_equations) == 0 "The following equations appear more than once (and should only appear once): \n" * join(["$(original_equations[eq_idxs[1]])" for eq_idxs in duplicate_equations], "\n")
-    
-    # default_optimizer = nlboxsolve
-    # default_optimizer = Optimisers.Adam
-    # default_optimizer = NLopt.LN_BOBYQA
-    
-    #assemble data container
-    model_name = string(𝓂)
-    quote
-        global $𝓂 =  ℳ(
-                        $model_name,
-                        # $default_optimizer,
-                        # sort(collect($parameters_in_equations)),
-                        $parameter_values,
 
-                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[], Expr[]), 
+    ℂ = Constants(T)
+    𝓦 = Workspaces()
 
-                        caches(
-                            valid_for_caches(),
-                            zeros(0,0), # jacobian
-                            zeros(0,0), # jacobian_parameters
-                            zeros(0,0), # jacobian_SS_and_pars
-                            zeros(0,0), # hessian
-                            zeros(0,0), # hessian_parameters
-                            zeros(0,0), # hessian_SS_and_pars
-                            zeros(0,0), # third_order_derivatives
-                            zeros(0,0), # third_order_derivatives_parameters
-                            zeros(0,0), # third_order_derivatives_SS_and_pars
-                            zeros(0,0), # first_order_solution_matrix
-                            zeros(0,0), # first_order_obc_solution_matrix
-                            zeros(0,0), # qme_solution
-                            Float64[],  # second_order_stochastic_steady_state
-                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # second_order_solution
-                            Float64[],  # pruned_second_order_stochastic_steady_state
-                            Float64[],  # third_order_stochastic_steady_state
-                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), # third_order_solution
-                            Float64[],  # pruned_third_order_stochastic_steady_state
-                            Float64[],  # non_stochastic_steady_state
-                            $nsss_solver_cache,  # solver
-                            $NSSS_∂equations_∂parameters,  # NSSS_∂equations_∂parameters
-                            $NSSS_∂equations_∂SS_and_pars,  # NSSS_∂equations_∂SS_and_pars
-                            zeros(0,0),  # covariance_first_order
-                            zeros(0,0),  # covariance_second_order
-                            zeros(0,0),  # covariance_third_order
-                            zeros(0,0),  # covariance_third_order_autocorr
-                        ),
-                        # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
-                        # ([], Int[], zeros(1,1)), # model_jacobian
-                        # # x->x, # model_jacobian_parameters
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
-                        # # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
-                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
+    ss_aux_eqs_vec = Expr[e for e in ss_aux_equations]
+    dyn_eqs_vec = Expr[e for e in dyn_equations]
+    ss_eqs_vec = Expr[e for e in ss_equations]
+    orig_eqs_vec = Expr[e for e in original_equations]
+    calib_eqs_vec = Expr[e for e in calibration_equations]
 
-                        # $T,
+    equations_struct = equations(
+        orig_eqs_vec,
+        dyn_eqs_vec,
+        ss_eqs_vec,
+        ss_aux_eqs_vec,
+        Expr[],            # obc_violation
+        calib_eqs_vec,     # calibration (filled later by @parameters)
+        Expr[],            # calibration_no_var
+        Symbol[],          # calibration_parameters
+        Expr[],            # calibration_original
+    )
 
-                        $ℂ,
-                        $𝓦,
-
-                        model_functions(
-                            $NSSS_check_func,
-                            $NSSS_custom_function,
-                            $NSSS_∂equations_∂parameters_func, # NSSS_∂equations_∂parameters
-                            $NSSS_∂equations_∂SS_and_pars_func, # NSSS_∂equations_∂SS_and_pars
-                            NSSSSolverFunctions(),
-                            nothing, # nsss_param_prep!
-                            jacobian_functions(x->x, x->x, x->x), # jacobian, jacobian_parameters, jacobian_SS_and_pars
-                            hessian_functions(x->x, x->x, x->x), # hessian, hessian_parameters, hessian_SS_and_pars
-                            third_order_derivatives_functions(x->x, x->x, x->x), # third_order_derivatives, third_order_derivatives_parameters, third_order_derivatives_SS_and_pars
-                            x->x, # obc_violation
-                            Tuple{Int,Int,Float64}[], # obc_constraint_info
-                            false # functions_written
-                        ),
-
-                        SolveCounters(),
-
-                        RevisionEntry[]
-                    );
-    end
+    return T, equations_struct, ℂ, 𝓦
 end
-
-
-
-
 
 
 """
-$(SIGNATURES)
-Adds parameter values and calibration equations to the previously defined model. Allows to provide an initial guess for the non-stochastic steady state (NSSS).
+    process_parameter_definitions(parameter_block::Expr, pmm::post_model_macro) -> NamedTuple
 
-# Arguments
-- `𝓂`: name of the object previously created containing the model information.
-- `ex`: parameter, parameters values, and calibration equations
+Parse a `@parameters`-style parameter definition block and return the data
+needed to populate the `post_parameters_macro`, `post_complete_parameters`
+and calibration-related fields on the model's equations struct.
 
-Parameters can be defined in either of the following ways:
-- plain number: `δ = 0.02`
-- expression containing numbers: `δ = 1/50`
-- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitions including other parameters are treated as a system of equations and solved accordingly.
-- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneously with the non-stochastic steady state using the equation defined with it.
-
-# Optional arguments to be placed between `𝓂` and `ex`
-- `guess` [Type: `Dict{Symbol, <:Real}` or `Dict{String, <:Real}`]: Guess for the non-stochastic steady state. The keys must be variable (and calibrated parameter) names and the values the guesses. Missing values are filled with standard starting values.
-- $STEADY_STATE_FUNCTION®
-- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
-- `silent` [Default: `false`, Type: `Bool`]: do not print any information
-- `ss_symbolic_mode` [Default: `:single_equation`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks.
-- `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
-- `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
-- `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
-
-# Delayed parameter definition
-Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
-
-**Parameter ordering:** When some parameters are not defined in `@parameters`, the final parameter vector follows a specific order: first come the parameters defined in `@parameters` (in their declaration order), followed by any missing parameters (in alphabetical order). This ordering is important when passing parameter values by position rather than by name in subsequent function calls.
-
-# Examples
-```julia
-using MacroModelling
-
-@model RBC begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end
-
-@parameters RBC verbose = true begin
-    std_z = 0.01
-    ρ = 0.2
-    δ = 0.02
-    α = 0.5
-    β = 0.95
-end
-
-@model RBC_calibrated begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end
-
-@parameters RBC_calibrated verbose = true guess = Dict(:k => 3) begin
-    std_z = 0.01
-    ρ = 0.2
-    δ = 0.02
-    k[ss] / q[ss] = 2.5 | α
-    β = 0.95
-end
-```
-
-# Programmatic model writing
-Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
-
-# Returns
-- `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
+Returned NamedTuple fields:
+- `parameter_values::Vector{Float64}`   — values for `parameters`, ordered to match
+- `missing_parameters::Vector{Symbol}`
+- `parameters::Vector{Symbol}`          — parameters in declaration order (with missing appended)
+- `calib_parameters_no_var::Vector{Symbol}` — parameters defined as functions of other parameters
+- `ss_calib_list::Vector{Set{Symbol}}`
+- `par_calib_list::Vector{Set{Symbol}}`
+- `bounds::Dict{Symbol,Tuple{Float64,Float64}}`
+- `equations::NamedTuple` with fields `calibration`, `calibration_no_var`,
+  `calibration_parameters`, `calibration_original`.
 """
-macro parameters(𝓂,ex...)
+function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model_macro)
     calib_equations = []
     calib_equations_no_var = []
     calib_values_no_var = []
@@ -1474,57 +849,7 @@ macro parameters(𝓂,ex...)
     par_defined_more_than_once = Set()
     
     bounded_vars = []
-
-    # parse options
-    verbose = false
-    silent = false
-    ss_symbolic_mode = :single_equation
-    precompile = false
-    report_missing_parameters = true
-    perturbation_order = 1
-    guess = Dict{Symbol,Float64}()
-    steady_state_function = nothing
-    ss_solver_parameters_algorithm = :ESCH
-    ss_solver_parameters_maxtime = 120.0
-
-    for exp in ex[1:end-1]
-        postwalk(x -> 
-            x isa Expr ?
-                x.head == :(=) ?  
-                    (x.args[1] == :ss_symbolic_mode && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
-                        ss_symbolic_mode = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
-                    (x.args[1] == :verbose && x.args[2] isa Bool) ?
-                        verbose = x.args[2] :
-                    (x.args[1] == :silent && x.args[2] isa Bool) ?
-                        silent = x.args[2] :
-                    (x.args[1] == :report_missing_parameters && x.args[2] isa Bool) ?
-                        report_missing_parameters = x.args[2] :
-                    (x.args[1] == :precompile && x.args[2] isa Bool) ?
-                        precompile = x.args[2] :
-                    (x.args[1] == :perturbation_order && x.args[2] isa Int) ?
-                        perturbation_order = x.args[2] :
-                    (x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real}))) ?
-                        guess = x.args[2] :
-                    (x.args[1] == :ss_solver_parameters_algorithm && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
-                        ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
-                    (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ? # allow Symbol, anonymous fn, or any callable expr
-                        steady_state_function = esc(x.args[2]) :
-                    (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
-                        ss_solver_parameters_maxtime = x.args[2] :
-                    begin
-                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
-                        x
-                    end :
-                x :
-            x,
-        exp)
-    end
-
-    @assert ss_symbolic_mode ∈ [:none, :single_equation, :full] "ss_symbolic_mode must be :none, :single_equation, or :full. Got $ss_symbolic_mode."
-    
-    @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
-    
-    parameter_definitions = replace_indices(ex[end])
+    parameter_definitions = replace_indices(parameter_block_in)
 
     # parse parameter inputs
     # label all variables parameters and exogenous variables and timings across all equations
@@ -1856,163 +1181,84 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
-    return quote
-        mod = @__MODULE__
+    # Runtime portion: formerly the quote block in @parameters.
+    # Variables at hand: calib_parameters, calib_values, calib_parameters_no_var,
+    # calib_eq_parameters, calib_equations, calib_equations_list,
+    # calib_equations_no_var_list, ss_calib_list, par_calib_list,
+    # par_no_var_calib_rhs_list, par_no_var_calib_list, bounds.
 
-        if any(contains.(string.(mod.$𝓂.constants.post_model_macro.var), "ᵒᵇᶜ"))
-            push!($calib_parameters, :activeᵒᵇᶜshocks)
-            push!($calib_values, 0)
-        end
-
-        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        
-        # Calculate missing parameters instead of asserting
-        # Include parameters from:
-        # 1. par_calib_list - parameters used in calibration equations (e.g., K_ss in "K[ss] = K_ss | beta")
-        # 2. parameters_in_equations - parameters used in model equations
-        # 3. par_no_var_calib_list - parameters used in parameter definitions (e.g., rho{H}{H} in "rho{F}{F} = rho{H}{H}")
-        # Subtract:
-        # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
-        # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
-        # 3. calib_eq_parameters - parameters determined by calibration equations (e.g., "beta" in "K[ss] = K_ss | beta")
-        # Start with directly required parameters
-        all_required_params = union(
-            reduce(union, par_calib_list, init = Set{Symbol}()),
-            reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
-            Set{Symbol}(mod.$𝓂.constants.post_model_macro.parameters_in_equations)
-        )
-        
-        # Add parameters from parameter definitions, but only if the target parameter is needed
-        # This handles the case where parameter X = f(Y, Z) but X is not used in the model.
-        # In that case, Y and Z should not be required either.
-        # We need to check if target is in all_required_params OR in calib_eq_parameters (parameters used in calibration equations)
-        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
-        
-        all_required_params = union(all_required_params, par_no_var_calib_filtered)
-        
-        defined_params = union(
-            Set{Symbol}(calib_parameters),
-            Set{Symbol}(calib_parameters_no_var),
-            Set{Symbol}(calib_eq_parameters)
-        )
-
-        ignored_params = collect(setdiff(defined_params, all_required_params))
-
-        if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
-
-        missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
-        missing_params = sort(missing_params_unsorted)
-        
-        has_missing_parameters = length(missing_params) > 0
-
-        guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
-        if isa($guess, Dict{String, <:Real})
-            guess_dict = Dict{Symbol, Float64}()
-            for (key, value) in $guess
-                if key isa String
-                    key = replace_indices(key)
-                end
-                guess_dict[replace_indices(key)] = value
-            end
-        elseif isa($guess, Dict{Symbol, <:Real})
-            guess_dict = $guess
-        end
-
-        bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
-        for (k,v) in $bounds
-            bounds_dict[k] = haskey(bounds_dict, k) ? (max(bounds_dict[k][1], v[1]), min(bounds_dict[k][2], v[2])) : (v[1], v[2])
-        end
-        
-        invalid_bounds = Symbol[]
-
-        for (k,v) in bounds_dict
-            if v[1] >= v[2]
-                push!(invalid_bounds, k)
-            end
-        end
-
-        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
-        
-        mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
-            calib_parameters_no_var,
-            $precompile,
-            $(QuoteNode(ss_symbolic_mode)),
-            $(QuoteNode(ss_solver_parameters_algorithm)),
-            $ss_solver_parameters_maxtime,
-            guess_dict,
-            ss_calib_list,
-            par_calib_list,
-            # $ss_no_var_calib_list,
-            # $par_no_var_calib_list,
-            bounds_dict,
-        )
-
-        # Update equations struct with calibration fields
-        mod.$𝓂.equations.calibration = calib_equations_list
-        mod.$𝓂.equations.calibration_no_var = calib_equations_no_var_list
-        mod.$𝓂.equations.calibration_parameters = calib_eq_parameters
-
-        # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
-        # calibration equation pairs captured during parsing. Use the parameter-at-end form.
-        _calib_eq_raw = $calib_equations
-        _calib_eq_params_raw = $calib_eq_parameters
-        _calib_original = Expr[]
-        for (_eq, _par) in zip(_calib_eq_raw, _calib_eq_params_raw)
-            if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
-                _lhs, _rhs = _eq.args[1], _eq.args[2]
-                push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
-            end
-        end
-        mod.$𝓂.equations.calibration_original = _calib_original
-    
-        # Keep calib_parameters in declaration order, append missing_params at end
-        # This preserves declaration order for estimation and method of moments
-        all_params = vcat(calib_parameters, missing_params)
-        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
-
-        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
-
-        mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
-            mod.$𝓂.constants.post_complete_parameters;
-            parameters = all_params[defined_params_idx],
-            missing_parameters = missing_params,
-        )
-        mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        
-        # Set custom steady state function if provided
-        # if !isnothing($steady_state_function)
-        set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
-        # end
-
-        mod.$𝓂.functions.functions_written = false
-
-        # time_symbolics = @elapsed 
-        # time_rm_red_SS_vars = @elapsed
-        if !isnothing($steady_state_function)
-            write_ss_check_function!(mod.$𝓂)
-        else
-            if !has_missing_parameters
-                set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, ss_symbolic_mode = $(QuoteNode(ss_symbolic_mode)))
-            end
-        end
-
-        if !has_missing_parameters
-            opts = merge_calculation_options(verbose = $verbose)
-            
-            SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
-            
-            write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
-
-            mod.$𝓂.functions.functions_written = true
-        end
-
-        if has_missing_parameters && $report_missing_parameters
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
-        end
-
-        if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end
-        nothing
+    if any(contains.(string.(pmm.var), "ᵒᵇᶜ"))
+        push!(calib_parameters, :activeᵒᵇᶜshocks)
+        push!(calib_values, 0)
     end
+
+    _pars_and_vars = [pmm.parameters_in_equations; pmm.var]
+    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, _pars_and_vars)
+    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, _pars_and_vars)
+    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, _pars_and_vars)
+
+    all_required_params = union(
+        reduce(union, par_calib_list, init = Set{Symbol}()),
+        reduce(union, par_no_var_calib_rhs_list, init = Set{Symbol}()),
+        Set{Symbol}(pmm.parameters_in_equations)
+    )
+
+    par_no_var_calib_filtered = mapreduce(i -> par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
+    all_required_params = union(all_required_params, par_no_var_calib_filtered)
+
+    defined_params = union(
+        Set{Symbol}(calib_parameters),
+        Set{Symbol}(calib_parameters_no_var),
+        Set{Symbol}(calib_eq_parameters),
+    )
+
+    ignored_params = collect(setdiff(defined_params, all_required_params))
+    if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
+
+    missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
+    missing_params = sort(missing_params_unsorted)
+
+    invalid_bounds = Symbol[]
+    for (k,v) in bounds
+        if v[1] >= v[2]
+            push!(invalid_bounds, k)
+        end
+    end
+    @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+
+    # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
+    # calibration equation pairs captured during parsing. Use the parameter-at-end form.
+    _calib_original = Expr[]
+    for (_eq, _par) in zip(calib_equations, calib_eq_parameters)
+        if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
+            _lhs, _rhs = _eq.args[1], _eq.args[2]
+            push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
+        end
+    end
+
+    # Keep calib_parameters in declaration order, append missing_params at end
+    all_params = vcat(calib_parameters, missing_params)
+    all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+    defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+    final_parameters = all_params[defined_params_idx]
+    final_parameter_values = all_values[defined_params_idx]
+
+    eqs_nt = (
+        calibration = Expr[e for e in calib_equations_list],
+        calibration_no_var = Expr[e for e in calib_equations_no_var_list],
+        calibration_parameters = Symbol[s for s in calib_eq_parameters],
+        calibration_original = _calib_original,
+    )
+
+    return (
+        parameter_values = final_parameter_values,
+        missing_parameters = missing_params,
+        parameters = final_parameters,
+        calib_parameters_no_var = Symbol[s for s in calib_parameters_no_var],
+        ss_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in ss_calib_list]),
+        par_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in par_calib_list]),
+        bounds = bounds,
+        equations = eqs_nt,
+    )
 end
