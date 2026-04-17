@@ -58,4 +58,6 @@ elseif test_set == "gali_pruned_2nd_order_estimation"
     include("test_gali_pruned_2nd_order_estimation.jl")
 elseif test_set == "rrule_robustness"
     include("test_rrule_robustness.jl")
+elseif test_set == "update_equations"
+    include("test_update_equations.jl")
 end
