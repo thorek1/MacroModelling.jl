@@ -550,11 +550,6 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
 
         remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = avoid_solve)
 
-        # Release Python-side temporaries accumulated by SymPy before moving to the
-        # codegen phase so peak RSS is bounded by the heavier of the two phases.
-        GC.gc()
-        PythonCall.GC.gc()
-
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
 
         start_time = time()
@@ -568,9 +563,6 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
         𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
 
         set_up_obc_violation_function!(𝓂)
-
-        GC.gc()
-        PythonCall.GC.gc()
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
     else

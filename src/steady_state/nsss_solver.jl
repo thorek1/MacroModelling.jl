@@ -1366,9 +1366,6 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                 # Option A: skip SymPy solve when the variable is not a free symbol of the equation
                 if 1 <= eq_idx_for_filter <= length(eq_symbol_sets) && !(var_sym in eq_symbol_sets[eq_idx_for_filter])
                     soll = nothing
-                # Option C: trivial block `var = 0` - bypass SymPy entirely
-                elseif parsed_eq_to_solve_for isa Symbol && parsed_eq_to_solve_for === var_sym
-                    soll = SPyPyC.Sym{PythonCall.Core.Py}[SPyPyC.Sym(0)]
                 elseif eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
                     soll = solve_symbolically(eq_to_solve, var_to_solve_for)
                 else
