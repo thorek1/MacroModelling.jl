@@ -1,14 +1,10 @@
 # Equation-modification reprocessing pipeline.
 #
-# The `@model` and `@parameters` macros on this branch fully construct a model
-# struct and all its compiled helpers. To keep behaviour consistent after an
-# equation modification, this file provides a rebuild pipeline that
-# 1. serializes the current user-facing model state (equations + parameter
-#    block) into the same expression form the macros expect,
-# 2. re-runs those macros against a scratch global binding, and
-# 3. copies the freshly built fields back into the user's model struct so
-#    that existing references keep working and the revision history is
-#    preserved.
+# The `@model` and `@parameters` macros on this branch build a model struct
+# and compile helpers. After an equation modification this file rebuilds the
+# relevant internal state surgically — without re-evaluating the macros — by
+# calling the pure functions `process_model_equations` and
+# `process_parameter_definitions`.
 
 """
     reset_solver_state!(𝓂::ℳ)
@@ -20,8 +16,53 @@ rebuild pipeline rewrites them.
 function reset_solver_state!(𝓂::ℳ)
     𝓂.caches.valid_for = valid_for_caches()
     empty!(𝓂.caches.solver)
+
+    # Reset size-dependent cache matrices so downstream code reallocates for
+    # the (potentially) new model dimensions.
+    𝓂.caches.jacobian = zeros(0, 0)
+    𝓂.caches.jacobian_parameters = zeros(0, 0)
+    𝓂.caches.jacobian_SS_and_pars = zeros(0, 0)
+    𝓂.caches.hessian = zeros(0, 0)
+    𝓂.caches.hessian_parameters = zeros(0, 0)
+    𝓂.caches.hessian_SS_and_pars = zeros(0, 0)
+    𝓂.caches.third_order_derivatives = zeros(0, 0)
+    𝓂.caches.third_order_derivatives_parameters = zeros(0, 0)
+    𝓂.caches.third_order_derivatives_SS_and_pars = zeros(0, 0)
+    𝓂.caches.first_order_solution_matrix = zeros(0, 0)
+    𝓂.caches.first_order_obc_solution_matrix = zeros(0, 0)
+    𝓂.caches.qme_solution = zeros(0, 0)
+    𝓂.caches.second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.second_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
+    𝓂.caches.pruned_second_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_stochastic_steady_state = Float64[]
+    𝓂.caches.third_order_solution = SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)
+    𝓂.caches.pruned_third_order_stochastic_steady_state = Float64[]
     𝓂.caches.non_stochastic_steady_state = Float64[]
+    𝓂.caches.covariance_first_order = zeros(0, 0)
+    𝓂.caches.covariance_second_order = zeros(0, 0)
+    𝓂.caches.covariance_third_order = zeros(0, 0)
+    𝓂.caches.covariance_third_order_autocorr = zeros(0, 0)
+
     𝓂.functions.functions_written = false
+
+    # Invalidate derived caches that depend on the equations / calibration.
+    # Empty axes / name tables are the sentinel used by the `ensure_*!`
+    # helpers to decide whether to recompute.
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        var_axis = Symbol[],
+        calib_axis = Symbol[],
+        exo_axis_plain = Symbol[],
+        exo_axis_with_subscript = Symbol[],
+        full_NSSS_display = Symbol[],
+        SS_and_pars_names = Symbol[],
+        initialized = false,
+    )
+
+    # Reset the workspace buffers, forcing `ensure_*!` helpers to resize them
+    # on next use.
+    𝓂.workspaces = Workspaces()
+
     return nothing
 end
 
@@ -114,59 +155,46 @@ function extract_calibrated_parameter(eq::Expr)::Union{Symbol, Nothing}
 end
 
 
-# --- internal macro re-evaluation helpers ---------------------------------
+"""
+    finalize_model_update!(𝓂; verbose, silent)
 
-const _REBUILD_SCRATCH_SYM = :__macromodelling_rebuild_scratch__
+Internal helper that finalises a model update by rebuilding the steady-state
+solver and symbolic derivatives for the current `𝓂` state. Called by both
+`reprocess_model_equations!` and `reprocess_calibration_equations!`.
+"""
+function finalize_model_update!(𝓂::ℳ; verbose::Bool = false, silent::Bool = true)
+    has_missing_parameters = !isempty(𝓂.constants.post_complete_parameters.missing_parameters)
+    missing_params = 𝓂.constants.post_complete_parameters.missing_parameters
 
-function _rebuild_via_macros!(𝓂::ℳ,
-                              new_equations::Vector{Expr},
-                              parameter_block::Expr;
-                              verbose::Bool = false,
-                              silent::Bool = true)
-    saved_history = copy(𝓂.revision_history)
-    # Retain a stable handle to the model struct even if a scratch rebuild fails
-    model_body = Expr(:block, new_equations...)
-
-    # Build @model scratch begin ... end
-    model_call = Expr(:macrocall,
-        GlobalRef(@__MODULE__, Symbol("@model")),
-        LineNumberNode(0),
-        _REBUILD_SCRATCH_SYM,
-        model_body,
-    )
-
-    # Build @parameters scratch silent=true begin ... end
-    param_call = Expr(:macrocall,
-        GlobalRef(@__MODULE__, Symbol("@parameters")),
-        LineNumberNode(0),
-        _REBUILD_SCRATCH_SYM,
-        Expr(:(=), :silent, silent),
-        Expr(:(=), :verbose, verbose),
-        Expr(:(=), :report_missing_parameters, false),
-        parameter_block,
-    )
-
-    # Run both macros inside Main so the global assignment in @model lands on
-    # a well-known scratch binding we can read back. We use Core.eval to pick
-    # up the freshly-created binding at the correct world age.
-    Core.eval(Main, model_call)
-    Core.eval(Main, param_call)
-
-    new_model::ℳ = Core.eval(Main, _REBUILD_SCRATCH_SYM)
-
-    # Copy all fields from the fresh model onto the user's struct, preserving
-    # the model_name and revision_history.
-    original_name = 𝓂.model_name
-    for f in fieldnames(ℳ)
-        f === :revision_history && continue
-        f === :model_name && continue
-        setfield!(𝓂, f, getfield(new_model, f))
+    if !isnothing(𝓂.functions.NSSS_custom)
+        write_ss_check_function!(𝓂)
+    else
+        if !has_missing_parameters
+            set_up_steady_state_solver!(
+                𝓂;
+                verbose = verbose,
+                silent = silent,
+                ss_symbolic_mode = 𝓂.constants.post_parameters_macro.ss_symbolic_mode,
+            )
+        end
     end
-    𝓂.model_name = original_name
-    𝓂.revision_history = saved_history
 
-    # Drop the scratch binding
-    Core.eval(Main, :($_REBUILD_SCRATCH_SYM = nothing))
+    if !has_missing_parameters
+        opts = merge_calculation_options(verbose = verbose)
+        solve_steady_state!(
+            𝓂,
+            opts,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_algorithm,
+            𝓂.constants.post_parameters_macro.ss_solver_parameters_maxtime;
+            silent = silent,
+        )
+        write_symbolic_derivatives!(𝓂; perturbation_order = 1, silent = silent)
+        𝓂.functions.functions_written = true
+    else
+        if !silent
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined."
+        end
+    end
 
     return nothing
 end
@@ -177,7 +205,7 @@ end
 
 Rebuild the model from an updated equation list while preserving the
 revision history. Equivalent to re-running `@model` and `@parameters` on the
-current parameter state.
+current parameter state, but without re-evaluating the macros.
 """
 function reprocess_model_equations!(𝓂::ℳ,
                                     new_equations::Vector{Expr};
@@ -188,9 +216,46 @@ function reprocess_model_equations!(𝓂::ℳ,
         write_parameters_input!(𝓂, parameters, verbose = verbose)
     end
 
+    updated_block = Expr(:block, new_equations...)
     parameter_block = reconstruct_parameter_block(𝓂)
+
+    T, equations_struct, ℂ, 𝓦 = process_model_equations(
+        updated_block,
+        𝓂.constants.post_model_macro.max_obc_horizon,
+        𝓂.constants.post_parameters_macro.precompile,
+    )
+
+    𝓂.constants = ℂ
+    𝓂.workspaces = 𝓦
+    𝓂.equations = equations_struct
+
     reset_solver_state!(𝓂)
-    _rebuild_via_macros!(𝓂, new_equations, parameter_block; verbose = verbose, silent = silent)
+
+    parsed_parameters = process_parameter_definitions(parameter_block, 𝓂.constants.post_model_macro)
+
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro;
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds,
+    )
+
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
+    finalize_model_update!(𝓂; verbose = verbose, silent = silent)
+
     return nothing
 end
 
@@ -213,23 +278,38 @@ function reprocess_calibration_equations!(𝓂::ℳ,
         write_parameters_input!(𝓂, parameters, verbose = verbose)
     end
 
-    parameter_block = reconstruct_parameter_block(𝓂;
+    parameter_block = reconstruct_parameter_block(
+        𝓂;
         calibration_original_override = updated_calibration_original,
         parameter_overrides = parameter_overrides,
     )
+
+    parsed_parameters = process_parameter_definitions(parameter_block, 𝓂.constants.post_model_macro)
+
+    𝓂.constants.post_parameters_macro = update_post_parameters_macro(
+        𝓂.constants.post_parameters_macro;
+        parameters_as_function_of_parameters = parsed_parameters.calib_parameters_no_var,
+        ss_calib_list = parsed_parameters.ss_calib_list,
+        par_calib_list = parsed_parameters.par_calib_list,
+        bounds = parsed_parameters.bounds,
+    )
+
+    𝓂.equations.calibration = parsed_parameters.equations.calibration
+    𝓂.equations.calibration_no_var = parsed_parameters.equations.calibration_no_var
+    𝓂.equations.calibration_parameters = parsed_parameters.equations.calibration_parameters
+    𝓂.equations.calibration_original = parsed_parameters.equations.calibration_original
+
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        parameters = parsed_parameters.parameters,
+        missing_parameters = parsed_parameters.missing_parameters,
+    )
+
+    𝓂.parameter_values = parsed_parameters.parameter_values
+
     reset_solver_state!(𝓂)
-    _rebuild_via_macros!(𝓂, 𝓂.equations.original, parameter_block; verbose = verbose, silent = silent)
-    return nothing
-end
 
+    finalize_model_update!(𝓂; verbose = verbose, silent = silent)
 
-"""
-    finalize_model_update!(𝓂; verbose, silent)
-
-No-op on this branch: the rebuild via `@model`/`@parameters` already
-finalises the steady-state solver and derivative functions. Provided so the
-call sites mirror the reference implementation.
-"""
-function finalize_model_update!(𝓂::ℳ; verbose::Bool = false, silent::Bool = true)
     return nothing
 end
