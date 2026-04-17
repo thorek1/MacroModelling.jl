@@ -803,3 +803,462 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
 
     return T, equations_struct, ℂ, 𝓦
 end
+
+
+"""
+    process_parameter_definitions(parameter_block::Expr, pmm::post_model_macro) -> NamedTuple
+
+Parse a `@parameters`-style parameter definition block and return the data
+needed to populate the `post_parameters_macro`, `post_complete_parameters`
+and calibration-related fields on the model's equations struct.
+
+Returned NamedTuple fields:
+- `parameter_values::Vector{Float64}`   — values for `parameters`, ordered to match
+- `missing_parameters::Vector{Symbol}`
+- `parameters::Vector{Symbol}`          — parameters in declaration order (with missing appended)
+- `calib_parameters_no_var::Vector{Symbol}` — parameters defined as functions of other parameters
+- `ss_calib_list::Vector{Set{Symbol}}`
+- `par_calib_list::Vector{Set{Symbol}}`
+- `bounds::Dict{Symbol,Tuple{Float64,Float64}}`
+- `equations::NamedTuple` with fields `calibration`, `calibration_no_var`,
+  `calibration_parameters`, `calibration_original`.
+"""
+function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model_macro)
+    calib_equations = []
+    calib_equations_no_var = []
+    calib_values_no_var = []
+    
+    calib_parameters_no_var = Symbol[]
+    
+    calib_eq_parameters = Symbol[]
+    calib_equations_list = Expr[]
+    
+    ss_calib_list = []
+    par_calib_list = []
+    
+    
+    calib_equations_no_var_list = []
+    
+    ss_no_var_calib_list = []
+    par_no_var_calib_list = []
+    par_no_var_calib_rhs_list = []
+    
+    calib_parameters = Symbol[]
+    calib_values = Float64[]
+
+    par_defined_more_than_once = Set()
+    
+    bounded_vars = []
+    parameter_definitions = replace_indices(parameter_block_in)
+
+    # parse parameter inputs
+    # label all variables parameters and exogenous variables and timings across all equations
+    postwalk(x -> 
+        x isa Expr ?
+            x.head == :(=) ? 
+                x.args[1] isa Symbol ?
+                    typeof(x.args[2]) ∈ [Int, Float64] ?
+                        begin # normal calibration by setting values of parameters
+                            push!(calib_values,x.args[2])
+                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end 
+                            push!(calib_parameters,x.args[1]) 
+                        end :
+                    x.args[2] isa Symbol ?
+                        begin # normal calibration by setting values of parameters
+                            push!(calib_values_no_var,unblock(x.args[2]))
+                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
+                            push!(calib_parameters_no_var,x.args[1])
+                        end :
+                    x.args[2].args[1] == :| ?
+                        x :
+                    begin # normal calibration by setting values of parameters
+                        push!(calib_values_no_var,unblock(x.args[2]))
+                        if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
+                        push!(calib_parameters_no_var,x.args[1])
+                    end :
+                x.args[1].args[1] == :| ?
+                    begin # calibration by targeting SS values (conditional parameter at the beginning)
+                        if x.args[1].args[2] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1].args[2]) end
+                        push!(calib_eq_parameters,x.args[1].args[2])
+                        push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
+                    end :
+                x :
+            x.head == :comparison ? 
+                push!(bounded_vars,x) :
+            x.head == :call ?
+                issubset([x.args[1]], [:(<) :(>) :(<=) :(>=)]) ?
+                    push!(bounded_vars,x) :
+                x :
+            x :
+        x,
+    parameter_definitions)
+
+
+
+    postwalk(x -> 
+        x isa Expr ?
+            x.head == :(=) ? 
+                typeof(x.args[2]) ∈ [Int, Float64] ?
+                    x :
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesn't work really well yet
+                    x.args[2] isa Expr ?
+                        x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
+                            begin # this is calibration by targeting SS values (conditional parameter at the end)
+                                if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
+                                push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
+                                push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
+                            end :
+                            x :
+                        x :
+                x.args[2].head == :block ?
+                    x.args[1].args[1] == :| ?
+                        x :
+                    x.args[2].args[2].args[1] == :| ?
+                        begin # this is calibration by targeting SS values (conditional parameter at the end)
+                            if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
+                            push!(calib_eq_parameters,x.args[2].args[end].args[end])
+                            push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                        end :
+                    begin 
+                        @warn "Invalid parameter input ignored: " * repr(x)
+                        x
+                    end :
+                x.args[2].head == :call ?
+                    x.args[1].args[1] == :| ?
+                            x :
+                    begin # this is calibration by targeting SS values (conditional parameter at the end)
+                        if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
+                        push!(calib_eq_parameters, x.args[2].args[end])
+                        push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
+                    end :
+                x :
+            x :
+        x,
+    parameter_definitions)
+    
+    @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
+    
+    # Check that no parameter names conflict with SymPyWorkspace reserved names
+    all_params = union(calib_parameters, calib_parameters_no_var, calib_eq_parameters)
+    reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
+    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
+    
+    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to become a Float64)
+    for (i, v) in enumerate(calib_values_no_var)
+        out = try eval(v) catch e end
+        if out isa Float64
+            push!(calib_parameters, calib_parameters_no_var[i])
+            push!(calib_values, out)
+        else
+            push!(calib_equations_no_var, Expr(:(=),calib_parameters_no_var[i], calib_values_no_var[i]))
+        end
+    end
+    
+    calib_parameters_no_var = setdiff(calib_parameters_no_var, calib_parameters)
+    
+    for (i, cal_eq) in enumerate(calib_equations)
+        ss_tmp = Set{Symbol}()
+        par_tmp = Set()
+    
+        # parse SS variables
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :ref ?
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        push!(ss_tmp,x.args[1]) :
+                    x : 
+                x :
+            x,
+        cal_eq)
+    
+        # separate out parameters
+        postwalk(x -> 
+            x isa Symbol ? 
+                occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
+                    x :
+                    begin
+                        diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
+                        if !isempty(diffed)
+                            push!(par_tmp,diffed[1])
+                        end
+                    end :
+            x,
+        cal_eq)
+    
+        push!(ss_calib_list,ss_tmp)
+        push!(par_calib_list,par_tmp)
+        
+        # write down calibration equations
+        prs_ex = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :(=) ? 
+                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                        x.head == :ref ?
+                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ? # K[ss] => K
+                        x.args[1] : 
+                    x : 
+                x.head == :call ?
+                    x.args[1] == :* ?
+                        x.args[2] isa Int ?
+                            x.args[3] isa Int ?
+                                x :
+                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
+                        x :
+                    x :
+                unblock(x) : 
+            x,
+            cal_eq)
+        push!(calib_equations_list,unblock(prs_ex))
+    end
+    
+    # parse calibration equations without a variable present: eta = Pi_bar /2 (Pi_bar is also a parameter)
+    for (i, cal_eq) in enumerate(calib_equations_no_var)
+        ss_tmp = Set()
+        par_tmp = Set()
+    
+        # parse SS variables
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :ref ?
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        push!(ss_tmp,x.args[1]) :
+                    x : 
+                x :
+            x,
+            cal_eq)
+    
+        # get SS variables per non_linear_solved_vals
+        postwalk(x -> 
+        x isa Symbol ? 
+            occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
+                x :
+                begin
+                    diffed = setdiff([x],ss_tmp)
+                    if !isempty(diffed)
+                        push!(par_tmp,diffed[1])
+                    end
+                end :
+        x,
+        cal_eq)
+    
+        push!(ss_no_var_calib_list,ss_tmp)
+        push!(par_no_var_calib_list, setdiff(par_tmp,calib_parameters))
+        push!(par_no_var_calib_rhs_list, intersect(par_tmp,calib_parameters))
+        
+        # write down calibration equations
+        prs_ex = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :ref ?
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                    x.args[1] : 
+                x : 
+                x.head == :call ?
+                    x.args[1] == :* ?
+                        x.args[2] isa Int ?
+                            x.args[3] isa Int ?
+                                x :
+                            :($(x.args[3]) * $(x.args[2])) :
+                        x :
+                    x :
+                unblock(x) : 
+            x,
+            cal_eq)
+        push!(calib_equations_no_var_list,unblock(prs_ex))
+    end
+    
+    # arrange calibration equations where they use parameters defined in parameters block so that they appear in right order (Pi_bar is defined before it is used later on: eta = Pi_bar / 2)
+    if length(calib_equations_no_var_list) > 0
+        incidence_matrix = fill(0,length(calib_parameters_no_var),length(calib_parameters_no_var))
+        
+        for i in 1:length(calib_parameters_no_var)
+            for k in 1:length(calib_parameters_no_var)
+                incidence_matrix[i,k] = collect(calib_parameters_no_var)[i] ∈ collect(par_no_var_calib_list)[k]
+            end
+        end
+        
+        Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
+        
+        @assert length(Q) == n_blocks "Check the parameter definitions. They are either incomplete or have more than only the defined parameter on the LHS."
+        
+        calib_equations_no_var_list = calib_equations_no_var_list[Q]
+    end
+    
+
+
+    #parse bounds
+    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
+
+    for bound in bounded_vars
+        postwalk(x -> 
+        x isa Expr ?
+            x.head == :comparison ? 
+                x.args[2] == :(<) ?
+                    x.args[4] == :(<) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1]+eps(Float32), x.args[5]-eps(Float32))
+                        end :
+                    x.args[4] == :(<=) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1]+eps(Float32), x.args[5])
+                        end :
+                    x :
+                x.args[2] == :(<=) ?
+                    x.args[4] == :(<) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1], x.args[5]-eps(Float32))
+                        end :
+                    x.args[4] == :(<=) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1], x.args[5])
+                        end :
+                    x :
+
+                x.args[2] == :(>) ?
+                    x.args[4] == :(>) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5]+eps(Float32), x.args[1]-eps(Float32))
+                        end :
+                    x.args[4] == :(>=) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5]+eps(Float32), x.args[1])
+                        end :
+                    x :
+                x.args[2] == :(>=) ?
+                    x.args[4] == :(>) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5], x.args[1]-eps(Float32))
+                        end :
+                    x.args[4] == :(>=) ?
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5], x.args[1])
+                        end :
+                    x :
+                x :
+
+            x.head ==  :call ? 
+                x.args[1] == :(<) ?
+                    x.args[2] isa Symbol ? 
+                        begin
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3]-eps(Float32))) : (-1e12+rand(), x.args[3]-eps(Float32))
+                        end :
+                    x.args[3] isa Symbol ? 
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]+eps(Float32)), min(bounds[x.args[3]][2], 1e12+rand())) : (x.args[2]+eps(Float32), 1e12+rand())
+                        end :
+                    x :
+                x.args[1] == :(>) ?
+                    x.args[2] isa Symbol ? 
+                        begin
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]+eps(Float32)), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3]+eps(Float32), 1e12+rand())
+                        end :
+                    x.args[3] isa Symbol ? 
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2]-eps(Float32))) : (-1e12+rand(), x.args[2]-eps(Float32))
+                        end :
+                    x :
+                x.args[1] == :(>=) ?
+                    x.args[2] isa Symbol ? 
+                        begin
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3], 1e12+rand())
+                        end :
+                    x.args[3] isa Symbol ? 
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2])) : (-1e12+rand(), x.args[2])
+                        end :
+                    x :
+                x.args[1] == :(<=) ?
+                    x.args[2] isa Symbol ? 
+                        begin
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3])) : (-1e12+rand(), x.args[3])
+                        end :
+                    x.args[3] isa Symbol ? 
+                        begin
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]), min(bounds[x.args[3]][2],1e12+rand())) : (x.args[2],1e12+rand())
+                        end :
+                    x :
+                x :
+            x :
+        x,bound)
+    end
+
+    # Runtime portion: formerly the quote block in @parameters.
+    # Variables at hand: calib_parameters, calib_values, calib_parameters_no_var,
+    # calib_eq_parameters, calib_equations, calib_equations_list,
+    # calib_equations_no_var_list, ss_calib_list, par_calib_list,
+    # par_no_var_calib_rhs_list, par_no_var_calib_list, bounds.
+
+    if any(contains.(string.(pmm.var), "ᵒᵇᶜ"))
+        push!(calib_parameters, :activeᵒᵇᶜshocks)
+        push!(calib_values, 0)
+    end
+
+    _pars_and_vars = [pmm.parameters_in_equations; pmm.var]
+    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, _pars_and_vars)
+    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, _pars_and_vars)
+    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, _pars_and_vars)
+
+    all_required_params = union(
+        reduce(union, par_calib_list, init = Set{Symbol}()),
+        reduce(union, par_no_var_calib_rhs_list, init = Set{Symbol}()),
+        Set{Symbol}(pmm.parameters_in_equations)
+    )
+
+    par_no_var_calib_filtered = mapreduce(i -> par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
+    all_required_params = union(all_required_params, par_no_var_calib_filtered)
+
+    defined_params = union(
+        Set{Symbol}(calib_parameters),
+        Set{Symbol}(calib_parameters_no_var),
+        Set{Symbol}(calib_eq_parameters),
+    )
+
+    ignored_params = collect(setdiff(defined_params, all_required_params))
+    if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
+
+    missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
+    missing_params = sort(missing_params_unsorted)
+
+    invalid_bounds = Symbol[]
+    for (k,v) in bounds
+        if v[1] >= v[2]
+            push!(invalid_bounds, k)
+        end
+    end
+    @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+
+    # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
+    # calibration equation pairs captured during parsing. Use the parameter-at-end form.
+    _calib_original = Expr[]
+    for (_eq, _par) in zip(calib_equations, calib_eq_parameters)
+        if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
+            _lhs, _rhs = _eq.args[1], _eq.args[2]
+            push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
+        end
+    end
+
+    # Keep calib_parameters in declaration order, append missing_params at end
+    all_params = vcat(calib_parameters, missing_params)
+    all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+    defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+    final_parameters = all_params[defined_params_idx]
+    final_parameter_values = all_values[defined_params_idx]
+
+    eqs_nt = (
+        calibration = Expr[e for e in calib_equations_list],
+        calibration_no_var = Expr[e for e in calib_equations_no_var_list],
+        calibration_parameters = Symbol[s for s in calib_eq_parameters],
+        calibration_original = _calib_original,
+    )
+
+    return (
+        parameter_values = final_parameter_values,
+        missing_parameters = missing_params,
+        parameters = final_parameters,
+        calib_parameters_no_var = Symbol[s for s in calib_parameters_no_var],
+        ss_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in ss_calib_list]),
+        par_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in par_calib_list]),
+        bounds = bounds,
+        equations = eqs_nt,
+    )
+end

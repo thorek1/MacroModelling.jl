@@ -1,0 +1,82 @@
+
+    # Runtime portion: formerly the quote block in @parameters.
+    # Variables at hand: calib_parameters, calib_values, calib_parameters_no_var,
+    # calib_eq_parameters, calib_equations, calib_equations_list,
+    # calib_equations_no_var_list, ss_calib_list, par_calib_list,
+    # par_no_var_calib_rhs_list, par_no_var_calib_list, bounds.
+
+    if any(contains.(string.(pmm.var), "ᵒᵇᶜ"))
+        push!(calib_parameters, :activeᵒᵇᶜshocks)
+        push!(calib_values, 0)
+    end
+
+    _pars_and_vars = [pmm.parameters_in_equations; pmm.var]
+    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, _pars_and_vars)
+    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, _pars_and_vars)
+    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, _pars_and_vars)
+
+    all_required_params = union(
+        reduce(union, par_calib_list, init = Set{Symbol}()),
+        reduce(union, par_no_var_calib_rhs_list, init = Set{Symbol}()),
+        Set{Symbol}(pmm.parameters_in_equations)
+    )
+
+    par_no_var_calib_filtered = mapreduce(i -> par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
+    all_required_params = union(all_required_params, par_no_var_calib_filtered)
+
+    defined_params = union(
+        Set{Symbol}(calib_parameters),
+        Set{Symbol}(calib_parameters_no_var),
+        Set{Symbol}(calib_eq_parameters),
+    )
+
+    ignored_params = collect(setdiff(defined_params, all_required_params))
+    if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
+
+    missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
+    missing_params = sort(missing_params_unsorted)
+
+    invalid_bounds = Symbol[]
+    for (k,v) in bounds
+        if v[1] >= v[2]
+            push!(invalid_bounds, k)
+        end
+    end
+    @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+
+    # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
+    # calibration equation pairs captured during parsing. Use the parameter-at-end form.
+    _calib_original = Expr[]
+    for (_eq, _par) in zip(calib_equations, calib_eq_parameters)
+        if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
+            _lhs, _rhs = _eq.args[1], _eq.args[2]
+            push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
+        end
+    end
+
+    # Keep calib_parameters in declaration order, append missing_params at end
+    all_params = vcat(calib_parameters, missing_params)
+    all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+    defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+    final_parameters = all_params[defined_params_idx]
+    final_parameter_values = all_values[defined_params_idx]
+
+    eqs_nt = (
+        calibration = Expr[e for e in calib_equations_list],
+        calibration_no_var = Expr[e for e in calib_equations_no_var_list],
+        calibration_parameters = Symbol[s for s in calib_eq_parameters],
+        calibration_original = _calib_original,
+    )
+
+    return (
+        parameter_values = final_parameter_values,
+        missing_parameters = missing_params,
+        parameters = final_parameters,
+        calib_parameters_no_var = Symbol[s for s in calib_parameters_no_var],
+        ss_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in ss_calib_list]),
+        par_calib_list = Vector{Set{Symbol}}([Set{Symbol}(s) for s in par_calib_list]),
+        bounds = bounds,
+        equations = eqs_nt,
+    )
+end

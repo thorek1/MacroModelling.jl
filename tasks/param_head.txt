@@ -1,0 +1,25 @@
+    calib_equations = []
+    calib_equations_no_var = []
+    calib_values_no_var = []
+    
+    calib_parameters_no_var = Symbol[]
+    
+    calib_eq_parameters = Symbol[]
+    calib_equations_list = Expr[]
+    
+    ss_calib_list = []
+    par_calib_list = []
+    
+    
+    calib_equations_no_var_list = []
+    
+    ss_no_var_calib_list = []
+    par_no_var_calib_list = []
+    par_no_var_calib_rhs_list = []
+    
+    calib_parameters = Symbol[]
+    calib_values = Float64[]
+
+    par_defined_more_than_once = Set()
+    
+    bounded_vars = []
