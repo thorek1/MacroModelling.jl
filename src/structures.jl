@@ -112,7 +112,22 @@ mutable struct equations
     calibration::Vector{Expr}
     calibration_no_var::Vector{Expr}
     calibration_parameters::Vector{Symbol}
+    calibration_original::Vector{Expr}
 end
+
+"""
+`RevisionEntry` records a single equation-modification event on a model.
+
+Fields:
+- `timestamp`     : when the change was applied
+- `action`        : one of `:update_equation`, `:add_equation`, `:remove_equation`,
+                    `:update_calibration_equation`, `:add_calibration_equation`, `:remove_calibration_equation`
+- `equation_index`: 1-based index of the affected equation (or `nothing`)
+- `old_equation`  : equation before the change (or `nothing` for add)
+- `new_equation`  : equation after the change (or `nothing` for remove)
+"""
+const RevisionEntry = NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation),
+    Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}
 
 struct post_model_macro
     max_obc_horizon::Int
@@ -1485,4 +1500,6 @@ mutable struct ℳ
     functions::model_functions                # Compiled model functions
 
     counters::SolveCounters                   # Solve counters (steady state and perturbation)
+
+    revision_history::Vector{RevisionEntry}   # log of equation-modification operations
 end

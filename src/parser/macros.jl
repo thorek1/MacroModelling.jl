@@ -1304,7 +1304,7 @@ macro model(𝓂,ex...)
                         # sort(collect($parameters_in_equations)),
                         $parameter_values,
 
-                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[]), 
+                        equations($original_equations, $dyn_equations, $ss_equations, $ss_aux_equations, Expr[], $calibration_equations, Expr[], Symbol[], Expr[]), 
 
                         caches(
                             valid_for_caches(),
@@ -1366,7 +1366,9 @@ macro model(𝓂,ex...)
                             false # functions_written
                         ),
 
-                        SolveCounters()
+                        SolveCounters(),
+
+                        RevisionEntry[]
                     );
     end
 end
@@ -1951,6 +1953,19 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.equations.calibration = calib_equations_list
         mod.$𝓂.equations.calibration_no_var = calib_equations_no_var_list
         mod.$𝓂.equations.calibration_parameters = calib_eq_parameters
+
+        # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
+        # calibration equation pairs captured during parsing. Use the parameter-at-end form.
+        _calib_eq_raw = $calib_equations
+        _calib_eq_params_raw = $calib_eq_parameters
+        _calib_original = Expr[]
+        for (_eq, _par) in zip(_calib_eq_raw, _calib_eq_params_raw)
+            if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
+                _lhs, _rhs = _eq.args[1], _eq.args[2]
+                push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
+            end
+        end
+        mod.$𝓂.equations.calibration_original = _calib_original
     
         # Keep calib_parameters in declaration order, append missing_params at end
         # This preserves declaration order for estimation and method of moments
