@@ -525,8 +525,19 @@ end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
     avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
+    use_symbolics = !𝓂.constants.post_parameters_macro.precompile
 
-    if !𝓂.constants.post_parameters_macro.precompile
+    if !𝓂.constants.post_parameters_macro.precompile && ss_symbolic_mode == :single_equation
+        # Large models can spend excessive memory building symbolic single-equation
+        # steady-state steps. Fall back to the lower-memory original-equation path.
+        if length(𝓂.constants.post_model_macro.var) >= 300
+            avoid_solve = true
+            symbolic_enabled = false
+            use_symbolics = false
+        end
+    end
+
+    if use_symbolics
         start_time = time()
 
         if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -558,6 +569,11 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
         write_ss_check_function!(𝓂)
 
         write_steady_state_solver_function!(𝓂, false, nothing, verbose = verbose, avoid_solve = avoid_solve)
+
+        if !𝓂.constants.post_parameters_macro.precompile
+            𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
+            set_up_obc_violation_function!(𝓂)
+        end
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
     end
