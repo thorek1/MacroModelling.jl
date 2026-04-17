@@ -1071,6 +1071,38 @@ function _convert_axis(axis, ::Type{S}) where {S <: Union{Symbol, String}}
     return S === String ? string.(axis) : Symbol.(axis)
 end
 
+"""
+    update_post_parameters_macro(p::post_parameters_macro; kwargs...)
+
+Return a new `post_parameters_macro` where the fields supplied as keyword
+arguments replace the corresponding entries on `p`. All other fields are
+preserved. Accepted keyword arguments:
+
+- `parameters_as_function_of_parameters`
+- `precompile`
+- `ss_symbolic_mode`
+- `ss_solver_parameters_algorithm`
+- `ss_solver_parameters_maxtime`
+- `guess`
+- `ss_calib_list`
+- `par_calib_list`
+- `bounds`
+"""
+function update_post_parameters_macro(p::post_parameters_macro; kwargs...)
+    return post_parameters_macro(
+        get(kwargs, :parameters_as_function_of_parameters, p.parameters_as_function_of_parameters),
+        get(kwargs, :precompile, p.precompile),
+        get(kwargs, :ss_symbolic_mode, p.ss_symbolic_mode),
+        get(kwargs, :ss_solver_parameters_algorithm, p.ss_solver_parameters_algorithm),
+        get(kwargs, :ss_solver_parameters_maxtime, p.ss_solver_parameters_maxtime),
+        get(kwargs, :guess, p.guess),
+        get(kwargs, :ss_calib_list, p.ss_calib_list),
+        get(kwargs, :par_calib_list, p.par_calib_list),
+        get(kwargs, :bounds, p.bounds),
+    )
+end
+
+
 function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
     var_axis_in = get(kwargs, :var_axis, p.var_axis)
     calib_axis_in = get(kwargs, :calib_axis, p.calib_axis)
