@@ -34,6 +34,34 @@ end
 end
 
 """
+Return `true` if the Julia `Expr`/`Symbol` contains a call that
+`make_equation_robust_to_domain_errors` would rewrite with a `➕` auxiliary
+variable. Used to gate the rewrite: when no hazard is present the rewrite is
+a no-op and can be skipped entirely, saving allocations and SymPy simplify
+calls on log-linear models.
+"""
+function expression_has_domain_hazards(expr)
+    hazard = false
+    postwalk(x -> begin
+        if x isa Expr && x.head == :call && length(x.args) >= 2
+            op = x.args[1]
+            if op === :log || op === :sqrt || op === :exp ||
+                op === :norminvcdf || op === :norminv || op === :qnorm ||
+                op === :erfcinv
+                hazard = true
+            elseif op === :^
+                # non-integer exponent triggers the rewrite path
+                if length(x.args) >= 3 && !(x.args[3] isa Int)
+                    hazard = true
+                end
+            end
+        end
+        x
+    end, expr)
+    return hazard
+end
+
+"""
 Mutable accumulator used during `write_steady_state_solver_function!` to collect step data.
 After all steps are appended, call `build_nsss_solver!(𝓂, builder, param_prep!)` to assign
 data into the model's functions, constants, and workspaces sub-structs.
@@ -1091,6 +1119,10 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
         end
     end
 
+    # Precomputed per-equation symbol sets used as a cheap Julia-side filter for
+    # SymPy solve/subs calls in the analytical branch. Aligned with ss_equations.
+    eq_symbol_sets = [Set{Symbol}(Symbol.(collect(e))) for e in eq_list]
+
     Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
     R̂ = Int[]
     for i in 1:n_blocks
@@ -1326,10 +1358,18 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                 minmax_rewritten = true
             end
 
-            if symbolics_data === nothing || avoid_solve || minmax_rewritten || count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if symbolics_data === nothing || avoid_solve || minmax_rewritten || count_ops(parsed_eq_to_solve_for) > 15
                 soll = nothing
             else
-                if eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
+                var_sym = Symbol(var_to_solve_for)
+                eq_idx_for_filter = eqs[:,eqs[2,:] .== n][1]
+                # Option A: skip SymPy solve when the variable is not a free symbol of the equation
+                if 1 <= eq_idx_for_filter <= length(eq_symbol_sets) && !(var_sym in eq_symbol_sets[eq_idx_for_filter])
+                    soll = nothing
+                # Option C: trivial block `var = 0` - bypass SymPy entirely
+                elseif parsed_eq_to_solve_for isa Symbol && parsed_eq_to_solve_for === var_sym
+                    soll = SPyPyC.Sym{PythonCall.Core.Py}[SPyPyC.Sym(0)]
+                elseif eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
                     soll = solve_symbolically(eq_to_solve, var_to_solve_for)
                 else
                     soll = nothing
@@ -1370,7 +1410,16 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
 
                 if sol_expr.is_number == true
                     if var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py} && sol_expr isa SPyPyC.Sym{PythonCall.Core.Py}
-                        ss_equations = [eq isa SPyPyC.Sym{PythonCall.Core.Py} ? replace_symbolic(eq, var_to_solve_for, sol_expr) : eq for eq in ss_equations]
+                        var_sym_for_sub = Symbol(var_to_solve_for)
+                        # Only do the expensive SymPy substitution on equations that actually
+                        # contain the variable (per the precomputed symbol sets).
+                        ss_equations = [
+                            (eq isa SPyPyC.Sym{PythonCall.Core.Py} &&
+                             k <= length(eq_symbol_sets) &&
+                             (var_sym_for_sub in eq_symbol_sets[k])) ?
+                                replace_symbolic(eq, var_to_solve_for, sol_expr) : eq
+                            for (k, eq) in enumerate(ss_equations)
+                        ]
                     end
 
                     push!(solved_vars, Symbol(var_to_solve_for))
@@ -1432,7 +1481,15 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
                     else
                         vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.constants.post_model_macro.➕_vars), Symbol[]]
 
-                        rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([val_expr], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+                        if expression_has_domain_hazards(val_expr)
+                            rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([val_expr], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+                        else
+                            rewritten_eqs = Union{Expr,Symbol}[val_expr]
+                            ss_and_aux_equations = Expr[]
+                            ss_and_aux_equations_dep = Expr[]
+                            ss_and_aux_equations_error = Expr[]
+                            ss_and_aux_equations_error_dep = Expr[]
+                        end
 
                         current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
                         if current_plus_count > plus_var_count_at_start

@@ -293,7 +293,19 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
 
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list_aux_SS) .> 1))
     for i in redundant_idx
-        for var_to_solve_for in redundant_vars[i]            
+        # Cheap Julia-side symbol set for this equation, used to skip SymPy work
+        # when a candidate variable does not actually appear in the equation.
+        eq_symbols = Set{Symbol}(get_symbols(Meta.parse(string(ss_equations[i]))))
+        for var_to_solve_for in redundant_vars[i]
+            var_sym_candidate = Symbol(var_to_solve_for)
+            if !(var_sym_candidate in eq_symbols)
+                # variable already absent (e.g. previous redundancy rewrites removed it)
+                if var_to_solve_for ∉ Symbolics.var_redundant_list[i]
+                    push!(Symbolics.var_redundant_list[i], var_to_solve_for)
+                end
+                continue
+            end
+
             if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
                 soll = nothing
             else
@@ -307,6 +319,8 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
             if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve_for)
                 ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for) # replace euler constant as it is not translated to julia properly
+                # refresh symbol set since the equation was rewritten
+                eq_symbols = Set{Symbol}(get_symbols(Meta.parse(string(ss_equations[i]))))
             end
 
         end
@@ -527,16 +541,6 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
     avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
     use_symbolics = !𝓂.constants.post_parameters_macro.precompile
 
-    if !𝓂.constants.post_parameters_macro.precompile && ss_symbolic_mode == :single_equation
-        # Large models can spend excessive memory building symbolic single-equation
-        # steady-state steps. Fall back to the lower-memory original-equation path.
-        if length(𝓂.constants.post_model_macro.var) >= 300
-            avoid_solve = true
-            symbolic_enabled = false
-            use_symbolics = false
-        end
-    end
-
     if use_symbolics
         start_time = time()
 
@@ -545,6 +549,11 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
         symbolics = create_symbols_eqs!(𝓂)
 
         remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = avoid_solve)
+
+        # Release Python-side temporaries accumulated by SymPy before moving to the
+        # codegen phase so peak RSS is bounded by the heavier of the two phases.
+        GC.gc()
+        PythonCall.GC.gc()
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
 
@@ -557,8 +566,11 @@ function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_
         write_steady_state_solver_function!(𝓂, symbolic_enabled, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
         𝓂.equations.obc_violation = write_obc_violation_equations(𝓂)
-        
+
         set_up_obc_violation_function!(𝓂)
+
+        GC.gc()
+        PythonCall.GC.gc()
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
     else
