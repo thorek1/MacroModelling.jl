@@ -661,33 +661,7 @@ Variables and parameters indexed with curly braces can be either referenced spec
 # Returns
 - `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
 """
-macro parameters(𝓂,ex...)
-    calib_equations = []
-    calib_equations_no_var = []
-    calib_values_no_var = []
-    
-    calib_parameters_no_var = Symbol[]
-    
-    calib_eq_parameters = Symbol[]
-    calib_equations_list = Expr[]
-    
-    ss_calib_list = []
-    par_calib_list = []
-    
-    
-    calib_equations_no_var_list = []
-    
-    ss_no_var_calib_list = []
-    par_no_var_calib_list = []
-    par_no_var_calib_rhs_list = []
-    
-    calib_parameters = Symbol[]
-    calib_values = Float64[]
-
-    par_defined_more_than_once = Set()
-    
-    bounded_vars = []
-
+macro parameters(𝓂, ex...)
     # parse options
     verbose = false
     silent = false
@@ -701,9 +675,9 @@ macro parameters(𝓂,ex...)
     ss_solver_parameters_maxtime = 120.0
 
     for exp in ex[1:end-1]
-        postwalk(x -> 
+        postwalk(x ->
             x isa Expr ?
-                x.head == :(=) ?  
+                x.head == :(=) ?
                     (x.args[1] == :ss_symbolic_mode && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
                         ss_symbolic_mode = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
                     (x.args[1] == :verbose && x.args[2] isa Bool) ?
@@ -720,7 +694,7 @@ macro parameters(𝓂,ex...)
                         guess = x.args[2] :
                     (x.args[1] == :ss_solver_parameters_algorithm && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
                         ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
-                    (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ? # allow Symbol, anonymous fn, or any callable expr
+                    (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ?
                         steady_state_function = esc(x.args[2]) :
                     (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
                         ss_solver_parameters_maxtime = x.args[2] :
@@ -734,498 +708,109 @@ macro parameters(𝓂,ex...)
     end
 
     @assert ss_symbolic_mode ∈ [:none, :single_equation, :full] "ss_symbolic_mode must be :none, :single_equation, or :full. Got $ss_symbolic_mode."
-    
+
     @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
-    
-    parameter_definitions = replace_indices(ex[end])
 
-    # parse parameter inputs
-    # label all variables parameters and exogenous variables and timings across all equations
-    postwalk(x -> 
-        x isa Expr ?
-            x.head == :(=) ? 
-                x.args[1] isa Symbol ?
-                    typeof(x.args[2]) ∈ [Int, Float64] ?
-                        begin # normal calibration by setting values of parameters
-                            push!(calib_values,x.args[2])
-                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end 
-                            push!(calib_parameters,x.args[1]) 
-                        end :
-                    x.args[2] isa Symbol ?
-                        begin # normal calibration by setting values of parameters
-                            push!(calib_values_no_var,unblock(x.args[2]))
-                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
-                            push!(calib_parameters_no_var,x.args[1])
-                        end :
-                    x.args[2].args[1] == :| ?
-                        x :
-                    begin # normal calibration by setting values of parameters
-                        push!(calib_values_no_var,unblock(x.args[2]))
-                        if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
-                        push!(calib_parameters_no_var,x.args[1])
-                    end :
-                x.args[1].args[1] == :| ?
-                    begin # calibration by targeting SS values (conditional parameter at the beginning)
-                        if x.args[1].args[2] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1].args[2]) end
-                        push!(calib_eq_parameters,x.args[1].args[2])
-                        push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
-                    end :
-                x :
-            x.head == :comparison ? 
-                push!(bounded_vars,x) :
-            x.head == :call ?
-                issubset([x.args[1]], [:(<) :(>) :(<=) :(>=)]) ?
-                    push!(bounded_vars,x) :
-                x :
-            x :
-        x,
-    parameter_definitions)
+    parameter_block = ex[end]
 
-
-
-    postwalk(x -> 
-        x isa Expr ?
-            x.head == :(=) ? 
-                typeof(x.args[2]) ∈ [Int, Float64] ?
-                    x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesn't work really well yet
-                    x.args[2] isa Expr ?
-                        x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
-                            begin # this is calibration by targeting SS values (conditional parameter at the end)
-                                if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                                push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
-                                push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
-                            end :
-                            x :
-                        x :
-                x.args[2].head == :block ?
-                    x.args[1].args[1] == :| ?
-                        x :
-                    x.args[2].args[2].args[1] == :| ?
-                        begin # this is calibration by targeting SS values (conditional parameter at the end)
-                            if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
-                            push!(calib_eq_parameters,x.args[2].args[end].args[end])
-                            push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
-                        end :
-                    begin 
-                        @warn "Invalid parameter input ignored: " * repr(x)
-                        x
-                    end :
-                x.args[2].head == :call ?
-                    x.args[1].args[1] == :| ?
-                            x :
-                    begin # this is calibration by targeting SS values (conditional parameter at the end)
-                        if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                        push!(calib_eq_parameters, x.args[2].args[end])
-                        push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
-                    end :
-                x :
-            x :
-        x,
-    parameter_definitions)
-    
-    @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
-    
-    # Check that no parameter names conflict with SymPyWorkspace reserved names
-    all_params = union(calib_parameters, calib_parameters_no_var, calib_eq_parameters)
-    reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
-    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
-    
-    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to become a Float64)
-    for (i, v) in enumerate(calib_values_no_var)
-        out = try eval(v) catch e end
-        if out isa Float64
-            push!(calib_parameters, calib_parameters_no_var[i])
-            push!(calib_values, out)
-        else
-            push!(calib_equations_no_var, Expr(:(=),calib_parameters_no_var[i], calib_values_no_var[i]))
-        end
-    end
-    
-    calib_parameters_no_var = setdiff(calib_parameters_no_var, calib_parameters)
-    
-    for (i, cal_eq) in enumerate(calib_equations)
-        ss_tmp = Set{Symbol}()
-        par_tmp = Set()
-    
-        # parse SS variables
-        postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss_tmp,x.args[1]) :
-                    x : 
-                x :
-            x,
-        cal_eq)
-    
-        # separate out parameters
-        postwalk(x -> 
-            x isa Symbol ? 
-                occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
-                    x :
-                    begin
-                        diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
-                        if !isempty(diffed)
-                            push!(par_tmp,diffed[1])
-                        end
-                    end :
-            x,
-        cal_eq)
-    
-        push!(ss_calib_list,ss_tmp)
-        push!(par_calib_list,par_tmp)
-        
-        # write down calibration equations
-        prs_ex = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :(=) ? 
-                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                        x.head == :ref ?
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ? # K[ss] => K
-                        x.args[1] : 
-                    x : 
-                x.head == :call ?
-                    x.args[1] == :* ?
-                        x.args[2] isa Int ?
-                            x.args[3] isa Int ?
-                                x :
-                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
-                        x :
-                    x :
-                unblock(x) : 
-            x,
-            cal_eq)
-        push!(calib_equations_list,unblock(prs_ex))
-    end
-    
-    # parse calibration equations without a variable present: eta = Pi_bar /2 (Pi_bar is also a parameter)
-    for (i, cal_eq) in enumerate(calib_equations_no_var)
-        ss_tmp = Set()
-        par_tmp = Set()
-    
-        # parse SS variables
-        postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss_tmp,x.args[1]) :
-                    x : 
-                x :
-            x,
-            cal_eq)
-    
-        # get SS variables per non_linear_solved_vals
-        postwalk(x -> 
-        x isa Symbol ? 
-            occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
-                x :
-                begin
-                    diffed = setdiff([x],ss_tmp)
-                    if !isempty(diffed)
-                        push!(par_tmp,diffed[1])
-                    end
-                end :
-        x,
-        cal_eq)
-    
-        push!(ss_no_var_calib_list,ss_tmp)
-        push!(par_no_var_calib_list, setdiff(par_tmp,calib_parameters))
-        push!(par_no_var_calib_rhs_list, intersect(par_tmp,calib_parameters))
-        
-        # write down calibration equations
-        prs_ex = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :ref ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                    x.args[1] : 
-                x : 
-                x.head == :call ?
-                    x.args[1] == :* ?
-                        x.args[2] isa Int ?
-                            x.args[3] isa Int ?
-                                x :
-                            :($(x.args[3]) * $(x.args[2])) :
-                        x :
-                    x :
-                unblock(x) : 
-            x,
-            cal_eq)
-        push!(calib_equations_no_var_list,unblock(prs_ex))
-    end
-    
-    # arrange calibration equations where they use parameters defined in parameters block so that they appear in right order (Pi_bar is defined before it is used later on: eta = Pi_bar / 2)
-    if length(calib_equations_no_var_list) > 0
-        incidence_matrix = fill(0,length(calib_parameters_no_var),length(calib_parameters_no_var))
-        
-        for i in 1:length(calib_parameters_no_var)
-            for k in 1:length(calib_parameters_no_var)
-                incidence_matrix[i,k] = collect(calib_parameters_no_var)[i] ∈ collect(par_no_var_calib_list)[k]
-            end
-        end
-        
-        Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
-        
-        @assert length(Q) == n_blocks "Check the parameter definitions. They are either incomplete or have more than only the defined parameter on the LHS."
-        
-        calib_equations_no_var_list = calib_equations_no_var_list[Q]
-    end
-    
-
-
-    #parse bounds
-    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
-
-    for bound in bounded_vars
-        postwalk(x -> 
-        x isa Expr ?
-            x.head == :comparison ? 
-                x.args[2] == :(<) ?
-                    x.args[4] == :(<) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1]+eps(Float32), x.args[5]-eps(Float32))
-                        end :
-                    x.args[4] == :(<=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1]+eps(Float32), x.args[5])
-                        end :
-                    x :
-                x.args[2] == :(<=) ?
-                    x.args[4] == :(<) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1], x.args[5]-eps(Float32))
-                        end :
-                    x.args[4] == :(<=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1], x.args[5])
-                        end :
-                    x :
-
-                x.args[2] == :(>) ?
-                    x.args[4] == :(>) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5]+eps(Float32), x.args[1]-eps(Float32))
-                        end :
-                    x.args[4] == :(>=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5]+eps(Float32), x.args[1])
-                        end :
-                    x :
-                x.args[2] == :(>=) ?
-                    x.args[4] == :(>) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5], x.args[1]-eps(Float32))
-                        end :
-                    x.args[4] == :(>=) ?
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5], x.args[1])
-                        end :
-                    x :
-                x :
-
-            x.head ==  :call ? 
-                x.args[1] == :(<) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3]-eps(Float32))) : (-1e12+rand(), x.args[3]-eps(Float32))
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]+eps(Float32)), min(bounds[x.args[3]][2], 1e12+rand())) : (x.args[2]+eps(Float32), 1e12+rand())
-                        end :
-                    x :
-                x.args[1] == :(>) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]+eps(Float32)), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3]+eps(Float32), 1e12+rand())
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2]-eps(Float32))) : (-1e12+rand(), x.args[2]-eps(Float32))
-                        end :
-                    x :
-                x.args[1] == :(>=) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3], 1e12+rand())
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2])) : (-1e12+rand(), x.args[2])
-                        end :
-                    x :
-                x.args[1] == :(<=) ?
-                    x.args[2] isa Symbol ? 
-                        begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3])) : (-1e12+rand(), x.args[3])
-                        end :
-                    x.args[3] isa Symbol ? 
-                        begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]), min(bounds[x.args[3]][2],1e12+rand())) : (x.args[2],1e12+rand())
-                        end :
-                    x :
-                x :
-            x :
-        x,bound)
-    end
-
+    # Parsing of the calibration block is delegated to
+    # `process_parameter_definitions` in src/parser/equation_processing.jl,
+    # which is also used by the equation-modification reprocess pipeline.
     return quote
         mod = @__MODULE__
 
-        if any(contains.(string.(mod.$𝓂.constants.post_model_macro.var), "ᵒᵇᶜ"))
-            push!($calib_parameters, :activeᵒᵇᶜshocks)
-            push!($calib_values, 0)
-        end
-
-        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.constants.post_model_macro.parameters_in_equations; mod.$𝓂.constants.post_model_macro.var])
-        
-        # Calculate missing parameters instead of asserting
-        # Include parameters from:
-        # 1. par_calib_list - parameters used in calibration equations (e.g., K_ss in "K[ss] = K_ss | beta")
-        # 2. parameters_in_equations - parameters used in model equations
-        # 3. par_no_var_calib_list - parameters used in parameter definitions (e.g., rho{H}{H} in "rho{F}{F} = rho{H}{H}")
-        # Subtract:
-        # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
-        # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
-        # 3. calib_eq_parameters - parameters determined by calibration equations (e.g., "beta" in "K[ss] = K_ss | beta")
-        # Start with directly required parameters
-        all_required_params = union(
-            reduce(union, par_calib_list, init = Set{Symbol}()),
-            reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
-            Set{Symbol}(mod.$𝓂.constants.post_model_macro.parameters_in_equations)
-        )
-        
-        # Add parameters from parameter definitions, but only if the target parameter is needed
-        # This handles the case where parameter X = f(Y, Z) but X is not used in the model.
-        # In that case, Y and Z should not be required either.
-        # We need to check if target is in all_required_params OR in calib_eq_parameters (parameters used in calibration equations)
-        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
-        
-        all_required_params = union(all_required_params, par_no_var_calib_filtered)
-        
-        defined_params = union(
-            Set{Symbol}(calib_parameters),
-            Set{Symbol}(calib_parameters_no_var),
-            Set{Symbol}(calib_eq_parameters)
+        local _parsed = MacroModelling.process_parameter_definitions(
+            $(QuoteNode(parameter_block)),
+            mod.$𝓂.constants.post_model_macro,
         )
 
-        ignored_params = collect(setdiff(defined_params, all_required_params))
-
-        if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
-
-        missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
-        missing_params = sort(missing_params_unsorted)
-        
-        has_missing_parameters = length(missing_params) > 0
-
-        guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
+        # Merge guess option with any guess already on the model.
+        local _guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
         if isa($guess, Dict{String, <:Real})
-            guess_dict = Dict{Symbol, Float64}()
+            _guess_dict = Dict{Symbol, Float64}()
             for (key, value) in $guess
                 if key isa String
                     key = replace_indices(key)
                 end
-                guess_dict[replace_indices(key)] = value
+                _guess_dict[replace_indices(key)] = value
             end
         elseif isa($guess, Dict{Symbol, <:Real})
-            guess_dict = $guess
+            _guess_dict = $guess
         end
 
-        bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
-        for (k,v) in $bounds
-            bounds_dict[k] = haskey(bounds_dict, k) ? (max(bounds_dict[k][1], v[1]), min(bounds_dict[k][2], v[2])) : (v[1], v[2])
+        # Merge bounds returned by the parser with bounds already on the model.
+        local _bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
+        for (k, v) in _parsed.bounds
+            _bounds_dict[k] = haskey(_bounds_dict, k) ?
+                (max(_bounds_dict[k][1], v[1]), min(_bounds_dict[k][2], v[2])) :
+                (v[1], v[2])
         end
-        
-        invalid_bounds = Symbol[]
 
-        for (k,v) in bounds_dict
+        local _invalid_bounds = Symbol[]
+        for (k, v) in _bounds_dict
             if v[1] >= v[2]
-                push!(invalid_bounds, k)
+                push!(_invalid_bounds, k)
             end
         end
+        @assert isempty(_invalid_bounds) "Invalid bounds: " * repr(_invalid_bounds)
 
-        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
-        
         mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
-            calib_parameters_no_var,
+            _parsed.calib_parameters_no_var,
             $precompile,
             $(QuoteNode(ss_symbolic_mode)),
             $(QuoteNode(ss_solver_parameters_algorithm)),
             $ss_solver_parameters_maxtime,
-            guess_dict,
-            ss_calib_list,
-            par_calib_list,
-            # $ss_no_var_calib_list,
-            # $par_no_var_calib_list,
-            bounds_dict,
+            _guess_dict,
+            _parsed.ss_calib_list,
+            _parsed.par_calib_list,
+            _bounds_dict,
         )
 
-        # Update equations struct with calibration fields
-        mod.$𝓂.equations.calibration = calib_equations_list
-        mod.$𝓂.equations.calibration_no_var = calib_equations_no_var_list
-        mod.$𝓂.equations.calibration_parameters = calib_eq_parameters
-
-        # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
-        # calibration equation pairs captured during parsing. Use the parameter-at-end form.
-        _calib_eq_raw = $calib_equations
-        _calib_eq_params_raw = $calib_eq_parameters
-        _calib_original = Expr[]
-        for (_eq, _par) in zip(_calib_eq_raw, _calib_eq_params_raw)
-            if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
-                _lhs, _rhs = _eq.args[1], _eq.args[2]
-                push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
-            end
-        end
-        mod.$𝓂.equations.calibration_original = _calib_original
-    
-        # Keep calib_parameters in declaration order, append missing_params at end
-        # This preserves declaration order for estimation and method of moments
-        all_params = vcat(calib_parameters, missing_params)
-        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
-
-        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+        mod.$𝓂.equations.calibration            = _parsed.equations.calibration
+        mod.$𝓂.equations.calibration_no_var     = _parsed.equations.calibration_no_var
+        mod.$𝓂.equations.calibration_parameters = _parsed.equations.calibration_parameters
+        mod.$𝓂.equations.calibration_original   = _parsed.equations.calibration_original
 
         mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
             mod.$𝓂.constants.post_complete_parameters;
-            parameters = all_params[defined_params_idx],
-            missing_parameters = missing_params,
+            parameters         = _parsed.parameters,
+            missing_parameters = _parsed.missing_parameters,
         )
-        mod.$𝓂.parameter_values = all_values[defined_params_idx]
-        
-        # Set custom steady state function if provided
-        # if !isnothing($steady_state_function)
+        mod.$𝓂.parameter_values = _parsed.parameter_values
+
+        local _missing_params = _parsed.missing_parameters
+        local _has_missing_parameters = !isempty(_missing_params)
+
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
-        # end
 
         mod.$𝓂.functions.functions_written = false
 
-        # time_symbolics = @elapsed 
-        # time_rm_red_SS_vars = @elapsed
         if !isnothing($steady_state_function)
             write_ss_check_function!(mod.$𝓂)
         else
-            if !has_missing_parameters
+            if !_has_missing_parameters
                 set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, ss_symbolic_mode = $(QuoteNode(ss_symbolic_mode)))
             end
         end
 
-        if !has_missing_parameters
+        if !_has_missing_parameters
             opts = merge_calculation_options(verbose = $verbose)
-            
+
             SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
-            
+
             write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
 
             mod.$𝓂.functions.functions_written = true
         end
 
-        if has_missing_parameters && $report_missing_parameters
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
+        if _has_missing_parameters && $report_missing_parameters
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(_missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
         end
 
-        if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end
+        if !$silent && $report_missing_parameters
+            Base.show(mod.$𝓂)
+        end
+
         nothing
     end
 end
