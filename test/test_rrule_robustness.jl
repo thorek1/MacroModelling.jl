@@ -2,6 +2,7 @@ using Test
 using MacroModelling
 import Zygote
 import ForwardDiff
+import FiniteDifferences
 import LinearAlgebra as ℒ
 
 using Random, AxisKeys
@@ -56,13 +57,20 @@ include("../models/Ireland_2004.jl")
             zy_grad = Zygote.gradient(f, test_point)[1]
             MacroModelling.invalidate_cache_validity!(m)
             fd_grad = ForwardDiff.gradient(f, test_point)
+            MacroModelling.invalidate_cache_validity!(m)
+            fi_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(5, 1), f, test_point)[1]
 
             @test all(isfinite, zy_grad)
             @test all(isfinite, fd_grad)
+            @test all(isfinite, fi_grad)
 
-            rel_err = maximum(abs.(zy_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
-            println("  IRF $alg: Zygote vs ForwardDiff rel err = $rel_err")
-            @test rel_err < 1e-6
+            zy_fd = maximum(abs.(zy_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
+            zy_fi = maximum(abs.(zy_grad .- fi_grad) ./ max.(abs.(fi_grad), 1e-10))
+            fd_fi = maximum(abs.(fd_grad .- fi_grad) ./ max.(abs.(fi_grad), 1e-10))
+            println("  IRF $alg: Zy-FD=$zy_fd  Zy-FI=$zy_fi  FD-FI=$fd_fi")
+            @test zy_fd < 1e-6
+            @test zy_fi < 1e-4  # FiniteDiff has lower precision
+            @test fd_fi < 1e-4
         end
     end
 end
@@ -155,14 +163,21 @@ model_configs = [
             zy_grad = Zygote.gradient(f, test_point)[1]
             MacroModelling.invalidate_cache_validity!(m)
             fd_grad = ForwardDiff.gradient(f, test_point)
+            MacroModelling.invalidate_cache_validity!(m)
+            fi_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(5, 1), f, test_point)[1]
 
             @test !isnothing(zy_grad)
             @test all(isfinite, zy_grad)
             @test all(isfinite, fd_grad)
+            @test all(isfinite, fi_grad)
 
-            rel_err = maximum(abs.(zy_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
-            println("  $(cfg.name): Zygote vs ForwardDiff combined gradient rel err = $rel_err")
-            @test rel_err < 1e-6
+            zy_fd = maximum(abs.(zy_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
+            zy_fi = maximum(abs.(zy_grad .- fi_grad) ./ max.(abs.(fi_grad), 1e-10))
+            fd_fi = maximum(abs.(fd_grad .- fi_grad) ./ max.(abs.(fi_grad), 1e-10))
+            println("  $(cfg.name): Zy-FD=$zy_fd  Zy-FI=$zy_fi  FD-FI=$fd_fi")
+            @test zy_fd < 1e-6
+            @test zy_fi < 1e-4
+            @test fd_fi < 1e-4
         end
     end
 end
