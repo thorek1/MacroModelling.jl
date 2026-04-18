@@ -19,25 +19,6 @@
 %   variance_decomposition_var_names.csv - variable names for var decomp rows
 %   variance_decomposition_exo_names.csv - shock names for var decomp columns
 
-%% --- Helper to get name from endo_names (handles char matrix or cell array) ---
-function name = get_endo_name(idx)
-    global M_;
-    if iscell(M_.endo_names)
-        name = M_.endo_names{idx};
-    else
-        name = deblank(M_.endo_names(idx,:));
-    end
-end
-
-function name = get_exo_name(idx)
-    global M_;
-    if iscell(M_.exo_names)
-        name = M_.exo_names{idx};
-    else
-        name = deblank(M_.exo_names(idx,:));
-    end
-end
-
 if ~exist('output_dir', 'var')
     output_dir = [model_name '_results'];
 end
@@ -49,13 +30,23 @@ n_exo  = M_.exo_nbr;
 %% --- Variable names ---
 fid = fopen(fullfile(output_dir, 'var_names.csv'), 'w');
 for i = 1:n_endo
-    fprintf(fid, '%s\n', get_endo_name(i));
+    if iscell(M_.endo_names)
+        name = M_.endo_names{i};
+    else
+        name = deblank(M_.endo_names(i,:));
+    end
+    fprintf(fid, '%s\n', name);
 end
 fclose(fid);
 
 fid = fopen(fullfile(output_dir, 'exo_names.csv'), 'w');
 for i = 1:n_exo
-    fprintf(fid, '%s\n', get_exo_name(i));
+    if iscell(M_.exo_names)
+        name = M_.exo_names{i};
+    else
+        name = deblank(M_.exo_names(i,:));
+    end
+    fprintf(fid, '%s\n', name);
 end
 fclose(fid);
 
@@ -82,7 +73,13 @@ dlmwrite(fullfile(output_dir, 'ghu.csv'), ghu_decl, 'precision', '%.16g');
 state_var_idx = oo_.dr.state_var;
 fid = fopen(fullfile(output_dir, 'state_var_names.csv'), 'w');
 for i = 1:length(state_var_idx)
-    fprintf(fid, '%s\n', get_endo_name(state_var_idx(i)));
+    idx = state_var_idx(i);
+    if iscell(M_.endo_names)
+        name = M_.endo_names{idx};
+    else
+        name = deblank(M_.endo_names(idx,:));
+    end
+    fprintf(fid, '%s\n', name);
 end
 fclose(fid);
 
@@ -120,13 +117,23 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
     n_vd_rows = size(oo_.variance_decomposition, 1);
     fid = fopen(fullfile(output_dir, 'variance_decomposition_var_names.csv'), 'w');
     for i = 1:n_vd_rows
-        fprintf(fid, '%s\n', get_endo_name(i));
+        if iscell(M_.endo_names)
+            name = M_.endo_names{i};
+        else
+            name = deblank(M_.endo_names(i,:));
+        end
+        fprintf(fid, '%s\n', name);
     end
     fclose(fid);
 
     fid = fopen(fullfile(output_dir, 'variance_decomposition_exo_names.csv'), 'w');
     for i = 1:n_exo
-        fprintf(fid, '%s\n', get_exo_name(i));
+        if iscell(M_.exo_names)
+            name = M_.exo_names{i};
+        else
+            name = deblank(M_.exo_names(i,:));
+        end
+        fprintf(fid, '%s\n', name);
     end
     fclose(fid);
 end
