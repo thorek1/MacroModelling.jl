@@ -2634,7 +2634,20 @@ end
 
 end # dispatch_doctor
 
-# @setup_workload begin
+@setup_workload begin
+    @compile_workload begin
+        @model RBC_for_precompile precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
+
+        @parameters RBC_for_precompile silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
+    end
+end
 #     # Putting some things in `setup` can reduce the size of the
 #     # precompile file and potentially make loading faster.
 #     @model FS2000 precompile = true begin
