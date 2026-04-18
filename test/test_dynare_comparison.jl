@@ -9,8 +9,25 @@ const IRF_PERIODS = 40
 # Helper: check Octave + Dynare availability
 # ─────────────────────────────────────────────
 function check_octave_dynare()
+    octave_cmd = something(Sys.which("octave"), Sys.which("octave-cli"))
+    octave_cmd === nothing && return false
+
+    dynare_probe = """
+        dynare_paths = {'/usr/lib/dynare/matlab', '/usr/share/dynare/matlab', '/usr/local/lib/dynare/matlab'};
+        for i = 1:length(dynare_paths)
+            if exist(dynare_paths{i}, 'dir')
+                addpath(dynare_paths{i});
+            end
+        end
+        if exist('dynare', 'file') == 2
+            disp('dynare_ok');
+        else
+            disp('no_dynare');
+        end
+    """
+
     try
-        out = read(`octave --no-gui --eval "try; dynare_version(); disp('dynare_ok'); catch; disp('no_dynare'); end"`, String)
+        out = read(Cmd([octave_cmd, "--no-gui", "--quiet", "--eval", dynare_probe]), String)
         return contains(out, "dynare_ok")
     catch
         return false

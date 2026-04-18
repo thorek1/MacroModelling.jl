@@ -170,7 +170,8 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y dynare
+          sudo apt-get install -y octave dynare
+          octave --version
 
       - name: Remove Pigeons from non-pigeons runs
         if: contains(matrix.test_set, 'pigeons') == false
