@@ -1,8 +1,14 @@
 using Test
 using MacroModelling
 import Turing
+using MCMCChains
 using PythonCall
 using DelimitedFiles, AxisKeys
+
+const NESSAI_NLIVE = 1000
+const NESSAI_UNINFORMED_POOLSIZE = 1000 # 64
+const NESSAI_FLOW_POOLSIZE = 1000 # 64
+const NESSAI_FLOW_DRAWSIZE = 1000 # 64
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nessai into PythonCall's Python environment
@@ -133,6 +139,10 @@ from nessai.model import Model
 class SW07NessaiModel(Model):
     # SW07 DSGE model for nessai nested sampling.
 
+    allow_vectorised = False
+    allow_vectorised_prior = False
+    likelihood_chunksize = 1
+
     def __init__(self, param_names, param_bounds, jl_log_prior, jl_log_likelihood):
         self.names = list(param_names)
         self.bounds = dict(param_bounds)
@@ -174,6 +184,7 @@ sw07_nessai = pyimport("sw07_nessai_model")
 # Set up and run nessai FlowSampler
 # ──────────────────────────────────────────────────────────────────────────────
 FlowSampler = pyimport("nessai.flowsampler").FlowSampler
+RejectionProposal = pyimport("nessai.proposal").RejectionProposal
 np = pyimport("numpy")
 
 names_py = [string(n) for n in param_names]
@@ -182,28 +193,71 @@ bounds_py = Dict(string(n) => (Float64(minimum(d)), Float64(maximum(d)))
 
 model = sw07_nessai.SW07NessaiModel(names_py, bounds_py, nessai_log_prior, nessai_log_likelihood)
 
-output_dir = mktempdir()
-println("Running nessai FlowSampler (nlive=1000) on SW07 linear model...")
-fs = FlowSampler(model; output=output_dir, nlive=1000, seed=1234, resume=false)
-fs.run()
-println("nessai sampling completed")
+skip_checkpoint(::Any) = nothing
+
+log_evidence = NaN
+posterior_samples = nothing
+n_posterior = 0
+mcmcchains_summary = nothing
+fs = nothing
+
+mktempdir() do output_dir
+    println("Running full nessai estimation on SW07 linear model...")
+    fs = FlowSampler(model;
+        output = output_dir,
+        nlive = NESSAI_NLIVE,
+        seed = 1234,
+        pytorch_threads = 1,
+        resume = false,
+        disable_vectorisation = true,
+        # checkpointing = false,
+        # checkpoint_callback = skip_checkpoint,
+        # uninformed_proposal = RejectionProposal, # this is ok
+        
+        # uninformed_proposal_kwargs = Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE), # this is ok
+        poolsize = NESSAI_FLOW_POOLSIZE,
+        drawsize = NESSAI_FLOW_DRAWSIZE,
+        # update_poolsize = false,
+        # max_poolsize_scale = 1,
+        plot = false,
+        proposal_plots = false,
+        # memory = false, # this is ok
+    )
+    fs.run(plot = false, save = false)
+    println("nessai estimation completed")
+
+    log_evidence = pyconvert(Float64, fs.logZ)
+    posterior_samples = fs.posterior_samples
+    n_posterior = pyconvert(Int, posterior_samples.size)
+end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Extract results and test
 # ──────────────────────────────────────────────────────────────────────────────
-log_evidence = pyconvert(Float64, fs.ns.log_evidence)
-posterior_samples = fs.ns.posterior_samples
-n_posterior = pyconvert(Int, posterior_samples.size)
-
 println("Log evidence: $log_evidence")
 println("Number of posterior samples: $n_posterior")
-println("Posterior means:")
-for name in param_names
-    param_mean = pyconvert(Float64, np.mean(posterior_samples[string(name)]))
-    println("  $name: $param_mean")
+if n_posterior > 0
+    println("Posterior means:")
+    for name in param_names
+        param_mean = pyconvert(Float64, np.mean(posterior_samples[string(name)]))
+        println("  $name: $param_mean")
+    end
+
+    posterior_matrix = reduce(hcat, [
+        pyconvert(Vector{Float64}, posterior_samples[string(name)]) for name in param_names
+    ])
+    posterior_chain = MCMCChains.Chains(posterior_matrix, param_names)
+    mcmcchains_summary = MCMCChains.summarize(posterior_chain; sections = [:parameters])
+    println("MCMCChains summary:")
+    show(stdout, MIME"text/plain"(), mcmcchains_summary)
+    println()
+else
+    println("No posterior samples returned")
 end
 
 @testset "nessai SW07 linear estimation" begin
     @test isfinite(log_evidence)
     @test n_posterior > 0
+    @test !isnothing(mcmcchains_summary)
+    @test !isnothing(fs)
 end
