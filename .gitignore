@@ -78,4 +78,5 @@ test/data/TED---Output-Labor-and-Labor-Productivity-1950-2015.xlsx
 estimation_results
 juliaup.sh.julia_repl/
 tasks/_repl_cmd.jl
+tasks/dynare_comparison/
 .julia_repl
