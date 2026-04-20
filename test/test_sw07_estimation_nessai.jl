@@ -204,8 +204,8 @@ posterior_samples = nothing
 n_posterior = 0
 mcmcchains_summary = nothing
 fs = nothing
-
-mktempdir() do output_dir
+output_dir = pwd()
+# mktempdir() do output_dir
     println("Running full nessai estimation on SW07 linear model...")
     configure_nessai_logger(
         output = output_dir,
@@ -241,7 +241,7 @@ mktempdir() do output_dir
     log_evidence = pyconvert(Float64, fs.logZ)
     posterior_samples = fs.posterior_samples
     n_posterior = pyconvert(Int, posterior_samples.size)
-end
+# end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Extract results and test
