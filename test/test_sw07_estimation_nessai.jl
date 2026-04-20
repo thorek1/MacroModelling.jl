@@ -9,6 +9,8 @@ const NESSAI_NLIVE = 1000
 const NESSAI_UNINFORMED_POOLSIZE = 1000 # 64
 const NESSAI_FLOW_POOLSIZE = 1000 # 64
 const NESSAI_FLOW_DRAWSIZE = 1000 # 64
+const NESSAI_LOG_LEVEL = "INFO"
+const NESSAI_LOGGING_INTERVAL = 500
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nessai into PythonCall's Python environment
@@ -185,6 +187,7 @@ sw07_nessai = pyimport("sw07_nessai_model")
 # ──────────────────────────────────────────────────────────────────────────────
 FlowSampler = pyimport("nessai.flowsampler").FlowSampler
 RejectionProposal = pyimport("nessai.proposal").RejectionProposal
+configure_nessai_logger = pyimport("nessai.utils.logging").configure_logger
 np = pyimport("numpy")
 
 names_py = [string(n) for n in param_names]
@@ -203,6 +206,12 @@ fs = nothing
 
 mktempdir() do output_dir
     println("Running full nessai estimation on SW07 linear model...")
+    configure_nessai_logger(
+        output = output_dir,
+        label = "",
+        log_level = NESSAI_LOG_LEVEL,
+        stream = "stdout",
+    )
     fs = FlowSampler(model;
         output = output_dir,
         nlive = NESSAI_NLIVE,
@@ -210,6 +219,8 @@ mktempdir() do output_dir
         pytorch_threads = 1,
         resume = false,
         disable_vectorisation = true,
+        logging_interval = NESSAI_LOGGING_INTERVAL,
+        log_on_iteration = true,
         # checkpointing = false,
         # checkpoint_callback = skip_checkpoint,
         # uninformed_proposal = RejectionProposal, # this is ok
