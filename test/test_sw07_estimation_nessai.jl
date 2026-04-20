@@ -6,9 +6,10 @@ using PythonCall
 using DelimitedFiles, AxisKeys
 
 const NESSAI_NLIVE = 1000
-const NESSAI_UNINFORMED_POOLSIZE = 1000 # 64
-const NESSAI_FLOW_POOLSIZE = 1000 # 64
-const NESSAI_FLOW_DRAWSIZE = 1000 # 64
+const NESSAI_UNINFORMED_POOLSIZE = 128
+const NESSAI_FLOW_POOLSIZE = 128
+const NESSAI_FLOW_DRAWSIZE = 128
+const NESSAI_MAXIMUM_UNINFORMED = 4000
 const NESSAI_LOG_LEVEL = "INFO"
 const NESSAI_LOGGING_INTERVAL = 500
 
@@ -223,16 +224,16 @@ mktempdir() do output_dir
         log_on_iteration = true,
         # checkpointing = false,
         # checkpoint_callback = skip_checkpoint,
-        # uninformed_proposal = RejectionProposal, # this is ok
-        
-        # uninformed_proposal_kwargs = Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE), # this is ok
+        maximum_uninformed = NESSAI_MAXIMUM_UNINFORMED,
+        uninformed_proposal = RejectionProposal,
+        uninformed_proposal_kwargs = Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE),
         poolsize = NESSAI_FLOW_POOLSIZE,
         drawsize = NESSAI_FLOW_DRAWSIZE,
-        # update_poolsize = false,
-        # max_poolsize_scale = 1,
+        update_poolsize = false,
+        max_poolsize_scale = 1,
         plot = false,
         proposal_plots = false,
-        # memory = false, # this is ok
+        # memory = false,
     )
     fs.run(plot = false, save = false)
     println("nessai estimation completed")
