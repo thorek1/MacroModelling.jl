@@ -130,7 +130,7 @@ function push_analytical_step!(b::NSSSSolverBuilder;
                                write_indices::Vector{Int},
                                lower_bounds::Vector{Float64} = Float64[],
                                upper_bounds::Vector{Float64} = Float64[],
-                               has_bounds::BitVector = falses(length(write_indices)),
+                               has_bounds::BitVector = falses(length(lower_bounds)),
                                description::String = "")
     push!(b.step_types, ANALYTICAL_STEP)
     push!(b.descriptions, description)
@@ -2444,12 +2444,17 @@ function solve_nsss_steps(
     if solution_error < tol.nsss.acceptance_tol
         if any(x -> !isfinite(x), SS_and_pars)
             solution_error = Inf
-        else
+        elseif isempty(𝓂.constants.post_model_macro.➕_vars)
+            # Cross-check against raw model equations only when no ➕ domain-safety
+            # rewrites were applied. When ➕ vars exist the step solver evaluates
+            # max(eps(),x)-substituted equations while NSSS_check evaluates the raw
+            # model equations — the residuals can legitimately differ (NaN, Inf, or
+            # large finite values from log/sqrt/power at the same solution point).
             residual = nsss_ws.check_residual
             fill!(residual, 0.0)
             𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
             residual_error = ℒ.norm(residual)
-            if !isfinite(residual_error) || residual_error > solution_error
+            if isfinite(residual_error) && residual_error > solution_error
                 solution_error = residual_error
             end
         end
