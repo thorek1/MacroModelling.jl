@@ -1972,7 +1972,13 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     # in symbolically simplified equations) but all finite residuals are below
     # tolerance, treat NaN entries as zero. This occurs when remove_redundant_SS_vars!
     # substitutes variables into equations creating indeterminate forms at the solution.
-    if isnan(sol_minimum)
+    # Only apply this when we have an actual cached solution for these parameters
+    # (i.e. guess_and_pars_solved_vars[2] is not the all-Inf placeholder); otherwise
+    # the guess is just a clamped default that may coincidentally produce a NaN+zeros
+    # residual (e.g. 1 - R*beta/Pi at [Pi=0, R=0] gives NaN while companion equations
+    # evaluate to ~0), and accepting it would yield a spurious "solution" of all zeros.
+    has_cached_solution = sum(abs, guess_and_pars_solved_vars[2]) != Inf
+    if has_cached_solution && isnan(sol_minimum)
         has_nonnan_violation = false
         for i in eachindex(res)
             v = res[i]
