@@ -20,6 +20,7 @@ const DYNESTY_SAMPLE = "rslice"
 const DYNESTY_DLOGZ_INIT = 0.1
 const DYNESTY_BOOTSTRAP = 0
 const DYNESTY_WEIGHT_PFRAC = 1.0
+const ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nested-sampling Python packages into PythonCall's Python environment
@@ -28,6 +29,7 @@ println("Installing nested-sampling Python packages...")
 using CondaPkg
 CondaPkg.add_pip("nessai")
 CondaPkg.add_pip("dynesty")
+CondaPkg.add_pip("ultranest")
 CondaPkg.resolve()
 println("Nested-sampling Python packages installed successfully")
 
@@ -371,4 +373,58 @@ println("nessai log evidence: $log_evidence")
     @test n_posterior > 0
     @test !isnothing(mcmcchains_summary)
     @test !isnothing(fs)
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Set up and run UltraNest ReactiveNestedSampler
+# ──────────────────────────────────────────────────────────────────────────────
+ultranest = pyimport("ultranest")
+ReactiveNestedSampler = ultranest.ReactiveNestedSampler
+
+function ultranest_log_likelihood(params_py)
+    return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
+end
+
+function ultranest_prior_transform(unit_params_py)
+    transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
+    return np.asarray(transformed_params, dtype = np.float64)
+end
+
+ultranest_log_evidence = NaN
+ultranest_n_posterior = 0
+ultranest_mcmcchains_summary = nothing
+ultranest_result = nothing
+
+ultranest_log_dir = mktempdir()
+
+println("Running UltraNest nested sampling on SW07 linear model...")
+ultranest_sampler = ReactiveNestedSampler(
+    names_py,
+    ultranest_log_likelihood,
+    ultranest_prior_transform;
+    log_dir = ultranest_log_dir,
+    resume = "overwrite",
+)
+ultranest_result = ultranest_sampler.run(;
+    min_num_live_points = ULTRANEST_MIN_NUM_LIVE_POINTS,
+    show_status = true,
+)
+println("UltraNest nested sampling completed")
+
+ultranest_log_evidence = pyconvert(Float64, ultranest_result["logz"])
+ultranest_posterior_matrix = pyconvert(Matrix{Float64}, ultranest_result["samples"])
+@assert size(ultranest_posterior_matrix, 2) == length(param_names) "UltraNest samples have $(size(ultranest_posterior_matrix, 2)) columns but expected $(length(param_names))"
+
+ultranest_n_posterior, ultranest_mcmcchains_summary = summarize_posterior_matrix(
+    "UltraNest",
+    ultranest_posterior_matrix,
+)
+
+println("UltraNest log evidence: $ultranest_log_evidence")
+
+@testset "UltraNest SW07 linear estimation" begin
+    @test isfinite(ultranest_log_evidence)
+    @test ultranest_n_posterior > 0
+    @test !isnothing(ultranest_mcmcchains_summary)
+    @test !isnothing(ultranest_result)
 end
