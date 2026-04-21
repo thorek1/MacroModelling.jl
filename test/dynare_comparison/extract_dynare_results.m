@@ -126,15 +126,45 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
 end
 
 %% --- Benchmark: re-solve first-order perturbation ---
-% Time only resol() which computes decision rules from the known steady state.
-% Run multiple times and save the median.
+% Time the perturbation solution step via resol().
+% Dynare's resol() signature varies across versions (v6 uses 4 args,
+% v7+ adds endo_steady_state and possibly exo_steady_state).
+% Detect arity at runtime and build the correct argument list.
+
+n_resol_args = nargin('resol');
+fprintf('resol expects %d arguments\n', n_resol_args);
+assert(n_resol_args >= 4 && n_resol_args <= 7, ...
+       sprintf('Unsupported resol arity: %d', n_resol_args));
+
+resol_args = {0, M_, options_, oo_};
+if n_resol_args >= 5
+    resol_args{5} = oo_.steady_state;
+end
+if n_resol_args >= 6
+    if isfield(oo_, 'exo_steady_state')
+        resol_args{6} = oo_.exo_steady_state;
+    else
+        resol_args{6} = zeros(M_.exo_nbr, 1);
+    end
+end
+if n_resol_args >= 7
+    if isfield(oo_, 'exo_det_steady_state')
+        resol_args{7} = oo_.exo_det_steady_state;
+    else
+        resol_args{7} = zeros(M_.exo_det_nbr, 1);
+    end
+end
+
 n_bench = 100;
 bench_times = zeros(1, n_bench);
+% Warm-up call
+resol(resol_args{:});
 for i = 1:n_bench
     tic;
-    resol(0, M_, options_, oo_);
+    resol(resol_args{:});
     bench_times(i) = toc;
 end
+
 bench_times_sorted = sort(bench_times);
 median_time = bench_times_sorted(floor(n_bench/2) + 1);
 dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_time, 'precision', '%.16g');
