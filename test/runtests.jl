@@ -70,8 +70,5 @@ elseif test_set == "dynare_comparison"
         include(joinpath(@__DIR__, "dynare_comparison", "compare_results.jl"))
     else
         @warn "No Dynare comparison output found. Run generate_julia_results.jl + Docker first."
-        @testset "Dynare Comparison" begin
-            @test_broken false
-        end
     end
 end
