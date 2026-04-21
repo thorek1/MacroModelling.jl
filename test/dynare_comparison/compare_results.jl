@@ -214,8 +214,12 @@ function compare_variance_decomposition(jl, dy)
         # Both sides already in percentages (0-100)
         jval = jl[:variance_decomposition][ji, jei]
         dval = dy[:variance_decomposition][di, dei]
-        @test safe_isapprox(jval, dval; rtol = RTOL, atol = 0.01) ||
-              (abs(jval) < 0.01 && abs(dval) < 0.01)
+        ok = safe_isapprox(jval, dval; rtol = RTOL, atol = 0.01) ||
+             (abs(jval) < 0.01 && abs(dval) < 0.01)
+        if !ok
+            @warn "Variance decomp mismatch: var=$v, shock=$e, julia=$jval, dynare=$dval, diff=$(abs(jval-dval)), rdiff=$(abs(jval-dval)/max(abs(dval),eps()))"
+        end
+        @test ok
     end
 end
 
