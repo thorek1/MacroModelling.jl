@@ -3,8 +3,15 @@ using MacroModelling
 import Turing
 using MCMCChains
 using PythonCall
-using Statistics: mean
 using DelimitedFiles, AxisKeys
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Configuration switches
+# ──────────────────────────────────────────────────────────────────────────────
+USE_NESSAI = false
+USE_DYNESTY = false
+USE_ULTRANEST = true
+USE_FLAT_PRIOR = false
 
 const NESSAI_NLIVE = 1000
 const NESSAI_UNINFORMED_POOLSIZE = 128
@@ -13,6 +20,7 @@ const NESSAI_FLOW_DRAWSIZE = 128
 const NESSAI_MAXIMUM_UNINFORMED = 4000
 const NESSAI_LOG_LEVEL = "INFO"
 const NESSAI_LOGGING_INTERVAL = 500
+
 const DYNESTY_NLIVE_INIT = NESSAI_NLIVE
 const DYNESTY_NLIVE_BATCH = max(500, DYNESTY_NLIVE_INIT ÷ 2)
 const DYNESTY_BOUND = "multi"
@@ -20,6 +28,7 @@ const DYNESTY_SAMPLE = "rslice"
 const DYNESTY_DLOGZ_INIT = 0.1
 const DYNESTY_BOOTSTRAP = 0
 const DYNESTY_WEIGHT_PFRAC = 1.0
+
 const ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -27,9 +36,9 @@ const ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 # ──────────────────────────────────────────────────────────────────────────────
 println("Installing nested-sampling Python packages...")
 using CondaPkg
-CondaPkg.add_pip("nessai")
-CondaPkg.add_pip("dynesty")
-CondaPkg.add_pip("ultranest")
+USE_NESSAI    && CondaPkg.add_pip("nessai")
+USE_DYNESTY   && CondaPkg.add_pip("dynesty")
+USE_ULTRANEST && CondaPkg.add_pip("ultranest")
 CondaPkg.resolve()
 println("Nested-sampling Python packages installed successfully")
 
@@ -52,7 +61,7 @@ data = rekey(data, :Variable => observables)
 # ──────────────────────────────────────────────────────────────────────────────
 # Define priors (identical to test_sw07_estimation.jl)
 # ──────────────────────────────────────────────────────────────────────────────
-dists = [
+informative_dists = [
     InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
     InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),    # z_eb
     InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),    # z_eg
@@ -91,6 +100,12 @@ dists = [
     Normal(0.3, 0.05, 0.01, 1.0),                    # calfa
 ]
 
+dists = if USE_FLAT_PRIOR
+    [Turing.Uniform(minimum(d), maximum(d)) for d in informative_dists]
+else
+    informative_dists
+end
+
 # Parameter names in dists order
 const param_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew,
                      :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow,
@@ -106,7 +121,7 @@ include("../models/Smets_Wouters_2007_linear.jl")
 
 fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007_linear.constants.post_complete_parameters.parameters)]
 
-SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])
+SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01], derivatives = false)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Reorder index: maps dists order → parameters_combined order (after fixed)
@@ -164,7 +179,8 @@ function summarize_posterior_matrix(label::String, posterior_matrix::Matrix{Floa
 
     println("$label posterior means:")
     for (i, name) in pairs(param_names)
-        println("  $name: $(mean(@view posterior_matrix[:, i]))")
+        col = @view posterior_matrix[:, i]
+        println("  $name: $(sum(col) / length(col))")
     end
 
     posterior_chain = MCMCChains.Chains(posterior_matrix, param_names)
@@ -175,163 +191,90 @@ function summarize_posterior_matrix(label::String, posterior_matrix::Matrix{Floa
     return n_posterior, posterior_summary
 end
 
-function nessai_log_prior(params_py)
-    return sw07_log_prior_density(pyconvert(Vector{Float64}, params_py))
-end
-
-function nessai_log_likelihood(params_py)
-    return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
-end
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Define Python nessai Model subclass via temporary module
-# ──────────────────────────────────────────────────────────────────────────────
-nessai_tmpdir = mktempdir()
-write(joinpath(nessai_tmpdir, "sw07_nessai_model.py"), """
-import numpy as np
-from nessai.model import Model
-
-class SW07NessaiModel(Model):
-    # SW07 DSGE model for nessai nested sampling.
-
-    allow_vectorised = False
-    allow_vectorised_prior = False
-    likelihood_chunksize = 1
-
-    def __init__(self, param_names, param_bounds, jl_log_prior, jl_log_likelihood):
-        self.names = list(param_names)
-        self.bounds = dict(param_bounds)
-        self._jl_log_prior = jl_log_prior
-        self._jl_log_likelihood = jl_log_likelihood
-
-    def _as_points(self, x):
-        x_array = np.asarray(x)
-        if x_array.shape == ():
-            return [x], True
-        return x_array, False
-
-    def log_prior(self, x):
-        points, scalar_input = self._as_points(x)
-        log_p = np.zeros(len(points))
-        for i, point in enumerate(points):
-            params = [float(point[n]) for n in self.names]
-            log_p[i] = float(self._jl_log_prior(params))
-        if scalar_input:
-            return log_p[0]
-        return log_p
-
-    def log_likelihood(self, x):
-        points, scalar_input = self._as_points(x)
-        log_l = np.zeros(len(points))
-        for i, point in enumerate(points):
-            params = [float(point[n]) for n in self.names]
-            log_l[i] = float(self._jl_log_likelihood(params))
-        if scalar_input:
-            return log_l[0]
-        return log_l
-""")
-
-sys_mod = pyimport("sys")
-sys_mod.path.insert(0, nessai_tmpdir)
-sw07_nessai = pyimport("sw07_nessai_model")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Set up and run nessai FlowSampler
-# ──────────────────────────────────────────────────────────────────────────────
-FlowSampler = pyimport("nessai.flowsampler").FlowSampler
-RejectionProposal = pyimport("nessai.proposal").RejectionProposal
-configure_nessai_logger = pyimport("nessai.utils.logging").configure_logger
-dynesty = pyimport("dynesty")
-np = pyimport("numpy")
-
+# Shared Python helpers
 names_py = [string(n) for n in param_names]
 bounds_py = Dict(string(n) => (Float64(minimum(d)), Float64(maximum(d)))
                  for (n, d) in zip(param_names, dists))
-
-model = sw07_nessai.SW07NessaiModel(names_py, bounds_py, nessai_log_prior, nessai_log_likelihood)
-
-skip_checkpoint(::Any) = nothing
-
-log_evidence = NaN
-posterior_samples = nothing
-n_posterior = 0
-mcmcchains_summary = nothing
-fs = nothing
-
-function dynesty_log_likelihood(params_py)
-    return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
-end
-
-function dynesty_prior_transform(unit_params_py)
-    transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
-    return np.asarray(transformed_params, dtype = np.float64)
-end
-
-dynesty_sampler = nothing
-dynesty_results = nothing
-dynesty_log_evidence = NaN
-dynesty_n_posterior = 0
-dynesty_mcmcchains_summary = nothing
-output_dir = pwd()
+np = (USE_DYNESTY || USE_ULTRANEST) ? pyimport("numpy") : nothing
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Set up and run dynesty DynamicNestedSampler
+# nessai FlowSampler
 # ──────────────────────────────────────────────────────────────────────────────
-# println("Running dynesty dynamic nested sampling on SW07 linear model...")
-# dynesty_sampler = dynesty.DynamicNestedSampler(
-#     dynesty_log_likelihood,
-#     dynesty_prior_transform,
-#     length(param_names);
-#     bound = DYNESTY_BOUND,
-#     sample = DYNESTY_SAMPLE,
-#     slices = length(param_names) + 3,
-#     bootstrap = DYNESTY_BOOTSTRAP,
-#     queue_size = 1,
-# )
-# dynesty_sampler.run_nested(
-#     nlive_init = DYNESTY_NLIVE_INIT,
-#     nlive_batch = DYNESTY_NLIVE_BATCH,
-#     dlogz_init = DYNESTY_DLOGZ_INIT,
-#     wt_kwargs = Dict("pfrac" => DYNESTY_WEIGHT_PFRAC),
-#     stop_kwargs = Dict("pfrac" => DYNESTY_WEIGHT_PFRAC),
-#     print_progress = true,
-#     save_bounds = false,
-# )
-# println("dynesty dynamic nested sampling completed")
+if USE_NESSAI
 
-# dynesty_results = dynesty_sampler.results
-# println("dynesty summary:")
-# dynesty_results.summary()
-# dynesty_log_evidence = pyconvert(Vector{Float64}, dynesty_results.logz)[end]
-# dynesty_posterior_matrix = pyconvert(Matrix{Float64}, dynesty_results.samples_equal())
-# dynesty_n_posterior, dynesty_mcmcchains_summary = summarize_posterior_matrix(
-#     "dynesty dynamic",
-#     dynesty_posterior_matrix,
-# )
+    function nessai_log_prior(params_py)
+        return sw07_log_prior_density(pyconvert(Vector{Float64}, params_py))
+    end
 
-# println("dynesty log evidence: $dynesty_log_evidence")
+    function nessai_log_likelihood(params_py)
+        return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
+    end
 
-# @testset "dynesty dynamic SW07 linear estimation" begin
-#     @test isfinite(dynesty_log_evidence)
-#     @test dynesty_n_posterior > 0
-#     @test !isnothing(dynesty_mcmcchains_summary)
-#     @test !isnothing(dynesty_sampler)
-#     @test !isnothing(dynesty_results)
-# end
+    nessai_tmpdir = mktempdir()
+    write(joinpath(nessai_tmpdir, "sw07_nessai_model.py"), """
+    import numpy as np
+    from nessai.model import Model
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Set up and run nessai FlowSampler
-# ──────────────────────────────────────────────────────────────────────────────
-# mktempdir() do output_dir
+    class SW07NessaiModel(Model):
+        # SW07 DSGE model for nessai nested sampling.
+
+        allow_vectorised = False
+        allow_vectorised_prior = False
+        likelihood_chunksize = 1
+
+        def __init__(self, param_names, param_bounds, jl_log_prior, jl_log_likelihood):
+            self.names = list(param_names)
+            self.bounds = dict(param_bounds)
+            self._jl_log_prior = jl_log_prior
+            self._jl_log_likelihood = jl_log_likelihood
+
+        def _as_points(self, x):
+            x_array = np.asarray(x)
+            if x_array.shape == ():
+                return [x], True
+            return x_array, False
+
+        def log_prior(self, x):
+            points, scalar_input = self._as_points(x)
+            log_p = np.zeros(len(points))
+            for i, point in enumerate(points):
+                params = [float(point[n]) for n in self.names]
+                log_p[i] = float(self._jl_log_prior(params))
+            if scalar_input:
+                return log_p[0]
+            return log_p
+
+        def log_likelihood(self, x):
+            points, scalar_input = self._as_points(x)
+            log_l = np.zeros(len(points))
+            for i, point in enumerate(points):
+                params = [float(point[n]) for n in self.names]
+                log_l[i] = float(self._jl_log_likelihood(params))
+            if scalar_input:
+                return log_l[0]
+            return log_l
+    """)
+
+    sys_mod = pyimport("sys")
+    sys_mod.path.insert(0, nessai_tmpdir)
+    sw07_nessai = pyimport("sw07_nessai_model")
+
+    FlowSampler = pyimport("nessai.flowsampler").FlowSampler
+    RejectionProposal = pyimport("nessai.proposal").RejectionProposal
+    configure_nessai_logger = pyimport("nessai.utils.logging").configure_logger
+
+    nessai_model = sw07_nessai.SW07NessaiModel(names_py, bounds_py, nessai_log_prior, nessai_log_likelihood)
+    nessai_output_dir = pwd()
+
     println("Running full nessai estimation on SW07 linear model...")
     configure_nessai_logger(
-        output = output_dir,
+        output = nessai_output_dir,
         label = "",
         log_level = NESSAI_LOG_LEVEL,
         stream = "stdout",
     )
-    fs = FlowSampler(model;
-        output = output_dir,
+    nessai_fs = FlowSampler(nessai_model;
+        output = nessai_output_dir,
         nlive = NESSAI_NLIVE,
         seed = 1234,
         pytorch_threads = 1,
@@ -339,92 +282,143 @@ output_dir = pwd()
         disable_vectorisation = true,
         logging_interval = NESSAI_LOGGING_INTERVAL,
         log_on_iteration = true,
-        # checkpointing = false,
-        # checkpoint_callback = skip_checkpoint,
         maximum_uninformed = NESSAI_MAXIMUM_UNINFORMED,
         uninformed_proposal = RejectionProposal,
         uninformed_proposal_kwargs = Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE),
         poolsize = NESSAI_FLOW_POOLSIZE,
-        # drawsize = NESSAI_FLOW_DRAWSIZE,
-        # update_poolsize = false,
-        # max_poolsize_scale = 1,
         plot = false,
         proposal_plots = false,
-        # memory = false,
     )
-    fs.run(plot = false, save = false)
+    nessai_fs.run(plot = false, save = false)
     println("nessai estimation completed")
 
-    log_evidence = pyconvert(Float64, fs.logZ)
-    posterior_samples = fs.posterior_samples
-    n_posterior, mcmcchains_summary = summarize_posterior_matrix(
+    nessai_log_evidence = pyconvert(Float64, nessai_fs.logZ)
+    nessai_posterior_samples = nessai_fs.posterior_samples
+    nessai_n_posterior, nessai_mcmcchains_summary = summarize_posterior_matrix(
         "nessai",
-        posterior_matrix_from_named_samples(posterior_samples),
+        posterior_matrix_from_named_samples(nessai_posterior_samples),
     )
-# end
+
+    println("nessai log evidence: $nessai_log_evidence")
+
+    @testset "nessai SW07 linear estimation" begin
+        @test isfinite(nessai_log_evidence)
+        @test nessai_n_posterior > 0
+        @test !isnothing(nessai_mcmcchains_summary)
+        @test !isnothing(nessai_fs)
+    end
+
+end # USE_NESSAI
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Extract nessai results
+# dynesty DynamicNestedSampler
 # ──────────────────────────────────────────────────────────────────────────────
-println("nessai log evidence: $log_evidence")
+if USE_DYNESTY
 
-@testset "nessai SW07 linear estimation" begin
-    @test isfinite(log_evidence)
-    @test n_posterior > 0
-    @test !isnothing(mcmcchains_summary)
-    @test !isnothing(fs)
-end
+    dynesty = pyimport("dynesty")
+
+    function dynesty_log_likelihood(params_py)
+        return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
+    end
+
+    function dynesty_prior_transform(unit_params_py)
+        transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
+        return np.asarray(pylist(transformed_params), dtype = np.float64)
+    end
+
+    println("Running dynesty dynamic nested sampling on SW07 linear model...")
+    dynesty_sampler = dynesty.DynamicNestedSampler(
+        dynesty_log_likelihood,
+        dynesty_prior_transform,
+        length(param_names);
+        bound = DYNESTY_BOUND,
+        sample = DYNESTY_SAMPLE,
+        slices = length(param_names) + 3,
+        bootstrap = DYNESTY_BOOTSTRAP,
+        queue_size = 1,
+    )
+    dynesty_sampler.run_nested(
+        nlive_init = DYNESTY_NLIVE_INIT,
+        nlive_batch = DYNESTY_NLIVE_BATCH,
+        dlogz_init = DYNESTY_DLOGZ_INIT,
+        wt_kwargs = Dict("pfrac" => DYNESTY_WEIGHT_PFRAC),
+        stop_kwargs = Dict("pfrac" => DYNESTY_WEIGHT_PFRAC),
+        print_progress = true,
+        save_bounds = false,
+    )
+    println("dynesty dynamic nested sampling completed")
+
+    dynesty_results = dynesty_sampler.results
+    println("dynesty summary:")
+    dynesty_results.summary()
+    dynesty_log_evidence = pyconvert(Vector{Float64}, dynesty_results.logz)[end]
+    dynesty_posterior_matrix = pyconvert(Matrix{Float64}, dynesty_results.samples_equal())
+    dynesty_n_posterior, dynesty_mcmcchains_summary = summarize_posterior_matrix(
+        "dynesty dynamic",
+        dynesty_posterior_matrix,
+    )
+
+    println("dynesty log evidence: $dynesty_log_evidence")
+
+    @testset "dynesty dynamic SW07 linear estimation" begin
+        @test isfinite(dynesty_log_evidence)
+        @test dynesty_n_posterior > 0
+        @test !isnothing(dynesty_mcmcchains_summary)
+        @test !isnothing(dynesty_sampler)
+        @test !isnothing(dynesty_results)
+    end
+
+end # USE_DYNESTY
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Set up and run UltraNest ReactiveNestedSampler
+# UltraNest ReactiveNestedSampler
 # ──────────────────────────────────────────────────────────────────────────────
-ultranest = pyimport("ultranest")
-ReactiveNestedSampler = ultranest.ReactiveNestedSampler
+if USE_ULTRANEST
 
-function ultranest_log_likelihood(params_py)
-    return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
-end
+    ultranest = pyimport("ultranest")
+    ReactiveNestedSampler = ultranest.ReactiveNestedSampler
 
-function ultranest_prior_transform(unit_params_py)
-    transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
-    return np.asarray(transformed_params, dtype = np.float64)
-end
+    function ultranest_log_likelihood(params_py)
+        return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
+    end
 
-ultranest_log_evidence = NaN
-ultranest_n_posterior = 0
-ultranest_mcmcchains_summary = nothing
-ultranest_result = nothing
+    function ultranest_prior_transform(unit_params_py)
+        transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
+        return np.asarray(pylist(transformed_params), dtype = np.float64)
+    end
 
-ultranest_log_dir = mktempdir()
+    ultranest_log_dir = mktempdir()
 
-println("Running UltraNest nested sampling on SW07 linear model...")
-ultranest_sampler = ReactiveNestedSampler(
-    names_py,
-    ultranest_log_likelihood,
-    ultranest_prior_transform;
-    log_dir = ultranest_log_dir,
-    resume = "overwrite",
-)
-ultranest_result = ultranest_sampler.run(;
-    min_num_live_points = ULTRANEST_MIN_NUM_LIVE_POINTS,
-    show_status = true,
-)
-println("UltraNest nested sampling completed")
+    println("Running UltraNest nested sampling on SW07 linear model...")
+    ultranest_sampler = ReactiveNestedSampler(
+        pylist(names_py),
+        ultranest_log_likelihood,
+        ultranest_prior_transform;
+        log_dir = ultranest_log_dir,
+        resume = "overwrite",
+    )
+    ultranest_result = ultranest_sampler.run(;
+        min_num_live_points = ULTRANEST_MIN_NUM_LIVE_POINTS,
+        show_status = true,
+    )
+    println("UltraNest nested sampling completed")
 
-ultranest_log_evidence = pyconvert(Float64, ultranest_result["logz"])
-ultranest_posterior_matrix = pyconvert(Matrix{Float64}, ultranest_result["samples"])
-@assert size(ultranest_posterior_matrix, 2) == length(param_names) "UltraNest samples have $(size(ultranest_posterior_matrix, 2)) columns but expected $(length(param_names))"
+    ultranest_log_evidence = pyconvert(Float64, ultranest_result["logz"])
+    ultranest_posterior_matrix = pyconvert(Matrix{Float64}, ultranest_result["samples"])
+    @assert size(ultranest_posterior_matrix, 2) == length(param_names) "UltraNest samples have $(size(ultranest_posterior_matrix, 2)) columns but expected $(length(param_names))"
 
-ultranest_n_posterior, ultranest_mcmcchains_summary = summarize_posterior_matrix(
-    "UltraNest",
-    ultranest_posterior_matrix,
-)
+    ultranest_n_posterior, ultranest_mcmcchains_summary = summarize_posterior_matrix(
+        "UltraNest",
+        ultranest_posterior_matrix,
+    )
 
-println("UltraNest log evidence: $ultranest_log_evidence")
+    println("UltraNest log evidence: $ultranest_log_evidence")
 
-@testset "UltraNest SW07 linear estimation" begin
-    @test isfinite(ultranest_log_evidence)
-    @test ultranest_n_posterior > 0
-    @test !isnothing(ultranest_mcmcchains_summary)
-    @test !isnothing(ultranest_result)
-end
+    @testset "UltraNest SW07 linear estimation" begin
+        @test isfinite(ultranest_log_evidence)
+        @test ultranest_n_posterior > 0
+        @test !isnothing(ultranest_mcmcchains_summary)
+        @test !isnothing(ultranest_result)
+    end
+
+end # USE_ULTRANEST
