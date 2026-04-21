@@ -283,7 +283,7 @@ function main()
 
     # ── Benchmark comparison ──
     println("\n", "="^72)
-    println("  First-Order Solution Benchmark: Julia vs Dynare (median of 100 runs)")
+    println("  NSSS + Jacobian + First-Order Solve Benchmark: Julia vs Dynare (median of 100 runs)")
     println("="^72)
     println(rpad("Model", 40), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
     println("-"^72)
