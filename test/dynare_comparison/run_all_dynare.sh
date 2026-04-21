@@ -51,6 +51,9 @@ for model_dir in "$OUTPUT_DIR"/*/; do
     cp "$mod_file" "$workdir/"
     cp "$EXTRACT_SCRIPT" "$workdir/"
 
+    # Add nograph to stoch_simul to avoid graphics toolkit errors in headless mode
+    sed -i 's/stoch_simul(/stoch_simul(nograph, /' "$workdir/${model_name}.mod"
+
     (
         cd "$workdir"
         octave --no-gui --eval "
