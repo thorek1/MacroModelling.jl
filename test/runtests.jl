@@ -63,5 +63,15 @@ elseif test_set == "rrule_robustness"
 elseif test_set == "update_equations"
     include("test_update_equations.jl")
 elseif test_set == "dynare_comparison"
-    include("test_dynare_comparison.jl")
+    # Dynare comparison runs as a standalone 3-phase pipeline (see CI workflow).
+    # If output/ exists with results, run the comparison script directly.
+    outdir = joinpath(@__DIR__, "dynare_comparison", "output")
+    if isdir(outdir) && !isempty(readdir(outdir))
+        include(joinpath(@__DIR__, "dynare_comparison", "compare_results.jl"))
+    else
+        @warn "No Dynare comparison output found. Run generate_julia_results.jl + Docker first."
+        @testset "Dynare Comparison" begin
+            @test_broken false
+        end
+    end
 end

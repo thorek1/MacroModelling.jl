@@ -158,10 +158,6 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
-            test_set: "dynare_comparison"
-          - version: '1'
-            os: ubuntu-latest
-            arch: x64
             test_set: "estimate_sw07_nessai"
     steps:
       - uses: actions/checkout@v6
@@ -169,13 +165,6 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - name: Install Dynare and Octave
-        if: matrix.test_set == 'dynare_comparison'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dynare
-
       - name: Remove Pigeons from non-pigeons runs
         if: contains(matrix.test_set, 'pigeons') == false
         shell: bash
@@ -240,3 +229,28 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: lcov.info
+
+  dynare-comparison:
+    name: Dynare Comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+
+      # Phase 1: Generate Julia results and .mod files
+      - name: Generate Julia results
+        run: julia --project=. test/dynare_comparison/generate_julia_results.jl
+
+      # Phase 2: Run Dynare in Docker (debian:testing)
+      - name: Build Dynare Docker image
+        run: docker build -t dynare-runner test/dynare_comparison/
+      - name: Run Dynare models
+        run: docker run --rm --user "$(id -u):$(id -g)" -v "${{ github.workspace }}/test/dynare_comparison/output:/work/output" dynare-runner
+
+      # Phase 3: Compare results
+      - name: Compare Julia vs Dynare results
+        run: julia --project=. test/dynare_comparison/compare_results.jl
