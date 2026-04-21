@@ -280,6 +280,44 @@ function main()
             end
         end
     end
+
+    # ── Benchmark comparison ──
+    println("\n", "="^72)
+    println("  First-Order Solution Benchmark: Julia vs Dynare (median of 100 runs)")
+    println("="^72)
+    println(rpad("Model", 40), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+    println("-"^72)
+
+    for mname in sort(model_dirs)
+        jl_bench_path = joinpath(OUTPUT_ROOT, mname, "julia", "benchmark_first_order.csv")
+        dy_bench_path = joinpath(OUTPUT_ROOT, mname, "dynare", "benchmark_first_order.csv")
+
+        jl_time = isfile(jl_bench_path) ? read_vector(jl_bench_path)[1] : NaN
+        dy_time = isfile(dy_bench_path) ? read_vector(dy_bench_path)[1] : NaN
+
+        jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
+        dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
+
+        if !isnan(jl_time) && !isnan(dy_time) && jl_time > 0
+            speedup = dy_time / jl_time
+            sp_str = string(round(speedup, digits=1), "x")
+        else
+            sp_str = "N/A"
+        end
+
+        println(rpad(mname, 40), rpad(jl_str, 12), rpad(dy_str, 12), sp_str)
+    end
+    println("="^72)
+end
+
+function format_time(t)
+    if t < 1e-3
+        string(round(t * 1e6, digits=1), " μs")
+    elseif t < 1.0
+        string(round(t * 1e3, digits=2), " ms")
+    else
+        string(round(t, digits=3), " s")
+    end
 end
 
 main()
