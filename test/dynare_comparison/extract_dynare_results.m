@@ -19,25 +19,6 @@
 %   variance_decomposition_var_names.csv - variable names for var decomp rows
 %   variance_decomposition_exo_names.csv - shock names for var decomp columns
 
-%% --- Helper to get name from endo_names (handles char matrix or cell array) ---
-function name = get_endo_name(idx)
-    global M_;
-    if iscell(M_.endo_names)
-        name = M_.endo_names{idx};
-    else
-        name = deblank(M_.endo_names(idx,:));
-    end
-end
-
-function name = get_exo_name(idx)
-    global M_;
-    if iscell(M_.exo_names)
-        name = M_.exo_names{idx};
-    else
-        name = deblank(M_.exo_names(idx,:));
-    end
-end
-
 if ~exist('output_dir', 'var')
     output_dir = [model_name '_results'];
 end
@@ -49,13 +30,21 @@ n_exo  = M_.exo_nbr;
 %% --- Variable names ---
 fid = fopen(fullfile(output_dir, 'var_names.csv'), 'w');
 for i = 1:n_endo
-    fprintf(fid, '%s\n', get_endo_name(i));
+    if iscell(M_.endo_names)
+        fprintf(fid, '%s\n', M_.endo_names{i});
+    else
+        fprintf(fid, '%s\n', deblank(M_.endo_names(i,:)));
+    end
 end
 fclose(fid);
 
 fid = fopen(fullfile(output_dir, 'exo_names.csv'), 'w');
 for i = 1:n_exo
-    fprintf(fid, '%s\n', get_exo_name(i));
+    if iscell(M_.exo_names)
+        fprintf(fid, '%s\n', M_.exo_names{i});
+    else
+        fprintf(fid, '%s\n', deblank(M_.exo_names(i,:)));
+    end
 end
 fclose(fid);
 
@@ -63,13 +52,9 @@ fclose(fid);
 dlmwrite(fullfile(output_dir, 'steady_state.csv'), oo_.steady_state, 'precision', '%.16g');
 
 %% --- Policy matrices (convert from DR order to declaration order) ---
-% oo_.dr.ghx and oo_.dr.ghu have rows in decision-rule (DR) order.
-% oo_.dr.order_var maps DR index -> declaration index.
-% We invert this to get declaration-ordered matrices.
 ghx_dr = oo_.dr.ghx;
 ghu_dr = oo_.dr.ghu;
 
-% Create full-size matrices in declaration order
 ghx_decl = zeros(n_endo, size(ghx_dr, 2));
 ghu_decl = zeros(n_endo, size(ghu_dr, 2));
 ghx_decl(oo_.dr.order_var, :) = ghx_dr;
@@ -78,11 +63,16 @@ ghu_decl(oo_.dr.order_var, :) = ghu_dr;
 dlmwrite(fullfile(output_dir, 'ghx.csv'), ghx_decl, 'precision', '%.16g');
 dlmwrite(fullfile(output_dir, 'ghu.csv'), ghu_decl, 'precision', '%.16g');
 
-% State variable names (declaration order indices in oo_.dr.state_var)
+% State variable names
 state_var_idx = oo_.dr.state_var;
 fid = fopen(fullfile(output_dir, 'state_var_names.csv'), 'w');
 for i = 1:length(state_var_idx)
-    fprintf(fid, '%s\n', get_endo_name(state_var_idx(i)));
+    si = state_var_idx(i);
+    if iscell(M_.endo_names)
+        fprintf(fid, '%s\n', M_.endo_names{si});
+    else
+        fprintf(fid, '%s\n', deblank(M_.endo_names(si,:)));
+    end
 end
 fclose(fid);
 
@@ -96,7 +86,6 @@ if isfield(oo_, 'irfs')
             dlmwrite(fullfile(output_dir, ['irf_' fname '.csv']), data, 'precision', '%.16g');
         end
     end
-    % Save list of IRF field names
     fid = fopen(fullfile(output_dir, 'irf_fields.csv'), 'w');
     for i = 1:length(irf_fields)
         fprintf(fid, '%s\n', irf_fields{i});
@@ -114,19 +103,24 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
     dlmwrite(fullfile(output_dir, 'variance_decomposition.csv'), ...
              oo_.variance_decomposition, 'precision', '%.16g');
 
-    % Variable names for variance decomposition rows
-    % oo_.variance_decomposition rows correspond to M_.endo_names
-    % but only for variables that appear in the output (non-auxiliary typically)
     n_vd_rows = size(oo_.variance_decomposition, 1);
     fid = fopen(fullfile(output_dir, 'variance_decomposition_var_names.csv'), 'w');
     for i = 1:n_vd_rows
-        fprintf(fid, '%s\n', get_endo_name(i));
+        if iscell(M_.endo_names)
+            fprintf(fid, '%s\n', M_.endo_names{i});
+        else
+            fprintf(fid, '%s\n', deblank(M_.endo_names(i,:)));
+        end
     end
     fclose(fid);
 
     fid = fopen(fullfile(output_dir, 'variance_decomposition_exo_names.csv'), 'w');
     for i = 1:n_exo
-        fprintf(fid, '%s\n', get_exo_name(i));
+        if iscell(M_.exo_names)
+            fprintf(fid, '%s\n', M_.exo_names{i});
+        else
+            fprintf(fid, '%s\n', deblank(M_.exo_names(i,:)));
+        end
     end
     fclose(fid);
 end
