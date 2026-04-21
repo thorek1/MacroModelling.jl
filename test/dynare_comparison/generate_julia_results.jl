@@ -150,18 +150,28 @@ function export_model(model, outdir)
         write_mod_file(model)
     end
 
-    # ── Benchmark: first-order solution ──
-    # Warm up (SS and first solve already done above)
-    # Time repeated solves with cache invalidation
+    # ── Benchmark: NSSS + Jacobian + first-order solve ──
+    # Match Dynare's resol benchmark path by timing the full first-order
+    # pipeline from a cold solution cache on each iteration.
     N_BENCH = 100
     times = Vector{Float64}(undef, N_BENCH)
+    params = copy(model.parameter_values)
+
+    # Warm-up on a cold cache (mirrors Dynare's warm-up resol call)
+    MacroModelling.clear_solution_caches!(model, :first_order)
+    _, _, solved_warmup = get_solution(model, params; algorithm = :first_order, caching = false)
+    @assert solved_warmup "Warm-up first-order solve failed for $(model.model_name)"
+
     for i in 1:N_BENCH
-        MacroModelling.invalidate_cache_validity!(model)
-        times[i] = @elapsed get_solution(model, algorithm = :first_order)
+        MacroModelling.clear_solution_caches!(model, :first_order)
+        times[i] = @elapsed begin
+            _, _, solved = get_solution(model, params; algorithm = :first_order, caching = false)
+            @assert solved "First-order solve failed for $(model.model_name) in benchmark iteration $i"
+        end
     end
     median_time = sort(times)[div(N_BENCH, 2) + 1]
     writedlm(joinpath(julia_dir, "benchmark_first_order.csv"), [median_time], ',')
-    @info "Benchmark $(model.model_name): median=$(round(median_time*1e6, digits=1))μs over $N_BENCH runs"
+    @info "Benchmark $(model.model_name) (NSSS + Jacobian + first-order solve): median=$(round(median_time*1e6, digits=1))μs over $N_BENCH runs"
 
     @info "Exported Julia results for $(model.model_name) → $outdir"
 end
