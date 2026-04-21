@@ -125,4 +125,19 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
     fclose(fid);
 end
 
+%% --- Benchmark: re-solve first-order perturbation ---
+% Time only resol() which computes decision rules from the known steady state.
+% Run multiple times and save the median.
+n_bench = 100;
+bench_times = zeros(1, n_bench);
+for i = 1:n_bench
+    tic;
+    [oo_.dr, info_bench, M_, options_, oo_] = resol(0, M_, options_, oo_);
+    bench_times(i) = toc;
+end
+bench_times_sorted = sort(bench_times);
+median_time = bench_times_sorted(floor(n_bench/2) + 1);
+dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_time, 'precision', '%.16g');
+fprintf('Benchmark %s: median=%.1f us over %d runs\n', model_name, median_time * 1e6, n_bench);
+
 disp(['Results extracted to: ' output_dir]);
