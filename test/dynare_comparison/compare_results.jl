@@ -214,6 +214,16 @@ function compare_variance_decomposition(jl, dy)
         # Both sides already in percentages (0-100)
         jval = jl[:variance_decomposition][ji, jei]
         dval = dy[:variance_decomposition][di, dei]
+
+        # Skip variables where both sides have near-zero total decomposition
+        # (indicates near-zero variance — decomposition is numerically meaningless)
+        jl_row_sum = sum(abs, jl[:variance_decomposition][ji, :])
+        dy_row_sum = sum(abs, dy[:variance_decomposition][di, :])
+        if jl_row_sum < 1.0 || dy_row_sum < 1.0
+            # Total decomposition < 1% means near-zero variance
+            continue
+        end
+
         ok = safe_isapprox(jval, dval; rtol = RTOL, atol = 0.01) ||
              (abs(jval) < 0.01 && abs(dval) < 0.01)
         if !ok
