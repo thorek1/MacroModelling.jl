@@ -132,7 +132,7 @@ n_bench = 100;
 bench_times = zeros(1, n_bench);
 for i = 1:n_bench
     tic;
-    [oo_.dr, info_bench, M_, options_, oo_] = resol(0, M_, options_, oo_);
+    resol(0, M_, options_, oo_);
     bench_times(i) = toc;
 end
 bench_times_sorted = sort(bench_times);
