@@ -728,3 +728,46 @@ translate_dynare_file("Aguiar_Gopinath_2007.mod")
 include("Aguiar_Gopinath_2007.jl")
 get_solution(Aguiar_Gopinath_2007)
 Aguiar_Gopinath_2007 = nothing
+
+
+include("../models/FRBUS.jl")
+SSvals = get_SS(FRBUS, derivatives = false)
+
+# FRBUS is linearized around zero: all steady-state values should be zero
+@test all(SSvals .== 0)
+
+# Test first-order solution shape and coefficients
+sol = get_solution(FRBUS, algorithm = :first_order)
+
+@test size(sol) == (433, 428)
+@test :Steady_state in axiskeys(sol, 1)
+@test :rff₍₋₁₎ in axiskeys(sol, 1)
+@test :fiscal_aerr₍ₓ₎ in axiskeys(sol, 1)
+@test :rff in axiskeys(sol, 2)
+@test :eco_l in axiskeys(sol, 2)
+
+@test isapprox(sol(:rff₍₋₁₎, :rff), 0.84575710864915, rtol = 1e-5)
+@test isapprox(sol(:eco_l₍₋₁₎, :eco_l), 1.1848016760901816, rtol = 1e-5)
+@test isapprox(sol(:ebfi_l₍₋₁₎, :ebfi_l), 1.27660626172, rtol = 1e-5)
+@test isapprox(sol(:ex_l₍₋₁₎, :ex_l), 0.892272127137, rtol = 1e-5)
+
+# Test impulse responses to fiscal shock (impact and propagation)
+irf = get_irf(FRBUS, algorithm = :first_order, shocks = [:fiscal_aerr], periods = 5)
+
+@test isapprox(irf(:rff, 1, :fiscal_aerr), 0.0144267064, rtol = 1e-4)
+@test isapprox(irf(:xgap2, 1, :fiscal_aerr), 0.0961780423, rtol = 1e-4)
+@test isapprox(irf(:eco_l, 1, :fiscal_aerr), 0.0010262957, rtol = 1e-4)
+@test isapprox(irf(:debt_to_gdp, 1, :fiscal_aerr), 0.0065268971, rtol = 1e-4)
+
+@test isapprox(irf(:rff, 5, :fiscal_aerr), 0.1445122073, rtol = 1e-4)
+@test isapprox(irf(:xgap2, 5, :fiscal_aerr), 0.3546553714, rtol = 1e-4)
+@test isapprox(irf(:debt_to_gdp, 5, :fiscal_aerr), 0.0685009926, rtol = 1e-4)
+
+# Variance decomposition and loglikelihood tests are skipped for FRBUS:
+# the Lyapunov equation does not converge (covariance matrix not found),
+# so get_var_decomp, get_moments with standard deviations, and
+# get_loglikelihood are not applicable for this model.
+
+write_to_dynare_file(FRBUS)
+translate_dynare_file("FRBUS.mod")
+FRBUS = nothing
