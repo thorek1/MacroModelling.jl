@@ -736,6 +736,9 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     P̃::Matrix{R}       # For lyapunov equation partials
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
+
+    # FastLapackInterface Schur workspace for unit-root deflation (lazily resized)
+    schur_ws::FastLapackInterface.SchurWs{T}
 end
 
 

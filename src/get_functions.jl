@@ -2541,12 +2541,12 @@ function get_variance_decomposition(𝓂::ℳ;
     unit_root_tol = 1e-8
     A_dense = collect(A)
     A_work = copy(A_dense)
-    Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol)
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
+    Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
     has_unit_roots = n_unstable > 0
 
     if !has_unit_roots
         # Standard path: no unit roots, solve each shock directly
-        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
         for i in 1:𝓂.constants.post_model_macro.nExo
             C = @views sol[:, 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + i]
             CC = C * C'
