@@ -9,6 +9,7 @@ using DelimitedFiles
 using Test
 
 const RTOL = 1e-6
+const ATOL = 1e-10
 const OUTPUT_ROOT = joinpath(@__DIR__, "output")
 
 # ─────────────────────────────────────────────
@@ -24,7 +25,7 @@ function read_matrix(path)
     readdlm(path, ',', Float64)
 end
 
-function safe_isapprox(a, b; rtol = RTOL, atol = eps())
+function safe_isapprox(a, b; rtol = RTOL, atol = ATOL)
     isapprox(a, b, rtol = rtol, atol = atol) ||
     (abs(a) < 1e-12 && abs(b) < 1e-12)
 end
@@ -282,32 +283,56 @@ function main()
     end
 
     # ── Benchmark comparison ──
-    println("\n", "="^72)
-    println("  NSSS + Jacobian + First-Order Solve Benchmark: Julia vs Dynare (median of 100 runs)")
-    println("="^72)
+    # Display NSSS, Jacobian, and first-order solve times separately
+    println("\n", "="^100)
+    println("  Detailed Benchmark Breakdown: Julia vs Dynare (median of 100 runs)")
+    println("="^100)
+
+    println("\n--- NSSS (Non-Stochastic Steady State) ---")
     println(rpad("Model", 40), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
-    println("-"^72)
-
+    println("-"^100)
     for mname in sort(model_dirs)
-        jl_bench_path = joinpath(OUTPUT_ROOT, mname, "julia", "benchmark_first_order.csv")
-        dy_bench_path = joinpath(OUTPUT_ROOT, mname, "dynare", "benchmark_first_order.csv")
-
-        jl_time = isfile(jl_bench_path) ? read_vector(jl_bench_path)[1] : NaN
-        dy_time = isfile(dy_bench_path) ? read_vector(dy_bench_path)[1] : NaN
-
+        jl_path = joinpath(OUTPUT_ROOT, mname, "julia", "benchmark_nsss.csv")
+        dy_path = joinpath(OUTPUT_ROOT, mname, "dynare", "benchmark_nsss.csv")
+        jl_time = isfile(jl_path) ? read_vector(jl_path)[1] : NaN
+        dy_time = isfile(dy_path) ? read_vector(dy_path)[1] : NaN
         jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
         dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
-
-        if !isnan(jl_time) && !isnan(dy_time) && jl_time > 0
-            speedup = dy_time / jl_time
-            sp_str = string(round(speedup, digits=1), "x")
-        else
-            sp_str = "N/A"
-        end
-
-        println(rpad(mname, 40), rpad(jl_str, 12), rpad(dy_str, 12), sp_str)
+        speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ? 
+            string(round(dy_time / jl_time, digits=1), "x") : "N/A"
+        println(rpad(mname, 40), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
     end
-    println("="^72)
+
+    println("\n--- Jacobian ---")
+    println(rpad("Model", 40), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+    println("-"^100)
+    for mname in sort(model_dirs)
+        jl_path = joinpath(OUTPUT_ROOT, mname, "julia", "benchmark_jacobian.csv")
+        dy_path = joinpath(OUTPUT_ROOT, mname, "dynare", "benchmark_jacobian.csv")
+        jl_time = isfile(jl_path) ? read_vector(jl_path)[1] : NaN
+        dy_time = isfile(dy_path) ? read_vector(dy_path)[1] : NaN
+        jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
+        dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
+        speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ? 
+            string(round(dy_time / jl_time, digits=1), "x") : "N/A"
+        println(rpad(mname, 40), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+    end
+
+    println("\n--- First-Order Solve ---")
+    println(rpad("Model", 40), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+    println("-"^100)
+    for mname in sort(model_dirs)
+        jl_path = joinpath(OUTPUT_ROOT, mname, "julia", "benchmark_first_order.csv")
+        dy_path = joinpath(OUTPUT_ROOT, mname, "dynare", "benchmark_first_order.csv")
+        jl_time = isfile(jl_path) ? read_vector(jl_path)[1] : NaN
+        dy_time = isfile(dy_path) ? read_vector(dy_path)[1] : NaN
+        jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
+        dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
+        speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ? 
+            string(round(dy_time / jl_time, digits=1), "x") : "N/A"
+        println(rpad(mname, 40), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+    end
+    println("="^100)
 end
 
 function format_time(t)

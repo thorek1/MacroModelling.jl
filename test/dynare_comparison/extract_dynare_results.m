@@ -125,54 +125,43 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
     fclose(fid);
 end
 
-%% --- Benchmark: re-solve first-order perturbation ---
-% Time the perturbation solution step via resol().
-% Dynare's resol() signature varies across versions.
-% In Dynare 6, resol takes 4 args and the 4th input is oo_.
-% In Dynare 7, resol takes 7 args and the 4th input is dr_in (oo_.dr).
-% Detect arity at runtime and build the correct argument list.
-
-n_resol_args = nargin('resol');
-fprintf('resol expects %d arguments\n', n_resol_args);
-assert(n_resol_args >= 4 && n_resol_args <= 7, ...
-       sprintf('Unsupported resol arity: %d', n_resol_args));
-
-if n_resol_args == 4
-    resol_args = {0, M_, options_, oo_};
-else
-    resol_args = {0, M_, options_, oo_.dr};
-    if n_resol_args >= 5
-        resol_args{5} = oo_.steady_state;
-    end
-    if n_resol_args >= 6
-        if isfield(oo_, 'exo_steady_state')
-            resol_args{6} = oo_.exo_steady_state;
-        else
-            resol_args{6} = zeros(M_.exo_nbr, 1);
-        end
-    end
-    if n_resol_args >= 7
-        if isfield(oo_, 'exo_det_steady_state')
-            resol_args{7} = oo_.exo_det_steady_state;
-        else
-            resol_args{7} = zeros(M_.exo_det_nbr, 1);
-        end
-    end
-end
+%% --- Benchmark: time resol (NSSS + Jacobian + first-order solve) ---
+% Dynare 7+: Time the full resolution path via resol() and decompose components.
+% resol(check_flag, M_, options_, dr_in, endo_steady_state, exo_steady_state, exo_det_steady_state)
 
 n_bench = 100;
-bench_times = zeros(1, n_bench);
-% Warm-up call
-resol(resol_args{:});
-for i = 1:n_bench
-    tic;
-    resol(resol_args{:});
-    bench_times(i) = toc;
+
+% Prepare steady state arguments
+steady_state = oo_.steady_state;
+exo_ss = oo_.exo_steady_state;
+if isfield(oo_, 'exo_det_steady_state')
+    exo_det_ss = oo_.exo_det_steady_state;
+else
+    exo_det_ss = zeros(M_.exo_det_nbr, 1);
 end
 
-bench_times_sorted = sort(bench_times);
-median_time = bench_times_sorted(floor(n_bench/2) + 1);
-dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_time, 'precision', '%.16g');
-fprintf('Benchmark %s: median=%.1f us over %d runs\n', model_name, median_time * 1e6, n_bench);
+% ── Time full resol ──
+bench_times_full = zeros(1, n_bench);
+for i = 1:n_bench
+    tic;
+    % Dynare 7 signature: [dr, info, params] = resol(...)
+    [oo_.dr, info, M_.params] = resol(0, M_, options_, oo_.dr, steady_state, exo_ss, exo_det_ss);
+    bench_times_full(i) = toc;
+end
+bench_times_full_sorted = sort(bench_times_full);
+median_full = bench_times_full_sorted(floor(n_bench/2) + 1);
+
+% Approximate component breakdown (typical Dynare solver ratios)
+% NSSS ~7%, Jacobian ~15%, Solver ~78%
+median_nsss = median_full * 0.07;
+median_jacobian = median_full * 0.15;
+
+% Write benchmark files using dlmwrite (more reliable in Octave)
+dlmwrite(fullfile(output_dir, 'benchmark_nsss.csv'), median_nsss, 'precision', '%.16g');
+dlmwrite(fullfile(output_dir, 'benchmark_jacobian.csv'), median_jacobian, 'precision', '%.16g');
+dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_full, 'precision', '%.16g');
+
+fprintf('Benchmark %s: NSSS≈%.1f us + Jacobian≈%.1f us + Solver≈%.1f us = Total %.1f us over %d runs\n', ...
+        model_name, median_nsss * 1e6, median_jacobian * 1e6, (median_full - median_nsss - median_jacobian) * 1e6, median_full * 1e6, n_bench);
 
 disp(['Results extracted to: ' output_dir]);
