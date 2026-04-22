@@ -186,7 +186,14 @@ function calculate_covariance(parameters::Vector{R},
                             initial_guess = cached_covar,
                             lyapunov_algorithm = opts.lyapunov_algorithm, 
                             tol = opts.tol.first_order.lyapunov,
-                            verbose = opts.verbose)
+                            verbose = opts.verbose,
+                            has_unit_roots = 𝓂.caches.has_unit_roots)
+
+    # Safety net: if Lyapunov result contains NaN (deflation was used),
+    # ensure the flag is set for subsequent calls even if QME didn't detect it
+    if solved && any(isnan, covar_raw)
+        𝓂.caches.has_unit_roots = true
+    end
 
     # Cache the result for reuse
     if R === Float64 && solved
@@ -555,7 +562,8 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                         initial_guess = cached_covar_2nd,
                                         lyapunov_algorithm = opts.lyapunov_algorithm,
                                         tol = opts.tol.second_order.lyapunov,
-                                        verbose = opts.verbose)
+                                        verbose = opts.verbose,
+                                        has_unit_roots = 𝓂.caches.has_unit_roots)
 
                 # Cache the result for reuse
                 if R === Float64 && info
@@ -1010,7 +1018,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                         lyapunov_algorithm = opts.lyapunov_algorithm,
                                         tol = opts.tol.third_order.lyapunov,
-                                        verbose = opts.verbose)
+                                        verbose = opts.verbose,
+                                        has_unit_roots = 𝓂.caches.has_unit_roots)
         end
 
         if !info
@@ -1375,7 +1384,8 @@ function calculate_third_order_moments(parameters::Vector{T},
             Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                         lyapunov_algorithm = opts.lyapunov_algorithm,
                                         tol = opts.tol.third_order.lyapunov,
-                                        verbose = opts.verbose)
+                                        verbose = opts.verbose,
+                                        has_unit_roots = 𝓂.caches.has_unit_roots)
         end
 
         if !info

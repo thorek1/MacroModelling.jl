@@ -128,12 +128,15 @@ function solve_lu_right!(A::AbstractMatrix{R},
 end
 
 # Old way (≤v0.1.42): S = schur(D, E); ordschur!(S, eigenselect)  — allocates Schur object
+# Returns (qz_ws, qz_dims, schdcmp, schur_ok, has_unit_root_eigenvalues).
+# has_unit_root_eigenvalues is true when any generalized eigenvalue has |λ| ∈ [1-tol, 1+tol].
 function factorize_generalized_schur!(D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
                                       qz_ws,
                                       qz_dims::NTuple{2, Int},
                                       eigenselect::AbstractVector{Bool};
-                                      use_fastlapack_schur::Bool = true) where {R <: AbstractFloat}
+                                      use_fastlapack_schur::Bool = true,
+                                      unit_root_tol::Float64 = 1e-8) where {R <: AbstractFloat}
     if use_fastlapack_schur && R <: Union{Float32, Float64}
         dims = (size(D, 1), size(D, 2))
         if qz_dims != dims
@@ -142,19 +145,20 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
         end
 
         try
-            S, T, _, _, _, Z = ℒ.LAPACK.gges!(qz_ws, 'V', 'V', D, E;
+            S, T, α, β, _, Z = ℒ.LAPACK.gges!(qz_ws, 'V', 'V', D, E;
                                               select = FastLapackInterface.ed,
                                               criterium = 1.0,
                                               resize = true)
-            return qz_ws, qz_dims, (S = S, T = T, Z = Z), true
+            has_ur = _detect_unit_roots(α, β, unit_root_tol)
+            return qz_ws, qz_dims, (S = S, T = T, Z = Z), true, has_ur
         catch
-            return qz_ws, qz_dims, nothing, false
+            return qz_ws, qz_dims, nothing, false, false
         end
     else
         schdcmp = try
             ℒ.schur!(D, E)
         catch
-            return qz_ws, qz_dims, nothing, false
+            return qz_ws, qz_dims, nothing, false, false
         end
 
         @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
@@ -162,11 +166,26 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
         try
             ℒ.ordschur!(schdcmp, eigenselect)
         catch
-            return qz_ws, qz_dims, nothing, false
+            return qz_ws, qz_dims, nothing, false, false
         end
 
-        return qz_ws, qz_dims, schdcmp, true
+        has_ur = _detect_unit_roots(schdcmp.α, schdcmp.β, unit_root_tol)
+        return qz_ws, qz_dims, schdcmp, true, has_ur
     end
+end
+
+# Detect unit root eigenvalues from generalized Schur eigenvalue vectors.
+# Returns true if any |α[i]/β[i]| is within tol of 1.0.
+function _detect_unit_roots(α::AbstractVector, β::AbstractVector, tol::Float64)::Bool
+    for i in eachindex(α, β)
+        βi = abs(β[i])
+        βi == 0 && continue
+        eig_mag = abs(α[i]) / βi
+        if abs(eig_mag - 1) ≤ tol
+            return true
+        end
+    end
+    return false
 end
 
 end # dispatch_doctor

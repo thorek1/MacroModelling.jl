@@ -2534,16 +2534,11 @@ function get_variance_decomposition(𝓂::ℳ;
 
     A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
 
-    # Check for unit roots via Schur decomposition with eigenvalue reordering.
-    # FastLapackInterface.ed selects eigenvalues on the exterior of the disk (|λ|² ≥ criterium),
-    # placing unstable eigenvalues in the top-left block — a single LAPACK gees! call
-    # replaces the separate eigvals + schur + ordschur sequence.
+    # Use pre-detected unit root flag from QME solve when available.
+    # Only compute Schur decomposition of A when unit roots are present (needed for deflation).
+    has_unit_roots = 𝓂.caches.has_unit_roots
     unit_root_tol = 1e-8
-    A_dense = collect(A)
-    A_work = copy(A_dense)
     lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
-    Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
-    has_unit_roots = n_unstable > 0
 
     if !has_unit_roots
         # Standard path: no unit roots, solve each shock directly
@@ -2557,7 +2552,10 @@ function get_variance_decomposition(𝓂::ℳ;
             variances_by_shock[:,i] = ℒ.diag(covar_raw)
         end
     else
-        # Unit root path: reuse pre-computed Schur decomposition from gees! above
+        # Unit root path: compute Schur decomposition of A for deflation
+        A_dense = collect(A)
+        A_work = copy(A_dense)
+        Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
         n = size(A_dense, 1)
 
         if n_unstable == n

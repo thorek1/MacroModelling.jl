@@ -2459,7 +2459,8 @@ function rrule(::typeof(calculate_covariance),
                                 initial_guess = 𝓂.caches.covariance_first_order,
                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                 tol = opts.tol.first_order.ad.lyapunov,
-                                verbose = opts.verbose)
+                                verbose = opts.verbose,
+                                has_unit_roots = 𝓂.caches.has_unit_roots)
     covar_raw = lyap_out[1]
     solved_lyap = lyap_out[2]
 
@@ -3155,7 +3156,8 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
                               initial_guess = 𝓂.caches.covariance_second_order,
                               lyapunov_algorithm = opts.lyapunov_algorithm,
                               tol = opts.tol.second_order.ad.lyapunov,
-                              verbose = opts.verbose)
+                              verbose = opts.verbose,
+                              has_unit_roots = 𝓂.caches.has_unit_roots)
     Σᶻ₂ = lyap_out[1]
     info = lyap_out[2]
 
@@ -8081,13 +8083,15 @@ function rrule(::typeof(solve_lyapunov_equation),
                                                           initial_guess_acceptance_tol = 1e-12,
                                                           acceptance_tol = 1e-12),
                 # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
+                verbose::Bool = false,
+                has_unit_roots::Bool = false)
 
     P, solved = solve_lyapunov_equation(A, C, workspace,
                                         initial_guess = initial_guess,
                                         lyapunov_algorithm = lyapunov_algorithm,
                                         tol = tol,
-                                        verbose = verbose)
+                                        verbose = verbose,
+                                        has_unit_roots = has_unit_roots)
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end

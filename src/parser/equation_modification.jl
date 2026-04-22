@@ -42,6 +42,7 @@ function reset_solver_state!(𝓂::ℳ)
     𝓂.caches.covariance_second_order = zeros(0, 0)
     𝓂.caches.covariance_third_order = zeros(0, 0)
     𝓂.caches.covariance_third_order_autocorr = zeros(0, 0)
+    𝓂.caches.has_unit_roots = false
 
     𝓂.functions.functions_written = false
 

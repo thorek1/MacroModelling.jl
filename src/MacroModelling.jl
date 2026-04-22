@@ -569,6 +569,7 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.caches.first_order_solution_matrix = zeros(0,0)
     𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
     𝓂.caches.qme_solution = zeros(0,0)
+    𝓂.caches.has_unit_roots = false
     𝓂.caches.second_order_solution = spzeros(0,0)
     𝓂.caches.third_order_solution = spzeros(0,0)
 

@@ -204,7 +204,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_qz_ws,
     schur_ws_local.fast_qz_dims,
     schdcmp,
-    schur_ok = factorize_generalized_schur!(D,
+    schur_ok,
+    has_ur = factorize_generalized_schur!(D,
                                             E,
                                             schur_ws_local.fast_qz_ws,
                                             schur_ws_local.fast_qz_dims,
@@ -214,6 +215,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, 0, 1.0
+    end
+
+    if caching
+        cache.has_unit_roots = has_ur
     end
 
     # Extract blocks from reordered Schur form (need owned copies for lu!)

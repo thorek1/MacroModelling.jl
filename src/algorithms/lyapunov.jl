@@ -65,7 +65,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                                                           rtol = 1e-14,
                                                                           initial_guess_acceptance_tol = 1e-12,
                                                                           acceptance_tol = 1e-12),
-                                verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
+                                verbose::Bool = false,
+                                has_unit_roots::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
     # Ownership: low-level methods below are mixed. Bartels-Stewart and sparse
     # doubling paths return owned matrices, while dense doubling and Krylov
@@ -120,6 +121,24 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
  
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
+
+    # Fast path: when unit roots are known from QME solve, skip directly to Schur deflation
+    # instead of wasting O(n³) on solvers guaranteed to fail.
+    if has_unit_roots
+        A_dense = collect(A)
+        C_dense = collect(C)
+
+        X_deflated, deflation_solved = solve_lyapunov_schur_deflation(A_dense, C_dense, workspace;
+                                                                        tol = tol,
+                                                                        verbose = verbose)
+        if deflation_solved
+            if verbose
+                println("Lyapunov equation - solved via Schur deflation (unit roots pre-detected)")
+            end
+            return X_deflated, true
+        end
+        # If deflation failed despite the flag, fall through to standard solvers
+    end
 
     X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = tol) # timer = timer)
 

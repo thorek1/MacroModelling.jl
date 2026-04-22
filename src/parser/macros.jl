@@ -563,6 +563,7 @@ macro model(𝓂, ex...)
                 zeros(0,0), # covariance_second_order
                 zeros(0,0), # covariance_third_order
                 zeros(0,0), # covariance_third_order_autocorr
+                false,      # has_unit_roots
             ),
             _ℂ,
             _𝓦,

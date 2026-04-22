@@ -992,6 +992,12 @@ mutable struct caches
     covariance_second_order::Matrix{Float64}               # 2nd order Lyapunov solution
     covariance_third_order::Matrix{Float64}                # 3rd order assembled Σʸ₃
     covariance_third_order_autocorr::Matrix{Float64}       # 3rd order autocorrelation matrix
+    
+    # =========================================================================
+    # UNIT ROOT FLAGS
+    # Detected during QME solve, used to skip failed Lyapunov solver attempts
+    # =========================================================================
+    has_unit_roots::Bool                                    # true if state transition has eigenvalues ≈ 1
 end
 
 # Structs for perturbation derivative functions (used for AD)
