@@ -69,7 +69,29 @@ dlmwrite(fullfile(output_dir, 'ghx.csv'), ghx_decl, 'precision', '%.16g');
 dlmwrite(fullfile(output_dir, 'ghu.csv'), ghu_decl, 'precision', '%.16g');
 
 % State variable names
-state_var_idx = oo_.dr.state_var;
+if isfield(oo_, 'dr') && isfield(oo_.dr, 'state_var') && ~isempty(oo_.dr.state_var)
+    state_var_idx = oo_.dr.state_var;
+elseif isfield(M_, 'state_var') && ~isempty(M_.state_var)
+    % Dynare may store state metadata in M_ for some solver paths.
+    if isnumeric(M_.state_var)
+        state_var_idx = M_.state_var;
+    elseif isstruct(M_.state_var)
+        if isfield(M_.state_var, 'decl')
+            state_var_idx = M_.state_var.decl;
+        elseif isfield(M_.state_var, 'idx')
+            state_var_idx = M_.state_var.idx;
+        else
+            state_var_idx = find(M_.lead_lag_incidence(1, :));
+        end
+    else
+        state_var_idx = find(M_.lead_lag_incidence(1, :));
+    end
+else
+    % Robust fallback: lagged endogenous variables in declaration order.
+    state_var_idx = find(M_.lead_lag_incidence(1, :));
+end
+
+state_var_idx = state_var_idx(:);
 fid = fopen(fullfile(output_dir, 'state_var_names.csv'), 'w');
 for i = 1:length(state_var_idx)
     si = state_var_idx(i);
