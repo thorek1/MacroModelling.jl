@@ -143,7 +143,7 @@ The recommended workflow is to use this function to write a .mod-file, and then 
 # Arguments
 - $MODEL®
 """
-function write_mod_file(𝓂::ℳ)
+function write_mod_file(𝓂::ℳ; order::Int = 1, pruning::Bool = false, irf_periods::Int = 40)
     NSSS = get_SS(𝓂, derivatives = false)
 
     index_in_name = NSSS.keys isa Base.RefValue{Vector{String}}
@@ -210,7 +210,14 @@ function write_mod_file(𝓂::ℳ)
             print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(index_in_name ? replace(string(v), "◖" => "{", "◗" => "}") : v)) * ";\n") 
         end
 
-        println(io, "end;\n\nstoch_simul(order = 1, irf = 40);")
+        stoch_opts = "order = $order, irf = $irf_periods"
+        if pruning
+            stoch_opts *= ", pruning"
+        end
+        if order > 2
+            stoch_opts *= ", k_order_solver"
+        end
+        println(io, "end;\n\nstoch_simul($stoch_opts);")
     end
 
     @info "Created " * 𝓂.model_name * ".mod"

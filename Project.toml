@@ -61,6 +61,7 @@ ADTypes = "1"
 Accessors = "0.1"
 Aqua = "0.8"
 AxisKeys = "0.2"
+BenchmarkTools = "1"
 BlockTriangularForm = "0.1"
 ChainRulesCore = "1"
 Combinatorics = "1"
@@ -117,6 +118,7 @@ julia = "1.10"
 [extras]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CondaPkg = "992eb4ea-22a4-4c89-a5bb-47a3300528ab"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
@@ -138,4 +140,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ADTypes", "Aqua", "CondaPkg", "PythonCall", "JET", "Dates", "DelimitedFiles", "DifferentiationInterface", "DynamicPPL", "ForwardDiff", "Mooncake", "MCMCChains", "LineSearches", "Optim", "MatrixEquations", "Test", "Turing", "Pigeons", "FiniteDifferences", "StatsPlots", "Preferences", "Zygote"]
+test = ["ADTypes", "Aqua", "BenchmarkTools", "CondaPkg", "PythonCall", "JET", "Dates", "DelimitedFiles", "DifferentiationInterface", "DynamicPPL", "ForwardDiff", "Mooncake", "MCMCChains", "LineSearches", "Optim", "MatrixEquations", "Test", "Turing", "Pigeons", "FiniteDifferences", "StatsPlots", "Preferences", "Zygote"]
