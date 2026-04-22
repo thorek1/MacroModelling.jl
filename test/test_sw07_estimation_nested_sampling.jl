@@ -8,28 +8,52 @@ using DelimitedFiles, AxisKeys
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration switches
 # ──────────────────────────────────────────────────────────────────────────────
-USE_NESSAI = false
+USE_NESSAI = true
 USE_DYNESTY = false
-USE_ULTRANEST = true
+USE_ULTRANEST = false
 USE_FLAT_PRIOR = false
 
-const NESSAI_NLIVE = 1000
-const NESSAI_UNINFORMED_POOLSIZE = 128
-const NESSAI_FLOW_POOLSIZE = 128
-const NESSAI_FLOW_DRAWSIZE = 128
-const NESSAI_MAXIMUM_UNINFORMED = 4000
-const NESSAI_LOG_LEVEL = "INFO"
-const NESSAI_LOGGING_INTERVAL = 500
+NESSAI_NLIVE = 3000
+NESSAI_FLOW_POOLSIZE = 128
+NESSAI_FLOW_DRAWSIZE = NESSAI_FLOW_POOLSIZE
+NESSAI_UNINFORMED_POOLSIZE = NESSAI_FLOW_POOLSIZE
+NESSAI_MAXIMUM_UNINFORMED = 2 * NESSAI_NLIVE
+NESSAI_LOG_LEVEL = "INFO"
+NESSAI_LOGGING_INTERVAL = 500
+NESSAI_IMPORTANCE_NESTED_SAMPLER = false
+NESSAI_RESET_FLOW = false
+NESSAI_RETRAIN_ACCEPTANCE = true
+NESSAI_ACCEPTANCE_THRESHOLD = 0.1
 
-const DYNESTY_NLIVE_INIT = NESSAI_NLIVE
-const DYNESTY_NLIVE_BATCH = max(500, DYNESTY_NLIVE_INIT ÷ 2)
-const DYNESTY_BOUND = "multi"
-const DYNESTY_SAMPLE = "rslice"
-const DYNESTY_DLOGZ_INIT = 0.1
-const DYNESTY_BOOTSTRAP = 0
-const DYNESTY_WEIGHT_PFRAC = 1.0
+# NSF flow configuration sized for SW07's 36-dimensional posterior.
+# Wrapped in pydict() at the call site so nessai receives native Python dicts.
+NESSAI_FLOW_CONFIG = Dict{String,Any}(
+    "ftype"                      => "nsf",
+    # "n_blocks"                   => 10,
+    # "n_neurons"                  => 64,
+    # "n_layers"                   => 4,
+    # "batch_norm_between_layers"  => true,
+    # "use_random_permutations"    => true,
+    # "use_residual_blocks"        => true,
+    # "dropout_probability"        => 0.01,
+    # "activation"                 => "relu",
+)
 
-const ULTRANEST_MIN_NUM_LIVE_POINTS = 400
+# Longer training schedule so the flow can learn the complex posterior shape
+# const NESSAI_TRAINING_CONFIG = Dict{String,Any}(
+#     "max_epochs" => 1000,
+#     "patience"   => 50,
+# )
+
+DYNESTY_NLIVE_INIT = NESSAI_NLIVE
+DYNESTY_NLIVE_BATCH = max(500, DYNESTY_NLIVE_INIT ÷ 2)
+DYNESTY_BOUND = "multi"
+DYNESTY_SAMPLE = "rslice"
+DYNESTY_DLOGZ_INIT = 0.1
+DYNESTY_BOOTSTRAP = 0
+DYNESTY_WEIGHT_PFRAC = 1.0
+
+ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nested-sampling Python packages into PythonCall's Python environment
@@ -275,6 +299,7 @@ if USE_NESSAI
     )
     nessai_fs = FlowSampler(nessai_model;
         output = nessai_output_dir,
+        importance_nested_sampler = NESSAI_IMPORTANCE_NESTED_SAMPLER,
         nlive = NESSAI_NLIVE,
         seed = 1234,
         pytorch_threads = 1,
@@ -284,8 +309,14 @@ if USE_NESSAI
         log_on_iteration = true,
         maximum_uninformed = NESSAI_MAXIMUM_UNINFORMED,
         uninformed_proposal = RejectionProposal,
-        uninformed_proposal_kwargs = Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE),
+        uninformed_proposal_kwargs = pydict(Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE)),
+        flow_config = pydict(NESSAI_FLOW_CONFIG),
+        # training_config = pydict(NESSAI_TRAINING_CONFIG),
+        reset_flow = NESSAI_RESET_FLOW,
+        retrain_acceptance = NESSAI_RETRAIN_ACCEPTANCE,
+        acceptance_threshold = NESSAI_ACCEPTANCE_THRESHOLD,
         poolsize = NESSAI_FLOW_POOLSIZE,
+        drawsize = NESSAI_FLOW_DRAWSIZE,
         plot = false,
         proposal_plots = false,
     )
@@ -376,6 +407,7 @@ end # USE_DYNESTY
 if USE_ULTRANEST
 
     ultranest = pyimport("ultranest")
+    ultranest_stepsampler = pyimport("ultranest.stepsampler")
     ReactiveNestedSampler = ultranest.ReactiveNestedSampler
 
     function ultranest_log_likelihood(params_py)
@@ -397,10 +429,18 @@ if USE_ULTRANEST
         log_dir = ultranest_log_dir,
         resume = "overwrite",
     )
+
+    nsteps = length(param_names)
+    ultranest_sampler.stepsampler = ultranest_stepsampler.SliceSampler(;
+        nsteps = nsteps,
+        generate_direction = ultranest_stepsampler.generate_mixture_random_direction,
+    )
+
     ultranest_result = ultranest_sampler.run(;
         min_num_live_points = ULTRANEST_MIN_NUM_LIVE_POINTS,
         show_status = true,
     )
+    ultranest_sampler.print_results()
     println("UltraNest nested sampling completed")
 
     ultranest_log_evidence = pyconvert(Float64, ultranest_result["logz"])
