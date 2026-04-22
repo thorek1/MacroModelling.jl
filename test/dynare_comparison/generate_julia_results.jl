@@ -20,11 +20,12 @@ const OUTPUT_ROOT = joinpath(@__DIR__, "output")
 
 # Models to test
 const MODEL_FILES = [
-    "RBC_baseline",
     "FS2000",
-    "Ireland_2004",
     "Gali_2015_chapter_3_nonlinear",
     "Smets_Wouters_2007",
+    "NAWM_EAUS_2008",
+    "GNSS_2010",
+    "QUEST3_2009",
 ]
 
 # ─────────────────────────────────────────────
