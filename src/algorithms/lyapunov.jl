@@ -649,6 +649,22 @@ end
 # are set to NaN.
 #
 # Returns (X, solved::Bool) where X is n×n with NaN for unit-root-affected entries.
+
+# Type-stable wrapper for ordered Schur decomposition via LAPACK gees!.
+# gees! returns a union type (eigenvalue vector is Float64 or ComplexF64),
+# so this barrier function isolates the type instability and returns only
+# the concrete types needed by callers: (T_matrix, Z_vectors, n_selected).
+function _ordered_schur!(A_work::Matrix{T}, unit_root_tol::Float64) where T <: AbstractFloat
+    ws = FastLapackInterface.SchurWs(A_work)
+    ℒ.LAPACK.gees!(ws, 'V', A_work;
+                    select = FastLapackInterface.ed,
+                    criterium = (1 - unit_root_tol)^2,
+                    resize = true)
+    vs = ws.vs::Matrix{T}
+    n_sel = ws.sdim[]::Int
+    return (A_work, vs, n_sel)
+end
+
 function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
                                          C::DenseMatrix{T},
                                          workspace::lyapunov_workspace;
@@ -657,15 +673,12 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
                                          unit_root_tol::Float64 = 1e-8)::Tuple{Matrix{T}, Bool} where T <: AbstractFloat
     n = size(A, 1)
 
-    # Real Schur decomposition: A = U * Tmat * U'
-    S = ℒ.schur(A)
-    Tmat = S.T  # quasi-upper-triangular
-    U    = S.Z  # orthogonal
-
-    # Classify eigenvalues: unstable if |λ| ≥ 1 - unit_root_tol
-    eigenvalues = S.values
-    select = map(λ -> abs(λ) ≥ 1 - unit_root_tol, eigenvalues)
-    n_unstable = count(select)
+    # Real Schur decomposition with eigenvalue reordering in one step via LAPACK gees!.
+    # FastLapackInterface.ed selects eigenvalues on the exterior of the disk (|λ|² ≥ criterium),
+    # placing unstable eigenvalues in the top-left block.
+    # After: Tmat = [T_uu T_us; 0 T_ss] where T_ss is the stable block.
+    A_work = copy(A)
+    Tmat, U, n_unstable = _ordered_schur!(A_work, unit_root_tol)
 
     if n_unstable == 0
         # No unit roots found — deflation not applicable, signal failure so caller
@@ -677,13 +690,6 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
         # All eigenvalues are unit roots — no stationary subspace
         return fill(T(NaN), n, n), true
     end
-
-    # Reorder Schur form: move unstable eigenvalues to the TOP-LEFT.
-    # After reordering, Tmat = [T_uu T_us; 0 T_ss] where T_ss is the stable block.
-    # The stable states z_s evolve independently: z_s(t) = T_ss z_s(t-1) + noise_s(t)
-    S_reordered = ℒ.ordschur(S, select)
-    Tmat = S_reordered.T
-    U    = S_reordered.Z
 
     n_stable = n - n_unstable
     stable_range = (n_unstable + 1):n

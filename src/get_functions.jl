@@ -2534,12 +2534,15 @@ function get_variance_decomposition(𝓂::ℳ;
 
     A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
 
-    # Check for unit roots by examining eigenvalues directly.
-    # If unit roots exist, pre-compute Schur decomposition once and reuse for all shocks.
-    A_dense = collect(A)
+    # Check for unit roots via Schur decomposition with eigenvalue reordering.
+    # FastLapackInterface.ed selects eigenvalues on the exterior of the disk (|λ|² ≥ criterium),
+    # placing unstable eigenvalues in the top-left block — a single LAPACK gees! call
+    # replaces the separate eigvals + schur + ordschur sequence.
     unit_root_tol = 1e-8
-    eigenvalues = ℒ.eigvals(A_dense)
-    has_unit_roots = any(λ -> abs(λ) >= 1 - unit_root_tol, eigenvalues)
+    A_dense = collect(A)
+    A_work = copy(A_dense)
+    Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol)
+    has_unit_roots = n_unstable > 0
 
     if !has_unit_roots
         # Standard path: no unit roots, solve each shock directly
@@ -2554,27 +2557,20 @@ function get_variance_decomposition(𝓂::ℳ;
             variances_by_shock[:,i] = ℒ.diag(covar_raw)
         end
     else
-        # Unit root path: pre-compute Schur decomposition once
+        # Unit root path: reuse pre-computed Schur decomposition from gees! above
         n = size(A_dense, 1)
-        S = ℒ.schur(A_dense)
-        select = map(λ -> abs(λ) >= 1 - unit_root_tol, S.values)
-        n_unstable = count(select)
 
         if n_unstable == n
             # All eigenvalues unstable — all variances are NaN
             variances_by_shock .= NaN
         else
-            S_reordered = ℒ.ordschur(S, select)
-            Tmat = S_reordered.T
-            U = S_reordered.Z
-
             n_stable = n - n_unstable
             stable_range = (n_unstable + 1):n
             T_ss = Tmat[stable_range, stable_range]
-            U_s = U[:, stable_range]
+            U_s = U_schur[:, stable_range]
 
             # Identify unit-root variables
-            U_u = @view U[:, 1:n_unstable]
+            U_u = @view U_schur[:, 1:n_unstable]
             unstable_loading = vec(sum(abs2, U_u; dims = 2))
             unit_root_vars = unstable_loading .> unit_root_tol
 
@@ -2589,7 +2585,7 @@ function get_variance_decomposition(𝓂::ℳ;
                 CC = C * C'
 
                 # Transform to Schur basis and extract stable block
-                CC_schur = U' * CC * U
+                CC_schur = U_schur' * CC * U_schur
                 CC_ss = (CC_schur[stable_range, stable_range] + CC_schur[stable_range, stable_range]') / 2
 
                 X_ss, _, sub_tol = solve_lyapunov_equation(T_ss, CC_ss, Val(:doubling), ws_stable;
