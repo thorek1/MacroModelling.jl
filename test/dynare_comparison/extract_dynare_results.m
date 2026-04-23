@@ -264,6 +264,7 @@ if options_.k_order_solver
     end
     median_korder = median(bench_times_korder);
 
+    dlmwrite(fullfile(output_dir, 'benchmark_k_order_pert.csv'), median_korder, 'precision', '%.16g');
     dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_ss + median_korder, 'precision', '%.16g');
 
     fprintf('Benchmark %s (k_order, order=%d): NSSS=%.1f us, k_order_pert=%.1f us, Total=%.1f us over %d runs\n', ...

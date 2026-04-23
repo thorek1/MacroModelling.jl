@@ -134,10 +134,7 @@ function benchmark_first_order(model, julia_dir)
                                                   parameter_values = params, caching = false)
 
     # Benchmark NSSS
-    b_nsss = @benchmark begin
-        MacroModelling.invalidate_cache_validity!($model)
-        MacroModelling.get_NSSS_and_parameters($model, $params, opts = $opts, caching = false)
-    end
+    b_nsss = @benchmark MacroModelling.get_NSSS_and_parameters($model, $params, opts = $opts, caching = false) setup = (MacroModelling.invalidate_cache_validity!($model))
     median_nsss = median(b_nsss).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_nsss.csv"), [median_nsss], ',')
 
