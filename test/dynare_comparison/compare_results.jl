@@ -43,6 +43,14 @@ function load_results(dir)
     r[:ghx]             = read_matrix(joinpath(dir, "ghx.csv"))
     r[:ghu]             = read_matrix(joinpath(dir, "ghu.csv"))
 
+    policy_alg_path = joinpath(dir, "policy_algorithm.csv")
+    if isfile(policy_alg_path)
+        algs = read_names(policy_alg_path)
+        if !isempty(algs)
+            r[:policy_algorithm] = algs[1]
+        end
+    end
+
     # IRFs (optional — may not exist if all zero)
     irf_fields_path = joinpath(dir, "irf_fields.csv")
     if isfile(irf_fields_path)
@@ -56,6 +64,14 @@ function load_results(dir)
         end
         r[:irfs] = irfs
         r[:irf_fields] = fields
+
+        irf_alg_path = joinpath(dir, "irf_algorithm.csv")
+        if isfile(irf_alg_path)
+            algs = read_names(irf_alg_path)
+            if !isempty(algs)
+                r[:irf_algorithm] = algs[1]
+            end
+        end
     end
 
     # Variance-covariance
@@ -173,6 +189,16 @@ end
 
 function compare_irfs(jl, dy; model_name = "", atol = 1e-14)
     haskey(jl, :irfs) && haskey(dy, :irfs) || return
+
+    # Backward-compatibility guard: for higher-order model directories, compare IRFs
+    # only when Julia IRFs were explicitly generated at first order.
+    if is_higher_order_model(model_name)
+        irf_alg = get(jl, :irf_algorithm, "")
+        if irf_alg != "first_order"
+            @info "Skipping IRF comparison for $model_name (IRFs not tagged as first-order; regenerate phase-1 outputs to enable)"
+            return
+        end
+    end
 
     for f in get(jl, :irf_fields, String[])
         if !haskey(dy[:irfs], f)
@@ -440,10 +466,18 @@ function main()
                     compare_steady_state(jl, dy)
                 end
                 @testset "Policy Matrix ghx" begin
-                    compare_ghx(jl, dy; atol = first_order_atol)
+                    if moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
+                        @info "Skipping ghx comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
+                    else
+                        compare_ghx(jl, dy; atol = first_order_atol)
+                    end
                 end
                 @testset "Policy Matrix ghu" begin
-                    compare_ghu(jl, dy; atol = first_order_atol)
+                    if moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
+                        @info "Skipping ghu comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
+                    else
+                        compare_ghu(jl, dy; atol = first_order_atol)
+                    end
                 end
                 @testset "IRFs" begin
                     compare_irfs(jl, dy; model_name = mname, atol = irf_atol)

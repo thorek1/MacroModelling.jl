@@ -99,6 +99,7 @@ function export_first_order_matrices(model, julia_dir, orig, state_vars, exo_var
         end
     end
     writedlm(joinpath(julia_dir, "ghu.csv"), ghu, ',')
+    write_names(joinpath(julia_dir, "policy_algorithm.csv"), ["first_order"])
 end
 
 function export_irfs(model, julia_dir, orig, exo_vars; algorithm = :first_order)
@@ -115,6 +116,7 @@ function export_irfs(model, julia_dir, orig, exo_vars; algorithm = :first_order)
         end
     end
     write_names(joinpath(julia_dir, "irf_fields.csv"), irf_fields)
+    write_names(joinpath(julia_dir, "irf_algorithm.csv"), [String(algorithm)])
 end
 
 function export_moments(model, julia_dir, orig, exo_vars;
