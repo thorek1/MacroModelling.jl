@@ -299,7 +299,7 @@ if USE_NESSAI
     )
     nessai_fs = FlowSampler(nessai_model;
         output = nessai_output_dir,
-        importance_nested_sampler = NESSAI_IMPORTANCE_NESTED_SAMPLER,
+        # importance_nested_sampler = NESSAI_IMPORTANCE_NESTED_SAMPLER,
         nlive = NESSAI_NLIVE,
         seed = 1234,
         pytorch_threads = 1,
@@ -312,11 +312,11 @@ if USE_NESSAI
         uninformed_proposal_kwargs = pydict(Dict("poolsize" => NESSAI_UNINFORMED_POOLSIZE)),
         flow_config = pydict(NESSAI_FLOW_CONFIG),
         # training_config = pydict(NESSAI_TRAINING_CONFIG),
-        reset_flow = NESSAI_RESET_FLOW,
+        # reset_flow = NESSAI_RESET_FLOW,
         retrain_acceptance = NESSAI_RETRAIN_ACCEPTANCE,
         acceptance_threshold = NESSAI_ACCEPTANCE_THRESHOLD,
-        poolsize = NESSAI_FLOW_POOLSIZE,
-        drawsize = NESSAI_FLOW_DRAWSIZE,
+        # poolsize = NESSAI_FLOW_POOLSIZE,
+        # drawsize = NESSAI_FLOW_DRAWSIZE,
         plot = false,
         proposal_plots = false,
     )
