@@ -224,7 +224,7 @@ end
 % Decomposes the solution pipeline into individually timed components.
 % For all models: Jacobian, first-order solve, [Hessian, second-order solve]
 % For k_order models (order 3): also export bundled k_order_pert as an additional direct reference.
-n_bench = 100;
+n_bench = 500;
 
 exo_ss = oo_.exo_steady_state;
 if isfield(oo_, 'exo_det_steady_state')
