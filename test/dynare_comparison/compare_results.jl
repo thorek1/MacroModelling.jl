@@ -544,7 +544,7 @@ function main()
     end
 
     # ── Benchmark comparison ──
-    # Dynare benchmarks: component-level (NSSS, Jacobian, first-order solve, Hessian, second-order solve)
+    # Dynare benchmarks: component-level (Jacobian, first-order solve, Hessian, second-order solve)
     # Julia benchmarks: component-level via BenchmarkTools
     # Dynare order=3 also exports k_order_pert as an additional bundled reference.
     println("\n", "="^100)
@@ -596,10 +596,6 @@ function main()
         end
     end
 
-    # NSSS
-    print_bench_table("NSSS (Steady State)", model_dirs,
-                      "benchmark_nsss.csv", "benchmark_nsss.csv")
-
     # Jacobian (Dynare: dynamic_g1)
     print_bench_table("Jacobian", model_dirs,
                       "benchmark_jacobian.csv", "benchmark_jacobian.csv")
@@ -609,14 +605,14 @@ function main()
                       "benchmark_first_order_solve.csv", "benchmark_first_order_solve.csv")
 
     # First-order total (sum of direct component medians)
-    println("\n--- First-Order Total (sum of direct NSSS + Jacobian + solve medians) ---")
+    println("\n--- First-Order Total (sum of direct Jacobian + solve medians) ---")
     println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
     println("-"^100)
     for mname in sort(model_dirs)
         jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
         dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
-        jl_time = sum_bench_components(jl_dir, ["benchmark_nsss.csv", "benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
-        dy_time = sum_bench_components(dy_dir, ["benchmark_nsss.csv", "benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
+        jl_time = sum_bench_components(jl_dir, ["benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
+        dy_time = sum_bench_components(dy_dir, ["benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
         jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
         dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
         speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ?
@@ -669,7 +665,7 @@ function main()
     end
 
     if !isempty(dy_decomposable_ho_models)
-        println("\n--- Comparable Direct Components Total (NSSS + Jacobian + FO + Hessian + SO) ---")
+        println("\n--- Comparable Direct Components Total (Jacobian + FO + Hessian + SO) ---")
         println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(dy_decomposable_ho_models)
@@ -677,14 +673,12 @@ function main()
             dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
 
             jl_total = sum_bench_components(jl_dir, [
-                "benchmark_nsss.csv",
                 "benchmark_jacobian.csv",
                 "benchmark_first_order_solve.csv",
                 "benchmark_hessian.csv",
                 "benchmark_second_order_solve.csv",
             ])
             dy_total = sum_bench_components(dy_dir, [
-                "benchmark_nsss.csv",
                 "benchmark_jacobian.csv",
                 "benchmark_first_order_solve.csv",
                 "benchmark_hessian.csv",

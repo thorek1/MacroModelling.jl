@@ -168,7 +168,7 @@ function benchmark_first_order(model, julia_dir)
     params = copy(model.parameter_values)
     opts = MacroModelling.merge_calculation_options()
 
-    # Warm up to ensure functions are compiled and caches are populated
+    # Warm up to ensure functions are compiled and reusable inputs are available
     MacroModelling.invalidate_cache_validity!(model)
     SS_and_pars, _ = MacroModelling.get_NSSS_and_parameters(model, params, opts = opts, caching = false)
     ∇₁ = MacroModelling.calculate_jacobian(params, SS_and_pars, model.caches, model.functions.jacobian, model.workspaces, caching = false)
@@ -176,12 +176,7 @@ function benchmark_first_order(model, julia_dir)
                                                   opts = opts, initial_guess = model.caches.qme_solution,
                                                   parameter_values = params, caching = false)
 
-    # Benchmark NSSS
-    b_nsss = @benchmark MacroModelling.get_NSSS_and_parameters($model, $params, opts = $opts, caching = false) setup = (MacroModelling.invalidate_cache_validity!($model))
-    median_nsss = median(b_nsss).time / 1e9
-    writedlm(joinpath(julia_dir, "benchmark_nsss.csv"), [median_nsss], ',')
-
-    # Benchmark Jacobian (given SS_and_pars from a fresh NSSS solve)
+    # Benchmark Jacobian (given precomputed steady-state inputs)
     b_jac = @benchmark begin
         MacroModelling.calculate_jacobian($params, $SS_and_pars, $model.caches, $model.functions.jacobian, $model.workspaces, caching = false)
     end
@@ -195,13 +190,12 @@ function benchmark_first_order(model, julia_dir)
                                                       parameter_values = $params, caching = false)
     end
     median_fo = median(b_fo).time / 1e9
-    median_fo_total = median_nsss + median_jac + median_fo
+    median_fo_total = median_jac + median_fo
     writedlm(joinpath(julia_dir, "benchmark_first_order_solve.csv"), [median_fo], ',')
     writedlm(joinpath(julia_dir, "benchmark_first_order_total.csv"), [median_fo_total], ',')
     writedlm(joinpath(julia_dir, "benchmark_first_order.csv"), [median_fo_total], ',')
 
     @info "Benchmark $(model.model_name) [first order]:"
-    @info "  NSSS:      $(round(median_nsss*1e6, digits=1)) μs"
     @info "  Jacobian:  $(round(median_jac*1e6, digits=1)) μs"
     @info "  QME solve: $(round(median_fo*1e6, digits=1)) μs"
     @info "  Total:     $(round(median_fo_total*1e6, digits=1)) μs"

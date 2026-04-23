@@ -222,11 +222,10 @@ end
 
 %% --- Benchmark: component-level timing ---
 % Decomposes the solution pipeline into individually timed components.
-% For all models: NSSS, Jacobian, first-order solve, [Hessian, second-order solve]
+% For all models: Jacobian, first-order solve, [Hessian, second-order solve]
 % For k_order models (order 3): also export bundled k_order_pert as an additional direct reference.
 n_bench = 100;
 
-steady_state = oo_.steady_state;
 exo_ss = oo_.exo_steady_state;
 if isfield(oo_, 'exo_det_steady_state')
     exo_det_ss = oo_.exo_det_steady_state;
@@ -234,16 +233,6 @@ else
     exo_det_ss = zeros(M_.exo_det_nbr, 1);
 end
 exo_ss_full = [exo_ss; exo_det_ss];
-
-% ── NSSS (evaluate_steady_state) ──
-bench_times_ss = zeros(1, n_bench);
-for i = 1:n_bench
-    tic;
-    [~, ~, ~] = evaluate_steady_state(steady_state, exo_ss_full, M_, options_, ~options_.steadystate.nocheck);
-    bench_times_ss(i) = toc;
-end
-median_ss = median(bench_times_ss);
-dlmwrite(fullfile(output_dir, 'benchmark_nsss.csv'), median_ss, 'precision', '%.16g');
 
 % Decompose stochastic_solvers into individual components for every order.
 dyn_endo_ss = repmat(oo_.dr.ys, 3, 1);
@@ -284,12 +273,12 @@ end
 median_fo = median(bench_times_fo);
 dlmwrite(fullfile(output_dir, 'benchmark_first_order_solve.csv'), median_fo, 'precision', '%.16g');
 
-median_first_order_total = median_ss + median_jac + median_fo;
+median_first_order_total = median_jac + median_fo;
 dlmwrite(fullfile(output_dir, 'benchmark_first_order_total.csv'), median_first_order_total, 'precision', '%.16g');
 dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_first_order_total, 'precision', '%.16g');
 
-fprintf('Benchmark %s (order=%d): NSSS=%.1f us, Jac=%.1f us, FO_solve=%.1f us', ...
-        model_name, options_.order, median_ss*1e6, median_jac*1e6, median_fo*1e6);
+fprintf('Benchmark %s (order=%d): Jac=%.1f us, FO_solve=%.1f us', ...
+    model_name, options_.order, median_jac*1e6, median_fo*1e6);
 
 if options_.order >= 2
     % ── Hessian (dynamic_g2 + build_two_dim_hessian) ──
