@@ -107,7 +107,10 @@ name_index(names) = Dict(n => i for (i, n) in enumerate(names))
 is_nawm_model(model_name) = model_name == "NAWM_EAUS_2008"
 is_higher_order_model(model_name) = occursin("_pruned_2nd", model_name) || occursin("_pruned_3rd", model_name)
 is_pruned_third_order_model(model_name) = occursin("_pruned_3rd", model_name)
-is_gali_pruned_third_order_model(model_name) = model_name == "Gali_2015_chapter_3_nonlinear_pruned_3rd"
+is_excluded_model_dir(model_name) = startswith(model_name, "Caldara_et_al_2012") || model_name == "FS2000_pruned_3rd"
+is_supported_pruned_third_order_variance_model(model_name) = model_name in (
+    "Gali_2015_chapter_3_nonlinear_pruned_3rd",
+)
 
 # ─────────────────────────────────────────────
 # Comparison functions — first order
@@ -448,92 +451,102 @@ function main()
     end
 
     model_dirs = filter(d -> isdir(joinpath(OUTPUT_ROOT, d, "julia")) &&
-                              isdir(joinpath(OUTPUT_ROOT, d, "dynare")),
+                        isdir(joinpath(OUTPUT_ROOT, d, "dynare")) &&
+                        !is_excluded_model_dir(d),
                         readdir(OUTPUT_ROOT))
 
     if isempty(model_dirs)
         error("No model directories with both julia/ and dynare/ results found in $OUTPUT_ROOT")
     end
 
-    @testset "Dynare Comparison" begin
-        for mname in sort(model_dirs)
-            julia_dir = joinpath(OUTPUT_ROOT, mname, "julia")
-            dynare_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
+    comparison_exception = nothing
+    try
+        @testset "Dynare Comparison" begin
+            for mname in sort(model_dirs)
+                julia_dir = joinpath(OUTPUT_ROOT, mname, "julia")
+                dynare_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
 
-            @info "Comparing results for: $mname"
-            jl = load_results(julia_dir)
-            dy = load_results(dynare_dir)
+                @info "Comparing results for: $mname"
+                jl = load_results(julia_dir)
+                dy = load_results(dynare_dir)
 
-            @testset "$mname" begin
-                first_order_atol = is_nawm_model(mname) ? 1e-8 : ATOL
-                irf_atol = is_nawm_model(mname) ? 1e-7 : 1e-14
-                moments_only_higher_order = is_higher_order_model(mname)
-                skip_pruned_third_order = is_pruned_third_order_model(mname)
+                @testset "$mname" begin
+                    first_order_atol = is_nawm_model(mname) ? 1e-8 : ATOL
+                    irf_atol = is_nawm_model(mname) ? 1e-7 : 1e-14
+                    moments_only_higher_order = is_higher_order_model(mname)
+                    skip_pruned_third_order = is_pruned_third_order_model(mname)
 
-                @testset "Steady State" begin
-                    compare_steady_state(jl, dy)
-                end
-                @testset "Policy Matrix ghx" begin
-                    if skip_pruned_third_order
-                        @info "Skipping ghx comparison for $mname (pruned third-order state representation mismatch)"
-                    elseif moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
-                        @info "Skipping ghx comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
-                    else
-                        compare_ghx(jl, dy; atol = first_order_atol)
+                    @testset "Steady State" begin
+                        compare_steady_state(jl, dy)
                     end
-                end
-                @testset "Policy Matrix ghu" begin
-                    if moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
-                        @info "Skipping ghu comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
-                    else
-                        compare_ghu(jl, dy; atol = first_order_atol)
-                    end
-                end
-                @testset "IRFs" begin
-                    compare_irfs(jl, dy; model_name = mname, atol = irf_atol)
-                end
-                @testset "Variance" begin
-                    if skip_pruned_third_order && !is_gali_pruned_third_order_model(mname)
-                        @info "Skipping variance comparison for $mname (pruned third-order moment convention mismatch outside the Gali benchmark case)"
-                    else
-                        compare_variance(jl, dy)
-                    end
-                end
-                @testset "Variance Decomposition" begin
-                    if moments_only_higher_order
-                        @info "Skipping variance decomposition comparison for $mname (higher-order configured as covariance/variance moments-only)"
-                    else
-                        compare_variance_decomposition(jl, dy)
-                    end
-                end
-
-                # Higher-order comparisons (when data is present)
-                if has_second_order(jl) && has_second_order(dy)
-                    @testset "Second Order Matrices" begin
-                        if moments_only_higher_order
-                            @info "Skipping second-order matrix comparison for $mname (higher-order configured as moments-only)"
+                    @testset "Policy Matrix ghx" begin
+                        if skip_pruned_third_order
+                            @info "Skipping ghx comparison for $mname (pruned third-order state representation mismatch)"
+                        elseif moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
+                            @info "Skipping ghx comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
                         else
-                            compare_second_order(jl, dy)
+                            compare_ghx(jl, dy; atol = first_order_atol)
                         end
                     end
-                end
-                if has_third_order(jl) && has_third_order(dy)
-                    @testset "Third Order Matrices" begin
-                        if moments_only_higher_order
-                            @info "Skipping third-order matrix comparison for $mname (higher-order configured as moments-only)"
+                    @testset "Policy Matrix ghu" begin
+                        if moments_only_higher_order && get(jl, :policy_algorithm, "") != "first_order"
+                            @info "Skipping ghu comparison for $mname (policy matrices not tagged as first-order; regenerate phase-1 outputs to enable)"
                         else
-                            compare_third_order(jl, dy)
+                            compare_ghu(jl, dy; atol = first_order_atol)
+                        end
+                    end
+                    @testset "IRFs" begin
+                        compare_irfs(jl, dy; model_name = mname, atol = irf_atol)
+                    end
+                    @testset "Variance" begin
+                        if skip_pruned_third_order && !is_supported_pruned_third_order_variance_model(mname)
+                            @info "Skipping variance comparison for $mname (pruned third-order moment convention mismatch outside the validated benchmark cases)"
+                        else
+                            compare_variance(jl, dy)
+                        end
+                    end
+                    @testset "Variance Decomposition" begin
+                        if moments_only_higher_order
+                            @info "Skipping variance decomposition comparison for $mname (higher-order configured as covariance/variance moments-only)"
+                        else
+                            compare_variance_decomposition(jl, dy)
+                        end
+                    end
+
+                    # Higher-order comparisons (when data is present)
+                    if has_second_order(jl) && has_second_order(dy)
+                        @testset "Second Order Matrices" begin
+                            if moments_only_higher_order
+                                @info "Skipping second-order matrix comparison for $mname (higher-order configured as moments-only)"
+                            else
+                                compare_second_order(jl, dy)
+                            end
+                        end
+                    end
+                    if has_third_order(jl) && has_third_order(dy)
+                        @testset "Third Order Matrices" begin
+                            if moments_only_higher_order
+                                @info "Skipping third-order matrix comparison for $mname (higher-order configured as moments-only)"
+                            else
+                                compare_third_order(jl, dy)
+                            end
                         end
                     end
                 end
             end
+        end
+    catch err
+        if err isa Test.TestSetException
+            comparison_exception = err
+        else
+            rethrow(err)
         end
     end
 
     # ── Benchmark comparison ──
     # Dynare benchmarks: component-level (NSSS, Jacobian, first-order solve, Hessian, second-order solve)
     # Julia benchmarks: component-level via BenchmarkTools
-    # Note: For order=3 (k_order_solver), Dynare cannot decompose beyond NSSS vs k_order_pert
+    # Dynare order=3 also exports k_order_pert as an additional bundled reference.
     println("\n", "="^100)
     println("  Benchmark Comparison: Julia (BenchmarkTools median) vs Dynare (median of 100 runs)")
     println("="^100)
@@ -545,25 +558,24 @@ function main()
 
     has_bench(dir, name) = isfile(joinpath(dir, name))
 
-    # Dynare order=3 runs through k_order_pert: Jacobian/Hessian/SO are not exported
-    # as separate components. Detect this case explicitly to avoid misreporting.
-    is_dynare_k_order_dir(dir) =
-        has_bench(dir, "benchmark_first_order.csv") &&
-        has_bench(dir, "benchmark_nsss.csv") &&
-        !has_bench(dir, "benchmark_jacobian.csv")
+    function sum_bench_components(dir, files)
+        total = 0.0
+        for file in files
+            value = read_bench(dir, file)
+            if isnan(value)
+                return NaN
+            end
+            total += value
+        end
+        return total
+    end
 
-    # k_order_pert timing: prefer explicit file, otherwise recover from existing
-    # outputs where first_order = nsss + k_order_pert.
+    # Dynare order=3 runs additionally export a bundled k_order_pert timing.
+    is_dynare_k_order_dir(dir) = has_bench(dir, "benchmark_k_order_pert.csv")
+
+    # k_order_pert timing is exported explicitly for Dynare order=3 runs.
     function read_dynare_k_order_pert(dir)
-        if has_bench(dir, "benchmark_k_order_pert.csv")
-            return read_bench(dir, "benchmark_k_order_pert.csv")
-        end
-        if is_dynare_k_order_dir(dir)
-            total = read_bench(dir, "benchmark_first_order.csv")
-            nsss = read_bench(dir, "benchmark_nsss.csv")
-            return (isnan(total) || isnan(nsss)) ? NaN : max(total - nsss, 0.0)
-        end
-        return NaN
+        has_bench(dir, "benchmark_k_order_pert.csv") ? read_bench(dir, "benchmark_k_order_pert.csv") : NaN
     end
 
     function print_bench_table(title, model_dirs, jl_file, dy_file; note = "")
@@ -588,21 +600,23 @@ function main()
     print_bench_table("NSSS (Steady State)", model_dirs,
                       "benchmark_nsss.csv", "benchmark_nsss.csv")
 
-    # Jacobian (Dynare: dynamic_g1; not available for k_order models)
+    # Jacobian (Dynare: dynamic_g1)
     print_bench_table("Jacobian", model_dirs,
-                      "benchmark_jacobian.csv", "benchmark_jacobian.csv";
-                      note = "Dynare: N/A for order=3 (k_order_pert bundles all)")
+                      "benchmark_jacobian.csv", "benchmark_jacobian.csv")
 
-    # First-order total (NSSS + Jacobian + first-order solve)
-    println("\n--- First-Order Total (NSSS + Jacobian + QME Solve) ---")
-    println("    Dynare: N/A for order=3 (k_order_pert bundles higher-order work)")
+    # First-order solve (Julia: direct QME solve; Dynare: dyn_first_order_solver)
+    print_bench_table("First-Order Solve", model_dirs,
+                      "benchmark_first_order_solve.csv", "benchmark_first_order_solve.csv")
+
+    # First-order total (sum of direct component medians)
+    println("\n--- First-Order Total (sum of direct NSSS + Jacobian + solve medians) ---")
     println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
     println("-"^100)
     for mname in sort(model_dirs)
         jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
         dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
-        jl_time = read_bench(jl_dir, "benchmark_first_order.csv")
-        dy_time = is_dynare_k_order_dir(dy_dir) ? NaN : read_bench(dy_dir, "benchmark_first_order.csv")
+        jl_time = sum_bench_components(jl_dir, ["benchmark_nsss.csv", "benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
+        dy_time = sum_bench_components(dy_dir, ["benchmark_nsss.csv", "benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
         jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
         dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
         speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ?
@@ -610,7 +624,7 @@ function main()
         println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
     end
 
-    # Hessian / second-order solve (only where Dynare exposes decomposed timings)
+    # Hessian / second-order solve
     ho_models = filter(d -> isfile(joinpath(OUTPUT_ROOT, d, "julia", "benchmark_hessian.csv")), model_dirs)
     dy_decomposable_ho_models = filter(d -> has_bench(joinpath(OUTPUT_ROOT, d, "dynare"), "benchmark_hessian.csv"), ho_models)
     if !isempty(dy_decomposable_ho_models)
@@ -625,22 +639,19 @@ function main()
     k_order_models = filter(d -> is_dynare_k_order_dir(joinpath(OUTPUT_ROOT, d, "dynare")), model_dirs)
     if !isempty(k_order_models)
         println("\n--- Higher-Order Bundled (Dynare k_order_pert) ---")
-        println("    Julia sums FO_solve + Hessian + SO_solve + 3rd derivatives + 3rd solve")
+        println("    Julia sums directly measured solve-stack components; Dynare reports direct bundled k_order_pert")
         println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(k_order_models)
             jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
             dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
 
-            jl_total = read_bench(jl_dir, "benchmark_first_order.csv")
-            jl_nsss = read_bench(jl_dir, "benchmark_nsss.csv")
-            jl_jac = read_bench(jl_dir, "benchmark_jacobian.csv")
+            jl_fo_solve = read_bench(jl_dir, "benchmark_first_order_solve.csv")
             jl_hess = read_bench(jl_dir, "benchmark_hessian.csv")
             jl_so = read_bench(jl_dir, "benchmark_second_order_solve.csv")
             jl_td = read_bench(jl_dir, "benchmark_third_order_derivatives.csv")
             jl_ts = read_bench(jl_dir, "benchmark_third_order_solve.csv")
 
-            jl_fo_solve = (isnan(jl_total) || isnan(jl_nsss) || isnan(jl_jac)) ? NaN : max(jl_total - jl_nsss - jl_jac, 0.0)
             jl_bundled = jl_fo_solve
             isnan(jl_hess) || (jl_bundled += jl_hess)
             isnan(jl_so) || (jl_bundled += jl_so)
@@ -653,6 +664,37 @@ function main()
             dy_str = isnan(dy_bundled) ? "N/A" : format_time(dy_bundled)
             speedup_str = (!isnan(jl_bundled) && !isnan(dy_bundled) && jl_bundled > 0) ?
                 string(round(dy_bundled / jl_bundled, digits=1), "x") : "N/A"
+            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+        end
+    end
+
+    if !isempty(dy_decomposable_ho_models)
+        println("\n--- Comparable Direct Components Total (NSSS + Jacobian + FO + Hessian + SO) ---")
+        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println("-"^100)
+        for mname in sort(dy_decomposable_ho_models)
+            jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
+            dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
+
+            jl_total = sum_bench_components(jl_dir, [
+                "benchmark_nsss.csv",
+                "benchmark_jacobian.csv",
+                "benchmark_first_order_solve.csv",
+                "benchmark_hessian.csv",
+                "benchmark_second_order_solve.csv",
+            ])
+            dy_total = sum_bench_components(dy_dir, [
+                "benchmark_nsss.csv",
+                "benchmark_jacobian.csv",
+                "benchmark_first_order_solve.csv",
+                "benchmark_hessian.csv",
+                "benchmark_second_order_solve.csv",
+            ])
+
+            jl_str = isnan(jl_total) ? "N/A" : format_time(jl_total)
+            dy_str = isnan(dy_total) ? "N/A" : format_time(dy_total)
+            speedup_str = (!isnan(jl_total) && !isnan(dy_total) && jl_total > 0) ?
+                string(round(dy_total / jl_total, digits=1), "x") : "N/A"
             println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
         end
     end
@@ -675,43 +717,9 @@ function main()
         end
     end
 
-    # Grand total (sum all available components)
-    if !isempty(ho_models)
-        println("\n--- Grand Total (all orders summed) ---")
-        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
-        println("-"^100)
-        for mname in sort(ho_models)
-            jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
-            dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
-
-            jl_total = read_bench(jl_dir, "benchmark_first_order.csv")
-            jl_hess = read_bench(jl_dir, "benchmark_hessian.csv")
-            jl_so = read_bench(jl_dir, "benchmark_second_order_solve.csv")
-            jl_td = read_bench(jl_dir, "benchmark_third_order_derivatives.csv")
-            jl_ts = read_bench(jl_dir, "benchmark_third_order_solve.csv")
-            jl_grand = jl_total
-            isnan(jl_hess) || (jl_grand += jl_hess)
-            isnan(jl_so) || (jl_grand += jl_so)
-            isnan(jl_td) || (jl_grand += jl_td)
-            isnan(jl_ts) || (jl_grand += jl_ts)
-
-            # Dynare grand total: for k_order, first_order IS the grand total;
-            # for non-k_order, sum first_order + hessian + second_order_solve
-            dy_grand = read_bench(dy_dir, "benchmark_first_order.csv")
-            dy_hess = read_bench(dy_dir, "benchmark_hessian.csv")
-            dy_so = read_bench(dy_dir, "benchmark_second_order_solve.csv")
-            isnan(dy_hess) || (dy_grand += dy_hess)
-            isnan(dy_so) || (dy_grand += dy_so)
-
-            jl_str = isnan(jl_grand) ? "N/A" : format_time(jl_grand)
-            dy_str = isnan(dy_grand) ? "N/A" : format_time(dy_grand)
-            speedup_str = (!isnan(jl_grand) && !isnan(dy_grand) && jl_grand > 0) ? 
-                string(round(dy_grand / jl_grand, digits=1), "x") : "N/A"
-            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
-        end
-    end
-
     println("="^100)
+
+    comparison_exception === nothing || throw(comparison_exception)
 end
 
 function format_time(t)

@@ -36,9 +36,14 @@ const MODEL_FILES = [
     "QUEST3_2009",
 ]
 
-# Models to also test at pruned 2nd and 3rd order
-const HIGHER_ORDER_MODELS = [
+# Models to also test at pruned 2nd order
+const SECOND_ORDER_MODELS = [
     "FS2000",
+    "Gali_2015_chapter_3_nonlinear",
+]
+
+# Models to also test at pruned 3rd order
+const THIRD_ORDER_MODELS = [
     "Gali_2015_chapter_3_nonlinear",
 ]
 
@@ -190,13 +195,16 @@ function benchmark_first_order(model, julia_dir)
                                                       parameter_values = $params, caching = false)
     end
     median_fo = median(b_fo).time / 1e9
-    writedlm(joinpath(julia_dir, "benchmark_first_order.csv"), [median_nsss + median_jac + median_fo], ',')
+    median_fo_total = median_nsss + median_jac + median_fo
+    writedlm(joinpath(julia_dir, "benchmark_first_order_solve.csv"), [median_fo], ',')
+    writedlm(joinpath(julia_dir, "benchmark_first_order_total.csv"), [median_fo_total], ',')
+    writedlm(joinpath(julia_dir, "benchmark_first_order.csv"), [median_fo_total], ',')
 
     @info "Benchmark $(model.model_name) [first order]:"
     @info "  NSSS:      $(round(median_nsss*1e6, digits=1)) μs"
     @info "  Jacobian:  $(round(median_jac*1e6, digits=1)) μs"
     @info "  QME solve: $(round(median_fo*1e6, digits=1)) μs"
-    @info "  Total:     $(round((median_nsss + median_jac + median_fo)*1e6, digits=1)) μs"
+    @info "  Total:     $(round(median_fo_total*1e6, digits=1)) μs"
 end
 
 function benchmark_second_order(model, julia_dir)
@@ -457,19 +465,28 @@ function main()
         Base.invokelatest(export_model, model, outdir)
     end
 
-    # Phase 1b: Higher-order exports for selected models
-    for mname in HIGHER_ORDER_MODELS
-        for order in [2, 3]
-            suffix = order == 2 ? "pruned_2nd" : "pruned_3rd"
-            dir_name = "$(mname)_$(suffix)"
-            @info "Processing model (pruned order $order): $mname → $dir_name"
+    # Phase 1b: Second-order exports for selected models
+    for mname in SECOND_ORDER_MODELS
+        dir_name = "$(mname)_pruned_2nd"
+        @info "Processing model (pruned order 2): $mname → $dir_name"
 
-            include(joinpath(models_dir, "$mname.jl"))
-            model = Base.invokelatest(getfield, Main, Symbol(mname))
-            outdir = joinpath(OUTPUT_ROOT, dir_name)
-            mkpath(outdir)
-            Base.invokelatest(export_higher_order_model, model, outdir, dir_name, order)
-        end
+        include(joinpath(models_dir, "$mname.jl"))
+        model = Base.invokelatest(getfield, Main, Symbol(mname))
+        outdir = joinpath(OUTPUT_ROOT, dir_name)
+        mkpath(outdir)
+        Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 2)
+    end
+
+    # Phase 1c: Third-order exports for selected models
+    for mname in THIRD_ORDER_MODELS
+        dir_name = "$(mname)_pruned_3rd"
+        @info "Processing model (pruned order 3): $mname → $dir_name"
+
+        include(joinpath(models_dir, "$mname.jl"))
+        model = Base.invokelatest(getfield, Main, Symbol(mname))
+        outdir = joinpath(OUTPUT_ROOT, dir_name)
+        mkpath(outdir)
+        Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 3)
     end
 
     @info "Phase 1 complete. Results in $OUTPUT_ROOT"

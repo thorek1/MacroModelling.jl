@@ -222,8 +222,8 @@ end
 
 %% --- Benchmark: component-level timing ---
 % Decomposes the solution pipeline into individually timed components.
-% For non-k_order models (order 1-2): NSSS, Jacobian, first-order solve, [Hessian, second-order solve]
-% For k_order models (order 3): NSSS, k_order_pert (bundled, cannot decompose)
+% For all models: NSSS, Jacobian, first-order solve, [Hessian, second-order solve]
+% For k_order models (order 3): also export bundled k_order_pert as an additional direct reference.
 n_bench = 100;
 
 steady_state = oo_.steady_state;
@@ -245,104 +245,103 @@ end
 median_ss = median(bench_times_ss);
 dlmwrite(fullfile(output_dir, 'benchmark_nsss.csv'), median_ss, 'precision', '%.16g');
 
+% Decompose stochastic_solvers into individual components for every order.
+dyn_endo_ss = repmat(oo_.dr.ys, 3, 1);
+
+% ── Jacobian (dynamic_g1) ──
+bench_times_jac = zeros(1, n_bench);
+if options_.order >= 2
+    % order >= 2 needs T_order, T outputs for Hessian computation
+    for i = 1:n_bench
+        tic;
+        [g1_bench, T_order_bench, T_bench] = feval([M_.fname '.dynamic_g1'], ...
+            dyn_endo_ss, exo_ss_full, M_.params, oo_.dr.ys, ...
+            M_.dynamic_g1_sparse_rowval, M_.dynamic_g1_sparse_colval, ...
+            M_.dynamic_g1_sparse_colptr);
+        bench_times_jac(i) = toc;
+    end
+else
+    for i = 1:n_bench
+        tic;
+        g1_bench = feval([M_.fname '.dynamic_g1'], ...
+            dyn_endo_ss, exo_ss_full, M_.params, oo_.dr.ys, ...
+            M_.dynamic_g1_sparse_rowval, M_.dynamic_g1_sparse_colval, ...
+            M_.dynamic_g1_sparse_colptr);
+        bench_times_jac(i) = toc;
+    end
+end
+median_jac = median(bench_times_jac);
+dlmwrite(fullfile(output_dir, 'benchmark_jacobian.csv'), median_jac, 'precision', '%.16g');
+
+% ── First-order solve (dyn_first_order_solver) ──
+dr_bench = oo_.dr;
+bench_times_fo = zeros(1, n_bench);
+for i = 1:n_bench
+    tic;
+    [dr_bench, ~] = dyn_first_order_solver(g1_bench, M_, dr_bench, options_, 0);
+    bench_times_fo(i) = toc;
+end
+median_fo = median(bench_times_fo);
+dlmwrite(fullfile(output_dir, 'benchmark_first_order_solve.csv'), median_fo, 'precision', '%.16g');
+
+median_first_order_total = median_ss + median_jac + median_fo;
+dlmwrite(fullfile(output_dir, 'benchmark_first_order_total.csv'), median_first_order_total, 'precision', '%.16g');
+dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_first_order_total, 'precision', '%.16g');
+
+fprintf('Benchmark %s (order=%d): NSSS=%.1f us, Jac=%.1f us, FO_solve=%.1f us', ...
+        model_name, options_.order, median_ss*1e6, median_jac*1e6, median_fo*1e6);
+
+if options_.order >= 2
+    % ── Hessian (dynamic_g2 + build_two_dim_hessian) ──
+    bench_times_hess = zeros(1, n_bench);
+    for i = 1:n_bench
+        tic;
+        g2_v_bench = feval([M_.fname '.dynamic_g2'], dyn_endo_ss, exo_ss_full, ...
+            M_.params, oo_.dr.ys, T_order_bench, T_bench);
+        g2_bench = build_two_dim_hessian(M_.dynamic_g2_sparse_indices, g2_v_bench, ...
+            size(g1_bench, 1), size(g1_bench, 2));
+        bench_times_hess(i) = toc;
+    end
+    median_hess = median(bench_times_hess);
+    dlmwrite(fullfile(output_dir, 'benchmark_hessian.csv'), median_hess, 'precision', '%.16g');
+
+    % ── Second-order solve (dyn_second_order_solver) ──
+    bench_times_so = zeros(1, n_bench);
+    for i = 1:n_bench
+        tic;
+        dr_bench = dyn_second_order_solver(g1_bench, g2_bench, dr_bench, M_, ...
+            options_.threads.kronecker.sparse_hessian_times_B_kronecker_C);
+        bench_times_so(i) = toc;
+    end
+    median_so = median(bench_times_so);
+    dlmwrite(fullfile(output_dir, 'benchmark_second_order_solve.csv'), median_so, 'precision', '%.16g');
+
+    fprintf(', Hess=%.1f us, SO_solve=%.1f us', median_hess*1e6, median_so*1e6);
+end
+
 if options_.k_order_solver
-    % k_order_pert bundles all derivatives and solutions — cannot decompose further
-    dr_bench = struct();
-    if isfield(oo_.dr, 'inv_order_var'); dr_bench.inv_order_var = oo_.dr.inv_order_var; end
-    if isfield(oo_.dr, 'order_var'); dr_bench.order_var = oo_.dr.order_var; end
-    if isfield(oo_.dr, 'restrict_var_list'); dr_bench.restrict_var_list = oo_.dr.restrict_var_list; end
-    if isfield(oo_.dr, 'restrict_columns'); dr_bench.restrict_columns = oo_.dr.restrict_columns; end
-    if isfield(oo_.dr, 'obs_var'); dr_bench.obs_var = oo_.dr.obs_var; end
-    dr_bench.ys = oo_.dr.ys;
+    % k_order_pert remains useful as a directly measured bundled reference for order-3 runs.
+    dr_korder = struct();
+    if isfield(oo_.dr, 'inv_order_var'); dr_korder.inv_order_var = oo_.dr.inv_order_var; end
+    if isfield(oo_.dr, 'order_var'); dr_korder.order_var = oo_.dr.order_var; end
+    if isfield(oo_.dr, 'restrict_var_list'); dr_korder.restrict_var_list = oo_.dr.restrict_var_list; end
+    if isfield(oo_.dr, 'restrict_columns'); dr_korder.restrict_columns = oo_.dr.restrict_columns; end
+    if isfield(oo_.dr, 'obs_var'); dr_korder.obs_var = oo_.dr.obs_var; end
+    dr_korder.ys = oo_.dr.ys;
 
     bench_times_korder = zeros(1, n_bench);
     for i = 1:n_bench
-        dr_tmp = set_state_space(dr_bench, M_);
+        dr_tmp = set_state_space(dr_korder, M_);
         tic;
         [dr_tmp, ~] = k_order_pert(dr_tmp, M_, options_);
         bench_times_korder(i) = toc;
     end
     median_korder = median(bench_times_korder);
-
     dlmwrite(fullfile(output_dir, 'benchmark_k_order_pert.csv'), median_korder, 'precision', '%.16g');
-    dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_ss + median_korder, 'precision', '%.16g');
 
-    fprintf('Benchmark %s (k_order, order=%d): NSSS=%.1f us, k_order_pert=%.1f us, Total=%.1f us over %d runs\n', ...
-            model_name, options_.order, median_ss*1e6, median_korder*1e6, (median_ss + median_korder)*1e6, n_bench);
-else
-    % Decompose stochastic_solvers into individual components
-    dyn_endo_ss = repmat(oo_.dr.ys, 3, 1);
-
-    % ── Jacobian (dynamic_g1) ──
-    bench_times_jac = zeros(1, n_bench);
-    if options_.order >= 2
-        % order >= 2 needs T_order, T outputs for Hessian computation
-        for i = 1:n_bench
-            tic;
-            [g1_bench, T_order_bench, T_bench] = feval([M_.fname '.dynamic_g1'], ...
-                dyn_endo_ss, exo_ss_full, M_.params, oo_.dr.ys, ...
-                M_.dynamic_g1_sparse_rowval, M_.dynamic_g1_sparse_colval, ...
-                M_.dynamic_g1_sparse_colptr);
-            bench_times_jac(i) = toc;
-        end
-    else
-        for i = 1:n_bench
-            tic;
-            g1_bench = feval([M_.fname '.dynamic_g1'], ...
-                dyn_endo_ss, exo_ss_full, M_.params, oo_.dr.ys, ...
-                M_.dynamic_g1_sparse_rowval, M_.dynamic_g1_sparse_colval, ...
-                M_.dynamic_g1_sparse_colptr);
-            bench_times_jac(i) = toc;
-        end
-    end
-    median_jac = median(bench_times_jac);
-    dlmwrite(fullfile(output_dir, 'benchmark_jacobian.csv'), median_jac, 'precision', '%.16g');
-
-    % ── First-order solve (dyn_first_order_solver) ──
-    dr_bench = oo_.dr;
-    bench_times_fo = zeros(1, n_bench);
-    for i = 1:n_bench
-        tic;
-        [dr_bench, ~] = dyn_first_order_solver(g1_bench, M_, dr_bench, options_, 0);
-        bench_times_fo(i) = toc;
-    end
-    median_fo = median(bench_times_fo);
-
-    median_first_order_total = median_ss + median_jac + median_fo;
-    dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_first_order_total, 'precision', '%.16g');
-
-    fprintf('Benchmark %s (order=%d): NSSS=%.1f us, Jac=%.1f us, FO_solve=%.1f us', ...
-            model_name, options_.order, median_ss*1e6, median_jac*1e6, median_fo*1e6);
-
-    if options_.order >= 2
-        % ── Hessian (dynamic_g2 + build_two_dim_hessian) ──
-        bench_times_hess = zeros(1, n_bench);
-        for i = 1:n_bench
-            tic;
-            g2_v_bench = feval([M_.fname '.dynamic_g2'], dyn_endo_ss, exo_ss_full, ...
-                M_.params, oo_.dr.ys, T_order_bench, T_bench);
-            g2_bench = build_two_dim_hessian(M_.dynamic_g2_sparse_indices, g2_v_bench, ...
-                size(g1_bench, 1), size(g1_bench, 2));
-            bench_times_hess(i) = toc;
-        end
-        median_hess = median(bench_times_hess);
-        dlmwrite(fullfile(output_dir, 'benchmark_hessian.csv'), median_hess, 'precision', '%.16g');
-
-        % ── Second-order solve (dyn_second_order_solver) ──
-        bench_times_so = zeros(1, n_bench);
-        for i = 1:n_bench
-            tic;
-            dr_bench = dyn_second_order_solver(g1_bench, g2_bench, dr_bench, M_, ...
-                options_.threads.kronecker.sparse_hessian_times_B_kronecker_C);
-            bench_times_so(i) = toc;
-        end
-        median_so = median(bench_times_so);
-        dlmwrite(fullfile(output_dir, 'benchmark_second_order_solve.csv'), median_so, 'precision', '%.16g');
-
-        fprintf(', Hess=%.1f us, SO_solve=%.1f us', median_hess*1e6, median_so*1e6);
-    end
-
-    fprintf(', Total=%.1f us over %d runs\n', median_first_order_total*1e6, n_bench);
+    fprintf(', k_order_pert=%.1f us', median_korder*1e6);
 end
+
+fprintf(', FO_Total=%.1f us over %d runs\n', median_first_order_total*1e6, n_bench);
 
 disp(['Results extracted to: ' output_dir]);
