@@ -629,6 +629,22 @@ function main()
 
         print_bench_table("Second-Order Solve", dy_decomposable_ho_models,
                           "benchmark_second_order_solve.csv", "benchmark_second_order_solve.csv")
+
+        # Second-Order Total (Hessian + Second-Order Solve)
+        println("\n--- Second-Order Total (Hessian + Second-Order Solve) ---")
+        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println("-"^100)
+        for mname in sort(dy_decomposable_ho_models)
+            jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
+            dy_dir = joinpath(OUTPUT_ROOT, mname, "dynare")
+            jl_time = sum_bench_components(jl_dir, ["benchmark_hessian.csv", "benchmark_second_order_solve.csv"])
+            dy_time = sum_bench_components(dy_dir, ["benchmark_hessian.csv", "benchmark_second_order_solve.csv"])
+            jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
+            dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
+            speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ?
+                string(round(dy_time / jl_time, digits=1), "x") : "N/A"
+            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+        end
     end
 
     # Dynare k_order models: report bundled higher-order timing consistently.
@@ -708,6 +724,18 @@ function main()
                 isfile(p) ? format_time(read_vector(p)[1]) : "N/A"
             end
             println(rpad(mname, 50), rpad(td, 15), ts)
+        end
+
+        # Third-Order Total (Third-Order Derivatives + Third-Order Solve)
+        println("\n--- Third-Order Total (Third-Order Derivatives + Third-Order Solve) ---")
+        println("    Julia only — Dynare k_order_pert bundles all orders")
+        println(rpad("Model", 50), "Julia")
+        println("-"^100)
+        for mname in sort(to_models)
+            jl_dir = joinpath(OUTPUT_ROOT, mname, "julia")
+            jl_time = sum_bench_components(jl_dir, ["benchmark_third_order_derivatives.csv", "benchmark_third_order_solve.csv"])
+            jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
+            println(rpad(mname, 50), jl_str)
         end
     end
 
