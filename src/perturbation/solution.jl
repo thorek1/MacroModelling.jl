@@ -1646,7 +1646,7 @@ end
 # If sol has an eigenvalue near 1, (I - sol) is nearly singular.
 # Uses LU factorization: exactly singular (info > 0) or smallest absolute pivot < tol.
 # Cost: O(n³/3) LU on the small nPfm × nPfm solution matrix.
-function _detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
+function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
                                             tol::Float64 = 1e-8) where R <: AbstractFloat
     n = size(sol, 1)
     n == 0 && return nothing
@@ -1781,7 +1781,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # Detect unit roots from QME solution eigenvalues when the Schur QME path
     # did not already set the flag (e.g. doubling solver was used).
     if caching && !cache.has_unit_roots
-        _detect_unit_roots_from_solution!(cache, sol)
+        detect_unit_roots_from_solution!(cache, sol)
     end
 
     # end # timeit_debug

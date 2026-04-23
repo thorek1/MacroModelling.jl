@@ -673,7 +673,7 @@ end
 # gees! returns a union type (eigenvalue vector is Float64 or ComplexF64),
 # so this barrier function isolates the type instability and returns only
 # the concrete types needed by callers: (T_matrix, Z_vectors, n_selected).
-function _ordered_schur!(A_work::Matrix{T}, unit_root_tol::Float64,
+function ordered_schur!(A_work::Matrix{T}, unit_root_tol::Float64,
                          schur_ws::FastLapackInterface.SchurWs{T}) where T <: AbstractFloat
     ℒ.LAPACK.gees!(schur_ws, 'V', A_work;
                     select = FastLapackInterface.ed,
@@ -697,7 +697,7 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
     # placing unstable eigenvalues in the top-left block.
     # After: Tmat = [T_uu T_us; 0 T_ss] where T_ss is the stable block.
     A_work = copy(A)
-    Tmat, U, n_unstable = _ordered_schur!(A_work, unit_root_tol, workspace.schur_ws)
+    Tmat, U, n_unstable = ordered_schur!(A_work, unit_root_tol, workspace.schur_ws)
 
     if n_unstable == 0
         # No unit roots found — deflation not applicable, signal failure so caller

@@ -2555,7 +2555,7 @@ function get_variance_decomposition(𝓂::ℳ;
         # Unit root path: compute Schur decomposition of A for deflation
         A_dense = collect(A)
         A_work = copy(A_dense)
-        Tmat, U_schur, n_unstable = _ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
+        Tmat, U_schur, n_unstable = ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
         n = size(A_dense, 1)
 
         if n_unstable == n

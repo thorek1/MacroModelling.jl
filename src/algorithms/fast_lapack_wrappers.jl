@@ -149,7 +149,7 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
                                               select = FastLapackInterface.ed,
                                               criterium = 1.0,
                                               resize = true)
-            has_ur = _detect_unit_roots(α, β, unit_root_tol)
+            has_ur = detect_unit_roots(α, β, unit_root_tol)
             return qz_ws, qz_dims, (S = S, T = T, Z = Z), true, has_ur
         catch
             return qz_ws, qz_dims, nothing, false, false
@@ -169,14 +169,14 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
             return qz_ws, qz_dims, nothing, false, false
         end
 
-        has_ur = _detect_unit_roots(schdcmp.α, schdcmp.β, unit_root_tol)
+        has_ur = detect_unit_roots(schdcmp.α, schdcmp.β, unit_root_tol)
         return qz_ws, qz_dims, schdcmp, true, has_ur
     end
 end
 
 # Detect unit root eigenvalues from generalized Schur eigenvalue vectors.
 # Returns true if any |α[i]/β[i]| is within tol of 1.0.
-function _detect_unit_roots(α::AbstractVector, β::AbstractVector, tol::Float64)::Bool
+function detect_unit_roots(α::AbstractVector, β::AbstractVector, tol::Float64)::Bool
     for i in eachindex(α, β)
         βi = abs(β[i])
         βi == 0 && continue
