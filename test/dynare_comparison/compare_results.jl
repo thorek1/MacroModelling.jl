@@ -88,8 +88,8 @@ end
 # Build index lookup: name → row/col index
 # ─────────────────────────────────────────────
 name_index(names) = Dict(n => i for (i, n) in enumerate(names))
-is_pruned_third_order_model(model_name) = occursin("pruned_3rd", model_name)
 is_nawm_model(model_name) = model_name == "NAWM_EAUS_2008"
+is_higher_order_model(model_name) = occursin("_pruned_2nd", model_name) || occursin("_pruned_3rd", model_name)
 
 # ─────────────────────────────────────────────
 # Comparison functions — first order
@@ -178,15 +178,6 @@ function compare_irfs(jl, dy; model_name = "", atol = 1e-14)
         if !haskey(dy[:irfs], f)
             @warn "IRF field $f missing from Dynare"
         end
-    end
-
-    # Pruned higher-order IRFs are not comparable across implementations here:
-    # MacroModelling initialises from the stochastic steady state, while Dynare's
-    # exported IRFs start from the non-stochastic steady state and use a different
-    # per-step correction convention.
-    if occursin("pruned", model_name)
-        @info "Skipping IRF comparison for $model_name (pruned IRF convention mismatch with Dynare)"
-        return
     end
 
     common_fields = intersect(keys(jl[:irfs]), keys(dy[:irfs]))
@@ -443,17 +434,13 @@ function main()
             @testset "$mname" begin
                 first_order_atol = is_nawm_model(mname) ? 1e-8 : ATOL
                 irf_atol = is_nawm_model(mname) ? 1e-8 : 1e-14
-                skip_pruned_third_order = is_pruned_third_order_model(mname)
+                moments_only_higher_order = is_higher_order_model(mname)
 
                 @testset "Steady State" begin
                     compare_steady_state(jl, dy)
                 end
                 @testset "Policy Matrix ghx" begin
-                    if skip_pruned_third_order
-                        @info "Skipping ghx comparison for $mname (incompatible pruned third-order state representation)"
-                    else
-                        compare_ghx(jl, dy; atol = first_order_atol)
-                    end
+                    compare_ghx(jl, dy; atol = first_order_atol)
                 end
                 @testset "Policy Matrix ghu" begin
                     compare_ghu(jl, dy; atol = first_order_atol)
@@ -465,14 +452,18 @@ function main()
                     compare_variance(jl, dy)
                 end
                 @testset "Variance Decomposition" begin
-                    compare_variance_decomposition(jl, dy)
+                    if moments_only_higher_order
+                        @info "Skipping variance decomposition comparison for $mname (higher-order configured as covariance/variance moments-only)"
+                    else
+                        compare_variance_decomposition(jl, dy)
+                    end
                 end
 
                 # Higher-order comparisons (when data is present)
                 if has_second_order(jl) && has_second_order(dy)
                     @testset "Second Order Matrices" begin
-                        if skip_pruned_third_order
-                            @info "Skipping second-order matrix comparison for $mname (incompatible pruned third-order tensor/state convention)"
+                        if moments_only_higher_order
+                            @info "Skipping second-order matrix comparison for $mname (higher-order configured as moments-only)"
                         else
                             compare_second_order(jl, dy)
                         end
@@ -480,8 +471,8 @@ function main()
                 end
                 if has_third_order(jl) && has_third_order(dy)
                     @testset "Third Order Matrices" begin
-                        if skip_pruned_third_order
-                            @info "Skipping third-order matrix comparison for $mname (incompatible pruned third-order tensor/state convention)"
+                        if moments_only_higher_order
+                            @info "Skipping third-order matrix comparison for $mname (higher-order configured as moments-only)"
                         else
                             compare_third_order(jl, dy)
                         end

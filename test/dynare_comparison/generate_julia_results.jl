@@ -14,10 +14,10 @@
 #
 #   For higher-order models (pruned 2nd/3rd order):
 #   output/{model_name}_pruned_2nd/  and  output/{model_name}_pruned_3rd/
-#     Same structure as above plus:
-#       ghxx.csv, ghxu.csv, ghuu.csv, ghs2.csv            (2nd order)
-#       ghxxx.csv, ghxxu.csv, ghxuu.csv, ghuuu.csv,       (3rd order)
-#       ghxss.csv, ghuss.csv
+#     Includes first-order comparable outputs plus higher-order moments:
+#       steady_state.csv, ghx.csv, ghu.csv, irf_*.csv
+#       variance_covariance.csv
+#     Excludes higher-order solution-matrix CSVs (ghxx/ghxu/..., ghxxx/...)
 
 using MacroModelling
 using DelimitedFiles
@@ -115,6 +115,42 @@ function export_irfs(model, julia_dir, orig, exo_vars; algorithm = :first_order)
         end
     end
     write_names(joinpath(julia_dir, "irf_fields.csv"), irf_fields)
+end
+
+function export_moments(model, julia_dir, orig, exo_vars;
+                        algorithm = :first_order,
+                        include_variance_decomposition = true,
+                        var_names_ascii = nothing,
+                        exo_names_ascii = nothing)
+    moments = get_moments(model, algorithm = algorithm,
+                          derivatives = false,
+                          non_stochastic_steady_state = false,
+                          mean = false,
+                          variance = true,
+                          standard_deviation = false,
+                          covariance = true)
+
+    vcov = zeros(length(orig), length(orig))
+    covar_ka = moments[:covariance]
+    for (ri, rv) in enumerate(orig)
+        for (ci, cv) in enumerate(orig)
+            vcov[ri, ci] = Float64(covar_ka(rv, cv))
+        end
+    end
+    writedlm(joinpath(julia_dir, "variance_covariance.csv"), vcov, ',')
+
+    if include_variance_decomposition
+        vd = get_variance_decomposition(model)
+        vd_mat = zeros(length(orig), length(exo_vars))
+        for (vi, v) in enumerate(orig)
+            for (ei, e) in enumerate(exo_vars)
+                vd_mat[vi, ei] = Float64(vd(v, e)) * 100.0
+            end
+        end
+        writedlm(joinpath(julia_dir, "variance_decomposition.csv"), vd_mat, ',')
+        write_names(joinpath(julia_dir, "variance_decomposition_var_names.csv"), something(var_names_ascii, [ascii_name(v) for v in orig]))
+        write_names(joinpath(julia_dir, "variance_decomposition_exo_names.csv"), something(exo_names_ascii, [ascii_name(e) for e in exo_vars]))
+    end
 end
 
 # ─────────────────────────────────────────────
@@ -339,34 +375,11 @@ function export_model(model, outdir)
     export_first_order_matrices(model, julia_dir, orig, state_vars, exo_vars)
     export_irfs(model, julia_dir, orig, exo_vars, algorithm = :first_order)
 
-    # ── Variance-covariance ──
-    moments = get_moments(model, algorithm = :first_order,
-                          derivatives = false,
-                          non_stochastic_steady_state = false,
-                          mean = false,
-                          variance = true,
-                          standard_deviation = false,
-                          covariance = true)
-    vcov = zeros(length(orig), length(orig))
-    covar_ka = moments[:covariance]
-    for (ri, rv) in enumerate(orig)
-        for (ci, cv) in enumerate(orig)
-            vcov[ri, ci] = Float64(covar_ka(rv, cv))
-        end
-    end
-    writedlm(joinpath(julia_dir, "variance_covariance.csv"), vcov, ',')
-
-    # ── Variance decomposition (as percentages 0-100) ──
-    vd = get_variance_decomposition(model)
-    vd_mat = zeros(length(orig), length(exo_vars))
-    for (vi, v) in enumerate(orig)
-        for (ei, e) in enumerate(exo_vars)
-            vd_mat[vi, ei] = Float64(vd(v, e)) * 100.0
-        end
-    end
-    writedlm(joinpath(julia_dir, "variance_decomposition.csv"), vd_mat, ',')
-    write_names(joinpath(julia_dir, "variance_decomposition_var_names.csv"), var_names_ascii)
-    write_names(joinpath(julia_dir, "variance_decomposition_exo_names.csv"), exo_names_ascii)
+    export_moments(model, julia_dir, orig, exo_vars;
+                   algorithm = :first_order,
+                   include_variance_decomposition = true,
+                   var_names_ascii = var_names_ascii,
+                   exo_names_ascii = exo_names_ascii)
 
     # ── Export .mod file ──
     cd(outdir) do
@@ -396,17 +409,14 @@ function export_higher_order_model(model, outdir, dir_name, order)
     exo_vars = model.constants.post_model_macro.exo
 
     export_names_and_steady_state(model, julia_dir, orig, state_vars, exo_vars)
+    # Export first-order comparable objects even for higher-order model directories.
     export_first_order_matrices(model, julia_dir, orig, state_vars, exo_vars)
+    export_irfs(model, julia_dir, orig, exo_vars, algorithm = :first_order)
 
-    # ── Second-order matrices (always present for order ≥ 2) ──
-    export_second_order_matrices(model, julia_dir, orig)
-
-    if order >= 3
-        export_third_order_matrices(model, julia_dir, orig)
-    end
-
-    # ── Pruned IRFs ──
-    export_irfs(model, julia_dir, orig, exo_vars, algorithm = algorithm)
+    # Higher-order-specific outputs are moments-only (no higher-order solution matrices).
+    export_moments(model, julia_dir, orig, exo_vars;
+                   algorithm = algorithm,
+                   include_variance_decomposition = false)
 
     # ── Export .mod file with correct order and pruning, renamed to match directory ──
     cd(outdir) do
