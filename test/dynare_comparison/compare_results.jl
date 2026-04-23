@@ -107,6 +107,7 @@ name_index(names) = Dict(n => i for (i, n) in enumerate(names))
 is_nawm_model(model_name) = model_name == "NAWM_EAUS_2008"
 is_higher_order_model(model_name) = occursin("_pruned_2nd", model_name) || occursin("_pruned_3rd", model_name)
 is_pruned_third_order_model(model_name) = occursin("_pruned_3rd", model_name)
+is_gali_pruned_third_order_model(model_name) = model_name == "Gali_2015_chapter_3_nonlinear_pruned_3rd"
 
 # ─────────────────────────────────────────────
 # Comparison functions — first order
@@ -492,8 +493,8 @@ function main()
                     compare_irfs(jl, dy; model_name = mname, atol = irf_atol)
                 end
                 @testset "Variance" begin
-                    if skip_pruned_third_order
-                        @info "Skipping variance comparison for $mname (pruned third-order moment convention mismatch)"
+                    if skip_pruned_third_order && !is_gali_pruned_third_order_model(mname)
+                        @info "Skipping variance comparison for $mname (pruned third-order moment convention mismatch outside the Gali benchmark case)"
                     else
                         compare_variance(jl, dy)
                     end
