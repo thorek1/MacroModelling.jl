@@ -158,7 +158,7 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
-            test_set: "estimate_sw07_nessai"
+            test_set: "estimate_sw07_nested_sampling"
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v2

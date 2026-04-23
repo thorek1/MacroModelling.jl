@@ -33,6 +33,7 @@ octave --no-gui --eval "addpath('$DYNARE_MATLAB'); dynare_version();"
 for model_dir in "$OUTPUT_DIR"/*/; do
     model_name=$(basename "$model_dir")
     mod_file="$model_dir/${model_name}.mod"
+    dynare_stub="m"
 
     if [ ! -f "$mod_file" ]; then
         echo "SKIP: No .mod file found for $model_name"
@@ -48,11 +49,11 @@ for model_dir in "$OUTPUT_DIR"/*/; do
 
     # Work in a temporary directory to avoid Dynare file pollution
     workdir=$(mktemp -d)
-    cp "$mod_file" "$workdir/"
+    cp "$mod_file" "$workdir/${dynare_stub}.mod"
     cp "$EXTRACT_SCRIPT" "$workdir/"
 
     # Add nograph to stoch_simul to avoid graphics toolkit errors in headless mode
-    sed -i 's/stoch_simul(/stoch_simul(nograph, /' "$workdir/${model_name}.mod"
+    sed -i 's/stoch_simul(/stoch_simul(nograph, /' "$workdir/${dynare_stub}.mod"
 
     (
         cd "$workdir"
@@ -60,7 +61,7 @@ for model_dir in "$OUTPUT_DIR"/*/; do
             addpath('$DYNARE_MATLAB');
             model_name = '$model_name';
             output_dir = 'dynare_output';
-            dynare $model_name noclearall;
+            dynare $dynare_stub noclearall;
             extract_dynare_results;
         "
 

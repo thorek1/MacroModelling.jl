@@ -1771,7 +1771,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     use_fastlapack_lu = use_fastlapack_lu,
                                                     tol = opts.tol.first_order.qme,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    caching = caching)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
