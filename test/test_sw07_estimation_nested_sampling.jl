@@ -13,7 +13,7 @@ USE_DYNESTY = false
 USE_ULTRANEST = false
 USE_FLAT_PRIOR = false
 
-NESSAI_NLIVE = 3000
+NESSAI_NLIVE = 2000
 NESSAI_FLOW_POOLSIZE = 128
 NESSAI_FLOW_DRAWSIZE = NESSAI_FLOW_POOLSIZE
 NESSAI_UNINFORMED_POOLSIZE = NESSAI_FLOW_POOLSIZE
@@ -22,8 +22,8 @@ NESSAI_LOG_LEVEL = "INFO"
 NESSAI_LOGGING_INTERVAL = 500
 NESSAI_IMPORTANCE_NESTED_SAMPLER = false
 NESSAI_RESET_FLOW = false
-NESSAI_RETRAIN_ACCEPTANCE = true
-NESSAI_ACCEPTANCE_THRESHOLD = 0.1
+# NESSAI_RETRAIN_ACCEPTANCE = true
+# NESSAI_ACCEPTANCE_THRESHOLD = 0.1
 
 # NSF flow configuration sized for SW07's 36-dimensional posterior.
 # Wrapped in pydict() at the call site so nessai receives native Python dicts.
@@ -313,8 +313,8 @@ if USE_NESSAI
         flow_config = pydict(NESSAI_FLOW_CONFIG),
         # training_config = pydict(NESSAI_TRAINING_CONFIG),
         # reset_flow = NESSAI_RESET_FLOW,
-        retrain_acceptance = NESSAI_RETRAIN_ACCEPTANCE,
-        acceptance_threshold = NESSAI_ACCEPTANCE_THRESHOLD,
+        # retrain_acceptance = NESSAI_RETRAIN_ACCEPTANCE,
+        # acceptance_threshold = NESSAI_ACCEPTANCE_THRESHOLD,
         poolsize = NESSAI_FLOW_POOLSIZE,
         drawsize = NESSAI_FLOW_DRAWSIZE,
         plot = false,
