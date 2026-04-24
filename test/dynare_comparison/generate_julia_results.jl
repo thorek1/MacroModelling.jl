@@ -33,6 +33,7 @@ const MODEL_FILES = [
     "NAWM_EAUS_2008",
     "GNSS_2010",
     "QUEST3_2009",
+    "FRBUS",
 ]
 
 # Models to also test at pruned 2nd order
@@ -45,6 +46,9 @@ const SECOND_ORDER_MODELS = [
 const THIRD_ORDER_MODELS = [
     "Gali_2015_chapter_3_nonlinear",
 ]
+
+# Models that skip variance/covariance and variance decomposition
+const SKIP_MOMENTS_MODELS = Set(["FRBUS"])
 
 # ─────────────────────────────────────────────
 # Helpers
@@ -371,7 +375,7 @@ end
 # ─────────────────────────────────────────────
 # Export one model's first-order results
 # ─────────────────────────────────────────────
-function export_model(model, outdir)
+function export_model(model, outdir; include_moments = true)
     julia_dir = joinpath(outdir, "julia")
     mkpath(julia_dir)
 
@@ -383,11 +387,13 @@ function export_model(model, outdir)
     export_first_order_matrices(model, julia_dir, orig, state_vars, exo_vars)
     export_irfs(model, julia_dir, orig, exo_vars, algorithm = :first_order)
 
-    export_moments(model, julia_dir, orig, exo_vars;
-                   algorithm = :first_order,
-                   include_variance_decomposition = true,
-                   var_names_ascii = var_names_ascii,
-                   exo_names_ascii = exo_names_ascii)
+    if include_moments
+        export_moments(model, julia_dir, orig, exo_vars;
+                       algorithm = :first_order,
+                       include_variance_decomposition = true,
+                       var_names_ascii = var_names_ascii,
+                       exo_names_ascii = exo_names_ascii)
+    end
 
     # ── Export .mod file ──
     cd(outdir) do
@@ -460,7 +466,8 @@ function main()
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(OUTPUT_ROOT, mname)
         mkpath(outdir)
-        Base.invokelatest(export_model, model, outdir)
+        Base.invokelatest(export_model, model, outdir;
+                         include_moments = !(mname in SKIP_MOMENTS_MODELS))
     end
 
     # Phase 1b: Second-order exports for selected models
