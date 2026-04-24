@@ -2534,20 +2534,75 @@ function get_variance_decomposition(𝓂::ℳ;
 
     A = @views sol[:, 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
 
-    for i in 1:𝓂.constants.post_model_macro.nExo
-        C = @views sol[:, 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + i]
-        
-        CC = C * C'
+    # Use pre-detected unit root flag from QME solve when available.
+    # Only compute Schur decomposition of A when unit roots are present (needed for deflation).
+    has_unit_roots = 𝓂.caches.has_unit_roots
+    unit_root_tol = 1e-8
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
-        # Ensure lyapunov workspace is properly sized and get it
-        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
+    if !has_unit_roots
+        # Standard path: no unit roots, solve each shock directly
+        for i in 1:𝓂.constants.post_model_macro.nExo
+            C = @views sol[:, 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + i]
+            CC = C * C'
+            covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
+                                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                                    tol = opts.tol.first_order.lyapunov,
+                                                    verbose = opts.verbose)
+            variances_by_shock[:,i] = ℒ.diag(covar_raw)
+        end
+    else
+        # Unit root path: compute Schur decomposition of A for deflation
+        A_dense = collect(A)
+        A_work = copy(A_dense)
+        Tmat, U_schur, n_unstable = ordered_schur!(A_work, unit_root_tol, lyap_ws.schur_ws)
+        n = size(A_dense, 1)
 
-        covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
-                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                tol = opts.tol.first_order.lyapunov,
-                                                verbose = opts.verbose)
+        if n_unstable == n
+            # All eigenvalues unstable — all variances are NaN
+            variances_by_shock .= NaN
+        else
+            n_stable = n - n_unstable
+            stable_range = (n_unstable + 1):n
+            T_ss = Tmat[stable_range, stable_range]
+            U_s = U_schur[:, stable_range]
 
-        variances_by_shock[:,i] = ℒ.diag(covar_raw)
+            # Identify unit-root variables
+            U_u = @view U_schur[:, 1:n_unstable]
+            unstable_loading = vec(sum(abs2, U_u; dims = 2))
+            unit_root_vars = unstable_loading .> unit_root_tol
+
+            ws_stable = Lyapunov_workspace(n_stable)
+
+            if opts.verbose
+                println("Variance decomposition: Schur pre-computed ($n_unstable unstable, $n_stable stable eigenvalues)")
+            end
+
+            for i in 1:𝓂.constants.post_model_macro.nExo
+                C = @views sol[:, 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + i]
+                CC = C * C'
+
+                # Transform to Schur basis and extract stable block
+                CC_schur = U_schur' * CC * U_schur
+                CC_ss = (CC_schur[stable_range, stable_range] + CC_schur[stable_range, stable_range]') / 2
+
+                X_ss, _, sub_tol = solve_lyapunov_equation(T_ss, CC_ss, Val(:doubling), ws_stable;
+                                                            tol = opts.tol.first_order.lyapunov)
+
+                if sub_tol > opts.tol.first_order.lyapunov.acceptance_tol
+                    X_ss, _, sub_tol = solve_lyapunov_equation(T_ss, CC_ss, Val(:bicgstab), ws_stable;
+                                                                tol = opts.tol.first_order.lyapunov)
+                end
+
+                X_ss = collect(X_ss)
+
+                # Map back: only need diagonal of U_s * X_ss * U_s'
+                tmp = X_ss * U_s'
+                var_i = vec(sum(U_s .* tmp', dims = 2))
+                var_i[unit_root_vars] .= NaN
+                variances_by_shock[:,i] = var_i
+            end
+        end
     end
 
     sum_variances_by_shock = max.(sum(variances_by_shock, dims=2), eps())
@@ -2668,7 +2723,9 @@ function get_correlation(𝓂::ℳ;
     else
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
-        @assert solved "Could not find covariance matrix."
+        if !solved
+            @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
+        end
     end
 
     covar_dcmp[abs.(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
@@ -2811,7 +2868,9 @@ function get_autocorrelation(𝓂::ℳ;
     else
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
-        @assert solved "Could not find covariance matrix."
+        if !solved
+            @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
+        end
 
         A = @views sol[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.constants.post_model_macro.nVars))[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,:]
     
@@ -2819,7 +2878,6 @@ function get_autocorrelation(𝓂::ℳ;
 
         autocorr[ℒ.diag(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol,:] .= 0
     end
-
     
     axis1 = 𝓂.constants.post_model_macro.var
 
@@ -3074,7 +3132,9 @@ function get_moments(𝓂::ℳ;
             else
                 _cov_result, _cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
-                @assert _cov_result[5] "Could not find covariance matrix."
+                if !_cov_result[5]
+                    @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
+                end
                 _n_cov_tuple = 5
             end
 

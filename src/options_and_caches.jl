@@ -452,7 +452,8 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
-        zeros(T, 0, 0)          # C̃_fd
+        zeros(T, 0, 0),         # C̃_fd
+        FastLapackInterface.SchurWs(zeros(T, 1, 1))  # schur_ws (lazily resized by gees!)
     )
 end
 

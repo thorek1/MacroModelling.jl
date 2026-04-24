@@ -65,7 +65,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                                                           rtol = 1e-14,
                                                                           initial_guess_acceptance_tol = 1e-12,
                                                                           acceptance_tol = 1e-12),
-                                verbose::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
+                                verbose::Bool = false,
+                                has_unit_roots::Bool = false)::Union{Tuple{Matrix{T}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{T, Int, SparseMatrixCSC{T, Int}}, Bool}} where T <: Float64
                                 # timer::TimerOutput = TimerOutput(),
     # Ownership: low-level methods below are mixed. Bartels-Stewart and sparse
     # doubling paths return owned matrices, while dense doubling and Krylov
@@ -121,6 +122,24 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
 
+    # Fast path: when unit roots are known from QME solve, skip directly to Schur deflation
+    # instead of wasting O(n³) on solvers guaranteed to fail.
+    if has_unit_roots
+        A_dense = collect(A)
+        C_dense = collect(C)
+
+        X_deflated, deflation_solved = solve_lyapunov_schur_deflation(A_dense, C_dense, workspace;
+                                                                        tol = tol,
+                                                                        verbose = verbose)
+        if deflation_solved
+            if verbose
+                println("Lyapunov equation - solved via Schur deflation (unit roots pre-detected)")
+            end
+            return X_deflated, true
+        end
+        # If deflation failed despite the flag, fall through to standard solvers
+    end
+
     X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = tol) # timer = timer)
 
     if verbose
@@ -158,10 +177,24 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
             println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
         end
     end
-    # end # timeit_debug
-    # end # timeit_debug
-    
-    # if (reached_tol > tol) println("Lyapunov failed: $reached_tol") end
+
+    # Schur deflation fallback: when all standard solvers fail, check for unit-root
+    # eigenvalues and solve only the stationary subspace.
+    if !(reached_tol < acceptance_tol)
+        A_dense = collect(A)
+        C_dense = collect(C)
+
+        X_deflated, deflation_solved = solve_lyapunov_schur_deflation(A_dense, C_dense, workspace;
+                                                                       tol = tol,
+                                                                       verbose = verbose)
+        if deflation_solved
+            X = X_deflated
+            reached_tol = zero(T) # signal success
+            if verbose
+                println("Lyapunov equation - solved via Schur deflation (unit-root subspace set to NaN)")
+            end
+        end
+    end
 
     return X, reached_tol < acceptance_tol
 end
@@ -624,5 +657,121 @@ end
 
 #     return 𝐂, soll.maps, reached_tol
 # end
+
+# Schur deflation for Lyapunov equations with unit-root eigenvalues.
+#
+# When A has eigenvalues on or outside the unit circle, the standard Lyapunov
+# equation A*X*A' + C = X has no finite solution. This function decomposes A via
+# real Schur factorization, reorders so that unstable eigenvalues (|λ| ≥ 1 - unit_root_tol)
+# come first, then solves the Lyapunov equation only for the stationary (lower-right)
+# block. Original-basis entries whose variance is contaminated by unit-root directions
+# are set to NaN.
+#
+# Returns (X, solved::Bool) where X is n×n with NaN for unit-root-affected entries.
+
+# Type-stable wrapper for ordered Schur decomposition via LAPACK gees!.
+# gees! returns a union type (eigenvalue vector is Float64 or ComplexF64),
+# so this barrier function isolates the type instability and returns only
+# the concrete types needed by callers: (T_matrix, Z_vectors, n_selected).
+function ordered_schur!(A_work::Matrix{T}, unit_root_tol::Float64,
+                         schur_ws::FastLapackInterface.SchurWs{T}) where T <: AbstractFloat
+    ℒ.LAPACK.gees!(schur_ws, 'V', A_work;
+                    select = FastLapackInterface.ed,
+                    criterium = (1 - unit_root_tol)^2,
+                    resize = true)
+    vs = schur_ws.vs::Matrix{T}
+    n_sel = schur_ws.sdim[]::Int
+    return (A_work, vs, n_sel)
+end
+
+function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
+                                         C::DenseMatrix{T},
+                                         workspace::lyapunov_workspace;
+                                         tol::SolverTolerances = SolverTolerances(),
+                                         verbose::Bool = false,
+                                         unit_root_tol::Float64 = 1e-8)::Tuple{Matrix{T}, Bool} where T <: AbstractFloat
+    n = size(A, 1)
+
+    # Real Schur decomposition with eigenvalue reordering in one step via LAPACK gees!.
+    # FastLapackInterface.ed selects eigenvalues on the exterior of the disk (|λ|² ≥ criterium),
+    # placing unstable eigenvalues in the top-left block.
+    # After: Tmat = [T_uu T_us; 0 T_ss] where T_ss is the stable block.
+    A_work = copy(A)
+    Tmat, U, n_unstable = ordered_schur!(A_work, unit_root_tol, workspace.schur_ws)
+
+    if n_unstable == 0
+        # No unit roots found — deflation not applicable, signal failure so caller
+        # does not silently accept a potentially incorrect result
+        return Matrix{T}(undef, 0, 0), false
+    end
+
+    if n_unstable == n
+        # All eigenvalues are unit roots — no stationary subspace
+        return fill(T(NaN), n, n), true
+    end
+
+    n_stable = n - n_unstable
+    stable_range = (n_unstable + 1):n
+
+    T_ss = Tmat[stable_range, stable_range]
+
+    # Transform noise covariance to Schur basis
+    C_schur = U' * C * U
+    C_ss = C_schur[stable_range, stable_range]
+
+    # Symmetrize (numerical noise from rotation can break symmetry)
+    C_ss = (C_ss + C_ss') / 2
+
+    # Solve the reduced Lyapunov equation: X_ss = T_ss * X_ss * T_ss' + C_ss
+    # This converges because all eigenvalues of T_ss are strictly inside the unit circle.
+    # Try multiple algorithms directly (not via dispatch, to avoid recursion into Schur deflation).
+    ws_stable = Lyapunov_workspace(n_stable)
+    X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:doubling), ws_stable; tol = tol)
+
+    if sub_tol > tol.acceptance_tol
+        X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bicgstab), ws_stable; tol = tol)
+    end
+
+    if sub_tol > tol.acceptance_tol && _has_bartels_stewart() && length(C_ss) < 5e7
+        X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bartels_stewart), ws_stable; tol = tol)
+    end
+
+    if sub_tol > tol.acceptance_tol
+        if verbose
+            println("Schur deflation: stable sub-block Lyapunov failed (tol=$sub_tol)")
+        end
+        return Matrix{T}(undef, 0, 0), false
+    end
+
+    X_ss = collect(X_ss_result)
+
+    # Map back to original coordinates.
+    # Only the stationary component contributes finite variance:
+    #   Σ_stationary = U_s * X_ss * U_s'
+    U_s = U[:, stable_range]
+    Σ = U_s * X_ss * U_s'
+
+    # Identify which original variables have any loading on unstable Schur vectors.
+    # These variables have infinite unconditional variance → set to NaN.
+    U_u = @view U[:, 1:n_unstable]
+    unstable_loading = vec(sum(abs2, U_u; dims = 2))  # ‖U_u[i,:]‖²
+    unit_root_vars = unstable_loading .> unit_root_tol
+
+    # Set rows and columns of unit-root-affected variables to NaN
+    for i in 1:n
+        if unit_root_vars[i]
+            Σ[i, :] .= T(NaN)
+            Σ[:, i] .= T(NaN)
+        end
+    end
+
+    if verbose
+        println("Schur deflation: $n_unstable unstable eigenvalue(s), ",
+                "$n_stable stable, $(count(unit_root_vars)) variable(s) set to NaN")
+    end
+
+    return Σ, true
+end
+
 
 end # dispatch_doctor

@@ -1642,6 +1642,38 @@ function compressed_kron²(a::AbstractMatrix{T};
     return out
 end
 
+# Detect unit roots from QME solution without computing eigenvalues.
+# If sol has an eigenvalue near 1, (I - sol) is nearly singular.
+# Uses LU factorization: exactly singular (info > 0) or smallest absolute pivot < tol.
+# Cost: O(n³/3) LU on the small nPfm × nPfm solution matrix.
+function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
+                                            tol::Float64 = 1e-8) where R <: AbstractFloat
+    n = size(sol, 1)
+    n == 0 && return nothing
+    ImA = similar(sol)
+    @inbounds for j in 1:n, i in 1:n
+        ImA[i, j] = ifelse(i == j, one(R), zero(R)) - sol[i, j]
+    end
+    F = ℒ.lu!(ImA; check = false)
+    if F.info > 0
+        cache.has_unit_roots = true
+        return nothing
+    end
+    # Diagonal of packed LU factors = diagonal of U (L has unit diagonal).
+    # Smallest absolute pivot indicates near-singularity ↔ eigenvalue of sol near 1.
+    min_abs_pivot = typemax(R)
+    @inbounds for i in 1:n
+        v = abs(F.factors[i, i])
+        if v < min_abs_pivot
+            min_abs_pivot = v
+        end
+    end
+    if min_abs_pivot < tol
+        cache.has_unit_roots = true
+    end
+    return nothing
+end
+
 @stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{R},
@@ -1745,6 +1777,12 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
         return fill(R(NaN), T.nVars, T.nPast_not_future_and_mixed + T.nExo), sol, false
+    end
+
+    # Detect unit roots from QME solution eigenvalues when the Schur QME path
+    # did not already set the flag (e.g. doubling solver was used).
+    if caching && !cache.has_unit_roots
+        detect_unit_roots_from_solution!(cache, sol)
     end
 
     # end # timeit_debug
