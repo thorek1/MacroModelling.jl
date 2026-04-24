@@ -21,7 +21,6 @@
 
 using MacroModelling
 using DelimitedFiles
-using BenchmarkTools
 
 const IRF_PERIODS = 40
 const OUTPUT_ROOT = joinpath(@__DIR__, "output")
@@ -161,8 +160,19 @@ function export_moments(model, julia_dir, orig, exo_vars;
 end
 
 # ─────────────────────────────────────────────
-# Benchmark helpers using BenchmarkTools
+# Benchmark helpers — manual median of N_BENCH runs
 # ─────────────────────────────────────────────
+const N_BENCH = 500
+
+function median_elapsed(f, n = N_BENCH)
+    times = Vector{Float64}(undef, n)
+    for i in 1:n
+        times[i] = @elapsed f()
+    end
+    sort!(times)
+    m = length(times) ÷ 2
+    return isodd(length(times)) ? times[m + 1] : (times[m] + times[m + 1]) / 2
+end
 
 function benchmark_first_order(model, julia_dir)
     params = copy(model.parameter_values)
@@ -177,19 +187,17 @@ function benchmark_first_order(model, julia_dir)
                                                   parameter_values = params, caching = false)
 
     # Benchmark Jacobian (given precomputed steady-state inputs)
-    b_jac = @benchmark begin
-        MacroModelling.calculate_jacobian($params, $SS_and_pars, $model.caches, $model.functions.jacobian, $model.workspaces, caching = false)
+    median_jac = median_elapsed() do
+        MacroModelling.calculate_jacobian(params, SS_and_pars, model.caches, model.functions.jacobian, model.workspaces, caching = false)
     end
-    median_jac = median(b_jac).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_jacobian.csv"), [median_jac], ',')
 
     # Benchmark first-order solve (given Jacobian)
-    b_fo = @benchmark begin
-        MacroModelling.calculate_first_order_solution($∇₁, $model.constants, $model.workspaces, $model.caches;
-                                                      opts = $opts, initial_guess = $model.caches.qme_solution,
-                                                      parameter_values = $params, caching = false)
+    median_fo = median_elapsed() do
+        MacroModelling.calculate_first_order_solution(∇₁, model.constants, model.workspaces, model.caches;
+                                                      opts = opts, initial_guess = model.caches.qme_solution,
+                                                      parameter_values = params, caching = false)
     end
-    median_fo = median(b_fo).time / 1e9
     median_fo_total = median_jac + median_fo
     writedlm(joinpath(julia_dir, "benchmark_first_order_solve.csv"), [median_fo], ',')
     writedlm(joinpath(julia_dir, "benchmark_first_order_total.csv"), [median_fo_total], ',')
@@ -218,19 +226,17 @@ function benchmark_second_order(model, julia_dir)
                                                    opts = opts, parameter_values = params, caching = false)
 
     # Benchmark Hessian
-    b_hess = @benchmark begin
-        MacroModelling.calculate_hessian($params, $SS_and_pars, $model.caches, $model.functions.hessian, $model.workspaces, caching = false)
+    median_hess = median_elapsed() do
+        MacroModelling.calculate_hessian(params, SS_and_pars, model.caches, model.functions.hessian, model.workspaces, caching = false)
     end
-    median_hess = median(b_hess).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_hessian.csv"), [median_hess], ',')
 
     # Benchmark second-order solve (given first-order solution + Hessian)
-    b_so = @benchmark begin
-        MacroModelling.calculate_second_order_solution($∇₁, $∇₂, $𝐒₁, $model.constants, $model.workspaces, $model.caches;
-                                                       initial_guess = $model.caches.second_order_solution,
-                                                       opts = $opts, parameter_values = $params, caching = false)
+    median_so = median_elapsed() do
+        MacroModelling.calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, model.constants, model.workspaces, model.caches;
+                                                       initial_guess = model.caches.second_order_solution,
+                                                       opts = opts, parameter_values = params, caching = false)
     end
-    median_so = median(b_so).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_second_order_solve.csv"), [median_so], ',')
 
     @info "Benchmark $(model.model_name) [second order]:"
@@ -259,19 +265,17 @@ function benchmark_third_order(model, julia_dir)
                                                   opts = opts, parameter_values = params, caching = false)
 
     # Benchmark third-order derivatives
-    b_d3 = @benchmark begin
-        MacroModelling.calculate_third_order_derivatives($params, $SS_and_pars, $model.caches, $model.functions.third_order_derivatives, $model.workspaces, caching = false)
+    median_d3 = median_elapsed() do
+        MacroModelling.calculate_third_order_derivatives(params, SS_and_pars, model.caches, model.functions.third_order_derivatives, model.workspaces, caching = false)
     end
-    median_d3 = median(b_d3).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_third_order_derivatives.csv"), [median_d3], ',')
 
     # Benchmark third-order solve
-    b_to = @benchmark begin
-        MacroModelling.calculate_third_order_solution($∇₁, $∇₂, $∇₃, $𝐒₁, $𝐒₂, $model.constants, $model.workspaces, $model.caches;
-                                                      initial_guess = $model.caches.third_order_solution,
-                                                      opts = $opts, parameter_values = $params, caching = false)
+    median_to = median_elapsed() do
+        MacroModelling.calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, model.constants, model.workspaces, model.caches;
+                                                      initial_guess = model.caches.third_order_solution,
+                                                      opts = opts, parameter_values = params, caching = false)
     end
-    median_to = median(b_to).time / 1e9
     writedlm(joinpath(julia_dir, "benchmark_third_order_solve.csv"), [median_to], ',')
 
     @info "Benchmark $(model.model_name) [third order]:"

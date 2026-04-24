@@ -548,7 +548,7 @@ function main()
     # Julia benchmarks: component-level via BenchmarkTools
     # Dynare order=3 also exports k_order_pert as an additional bundled reference.
     println("\n", "="^100)
-    println("  Benchmark Comparison: Julia (BenchmarkTools median) vs Dynare (median of 100 runs)")
+    println("  Benchmark Comparison: Julia (median of 500 runs) vs Dynare (median of 500 runs)")
     println("="^100)
 
     # Helper to read a benchmark value, returning NaN if file doesn't exist
