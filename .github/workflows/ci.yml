@@ -243,14 +243,18 @@ jobs:
 
       # Phase 1: Generate Julia results and .mod files
       - name: Generate Julia results
-        run: julia --project=. test/dynare_comparison/generate_julia_results.jl
+        env:
+          JULIA_NUM_THREADS: '1'
+        run: julia --threads=1 --project=. test/dynare_comparison/generate_julia_results.jl
 
       # Phase 2: Run Dynare in Docker (debian:testing)
       - name: Build Dynare Docker image
         run: docker build -t dynare-runner test/dynare_comparison/
       - name: Run Dynare models
-        run: docker run --rm --user "$(id -u):$(id -g)" -v "${{ github.workspace }}/test/dynare_comparison/output:/work/output" dynare-runner
+        run: docker run --rm --user "$(id -u):$(id -g)" -e THREAD_COUNT=1 -e OMP_NUM_THREADS=1 -e OMP_THREAD_LIMIT=1 -e OPENBLAS_NUM_THREADS=1 -e MKL_NUM_THREADS=1 -v "${{ github.workspace }}/test/dynare_comparison/output:/work/output" dynare-runner
 
       # Phase 3: Compare results
       - name: Compare Julia vs Dynare results
-        run: julia --project=. test/dynare_comparison/compare_results.jl
+        env:
+          JULIA_NUM_THREADS: '1'
+        run: julia --threads=1 --project=. test/dynare_comparison/compare_results.jl
