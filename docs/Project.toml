@@ -28,5 +28,3 @@ MacroModelling = {path = ".."}
 
 [compat]
 Documenter = "1"
-LineSearches = "7.4"
-Turing = "0.42 - 0.44"
