@@ -145,7 +145,7 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
         end
 
         try
-            S, T, α, β, _, Z = ℒ.LAPACK.gges!(qz_ws, 'V', 'V', D, E;
+            S, T, α, β, _, Z = ℒ.LAPACK.gges!(qz_ws, 'N', 'V', D, E;
                                               select = FastLapackInterface.ed,
                                               criterium = 1.0,
                                               resize = true)
