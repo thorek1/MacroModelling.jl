@@ -65,6 +65,9 @@ const DEFAULT_SILENT_FLAG = false
 # Solver and tolerance defaults
 const DEFAULT_VERBOSE = false
 const DEFAULT_QME_ALGORITHM = :schur
+const DEFAULT_QME_THRESHOLD = 15000
+const DEFAULT_LARGE_QME_ALGORITHM = :doubling
+const DEFAULT_QME_SELECTOR = 𝓂 -> (𝓂.constants.post_model_macro.nVars - 𝓂.constants.post_model_macro.nPresent_only)^2 > DEFAULT_QME_THRESHOLD ? DEFAULT_LARGE_QME_ALGORITHM : DEFAULT_QME_ALGORITHM
 const DEFAULT_LYAPUNOV_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_THRESHOLD = 1000
