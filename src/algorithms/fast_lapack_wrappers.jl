@@ -145,9 +145,13 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
         end
 
         try
+            # FastLapackInterface.ed selects abs(lambda)^2 >= criterium.
+            # Nudging just inside the unit circle avoids LAPACK reordering
+            # failures for exactly unit-root blocks while preserving the
+            # exterior subspace used by the QME Schur extraction.
             S, T, α, β, _, Z = ℒ.LAPACK.gges!(qz_ws, 'N', 'V', D, E;
                                               select = FastLapackInterface.ed,
-                                              criterium = 1.0,
+                                              criterium = (1.0 - sqrt(eps(Float64)))^2,
                                               resize = true)
             has_ur = detect_unit_roots(α, β, unit_root_tol)
             return qz_ws, qz_dims, (S = S, T = T, Z = Z), true, has_ur
