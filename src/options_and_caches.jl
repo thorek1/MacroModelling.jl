@@ -2040,7 +2040,7 @@ when it is called inside a ForwardDiff dual-number overload or a ChainRulesCore 
 
 # Fields
 - `qme::SolverTolerances`: tolerances for the quadratic matrix equation (QME) derivative solve.
-    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-7`, `acceptance_tol=1e-7`.
 - `sylvester::SolverTolerances`: tolerances for the Sylvester equation derivative solve.
     Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation derivative solve.
@@ -2055,7 +2055,7 @@ struct AdTolerances
 end
 
 function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-7, 1e-7)
     _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
     _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     return AdTolerances(
@@ -2079,7 +2079,7 @@ Tolerance settings for the first-order perturbation solution and its AD pathways
 
 # Fields
 - `qme::SolverTolerances`: tolerances for the quadratic matrix equation solver.
-    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-8`, `acceptance_tol=1e-8`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-7`, `acceptance_tol=1e-7`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
   compute first-order covariance matrices.
     Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
@@ -2104,7 +2104,7 @@ function FirstOrderTolerances(; qme = (;),
                               droptol::Float64 = 1e-14,
                               dependencies_tol::Float64 = 1e-12,
                               ad = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-8, 1e-8)
+    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-7, 1e-7)
     _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     _base_ad   = AdTolerances()
     return FirstOrderTolerances(
