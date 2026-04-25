@@ -30,37 +30,66 @@ has_nested_field(obj, field::Symbol) = hasfield(typeof(obj), field)
 
 # Dispatch to the matching jacobian API by model layout first.
 function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
-    if has_model_field(𝓂, :caches) && has_model_field(𝓂, :functions) && has_model_field(𝓂, :workspaces) &&
+    if has_model_field(𝓂, :caches) && has_model_field(𝓂, :functions) &&
        has_nested_field(getfield(𝓂, :functions), :jacobian)
-        return calculate_jacobian(parameters,
-                                  SS_and_pars,
-                                  getfield(𝓂, :caches),
-                                  getfield(getfield(𝓂, :functions), :jacobian),
-                                  getfield(𝓂, :workspaces);
-                                  caching = false)
+        caches_obj = getfield(𝓂, :caches)
+        jacobian_funcs = getfield(getfield(𝓂, :functions), :jacobian)
+
+        if has_model_field(𝓂, :workspaces)
+            workspaces_obj = getfield(𝓂, :workspaces)
+            if hasmethod(calculate_jacobian,
+                         Tuple{typeof(parameters), typeof(SS_and_pars), typeof(caches_obj), typeof(jacobian_funcs), typeof(workspaces_obj)})
+                return calculate_jacobian(parameters,
+                                          SS_and_pars,
+                                          caches_obj,
+                                          jacobian_funcs,
+                                          workspaces_obj;
+                                          caching = false)
+            end
+        end
+
+        if hasmethod(calculate_jacobian,
+                     Tuple{typeof(parameters), typeof(SS_and_pars), typeof(caches_obj), typeof(jacobian_funcs)})
+            clear_solution_caches!(𝓂, :first_order)
+            return calculate_jacobian(parameters, SS_and_pars, caches_obj, jacobian_funcs)
+        end
     end
 
-    return calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    if hasmethod(calculate_jacobian, Tuple{typeof(parameters), typeof(SS_and_pars), typeof(𝓂)})
+        clear_solution_caches!(𝓂, :first_order)
+        return calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    end
+
+    error("No supported calculate_jacobian benchmark API found for $(typeof(𝓂)).")
 end
 
 # Dispatch to the matching first-order API by model layout first, then helper availability.
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
     if has_model_field(𝓂, :constants) && has_model_field(𝓂, :workspaces) && has_model_field(𝓂, :caches)
-        return calculate_first_order_solution(∇₁,
-                                              getfield(𝓂, :constants),
-                                              getfield(𝓂, :workspaces),
-                                              getfield(𝓂, :caches);
-                                              opts = opts,
-                                              caching = false)
+        constants_obj = getfield(𝓂, :constants)
+        workspaces_obj = getfield(𝓂, :workspaces)
+        caches_obj = getfield(𝓂, :caches)
+
+        if hasmethod(calculate_first_order_solution,
+                     Tuple{typeof(∇₁), typeof(constants_obj), typeof(workspaces_obj), typeof(caches_obj)})
+            return calculate_first_order_solution(∇₁,
+                                                  constants_obj,
+                                                  workspaces_obj,
+                                                  caches_obj;
+                                                  opts = opts,
+                                                  caching = false)
+        end
     end
 
     if has_model_field(𝓂, :constants) && isdefined(MacroModelling, :ensure_qme_workspace!) && isdefined(MacroModelling, :ensure_sylvester_1st_order_workspace!)
+        constants_obj = getfield(𝓂, :constants)
         qme_ws_fn = getfield(MacroModelling, :ensure_qme_workspace!)
         sylv_ws_fn = getfield(MacroModelling, :ensure_sylvester_1st_order_workspace!)
         qme_ws = qme_ws_fn(𝓂)
         sylv_ws = sylv_ws_fn(𝓂)
-        if applicable(calculate_first_order_solution, ∇₁, getfield(𝓂, :constants), qme_ws, sylv_ws)
-            return calculate_first_order_solution(∇₁, getfield(𝓂, :constants), qme_ws, sylv_ws; opts = opts)
+        if hasmethod(calculate_first_order_solution,
+                     Tuple{typeof(∇₁), typeof(constants_obj), typeof(qme_ws), typeof(sylv_ws)})
+            return calculate_first_order_solution(∇₁, constants_obj, qme_ws, sylv_ws; opts = opts)
         end
     end
 

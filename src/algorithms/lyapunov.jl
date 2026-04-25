@@ -206,7 +206,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                           C::AbstractMatrix{T},
                                           ::Val{:bartels_stewart},
                                           workspace::lyapunov_workspace;
-                                          tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                  tol::SolverTolerances = SolverTolerances(),
+                                  has_unit_roots::Bool = false)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
      return Matrix(C), 0, T(Inf)
 end
 

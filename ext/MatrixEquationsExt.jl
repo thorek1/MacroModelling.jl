@@ -67,7 +67,8 @@ function MacroModelling.solve_lyapunov_equation(A::Union{ℒ.Adjoint{T, Matrix{T
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     ::Val{:bartels_stewart},
                                     workspace::lyapunov_workspace;
-                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances(),
+                                    has_unit_roots::Bool = false)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
 
     𝐂 = try 
         MatrixEquations.lyapd(A, C)::Matrix{T}

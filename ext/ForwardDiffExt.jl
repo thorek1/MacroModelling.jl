@@ -802,7 +802,8 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
                                                                                 rtol = 1e-14,
                                                                               initial_guess_acceptance_tol = 1e-12,
                                                                               acceptance_tol = 1e-12),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                                                        verbose::Bool = false,
+                                                                        has_unit_roots::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # Extract Float64 values from Dual numbers
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
@@ -815,11 +816,12 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
         ℱ.value.(initial_guess)
     end
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace,
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace;
                                         lyapunov_algorithm = lyapunov_algorithm,
                                         initial_guess = initial_guess_value,
                                         tol = tol,
-                                        verbose = verbose)
+                                        verbose = verbose,
+                                        has_unit_roots = has_unit_roots)
 
     if size(workspace.P) != size(P̂)
         workspace.P = zeros(eltype(P̂), size(P̂)...)
@@ -859,10 +861,11 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
 
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_lyapunov_equation(Â, X, workspace,
-                        lyapunov_algorithm = lyapunov_algorithm,
-                        tol = tol,
-                        verbose = verbose)
+        P, slvd = solve_lyapunov_equation(Â, X, workspace;
+                lyapunov_algorithm = lyapunov_algorithm,
+                tol = tol,
+                verbose = verbose,
+                has_unit_roots = has_unit_roots)
         
         solved = solved && slvd
 
