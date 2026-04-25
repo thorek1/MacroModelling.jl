@@ -1,14 +1,12 @@
-# Todo lis
+# Todo list
 ## High priority
 
 - [ ] make package work with semi structural expectations models
 - [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
-- [ ] try nested samplers for estimation (use the python packages) at first, then implement in Julia if they are promising
-- [ ] include dynare computation in tests
+- [ ] implement NestedSampling with NormalisingFlows in Julia
 - [ ] Move mean, second-order moments, and third-order moments to compressed space end-to-end; they still use uncompressed-space matrices, and the third-order solution still uses uncompressed second-order matrices.
-- [ ] add FRB US model
 - [ ] check allocations of jacobian in sparse case (NAWM)
-- [ ] write another seciton in the docs explaining the parameters macro and what you can do (calibration equations, parameters as functions of other parameters, delayed definition of parameters)
+- [ ] write another section in the docs explaining the parameters macro and what you can do (calibration equations, parameters as functions of other parameters, delayed definition of parameters)
 
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] error when parsing expression of the form: XYZ[0] = 0
@@ -121,6 +119,9 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] add FRB US model
+- [x] include dynare computation in tests
+- [x] try nested samplers for estimation (use the python packages) at first, then implement in Julia if they are promising
 - [x] kick out unused parameters from m.parameters
 - [x] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [x] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
