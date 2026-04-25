@@ -37,15 +37,13 @@ function calculate_jacobian_for_bench(parameters, SS_and_pars, 𝓂::ℳ)
 
         if has_model_field(𝓂, :workspaces)
             workspaces_obj = getfield(𝓂, :workspaces)
-            if hasmethod(calculate_jacobian,
-                         Tuple{typeof(parameters), typeof(SS_and_pars), typeof(caches_obj), typeof(jacobian_funcs), typeof(workspaces_obj)})
-                return calculate_jacobian(parameters,
-                                          SS_and_pars,
-                                          caches_obj,
-                                          jacobian_funcs,
-                                          workspaces_obj;
-                                          caching = false)
-            end
+            clear_solution_caches!(𝓂, :first_order)
+            return calculate_jacobian(parameters,
+                                      SS_and_pars,
+                                      caches_obj,
+                                      jacobian_funcs,
+                                      workspaces_obj;
+                                      caching = false)
         end
 
         if hasmethod(calculate_jacobian,
