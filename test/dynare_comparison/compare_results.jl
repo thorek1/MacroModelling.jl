@@ -590,7 +590,7 @@ function main(args = ARGS)
     # Julia benchmarks: component-level via BenchmarkTools
     # Dynare order=3 also exports k_order_pert as an additional bundled reference.
     println("\n", "="^100)
-    println("  Benchmark Comparison: Julia (median of 500 runs) vs Dynare (median of 500 runs)")
+    println("  Benchmark Comparison: MacroModelling (median of 500 runs) vs Dynare (median of 500 runs)")
     println("="^100)
 
     # Helper to read a benchmark value, returning NaN if file doesn't exist
@@ -625,7 +625,7 @@ function main(args = ARGS)
         if !isempty(note)
             println("    $note")
         end
-        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(model_dirs)
             jl_time = read_bench(joinpath(output_root, mname, "julia"), jl_file)
@@ -634,7 +634,7 @@ function main(args = ARGS)
             dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
             speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ? 
                 string(round(dy_time / jl_time, digits=1), "x") : "N/A"
-            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+            println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 12), speedup_str)
         end
     end
 
@@ -648,7 +648,7 @@ function main(args = ARGS)
 
     # First-order total (sum of direct component medians)
     println("\n--- First-Order Total (sum of direct Jacobian + solve medians) ---")
-    println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+    println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
     println("-"^100)
     for mname in sort(model_dirs)
         jl_dir = joinpath(output_root, mname, "julia")
@@ -659,7 +659,7 @@ function main(args = ARGS)
         dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
         speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ?
             string(round(dy_time / jl_time, digits=1), "x") : "N/A"
-        println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+        println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 12), speedup_str)
     end
 
     # Hessian / second-order solve
@@ -674,7 +674,7 @@ function main(args = ARGS)
 
         # Second-Order Total (Hessian + Second-Order Solve)
         println("\n--- Second-Order Total (Hessian + Second-Order Solve) ---")
-        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(dy_decomposable_ho_models)
             jl_dir = joinpath(output_root, mname, "julia")
@@ -685,7 +685,7 @@ function main(args = ARGS)
             dy_str = isnan(dy_time) ? "N/A" : format_time(dy_time)
             speedup_str = (!isnan(jl_time) && !isnan(dy_time) && jl_time > 0) ?
                 string(round(dy_time / jl_time, digits=1), "x") : "N/A"
-            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+            println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 12), speedup_str)
         end
     end
 
@@ -693,8 +693,8 @@ function main(args = ARGS)
     k_order_models = filter(d -> is_dynare_k_order_dir(joinpath(output_root, d, "dynare")), model_dirs)
     if !isempty(k_order_models)
         println("\n--- Higher-Order Bundled (Dynare k_order_pert) ---")
-        println("    Julia sums directly measured solve-stack components; Dynare reports direct bundled k_order_pert")
-        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println("    MacroModelling sums directly measured solve-stack components; Dynare reports direct bundled k_order_pert")
+        println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(k_order_models)
             jl_dir = joinpath(output_root, mname, "julia")
@@ -718,13 +718,13 @@ function main(args = ARGS)
             dy_str = isnan(dy_bundled) ? "N/A" : format_time(dy_bundled)
             speedup_str = (!isnan(jl_bundled) && !isnan(dy_bundled) && jl_bundled > 0) ?
                 string(round(dy_bundled / jl_bundled, digits=1), "x") : "N/A"
-            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+            println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 12), speedup_str)
         end
     end
 
     if !isempty(dy_decomposable_ho_models)
         println("\n--- Comparable Direct Components Total (Jacobian + FO + Hessian + SO) ---")
-        println(rpad("Model", 50), rpad("Julia", 12), rpad("Dynare", 12), "Speedup")
+        println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
         for mname in sort(dy_decomposable_ho_models)
             jl_dir = joinpath(output_root, mname, "julia")
@@ -747,15 +747,15 @@ function main(args = ARGS)
             dy_str = isnan(dy_total) ? "N/A" : format_time(dy_total)
             speedup_str = (!isnan(jl_total) && !isnan(dy_total) && jl_total > 0) ?
                 string(round(dy_total / jl_total, digits=1), "x") : "N/A"
-            println(rpad(mname, 50), rpad(jl_str, 12), rpad(dy_str, 12), speedup_str)
+            println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 12), speedup_str)
         end
     end
 
-    # Third-order components (Julia only — Dynare uses k_order_pert for order=3)
+    # Third-order components (MacroModelling only — Dynare uses k_order_pert for order=3)
     to_models = filter(d -> isfile(joinpath(output_root, d, "julia", "benchmark_third_order_derivatives.csv")),
                        model_dirs)
     if !isempty(to_models)
-        println("\n--- Third-Order Components (Julia only — Dynare k_order_pert is bundled) ---")
+        println("\n--- Third-Order Components (MacroModelling only — Dynare k_order_pert is bundled) ---")
         println(rpad("Model", 50), rpad("3rd Derivs", 15), "3rd Solve")
         println("-"^100)
         for mname in sort(to_models)
@@ -770,8 +770,8 @@ function main(args = ARGS)
 
         # Third-Order Total (Third-Order Derivatives + Third-Order Solve)
         println("\n--- Third-Order Total (Third-Order Derivatives + Third-Order Solve) ---")
-        println("    Julia only — Dynare k_order_pert bundles all orders")
-        println(rpad("Model", 50), "Julia")
+        println("    MacroModelling only — Dynare k_order_pert bundles all orders")
+        println(rpad("Model", 50), "MacroModelling")
         println("-"^100)
         for mname in sort(to_models)
             jl_dir = joinpath(output_root, mname, "julia")
