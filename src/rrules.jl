@@ -1923,7 +1923,13 @@ end
 
 # ── get_irf rrule BPTT helpers ──
 
-# BPTT pullback: returns (∂𝐒_list, ∂state_init, ∂SS_and_pars_from_init)
+# Backpropagation-through-time (BPTT) pullback: returns
+# (∂𝐒_list, ∂state_init, ∂SS_and_pars_from_init)
+# These helpers replay the saved IRF simulation backward in time. Each
+# algorithm-specific method mirrors the corresponding forward state update while
+# accumulating cotangents for the perturbation solution objects, the effective
+# IRF initial state, and the steady-state offset induced by a user-supplied
+# initial condition.
 function irf_bptt(::Val{:first_order},
         ∂Y_all::Array{S,3}, states_store, shocks_store,
         nShocks, periods, past_idx, nPast, nVars, nExo,
