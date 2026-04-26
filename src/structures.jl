@@ -698,7 +698,7 @@ Fields for doubling algorithm:
 - `𝐂A`: Temporary for C * A'
 - `𝐀²`: Temporary for A * A
 
-Fields for Krylov methods (bicgstab, gmres):
+Fields for Krylov methods (bicgstab, gmres, dqgmres):
 - `tmp̄`: Temporary matrix for linear operator
 - `𝐗`: Reshape buffer for solution vector
 - `b`: RHS vector for Krylov solver
@@ -725,11 +725,13 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     # Krylov solver state (lazily allocated, can be reused across calls)
     bicgstab::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres::Krylov.GmresWorkspace{T, T, Vector{T}}
+    dqgmres::Krylov.DqgmresWorkspace{T, T, Vector{T}}
     
     # vech-space Krylov buffers (for symmetric C, dimension n(n+1)/2)
     b_vech::Vector{T}
     bicgstab_vech::Krylov.BicgstabWorkspace{T, T, Vector{T}}
     gmres_vech::Krylov.GmresWorkspace{T, T, Vector{T}}
+    dqgmres_vech::Krylov.DqgmresWorkspace{T, T, Vector{T}}
     
     # ForwardDiff partials buffers (for forward-mode AD)
     P::Matrix{T}    # Stable primal solution cache for AD/rrule pullbacks
