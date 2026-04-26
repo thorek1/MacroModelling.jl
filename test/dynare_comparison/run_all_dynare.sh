@@ -10,6 +10,18 @@ set -euo pipefail
 
 OUTPUT_DIR="/work/output"
 EXTRACT_SCRIPT="/work/extract_dynare_results.m"
+THREAD_COUNT="${THREAD_COUNT:-1}"
+
+# Enforce single-thread execution in CI unless explicitly overridden.
+export OMP_NUM_THREADS="$THREAD_COUNT"
+export OMP_THREAD_LIMIT="$THREAD_COUNT"
+export OMP_DYNAMIC="FALSE"
+export MKL_NUM_THREADS="$THREAD_COUNT"
+export MKL_DYNAMIC="FALSE"
+export OPENBLAS_NUM_THREADS="$THREAD_COUNT"
+export BLIS_NUM_THREADS="$THREAD_COUNT"
+export VECLIB_MAXIMUM_THREADS="$THREAD_COUNT"
+export TBB_NUM_THREADS="$THREAD_COUNT"
 
 # Detect Dynare's Octave path
 DYNARE_MATLAB=""
@@ -27,6 +39,8 @@ fi
 
 echo "Using Dynare at: $DYNARE_MATLAB"
 echo "Octave version: $(octave --version | head -1)"
+echo "Requested thread count: $THREAD_COUNT"
+echo "Thread env: OMP_NUM_THREADS=$OMP_NUM_THREADS OPENBLAS_NUM_THREADS=$OPENBLAS_NUM_THREADS MKL_NUM_THREADS=$MKL_NUM_THREADS"
 octave --no-gui --eval "addpath('$DYNARE_MATLAB'); dynare_version();"
 
 # Process each model

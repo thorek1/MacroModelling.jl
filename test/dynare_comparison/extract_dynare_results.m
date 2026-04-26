@@ -29,9 +29,14 @@ if ~exist('output_dir', 'var')
 end
 mkdir(output_dir);
 
+if ~exist('benchmark_only_mode', 'var') || isempty(benchmark_only_mode)
+    benchmark_only_mode = false;
+end
+
 n_endo = M_.endo_nbr;
 n_exo  = M_.exo_nbr;
 
+if ~benchmark_only_mode
 %% --- Variable names ---
 fid = fopen(fullfile(output_dir, 'var_names.csv'), 'w');
 for i = 1:n_endo
@@ -219,6 +224,8 @@ if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition
     end
     fclose(fid);
 end
+
+end % if ~benchmark_only_mode
 
 %% --- Benchmark: component-level timing ---
 % Decomposes the solution pipeline into individually timed components.

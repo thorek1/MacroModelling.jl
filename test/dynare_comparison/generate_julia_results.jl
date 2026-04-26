@@ -21,9 +21,11 @@
 
 using MacroModelling
 using DelimitedFiles
+using LinearAlgebra
 
 const IRF_PERIODS = 40
-const OUTPUT_ROOT = joinpath(@__DIR__, "output")
+const DEFAULT_OUTPUT_ROOT = joinpath(@__DIR__, "output")
+const MODELS_DIR = joinpath(@__DIR__, "..", "..", "models")
 
 # Models to test (first order)
 const MODEL_FILES = [
@@ -50,6 +52,11 @@ const THIRD_ORDER_MODELS = [
 # Models that skip variance/covariance and variance decomposition
 const SKIP_MOMENTS_MODELS = Set(["FRBUS"])
 
+# Models for which only the benchmark timings are exported (no names, steady state,
+# policy matrices, IRFs, or moments). The .mod file is still written so the Dynare
+# phase can run and produce its own benchmark CSVs.
+const BENCHMARK_ONLY_MODELS = Set(["FRBUS"])
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
@@ -68,6 +75,51 @@ function write_names(path, names)
         for n in names
             println(io, n)
         end
+    end
+end
+
+function print_usage()
+    println("Usage: julia --project=. --threads=N generate_julia_results.jl [--output-root=PATH | PATH]")
+end
+
+function parse_args(args)
+    output_root = DEFAULT_OUTPUT_ROOT
+    positional_args = String[]
+
+    for arg in args
+        if arg in ("-h", "--help")
+            print_usage()
+            return nothing
+        elseif startswith(arg, "--output-root=")
+            output_root = split(arg, "=", limit = 2)[2]
+        elseif startswith(arg, "--")
+            error("Unknown option: $arg")
+        else
+            push!(positional_args, arg)
+        end
+    end
+
+    if length(positional_args) > 1
+        error("Expected at most one positional output-root argument, got $(length(positional_args))")
+    elseif length(positional_args) == 1
+        output_root = positional_args[1]
+    end
+
+    return abspath(output_root)
+end
+
+function configure_julia_threads!()
+    julia_threads = Threads.nthreads()
+    BLAS.set_num_threads(julia_threads)
+    blas_threads = BLAS.get_num_threads()
+    @info "Julia thread configuration" julia_threads blas_threads
+    return julia_threads, blas_threads
+end
+
+function write_thread_configuration(output_root, julia_threads, blas_threads)
+    open(joinpath(output_root, "julia_thread_configuration.txt"), "w") do io
+        println(io, "julia_threads=$julia_threads")
+        println(io, "blas_threads=$blas_threads")
     end
 end
 
@@ -375,9 +427,22 @@ end
 # ─────────────────────────────────────────────
 # Export one model's first-order results
 # ─────────────────────────────────────────────
-function export_model(model, outdir; include_moments = true)
+function export_model(model, outdir; include_moments = true, benchmark_only = false)
     julia_dir = joinpath(outdir, "julia")
     mkpath(julia_dir)
+
+    if benchmark_only
+        # ── Export .mod file only (needed for the Dynare phase) ──
+        cd(outdir) do
+            write_mod_file(model)
+        end
+
+        # ── Benchmarks ──
+        benchmark_first_order(model, julia_dir)
+
+        @info "Exported Julia benchmark-only results for $(model.model_name) → $outdir"
+        return
+    end
 
     orig = original_vars(model)
     state_vars = model.constants.post_model_macro.past_not_future_and_mixed
@@ -451,23 +516,28 @@ end
 # ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
-function main()
-    if isdir(OUTPUT_ROOT)
-        rm(OUTPUT_ROOT, recursive = true)
-    end
-    mkpath(OUTPUT_ROOT)
+function main(args = ARGS)
+    output_root = parse_args(args)
+    output_root === nothing && return
 
-    models_dir = joinpath(@__DIR__, "..", "..", "models")
+    julia_threads, blas_threads = configure_julia_threads!()
+
+    if isdir(output_root)
+        rm(output_root, recursive = true)
+    end
+    mkpath(output_root)
+    write_thread_configuration(output_root, julia_threads, blas_threads)
 
     # Phase 1a: First-order exports for all models
     for mname in MODEL_FILES
         @info "Processing model (first order): $mname"
-        include(joinpath(models_dir, "$mname.jl"))
+        include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
-        outdir = joinpath(OUTPUT_ROOT, mname)
+        outdir = joinpath(output_root, mname)
         mkpath(outdir)
         Base.invokelatest(export_model, model, outdir;
-                         include_moments = !(mname in SKIP_MOMENTS_MODELS))
+                         include_moments = !(mname in SKIP_MOMENTS_MODELS),
+                         benchmark_only = mname in BENCHMARK_ONLY_MODELS)
     end
 
     # Phase 1b: Second-order exports for selected models
@@ -475,9 +545,9 @@ function main()
         dir_name = "$(mname)_pruned_2nd"
         @info "Processing model (pruned order 2): $mname → $dir_name"
 
-        include(joinpath(models_dir, "$mname.jl"))
+        include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
-        outdir = joinpath(OUTPUT_ROOT, dir_name)
+        outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
         Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 2)
     end
@@ -487,14 +557,16 @@ function main()
         dir_name = "$(mname)_pruned_3rd"
         @info "Processing model (pruned order 3): $mname → $dir_name"
 
-        include(joinpath(models_dir, "$mname.jl"))
+        include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
-        outdir = joinpath(OUTPUT_ROOT, dir_name)
+        outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
         Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 3)
     end
 
-    @info "Phase 1 complete. Results in $OUTPUT_ROOT"
+    @info "Phase 1 complete. Results in $output_root"
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
