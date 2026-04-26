@@ -57,8 +57,15 @@ function read_matrix(path)
 end
 
 function safe_isapprox(a, b; rtol = RTOL, atol = ATOL)
-    isapprox(a, b, rtol = rtol, atol = atol) ||
-    (abs(a) < 1e-12 && abs(b) < 1e-12)
+    ok = isapprox(a, b, rtol = rtol, atol = atol) ||
+         (all(abs.(a) .< 1e-12) && all(abs.(b) .< 1e-12))
+    if !ok
+        diff = maximum(abs.(a .- b))
+        denom = max(maximum(abs.(a)), maximum(abs.(b)))
+        achieved_rtol = denom > 0 ? diff / denom : Inf
+        @warn "safe_isapprox failed" a b achieved_atol=diff achieved_rtol=achieved_rtol required_atol=atol required_rtol=rtol
+    end
+    return ok
 end
 
 # ─────────────────────────────────────────────
