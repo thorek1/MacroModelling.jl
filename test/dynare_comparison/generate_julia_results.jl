@@ -19,6 +19,17 @@
 #       variance_covariance.csv
 #     Excludes higher-order solution-matrix CSVs (ghxx/ghxu/..., ghxxx/...)
 
+# On Windows we deliberately switch the LinearAlgebra BLAS backend to MKL so the
+# Julia side mirrors what Dynare/MATLAB use. MKL.jl must be loaded BEFORE any
+# BLAS calls (including BLAS.set_num_threads) for it to take effect. On non-
+# Windows platforms (e.g. Linux CI runners where MKL.jl may not be installed)
+# we silently fall back to the default OpenBLAS backend.
+
+@static if Sys.iswindows()
+    using MKL
+    @info "Using MKL.jl for BLAS on Windows"
+end
+
 using MacroModelling
 using DelimitedFiles
 using LinearAlgebra
@@ -131,6 +142,21 @@ function configure_julia_threads!()
     julia_threads = Threads.nthreads()
     BLAS.set_num_threads(julia_threads)
     blas_threads = BLAS.get_num_threads()
+    println("Julia thread configuration: julia_threads=$julia_threads blas_threads=$blas_threads")
+    println("  Threads.nthreads()       = ", Threads.nthreads())
+    println("  Threads.nthreads(:default) = ", Threads.nthreads(:default))
+    println("  Threads.nthreads(:interactive) = ", Threads.nthreads(:interactive))
+    println("  BLAS.get_num_threads()   = ", BLAS.get_num_threads())
+    blas_vendor = try
+        string(BLAS.get_config())
+    catch
+        "unknown"
+    end
+    println("  BLAS vendor: $blas_vendor")
+    for var in ("JULIA_NUM_THREADS", "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
+                "MKL_NUM_THREADS", "BLIS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+        println("  ENV $var=", get(ENV, var, "<unset>"))
+    end
     @info "Julia thread configuration" julia_threads blas_threads
     return julia_threads, blas_threads
 end
