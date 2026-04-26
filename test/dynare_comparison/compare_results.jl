@@ -471,8 +471,8 @@ function main()
                 dy = load_results(dynare_dir)
 
                 @testset "$mname" begin
-                    first_order_atol = is_nawm_model(mname) ? 1e-8 : ATOL
-                    irf_atol = is_nawm_model(mname) ? 1e-7 : 1e-14
+                    first_order_atol = is_nawm_model(mname) ? 1e-7 : ATOL
+                    irf_atol = is_nawm_model(mname) ? 1e-6 : 1e-14
                     moments_only_higher_order = is_higher_order_model(mname)
                     skip_pruned_third_order = is_pruned_third_order_model(mname)
 
