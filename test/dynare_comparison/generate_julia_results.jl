@@ -85,6 +85,7 @@ end
 function parse_args(args)
     output_root = DEFAULT_OUTPUT_ROOT
     positional_args = String[]
+    only_models = String[]
 
     for arg in args
         if arg in ("-h", "--help")
@@ -92,6 +93,14 @@ function parse_args(args)
             return nothing
         elseif startswith(arg, "--output-root=")
             output_root = split(arg, "=", limit = 2)[2]
+        elseif startswith(arg, "--only-models=")
+            value = split(arg, "=", limit = 2)[2]
+            for token in split(value, ',')
+                trimmed = strip(token)
+                if !isempty(trimmed)
+                    push!(only_models, String(trimmed))
+                end
+            end
         elseif startswith(arg, "--")
             error("Unknown option: $arg")
         else
@@ -105,7 +114,17 @@ function parse_args(args)
         output_root = positional_args[1]
     end
 
-    return abspath(output_root)
+    env_only = get(ENV, "DYNARE_COMPARE_ONLY_MODELS", "")
+    if isempty(only_models) && !isempty(env_only)
+        for token in split(env_only, ',')
+            trimmed = strip(token)
+            if !isempty(trimmed)
+                push!(only_models, String(trimmed))
+            end
+        end
+    end
+
+    return (abspath(output_root), only_models)
 end
 
 function configure_julia_threads!()
@@ -517,8 +536,9 @@ end
 # Main
 # ─────────────────────────────────────────────
 function main(args = ARGS)
-    output_root = parse_args(args)
-    output_root === nothing && return
+    parsed = parse_args(args)
+    parsed === nothing && return
+    output_root, only_models = parsed
 
     julia_threads, blas_threads = configure_julia_threads!()
 
@@ -528,8 +548,16 @@ function main(args = ARGS)
     mkpath(output_root)
     write_thread_configuration(output_root, julia_threads, blas_threads)
 
+    only_set = Set(only_models)
+    keep(name) = isempty(only_set) || (name in only_set)
+
+    if !isempty(only_set)
+        @info "Restricting Phase 1 to selected models" only_models
+    end
+
     # Phase 1a: First-order exports for all models
     for mname in MODEL_FILES
+        keep(mname) || continue
         @info "Processing model (first order): $mname"
         include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
@@ -542,6 +570,7 @@ function main(args = ARGS)
 
     # Phase 1b: Second-order exports for selected models
     for mname in SECOND_ORDER_MODELS
+        keep(mname) || continue
         dir_name = "$(mname)_pruned_2nd"
         @info "Processing model (pruned order 2): $mname → $dir_name"
 
@@ -554,6 +583,7 @@ function main(args = ARGS)
 
     # Phase 1c: Third-order exports for selected models
     for mname in THIRD_ORDER_MODELS
+        keep(mname) || continue
         dir_name = "$(mname)_pruned_3rd"
         @info "Processing model (pruned order 3): $mname → $dir_name"
 

@@ -6,7 +6,12 @@ param(
     [string]$MatlabExe,
     [ValidateRange(1, 512)]
     [int]$ThreadCount = 1,
+    [ValidateRange(0, 10)]
+    [int]$MaxLicenseRetries = 1,
+    [ValidateRange(0, 600)]
+    [int]$LicenseRetryDelaySeconds = 10,
     [string[]]$SkipModels = @(),
+    [string[]]$OnlyModels = @(),
     [string[]]$BenchmarkOnlyModels = @('FRBUS'),
     [switch]$ValidateOnly
 )
@@ -156,8 +161,18 @@ function Invoke-MatlabBatch {
 
     $proc = Start-Process -FilePath $Executable -ArgumentList $matlabArgs -WorkingDirectory $WorkingDirectory -PassThru -NoNewWindow
 
+    $doneFlagPath = Join-Path $WorkingDirectory 'batch_done.flag'
+    if (Test-Path -LiteralPath $doneFlagPath) {
+        Remove-Item -LiteralPath $doneFlagPath -Force
+    }
+
+    $procId = $proc.Id
     $linesPrinted = 0
-    while (-not $proc.HasExited) {
+    # Primary done-signal: the MATLAB driver writes batch_done.flag at the very
+    # end of run_all_dynare. Poll for that file and (as a backup) check whether
+    # the MATLAB process is still alive via Get-Process. Avoid method calls on
+    # the process object so this works in PowerShell Constrained Language Mode.
+    while ($true) {
         Start-Sleep -Milliseconds 1000
         if (Test-Path -LiteralPath $logPath) {
             $allLines = @(Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue)
@@ -168,7 +183,13 @@ function Invoke-MatlabBatch {
                 $linesPrinted = $allLines.Count
             }
         }
+        if (Test-Path -LiteralPath $doneFlagPath) { break }
+        $alive = Get-Process -Id $procId -ErrorAction SilentlyContinue
+        if (-not $alive) { break }
     }
+
+    # Drain any final log lines once MATLAB is done.
+    Start-Sleep -Milliseconds 500
 
     if (Test-Path -LiteralPath $logPath) {
         $allLines = @(Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue)
@@ -184,6 +205,28 @@ function Invoke-MatlabBatch {
     }
 
     return $proc.ExitCode
+}
+
+function Test-MatlabLicenseCheckoutFailure {
+    param([string]$LogPath)
+
+    if (-not (Test-Path -LiteralPath $LogPath)) {
+        return $false
+    }
+
+    $logText = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
+    if (-not $logText) {
+        return $false
+    }
+
+    if ($logText -match 'License checkout failed') {
+        return $true
+    }
+    if ($logText -match 'License Manager Error\s*-97') {
+        return $true
+    }
+
+    return $false
 }
 
 function Update-StochSimulDirective {
@@ -243,6 +286,15 @@ foreach ($skipName in $SkipModels) {
 if ($skipModelSet.Count -gt 0) {
     Write-Host ("Skipping models: {0}" -f (($skipModelSet.Keys | Sort-Object) -join ', '))
 }
+$onlyModelSet = @{}
+foreach ($onlyName in $OnlyModels) {
+    if (-not [string]::IsNullOrWhiteSpace($onlyName)) {
+        $onlyModelSet[$onlyName] = $true
+    }
+}
+if ($onlyModelSet.Count -gt 0) {
+    Write-Host ("Restricting to models: {0}" -f (($onlyModelSet.Keys | Sort-Object) -join ', '))
+}
 $benchmarkOnlySet = @{}
 foreach ($benchmarkName in $BenchmarkOnlyModels) {
     if (-not [string]::IsNullOrWhiteSpace($benchmarkName)) {
@@ -290,6 +342,11 @@ foreach ($modelDirectory in $modelDirectories) {
 
     if ($skipModelSet.ContainsKey($modelName)) {
         Write-Host "SKIP (configured): $modelName"
+        continue
+    }
+
+    if ($onlyModelSet.Count -gt 0 -and -not $onlyModelSet.ContainsKey($modelName)) {
+        Write-Host "SKIP (not in OnlyModels): $modelName"
         continue
     }
 
@@ -406,6 +463,9 @@ end
 fprintf('[%s] Batch finished in %.1f s\n', datestr(now, 'HH:MM:SS'), toc(batch_start_tic));
 
 fclose(status_fid);
+done_fid = fopen('batch_done.flag', 'w');
+fprintf(done_fid, 'done\n');
+fclose(done_fid);
 diary off;
 exit(0);
 "@
@@ -416,7 +476,32 @@ Write-Host '----------------------------------------'
 Write-Host ("Launching single MATLAB session for {0} model(s) at thread count {1}..." -f $modelEntries.Count, $ThreadCount)
 Write-Host '----------------------------------------'
 
-$matlabExitCode = Invoke-MatlabBatch -Executable $resolvedMatlabExe -WorkingDirectory $batchRoot -BatchCommand 'run_all_dynare' -RequestedThreadCount $ThreadCount
+$matlabLogPath = Join-Path $batchRoot 'matlab_console.log'
+$attempt = 0
+$matlabExitCode = 1
+while ($true) {
+    $attempt += 1
+    if ($attempt -gt 1) {
+        Write-Warning ("Restarting MATLAB batch after license checkout error (attempt {0}/{1})." -f $attempt, ($MaxLicenseRetries + 1))
+    }
+
+    $matlabExitCode = Invoke-MatlabBatch -Executable $resolvedMatlabExe -WorkingDirectory $batchRoot -BatchCommand 'run_all_dynare' -RequestedThreadCount $ThreadCount
+
+    if ($matlabExitCode -eq 0) {
+        break
+    }
+
+    $isLicenseFailure = Test-MatlabLicenseCheckoutFailure -LogPath $matlabLogPath
+    $hasRetryBudget = $attempt -le $MaxLicenseRetries
+    if (-not $isLicenseFailure -or -not $hasRetryBudget) {
+        break
+    }
+
+    if ($LicenseRetryDelaySeconds -gt 0) {
+        Write-Host ("Waiting {0} seconds before MATLAB restart..." -f $LicenseRetryDelaySeconds)
+        Start-Sleep -Seconds $LicenseRetryDelaySeconds
+    }
+}
 
 $statusFile = Join-Path $batchRoot 'model_status.csv'
 $statusByModel = @{}
@@ -490,5 +575,11 @@ else {
 
 if ($failedModels.Count -gt 0) {
     Write-Warning ("Phase 2 finished with failures in: {0}" -f ($failedModels -join ', '))
+    throw ("Phase 2 failed for {0} model(s): {1}. Batch kept at {2}" -f $failedModels.Count, ($failedModels -join ', '), $batchRoot)
 }
+
+if ($matlabExitCode -ne 0) {
+    throw ("Phase 2 failed: MATLAB exited with code {0}. Batch kept at {1}" -f $matlabExitCode, $batchRoot)
+}
+
 Write-Host 'Phase 2 complete.'

@@ -9,6 +9,11 @@ param(
     [string]$SweepCompareScript,
     [string]$DynareMatlabPath,
     [string]$MatlabExe,
+    [ValidateRange(0, 10)]
+    [int]$MaxLicenseRetries = 3,
+    [ValidateRange(0, 600)]
+    [int]$LicenseRetryDelaySeconds = 10,
+    [string[]]$OnlyModels = @(),
     [switch]$ValidateOnly
 )
 
@@ -97,6 +102,7 @@ function Invoke-JuliaScript {
         [string]$OutputArgument,
         [string]$Description,
         [int]$RequestedThreadCount,
+        [string[]]$ExtraScriptArgs,
         [switch]$UseThreadCount
     )
 
@@ -105,6 +111,13 @@ function Invoke-JuliaScript {
         $juliaArgs += "--threads=$RequestedThreadCount"
     }
     $juliaArgs += $ScriptPath
+    if ($ExtraScriptArgs) {
+        foreach ($extraArg in $ExtraScriptArgs) {
+            if (-not [string]::IsNullOrWhiteSpace($extraArg)) {
+                $juliaArgs += $extraArg
+            }
+        }
+    }
     $juliaArgs += $OutputArgument
 
     Write-Host "Running Julia step: $Description"
@@ -122,12 +135,17 @@ function Invoke-DynarePhase {
         [int]$RequestedThreadCount,
         [string]$PreferredDynareMatlabPath,
         [string]$PreferredMatlabExe,
+        [int]$RequestedMaxLicenseRetries,
+        [int]$RequestedLicenseRetryDelaySeconds,
+        [string[]]$RequestedOnlyModels,
         [switch]$ValidationOnly
     )
 
     $dynareParameters = @{
         OutputDir = $ThreadOutputDir
         ThreadCount = $RequestedThreadCount
+        MaxLicenseRetries = $RequestedMaxLicenseRetries
+        LicenseRetryDelaySeconds = $RequestedLicenseRetryDelaySeconds
     }
 
     if ($PreferredDynareMatlabPath) {
@@ -136,16 +154,22 @@ function Invoke-DynarePhase {
     if ($PreferredMatlabExe) {
         $dynareParameters.MatlabExe = $PreferredMatlabExe
     }
+    if ($RequestedOnlyModels -and $RequestedOnlyModels.Count -gt 0) {
+        $dynareParameters.OnlyModels = $RequestedOnlyModels
+    }
     if ($ValidationOnly) {
         $dynareParameters.ValidateOnly = $true
     }
 
     Write-Host "Running Dynare step for $RequestedThreadCount thread(s)"
 
+    # This invokes another PowerShell script, so rely on terminating errors
+    # from that script rather than $LASTEXITCODE (which may be stale from a
+    # previously executed native command).
     & $ScriptPath @dynareParameters
 
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "Dynare step failed for $RequestedThreadCount thread(s) with exit code $LASTEXITCODE"
+    if (-not $?) {
+        throw "Dynare step failed for $RequestedThreadCount thread(s)."
     }
 }
 
@@ -164,6 +188,16 @@ $resolvedSweepCompareScript = Resolve-ExistingPath -Candidates @($SweepCompareSc
 $resolvedThreadCounts = $ThreadCounts | Sort-Object -Unique
 if (-not $resolvedThreadCounts) {
     throw 'At least one thread count must be provided.'
+}
+
+$resolvedOnlyModels = @()
+if ($OnlyModels) {
+    $resolvedOnlyModels = @($OnlyModels | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+$phase1ExtraArgs = @()
+if ($resolvedOnlyModels.Count -gt 0) {
+    $phase1ExtraArgs += ("--only-models={0}" -f ($resolvedOnlyModels -join ','))
+    Write-Host ("Restricting sweep to models: {0}" -f ($resolvedOnlyModels -join ', '))
 }
 
 New-Item -ItemType Directory -Path $resolvedOutputRoot -Force | Out-Null
@@ -189,9 +223,9 @@ foreach ($threadCount in $resolvedThreadCounts) {
     Write-Host ("Running sweep for thread count: {0}" -f $threadCount)
     Write-Host '========================================'
 
-    Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedGenerateJuliaScript -OutputArgument $threadOutputDir -Description ("Phase 1 export for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -UseThreadCount
+    Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedGenerateJuliaScript -OutputArgument $threadOutputDir -Description ("Phase 1 export for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -ExtraScriptArgs $phase1ExtraArgs -UseThreadCount
 
-    Invoke-DynarePhase -ScriptPath $resolvedDynareScript -ThreadOutputDir $threadOutputDir -RequestedThreadCount $threadCount -PreferredDynareMatlabPath $DynareMatlabPath -PreferredMatlabExe $MatlabExe
+    Invoke-DynarePhase -ScriptPath $resolvedDynareScript -ThreadOutputDir $threadOutputDir -RequestedThreadCount $threadCount -PreferredDynareMatlabPath $DynareMatlabPath -PreferredMatlabExe $MatlabExe -RequestedMaxLicenseRetries $MaxLicenseRetries -RequestedLicenseRetryDelaySeconds $LicenseRetryDelaySeconds -RequestedOnlyModels $resolvedOnlyModels
 
     Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedCompareScript -OutputArgument $threadOutputDir -Description ("Phase 3 compare for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -UseThreadCount
 }
