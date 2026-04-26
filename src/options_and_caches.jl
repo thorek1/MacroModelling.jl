@@ -445,9 +445,11 @@ function Lyapunov_workspace(n::Int; T::Type = Float64)
         zeros(T, 0),            # b (Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
         Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
+        Krylov.DqgmresWorkspace(0, 0, Vector{T}),  # dqgmres
         zeros(T, 0),            # b_vech (vech-space Krylov)
         Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_vech
         Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_vech
+        Krylov.DqgmresWorkspace(0, 0, Vector{T}),  # dqgmres_vech
         zeros(T, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
         zeros(T, 0, 0),         # P̃
@@ -505,7 +507,7 @@ end
     ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
 
 Ensure Krylov method buffers and the requested solver workspace are allocated.
-Supported algorithms are `:bicgstab` and `:gmres`.
+Supported algorithms are `:bicgstab`, `:gmres`, and `:dqgmres`.
 """
 function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
     ensure_lyapunov_krylov_buffers!(ws)
@@ -522,8 +524,12 @@ function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Sy
         if length(ws.gmres.x) != n * n
             ws.gmres = Krylov.GmresWorkspace(n * n, n * n, Vector{T}; memory = 20)
         end
+    elseif algorithm == :dqgmres
+        if length(ws.dqgmres.x) != n * n
+            ws.dqgmres = Krylov.DqgmresWorkspace(n * n, n * n, Vector{T})
+        end
     else
-        error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab or :gmres")
+        error("Invalid Krylov algorithm: $algorithm. Must be :bicgstab, :gmres, or :dqgmres")
     end
 
     return ws
@@ -554,6 +560,10 @@ function ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorith
     elseif algorithm == :gmres
         if length(ws.gmres_vech.x) != n_vech
             ws.gmres_vech = Krylov.GmresWorkspace(n_vech, n_vech, Vector{T}; memory = 20)
+        end
+    elseif algorithm == :dqgmres
+        if length(ws.dqgmres_vech.x) != n_vech
+            ws.dqgmres_vech = Krylov.DqgmresWorkspace(n_vech, n_vech, Vector{T})
         end
     end
 

@@ -3,6 +3,9 @@
 # :bartels_stewart     - fast for small matrices and precise, dense matrices only
 # :bicgstab     - less precise
 # :gmres        - less precise
+# :dqgmres      - less precise
+# Tested column-ILU and triangular-sweep Krylov preconditioners did not improve
+
 
 # :iterative    - slow and precise
 # :speedmapping - slow and very precise
@@ -580,6 +583,80 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
 
         return 𝐗, workspace.gmres.stats.niter, reached_tol
+    end
+end
+
+
+function solve_lyapunov_equation(A::AbstractMatrix{T},
+                                C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                ::Val{:dqgmres},
+                                workspace::lyapunov_workspace;
+                                # timer::TimerOutput = TimerOutput(),
+                                tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
+    
+    if _is_approx_symmetric(C)
+        # vech-space Krylov: solve for n(n+1)/2 unique elements only
+        ensure_lyapunov_krylov_vech_solver!(workspace, :dqgmres)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        n = size(A, 1)
+        n_vech = n * (n + 1) ÷ 2
+        b_vech = workspace.b_vech
+
+        function lyapunov_vech_dqgmres!(sol, 𝐱)
+            fill_symmetric_from_vech!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            vech!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, n_vech, n_vech, true, true, lyapunov_vech_dqgmres!)
+
+        vech!(b_vech, C)
+
+        Krylov.dqgmres!(workspace.dqgmres_vech, lyapunov_op, b_vech, rtol = tol.rtol, atol = tol.atol)
+
+        fill_symmetric_from_vech!(𝐗, workspace.dqgmres_vech.x)
+
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.dqgmres_vech.stats.niter, reached_tol
+    else
+        # Standard full-space Krylov
+        ensure_lyapunov_krylov_solver!(workspace, :dqgmres)
+        tmp̄ = workspace.tmp̄
+        𝐗 = workspace.𝐗
+        b = workspace.b
+
+        function lyapunov_dqgmres!(sol,𝐱)
+            copyto!(𝐗, 𝐱)
+            ℒ.mul!(tmp̄, 𝐗, A')
+            ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+            copyto!(sol, 𝐗)
+        end
+
+        lyapunov_op = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, lyapunov_dqgmres!)
+
+        copyto!(b, vec(C))
+        Krylov.dqgmres!(workspace.dqgmres, lyapunov_op, b, rtol = tol.rtol, atol = tol.atol)
+        copyto!(𝐗, workspace.dqgmres.x)
+
+        # Allocation-free residual
+        ensure_lyapunov_doubling_buffers!(workspace)
+        ℒ.mul!(tmp̄, 𝐗, A')
+        ℒ.mul!(workspace.𝐂¹, A, tmp̄)
+        ℒ.axpy!(1, C, workspace.𝐂¹)
+        ℒ.axpy!(-1, 𝐗, workspace.𝐂¹)
+        reached_tol = ℒ.norm(workspace.𝐂¹) / ℒ.norm(𝐗)
+
+        return 𝐗, workspace.dqgmres.stats.niter, reached_tol
     end
 end
 
