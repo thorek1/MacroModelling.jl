@@ -43,6 +43,7 @@ const MODEL_FILES = [
     "FS2000",
     "Gali_2015_chapter_3_nonlinear",
     "Smets_Wouters_2007",
+    "Smets_Wouters_2003",
     "NAWM_EAUS_2008",
     "GNSS_2010",
     "QUEST3_2009",
@@ -53,11 +54,13 @@ const MODEL_FILES = [
 const SECOND_ORDER_MODELS = [
     "FS2000",
     "Gali_2015_chapter_3_nonlinear",
+    "Smets_Wouters_2007",
 ]
 
 # Models to also test at pruned 3rd order
 const THIRD_ORDER_MODELS = [
     "Gali_2015_chapter_3_nonlinear",
+    "Caldara_et_al_2012",
 ]
 
 # Models that skip variance/covariance and variance decomposition
@@ -277,7 +280,7 @@ end
 
 function benchmark_first_order(model, julia_dir)
     params = copy(model.parameter_values)
-    opts = MacroModelling.merge_calculation_options()
+    opts = MacroModelling.merge_calculation_options(verbose = true)
 
     # Warm up to ensure functions are compiled and reusable inputs are available
     MacroModelling.invalidate_cache_validity!(model)
@@ -287,6 +290,8 @@ function benchmark_first_order(model, julia_dir)
                                                   opts = opts, initial_guess = model.caches.qme_solution,
                                                   parameter_values = params, caching = false)
 
+    opts = MacroModelling.merge_calculation_options()
+    
     # Benchmark Jacobian (given precomputed steady-state inputs)
     median_jac = median_elapsed() do
         MacroModelling.calculate_jacobian(params, SS_and_pars, model.caches, model.functions.jacobian, model.workspaces, caching = false)
