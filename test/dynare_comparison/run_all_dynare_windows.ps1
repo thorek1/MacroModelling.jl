@@ -458,8 +458,24 @@ for thread_env_idx = 1:numel(thread_env_names)
 end
 
 dynare_environment_file = '$dynareEnvironmentLiteral';
-dynare_version_text = strtrim(evalc('dynare_version;'));
+dynare_version_text = '';
+try
+    dynare_version_value = dynare_version();
+    if isstring(dynare_version_value)
+        dynare_version_text = char(dynare_version_value);
+    elseif ischar(dynare_version_value)
+        dynare_version_text = dynare_version_value;
+    end
+catch
+end
+if isempty(dynare_version_text)
+    dynare_version_text = strtrim(evalc('dynare_version;'));
+end
+dynare_version_text = strtrim(dynare_version_text);
 dynare_version_text = regexprep(dynare_version_text, '[\r\n]+', ' | ');
+if isempty(dynare_version_text)
+    dynare_version_text = 'unknown';
+end
 host_name = getenv('COMPUTERNAME');
 if isempty(host_name)
     host_name = getenv('HOSTNAME');
@@ -486,7 +502,7 @@ catch
 end
 metadata_fid = fopen(dynare_environment_file, 'w');
 fprintf(metadata_fid, 'dynare_driver=MATLAB\n');
-fprintf(metadata_fid, 'dynare_version=%s\n', regexprep(dynare_version_text, '[\r\n]+', ' | '));
+fprintf(metadata_fid, 'dynare_version=%s\n', dynare_version_text);
 fprintf(metadata_fid, 'dynare_matlab_path=%s\n', '$dynareMatlabLiteral');
 fprintf(metadata_fid, 'matlab_executable=%s\n', '$matlabExeLiteral');
 fprintf(metadata_fid, 'matlab_version=%s\n', version);
