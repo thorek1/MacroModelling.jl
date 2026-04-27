@@ -1,3 +1,6 @@
+# Example invocation:
+# powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\CustomTools\MacroModelling.jl\test\dynare_comparison\run_thread_sweep_windows.ps1" -JuliaExe "D:\CustomTools\julia-1.12.6\bin\julia.exe" -DynareMatlabPath "D:\CustomTools\dynare-7.0-win\matlab" -MatlabExe "C:\Program Files\MATLAB\R2024b\bin\matlab.exe"
+
 [CmdletBinding()]
 param(
     [int[]]$ThreadCounts = @(1, 2, 4, 8),
