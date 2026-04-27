@@ -176,15 +176,27 @@ if options_.order >= 3 && isfield(oo_.dr, 'ghxxx')
             size(ghuss_decl,1), size(ghuss_decl,2));
 end
 
-%% --- IRFs ---
+%% --- IRFs (bundled into a single matrix file) ---
 if isfield(oo_, 'irfs')
     irf_fields = fieldnames(oo_.irfs);
+    % Determine number of periods from the first non-empty field.
+    n_periods = 0;
     for i = 1:length(irf_fields)
-        fname = irf_fields{i};
-        data = oo_.irfs.(fname);
-        if ~isempty(data)
-            dlmwrite(fullfile(output_dir, ['irf_' fname '.csv']), data, 'precision', '%.16g');
+        d = oo_.irfs.(irf_fields{i});
+        if ~isempty(d)
+            n_periods = numel(d);
+            break;
         end
+    end
+    if n_periods > 0
+        irf_matrix = zeros(n_periods, length(irf_fields));
+        for i = 1:length(irf_fields)
+            data = oo_.irfs.(irf_fields{i});
+            if ~isempty(data)
+                irf_matrix(:, i) = data(:);
+            end
+        end
+        dlmwrite(fullfile(output_dir, 'irfs.csv'), irf_matrix, 'precision', '%.16g');
     end
     fid = fopen(fullfile(output_dir, 'irf_fields.csv'), 'w');
     for i = 1:length(irf_fields)
@@ -267,7 +279,8 @@ else
     end
 end
 median_jac = median(bench_times_jac);
-dlmwrite(fullfile(output_dir, 'benchmark_jacobian.csv'), median_jac, 'precision', '%.16g');
+bench_keys = {'benchmark_jacobian'};
+bench_values = [median_jac];
 
 % ── First-order solve (dyn_first_order_solver) ──
 dr_bench = oo_.dr;
@@ -278,11 +291,14 @@ for i = 1:n_bench
     bench_times_fo(i) = toc;
 end
 median_fo = median(bench_times_fo);
-dlmwrite(fullfile(output_dir, 'benchmark_first_order_solve.csv'), median_fo, 'precision', '%.16g');
+bench_keys{end+1} = 'benchmark_first_order_solve';
+bench_values(end+1) = median_fo;
 
 median_first_order_total = median_jac + median_fo;
-dlmwrite(fullfile(output_dir, 'benchmark_first_order_total.csv'), median_first_order_total, 'precision', '%.16g');
-dlmwrite(fullfile(output_dir, 'benchmark_first_order.csv'), median_first_order_total, 'precision', '%.16g');
+bench_keys{end+1} = 'benchmark_first_order_total';
+bench_values(end+1) = median_first_order_total;
+bench_keys{end+1} = 'benchmark_first_order';
+bench_values(end+1) = median_first_order_total;
 
 fprintf('Benchmark %s (order=%d): Jac=%.1f us, FO_solve=%.1f us', ...
     model_name, options_.order, median_jac*1e6, median_fo*1e6);
@@ -299,7 +315,8 @@ if options_.order >= 2
         bench_times_hess(i) = toc;
     end
     median_hess = median(bench_times_hess);
-    dlmwrite(fullfile(output_dir, 'benchmark_hessian.csv'), median_hess, 'precision', '%.16g');
+    bench_keys{end+1} = 'benchmark_hessian';
+    bench_values(end+1) = median_hess;
 
     % ── Second-order solve (dyn_second_order_solver) ──
     bench_times_so = zeros(1, n_bench);
@@ -310,7 +327,8 @@ if options_.order >= 2
         bench_times_so(i) = toc;
     end
     median_so = median(bench_times_so);
-    dlmwrite(fullfile(output_dir, 'benchmark_second_order_solve.csv'), median_so, 'precision', '%.16g');
+    bench_keys{end+1} = 'benchmark_second_order_solve';
+    bench_values(end+1) = median_so;
 
     fprintf(', Hess=%.1f us, SO_solve=%.1f us', median_hess*1e6, median_so*1e6);
 end
@@ -333,11 +351,19 @@ if options_.k_order_solver
         bench_times_korder(i) = toc;
     end
     median_korder = median(bench_times_korder);
-    dlmwrite(fullfile(output_dir, 'benchmark_k_order_pert.csv'), median_korder, 'precision', '%.16g');
+    bench_keys{end+1} = 'benchmark_k_order_pert';
+    bench_values(end+1) = median_korder;
 
     fprintf(', k_order_pert=%.1f us', median_korder*1e6);
 end
 
 fprintf(', FO_Total=%.1f us over %d runs\n', median_first_order_total*1e6, n_bench);
+
+%% --- Write bundled benchmarks ---
+bench_fid = fopen(fullfile(output_dir, 'benchmarks.csv'), 'w');
+for bi = 1:numel(bench_keys)
+    fprintf(bench_fid, '%s,%.16g\n', bench_keys{bi}, bench_values(bi));
+end
+fclose(bench_fid);
 
 disp(['Results extracted to: ' output_dir]);

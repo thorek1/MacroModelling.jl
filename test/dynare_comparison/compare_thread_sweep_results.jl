@@ -4,6 +4,38 @@ const DEFAULT_SWEEP_ROOT = joinpath(@__DIR__, "output_thread_sweep")
 
 read_vector(path) = vec(readdlm(path, ',', Float64))
 
+# Cache of parsed benchmarks.csv files: dir => Dict{String,Float64}.
+const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
+
+function load_benchmarks(dir)
+    haskey(_BENCH_CACHE, dir) && return _BENCH_CACHE[dir]
+    bundled = joinpath(dir, "benchmarks.csv")
+    d = Dict{String, Float64}()
+    if isfile(bundled)
+        raw = readdlm(bundled, ',')
+        for r in 1:size(raw, 1)
+            key = strip(string(raw[r, 1]))
+            isempty(key) && continue
+            d[key] = Float64(raw[r, 2])
+        end
+    end
+    _BENCH_CACHE[dir] = d
+    return d
+end
+
+function read_bench(dir, name)
+    # `name` may be either a bare metric name (e.g. "benchmark_jacobian") or a
+    # legacy filename ("benchmark_jacobian.csv"). Strip the .csv if present and
+    # consult the bundled benchmarks.csv first; fall back to the per-file CSV.
+    key = endswith(name, ".csv") ? name[1:end-4] : name
+    bench = load_benchmarks(dir)
+    if haskey(bench, key)
+        return bench[key]
+    end
+    legacy = joinpath(dir, key * ".csv")
+    return isfile(legacy) ? read_vector(legacy)[1] : NaN
+end
+
 function print_usage()
     println("Usage: julia --project=. compare_thread_sweep_results.jl [--output-root=PATH | PATH]")
 end
@@ -32,11 +64,6 @@ function parse_args(args)
     end
 
     return abspath(output_root)
-end
-
-function read_bench(dir, name)
-    path = joinpath(dir, name)
-    return isfile(path) ? read_vector(path)[1] : NaN
 end
 
 function sum_components(dir, files)

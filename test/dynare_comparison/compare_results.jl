@@ -83,10 +83,21 @@ function load_results(dir)
     if isfile(irf_fields_path)
         fields = read_names(irf_fields_path)
         irfs = Dict{String, Vector{Float64}}()
-        for f in fields
-            p = joinpath(dir, "irf_$f.csv")
-            if isfile(p)
-                irfs[f] = read_vector(p)
+        bundled_path = joinpath(dir, "irfs.csv")
+        if isfile(bundled_path)
+            # Bundled format: matrix with rows = periods, cols = fields (in irf_fields.csv order).
+            mat = read_matrix(bundled_path)
+            ncols = min(size(mat, 2), length(fields))
+            for j in 1:ncols
+                irfs[fields[j]] = vec(mat[:, j])
+            end
+        else
+            # Legacy per-field files (kept for backward compatibility with older outputs).
+            for f in fields
+                p = joinpath(dir, "irf_$f.csv")
+                if isfile(p)
+                    irfs[f] = read_vector(p)
+                end
             end
         end
         r[:irfs] = irfs

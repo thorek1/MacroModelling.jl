@@ -391,8 +391,9 @@ $modelEntryLines = @()
 foreach ($entry in $modelEntries) {
     $nameLiteral = ConvertTo-MatlabString -Value $entry.Name
     $workLiteral = ConvertTo-MatlabString -Value $entry.WorkDir
+    $outLiteral  = ConvertTo-MatlabString -Value $entry.DynareOutDir
     $benchmarkLiteral = if ($entry.BenchmarkOnly) { 'true' } else { 'false' }
-    $modelEntryLines += "model_entries(end+1) = struct('name', '$nameLiteral', 'work_dir', '$workLiteral', 'benchmark_only', $benchmarkLiteral);"
+    $modelEntryLines += "model_entries(end+1) = struct('name', '$nameLiteral', 'work_dir', '$workLiteral', 'output_dir', '$outLiteral', 'benchmark_only', $benchmarkLiteral);"
 }
 $modelEntriesBlock = ($modelEntryLines -join "`n    ")
 
@@ -424,7 +425,7 @@ status_file = fullfile(batch_root, 'model_status.csv');
 status_fid = fopen(status_file, 'w');
 fprintf(status_fid, 'model,status,message\n');
 
-model_entries = struct('name', {}, 'work_dir', {}, 'benchmark_only', {});
+model_entries = struct('name', {}, 'work_dir', {}, 'output_dir', {}, 'benchmark_only', {});
     $modelEntriesBlock
 
 original_dir = pwd;
@@ -439,7 +440,7 @@ for entry_idx = 1:numel(model_entries)
     try
         clearvars -except status_fid model_entries entry_idx entry batch_root original_dir requested_threads thread_env_names previous_num_comp_threads active_num_comp_threads batch_start_tic model_tic;
         model_name = entry.name;
-        output_dir = 'dynare_output';
+        output_dir = entry.output_dir;
         benchmark_only_mode = entry.benchmark_only;
         dynare $dynareStub noclearall;
         extract_dynare_results;
@@ -521,7 +522,8 @@ foreach ($entry in $modelEntries) {
     if ($statusByModel.ContainsKey($entry.Name)) {
         $row = $statusByModel[$entry.Name]
     }
-    $matlabOutputDir = Join-Path $entry.WorkDir 'dynare_output'
+    # MATLAB writes results directly into $entry.DynareOutDir (no per-file copy).
+    $matlabOutputDir = $entry.DynareOutDir
 
     if (-not $row) {
         $failedModels += $entry.Name
@@ -554,11 +556,7 @@ foreach ($entry in $modelEntries) {
         continue
     }
 
-    foreach ($outputFile in $outputFiles) {
-        Copy-Item -LiteralPath $outputFile.FullName -Destination $entry.DynareOutDir -Force
-    }
-
-    Write-Host ("Done: {0} (results copied to {1})" -f $entry.Name, $entry.DynareOutDir)
+    Write-Host ("Done: {0} (results in {1})" -f $entry.Name, $entry.DynareOutDir)
 }
 
 if ($matlabExitCode -ne 0) {

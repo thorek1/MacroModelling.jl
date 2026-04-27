@@ -213,18 +213,34 @@ end
 function export_irfs(model, julia_dir, orig, exo_vars; algorithm = :first_order)
     irfs = get_irf(model, periods = IRF_PERIODS, algorithm = algorithm)
     irf_fields = String[]
+    n_cols = length(orig) * length(exo_vars)
+    irf_matrix = Matrix{Float64}(undef, IRF_PERIODS, n_cols)
+    col = 0
     for v in orig
         v_ascii = ascii_name(v)
         for e in exo_vars
             e_ascii = ascii_name(e)
-            field = "$(v_ascii)_$(e_ascii)"
-            push!(irf_fields, field)
-            irf_vec = [Float64(irfs(v, t, e)) for t in 1:IRF_PERIODS]
-            writedlm(joinpath(julia_dir, "irf_$(field).csv"), irf_vec, ',')
+            push!(irf_fields, "$(v_ascii)_$(e_ascii)")
+            col += 1
+            for t in 1:IRF_PERIODS
+                irf_matrix[t, col] = Float64(irfs(v, t, e))
+            end
         end
     end
+    # Single bundled file: rows = periods, cols = irf_fields (in same order).
+    writedlm(joinpath(julia_dir, "irfs.csv"), irf_matrix, ',')
     write_names(joinpath(julia_dir, "irf_fields.csv"), irf_fields)
     write_names(joinpath(julia_dir, "irf_algorithm.csv"), [String(algorithm)])
+end
+
+function write_benchmarks(julia_dir, bench::AbstractDict)
+    keys_sorted = sort(collect(keys(bench)))
+    table = Matrix{Any}(undef, length(keys_sorted), 2)
+    for (i, k) in enumerate(keys_sorted)
+        table[i, 1] = k
+        table[i, 2] = bench[k]
+    end
+    writedlm(joinpath(julia_dir, "benchmarks.csv"), table, ',')
 end
 
 function export_moments(model, julia_dir, orig, exo_vars;
@@ -278,7 +294,7 @@ function median_elapsed(f, n = N_BENCH)
     return isodd(length(times)) ? times[m + 1] : (times[m] + times[m + 1]) / 2
 end
 
-function benchmark_first_order(model, julia_dir)
+function benchmark_first_order(model, bench::AbstractDict)
     params = copy(model.parameter_values)
     opts = MacroModelling.merge_calculation_options(verbose = true)
 
@@ -291,12 +307,12 @@ function benchmark_first_order(model, julia_dir)
                                                   parameter_values = params, caching = false)
 
     opts = MacroModelling.merge_calculation_options()
-    
+
     # Benchmark Jacobian (given precomputed steady-state inputs)
     median_jac = median_elapsed() do
         MacroModelling.calculate_jacobian(params, SS_and_pars, model.caches, model.functions.jacobian, model.workspaces, caching = false)
     end
-    writedlm(joinpath(julia_dir, "benchmark_jacobian.csv"), [median_jac], ',')
+    bench["benchmark_jacobian"] = median_jac
 
     # Benchmark first-order solve (given Jacobian)
     median_fo = median_elapsed() do
@@ -305,9 +321,9 @@ function benchmark_first_order(model, julia_dir)
                                                       parameter_values = params, caching = false)
     end
     median_fo_total = median_jac + median_fo
-    writedlm(joinpath(julia_dir, "benchmark_first_order_solve.csv"), [median_fo], ',')
-    writedlm(joinpath(julia_dir, "benchmark_first_order_total.csv"), [median_fo_total], ',')
-    writedlm(joinpath(julia_dir, "benchmark_first_order.csv"), [median_fo_total], ',')
+    bench["benchmark_first_order_solve"] = median_fo
+    bench["benchmark_first_order_total"] = median_fo_total
+    bench["benchmark_first_order"] = median_fo_total
 
     @info "Benchmark $(model.model_name) [first order]:"
     @info "  Jacobian:  $(round(median_jac*1e6, digits=1)) μs"
@@ -315,7 +331,7 @@ function benchmark_first_order(model, julia_dir)
     @info "  Total:     $(round(median_fo_total*1e6, digits=1)) μs"
 end
 
-function benchmark_second_order(model, julia_dir)
+function benchmark_second_order(model, bench::AbstractDict)
     params = copy(model.parameter_values)
     opts = MacroModelling.merge_calculation_options()
 
@@ -335,7 +351,7 @@ function benchmark_second_order(model, julia_dir)
     median_hess = median_elapsed() do
         MacroModelling.calculate_hessian(params, SS_and_pars, model.caches, model.functions.hessian, model.workspaces, caching = false)
     end
-    writedlm(joinpath(julia_dir, "benchmark_hessian.csv"), [median_hess], ',')
+    bench["benchmark_hessian"] = median_hess
 
     # Benchmark second-order solve (given first-order solution + Hessian)
     median_so = median_elapsed() do
@@ -343,14 +359,14 @@ function benchmark_second_order(model, julia_dir)
                                                        initial_guess = model.caches.second_order_solution,
                                                        opts = opts, parameter_values = params, caching = false)
     end
-    writedlm(joinpath(julia_dir, "benchmark_second_order_solve.csv"), [median_so], ',')
+    bench["benchmark_second_order_solve"] = median_so
 
     @info "Benchmark $(model.model_name) [second order]:"
     @info "  Hessian:          $(round(median_hess*1e6, digits=1)) μs"
     @info "  2nd order solve:  $(round(median_so*1e6, digits=1)) μs"
 end
 
-function benchmark_third_order(model, julia_dir)
+function benchmark_third_order(model, bench::AbstractDict)
     params = copy(model.parameter_values)
     opts = MacroModelling.merge_calculation_options()
 
@@ -374,7 +390,7 @@ function benchmark_third_order(model, julia_dir)
     median_d3 = median_elapsed() do
         MacroModelling.calculate_third_order_derivatives(params, SS_and_pars, model.caches, model.functions.third_order_derivatives, model.workspaces, caching = false)
     end
-    writedlm(joinpath(julia_dir, "benchmark_third_order_derivatives.csv"), [median_d3], ',')
+    bench["benchmark_third_order_derivatives"] = median_d3
 
     # Benchmark third-order solve
     median_to = median_elapsed() do
@@ -382,7 +398,7 @@ function benchmark_third_order(model, julia_dir)
                                                       initial_guess = model.caches.third_order_solution,
                                                       opts = opts, parameter_values = params, caching = false)
     end
-    writedlm(joinpath(julia_dir, "benchmark_third_order_solve.csv"), [median_to], ',')
+    bench["benchmark_third_order_solve"] = median_to
 
     @info "Benchmark $(model.model_name) [third order]:"
     @info "  3rd order derivs: $(round(median_d3*1e6, digits=1)) μs"
@@ -488,7 +504,9 @@ function export_model(model, outdir; include_moments = true, benchmark_only = fa
         end
 
         # ── Benchmarks ──
-        benchmark_first_order(model, julia_dir)
+        bench = Dict{String, Float64}()
+        benchmark_first_order(model, bench)
+        write_benchmarks(julia_dir, bench)
 
         @info "Exported Julia benchmark-only results for $(model.model_name) → $outdir"
         return
@@ -516,7 +534,9 @@ function export_model(model, outdir; include_moments = true, benchmark_only = fa
     end
 
     # ── Benchmarks ──
-    benchmark_first_order(model, julia_dir)
+    bench = Dict{String, Float64}()
+    benchmark_first_order(model, bench)
+    write_benchmarks(julia_dir, bench)
 
     @info "Exported Julia results for $(model.model_name) → $outdir"
 end
@@ -554,11 +574,13 @@ function export_higher_order_model(model, outdir, dir_name, order)
     end
 
     # ── Benchmarks ──
-    benchmark_first_order(model, julia_dir)
-    benchmark_second_order(model, julia_dir)
+    bench = Dict{String, Float64}()
+    benchmark_first_order(model, bench)
+    benchmark_second_order(model, bench)
     if order >= 3
-        benchmark_third_order(model, julia_dir)
+        benchmark_third_order(model, bench)
     end
+    write_benchmarks(julia_dir, bench)
 
     @info "Exported Julia higher-order results (order=$order) for $(model.model_name) → $outdir"
 end
