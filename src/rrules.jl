@@ -816,6 +816,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
 
     tmp = collect(T.I_nPast - 𝐒₁[past_idx, 1:nPast])
     rhs = collect((𝐒₂ * kron_aug1 / 2)[past_idx])
+    tmp_for_pullback = copy(tmp)
 
     tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
     tmp_sol = 𝒮.solve!(tmp_cache)
@@ -838,6 +839,8 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     end
 
     SSSstates = collect(tmp_sol.u)
+    tmp_pb_lu = ℒ.lu!(tmp_for_pullback, check = false)
+    ∂rhs_buffer = zeros(Float64, length(SSSstates))
 
     common = (true,
               all_SS,
@@ -877,12 +880,12 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         end
 
         if !isempty(∂SSSstates)
-            tmp_pb_lu = ℒ.lu(tmp)
-            ∂rhs = tmp_pb_lu' \ ∂SSSstates
-            ∂tmp = -∂rhs * SSSstates'
+            copyto!(∂rhs_buffer, ∂SSSstates)
+            ℒ.ldiv!(tmp_pb_lu', ∂rhs_buffer)
+            ∂tmp = -∂rhs_buffer * SSSstates'
             ∂𝐒₁_aug[past_idx, 1:nPast] .-= ∂tmp
             ∂𝐒₂_from_rhs = spzeros(Float64, size(𝐒₂)...)
-            ∂𝐒₂_from_rhs[past_idx, :] += ∂rhs * kron_aug1' / 2
+            ∂𝐒₂_from_rhs[past_idx, :] += ∂rhs_buffer * kron_aug1' / 2
             ∂𝐒₂_raw_total += ∂𝐒₂_from_rhs * 𝐔₂'
         end
 
