@@ -47,6 +47,43 @@ function Resolve-ExistingPath {
     throw "Could not find $Description. Checked: $($Candidates -join ', ')"
 }
 
+function Invoke-RemoveItemRetry {
+    # Robust replacement for Remove-Item. Handles transient file locks
+    # (antivirus, lingering MATLAB/Dynare handles, OneDrive sync) by retrying
+    # with backoff. Always returns; never throws on missing paths and only
+    # throws after all attempts fail.
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$Recurse,
+        [int]$MaxAttempts = 6,
+        [int]$InitialDelayMs = 200
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    $delay = $InitialDelayMs
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            if ($Recurse) {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            } else {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            }
+            if (-not (Test-Path -LiteralPath $Path)) { return }
+        } catch {
+            if ($attempt -eq $MaxAttempts) {
+                Write-Warning ("Remove-Item failed for {0} after {1} attempts: {2}" -f $Path, $MaxAttempts, $_)
+                return
+            }
+            Start-Sleep -Milliseconds $delay
+            $delay = $delay * 2
+            if ($delay -gt 5000) {
+                $delay = 5000
+            }
+        }
+    }
+}
+
 function Get-MatlabExecutable {
     param([string]$PreferredPath)
 
@@ -143,9 +180,7 @@ function Invoke-MatlabBatch {
     )
 
     $logPath = Join-Path $WorkingDirectory 'matlab_console.log'
-    if (Test-Path -LiteralPath $logPath) {
-        Remove-Item -LiteralPath $logPath -Force
-    }
+    Invoke-RemoveItemRetry -Path $logPath
 
     $matlabArgs = @()
     if ($RequestedThreadCount -eq 1) {
@@ -162,9 +197,7 @@ function Invoke-MatlabBatch {
     $proc = Start-Process -FilePath $Executable -ArgumentList $matlabArgs -WorkingDirectory $WorkingDirectory -PassThru -NoNewWindow
 
     $doneFlagPath = Join-Path $WorkingDirectory 'batch_done.flag'
-    if (Test-Path -LiteralPath $doneFlagPath) {
-        Remove-Item -LiteralPath $doneFlagPath -Force
-    }
+    Invoke-RemoveItemRetry -Path $doneFlagPath
 
     $procId = $proc.Id
     $linesPrinted = 0
@@ -357,7 +390,8 @@ foreach ($modelDirectory in $modelDirectories) {
 
     $dynareOutputDir = Join-Path $modelDirectory.FullName 'dynare'
     if (Test-Path -LiteralPath $dynareOutputDir) {
-        Get-ChildItem -LiteralPath $dynareOutputDir -Force | Remove-Item -Recurse -Force
+        Get-ChildItem -LiteralPath $dynareOutputDir -Force -ErrorAction SilentlyContinue |
+            ForEach-Object { Invoke-RemoveItemRetry -Path $_.FullName -Recurse }
     }
     else {
         New-Item -ItemType Directory -Path $dynareOutputDir | Out-Null
@@ -386,6 +420,9 @@ if (-not $modelEntries) {
 # Build the MATLAB driver that runs all models in one session.
 $driverScriptPath = Join-Path $batchRoot 'run_all_dynare.m'
 $workRootLiteral = ConvertTo-MatlabString -Value $batchRoot
+$dynareEnvironmentPath = Join-Path $resolvedOutputDir 'comparison_environment_dynare.txt'
+$dynareEnvironmentLiteral = ConvertTo-MatlabString -Value $dynareEnvironmentPath
+$matlabExeLiteral = ConvertTo-MatlabString -Value $resolvedMatlabExe
 
 $modelEntryLines = @()
 foreach ($entry in $modelEntries) {
@@ -419,6 +456,64 @@ for thread_env_idx = 1:numel(thread_env_names)
     end
     fprintf('MATLAB thread environment: %s=%s\n', thread_env_name, thread_env_value);
 end
+
+dynare_environment_file = '$dynareEnvironmentLiteral';
+dynare_version_text = strtrim(evalc('dynare_version;'));
+dynare_version_text = regexprep(dynare_version_text, '[\r\n]+', ' | ');
+host_name = getenv('COMPUTERNAME');
+if isempty(host_name)
+    host_name = getenv('HOSTNAME');
+end
+if isempty(host_name)
+    host_name = 'unknown';
+end
+os_name = 'unknown';
+if exist('system_dependent', 'builtin') || exist('system_dependent', 'file')
+    try
+        os_name = system_dependent('getos');
+    catch
+    end
+end
+blas_name = 'unknown';
+lapack_name = 'unknown';
+try
+    blas_name = version('-blas');
+catch
+end
+try
+    lapack_name = version('-lapack');
+catch
+end
+metadata_fid = fopen(dynare_environment_file, 'w');
+fprintf(metadata_fid, 'dynare_driver=MATLAB\n');
+fprintf(metadata_fid, 'dynare_version=%s\n', regexprep(dynare_version_text, '[\r\n]+', ' | '));
+fprintf(metadata_fid, 'dynare_matlab_path=%s\n', '$dynareMatlabLiteral');
+fprintf(metadata_fid, 'matlab_executable=%s\n', '$matlabExeLiteral');
+fprintf(metadata_fid, 'matlab_version=%s\n', version);
+try
+    fprintf(metadata_fid, 'matlab_release=%s\n', version('-release'));
+catch
+end
+fprintf(metadata_fid, 'blas=%s\n', regexprep(blas_name, '[\r\n]+', ' | '));
+fprintf(metadata_fid, 'lapack=%s\n', regexprep(lapack_name, '[\r\n]+', ' | '));
+fprintf(metadata_fid, 'hostname=%s\n', host_name);
+fprintf(metadata_fid, 'computer=%s\n', computer);
+fprintf(metadata_fid, 'os=%s\n', regexprep(os_name, '[\r\n]+', ' | '));
+fprintf(metadata_fid, 'thread_count_requested=%d\n', requested_threads);
+if exist('active_num_comp_threads', 'var')
+    fprintf(metadata_fid, 'max_num_comp_threads=%d\n', active_num_comp_threads);
+else
+    fprintf(metadata_fid, 'max_num_comp_threads=%s\n', 'unknown');
+end
+for thread_env_idx = 1:numel(thread_env_names)
+    thread_env_name = thread_env_names{thread_env_idx};
+    thread_env_value = getenv(thread_env_name);
+    if isempty(thread_env_value)
+        thread_env_value = '<unset>';
+    end
+    fprintf(metadata_fid, 'env_%s=%s\n', thread_env_name, thread_env_value);
+end
+fclose(metadata_fid);
 
 batch_root = '$workRootLiteral';
 status_file = fullfile(batch_root, 'model_status.csv');
@@ -568,7 +663,7 @@ if ($keepBatch) {
     Write-Warning "Keeping batch work directory for inspection: $batchRoot"
 }
 else {
-    Remove-Item -LiteralPath $batchRoot -Recurse -Force
+    Invoke-RemoveItemRetry -Path $batchRoot -Recurse
 }
 
 if ($failedModels.Count -gt 0) {
