@@ -989,15 +989,22 @@ function get_conditional_forecast(𝓂::ℳ,
 
         if length(cond_var_idx) == 1
             @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
+            shocks[free_shock_idx,1] .= 0
+            shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
         elseif length(free_shock_idx) == length(cond_var_idx)
-            CC = ℒ.lu(CC, check = false)
-    
-            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
+            CC_lu_ws = FastLapackInterface.LUWs(CC)
+            CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+
+            @assert ok "Numerical stabiltiy issues for restrictions in period 1."
+
+            CC_rhs = conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx]
+            solve_lu_left!(CC, CC_rhs, CC_lu_ws, CC_lu_handle)
+            shocks[free_shock_idx,1] .= 0
+            shocks[free_shock_idx,1] = CC_rhs
+        else
+            shocks[free_shock_idx,1] .= 0
+            shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
         end
-    
-        shocks[free_shock_idx,1] .= 0
-    
-        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
     
         Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
 
@@ -1017,14 +1024,19 @@ function get_conditional_forecast(𝓂::ℳ,
     
             if length(cond_var_idx) == 1
                 @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
+                shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
             elseif length(free_shock_idx) == length(cond_var_idx)
-    
-            CC = ℒ.lu(CC, check = false)
-    
-            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+                CC_lu_ws = FastLapackInterface.LUWs(CC)
+                CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+
+                @assert ok "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+
+                CC_rhs = conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx]
+                solve_lu_left!(CC, CC_rhs, CC_lu_ws, CC_lu_handle)
+                shocks[free_shock_idx,i] = CC_rhs
+            else
+                shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
             end
-    
-            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
     
             Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
         end

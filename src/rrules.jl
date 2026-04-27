@@ -5738,19 +5738,34 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)]
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = collect(@views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊])
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    qme_ws = workspaces.first_order
 
-    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    if S === Float64
+        qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
+            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+
+        if !solved_∇lu
+            if opts.verbose println("Second order solution: inversion failed") end
+            return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        spinv = Matrix{S}(ℒ.I, size(∇₁₊𝐒₁➕∇₁₀))
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, spinv, qme_ws.fast_lu_ws_nabla0, lu_handle)
+    else
+        ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+        if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+            if opts.verbose println("Second order solution: inversion failed") end
+            return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     end
-    
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
     # end # timeit_debug
@@ -7640,15 +7655,29 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]; zeros(n₋ + n + nₑ, nₑ₋)]
     𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = collect(@views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊])
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    qme_ws = workspaces.first_order
 
-    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    if S === Float64
+        qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
+            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+
+        if !solved_∇lu
+            return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        spinv = Matrix{S}(ℒ.I, size(∇₁₊𝐒₁➕∇₁₀))
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, spinv, qme_ws.fast_lu_ws_nabla0, lu_handle)
+    else
+        ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+        if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+            return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     end
-
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
     ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
@@ -8343,16 +8372,20 @@ function rrule(::typeof(calculate_loglikelihood),
     jac = 𝐒[obs_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables_index)
-        logabsdets = ℒ.logabsdet(jac)[1] #  ./ precision_factor
+        lu_ws = FastLapackInterface.LUWs(jac)
+        lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
 
-        jacdecomp = ℒ.lu(jac, check = false)
-
-        if !ℒ.issuccess(jacdecomp)
+        if !ok
             if opts.verbose println("Inversion filter failed") end
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        invjac = inv(jacdecomp)
+        logabsdets = 0.0
+        @inbounds for k in 1:size(jac,1)
+            logabsdets += log(abs(jac[k,k]))
+        end
+        invjac = Matrix{Float64}(ℒ.I, size(jac))
+        solve_lu_left!(jac, invjac, lu_ws, lu_handle)
     else
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac)) #' ./ precision_factor
         # jacdecomp = ℒ.svd(jac)

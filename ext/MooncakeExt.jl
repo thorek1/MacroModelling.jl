@@ -6,6 +6,56 @@ import Mooncake: CoDual, NoRData, @is_primitive
 import ChainRulesCore
 import AxisKeys: KeyedArray
 
+# ── Inference short-circuit for Mooncake primitives ──
+# Mooncake's default abstract_call_gf_by_type runs full type inference on every
+# call BEFORE checking whether it is a primitive.  For large primitives like
+# get_statistics (thousands of transitive callees) this cascade takes 10+ min
+# through Mooncake's fresh inference cache.
+#
+# Fix: check the primitive predicate FIRST.  When a call is recognised as a
+# primitive, return a conservative CallMeta (return type Any, unknown effects)
+# immediately, skipping the expensive inference cascade.  Correctness is
+# preserved because Mooncake's AD tape uses CoDual values with concrete runtime
+# types, and make_ad_stmts! already handles imprecise inferred types.
+#
+# Defined in __init__ to avoid "method overwriting during precompilation" error.
+function __init__()
+    @static if VERSION >= v"1.12-"
+        CC = Core.Compiler
+        @eval begin
+            function $CC.abstract_call_gf_by_type(
+                interp::Mooncake.MooncakeInterpreter{C,M},
+                @nospecialize(f),
+                arginfo::$CC.ArgInfo,
+                si::$CC.StmtInfo,
+                @nospecialize(atype),
+                sv::$CC.AbsIntState,
+                max_methods::Int,
+            ) where {C,M}
+                argtypes = arginfo.argtypes
+                matches = $CC.find_method_matches(interp, argtypes, atype; max_methods)
+                if !isa(matches, $CC.FailedMethodMatch)
+                    (; applicable) = matches
+                    if Mooncake.any_matches_primitive(applicable, C, M, interp.world)
+                        info = Mooncake.NoInlineCallInfo($CC.NoCallInfo(), atype)
+                        cm = $CC.CallMeta(Any, Any, $CC.Effects(), info)
+                        return $CC.Future(cm)
+                    end
+                end
+                return @invoke $CC.abstract_call_gf_by_type(
+                    interp::$CC.AbstractInterpreter,
+                    f::Any,
+                    arginfo::$CC.ArgInfo,
+                    si::$CC.StmtInfo,
+                    atype::Any,
+                    sv::$CC.AbsIntState,
+                    max_methods::Int,
+                )
+            end
+        end
+    end
+end
+
 Mooncake.tangent_type(::Type{MacroModelling.ℳ}) = Mooncake.NoTangent
 
 # ── Scalar/Array-returning functions: @from_rrule works directly ──

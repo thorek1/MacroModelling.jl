@@ -178,7 +178,7 @@ end
 is_nawm_model(model_name) = model_name == "NAWM_EAUS_2008"
 is_higher_order_model(model_name) = occursin("_pruned_2nd", model_name) || occursin("_pruned_3rd", model_name)
 is_pruned_third_order_model(model_name) = occursin("_pruned_3rd", model_name)
-is_excluded_model_dir(model_name) = startswith(model_name, "Caldara_et_al_2012") || model_name == "FS2000_pruned_3rd"
+is_excluded_model_dir(model_name) = model_name == "FS2000_pruned_3rd"
 is_benchmark_only_model_dir(model_name) = model_name in BENCHMARK_ONLY_MODELS
 is_supported_pruned_third_order_variance_model(model_name) = model_name in (
     "Gali_2015_chapter_3_nonlinear_pruned_3rd",
