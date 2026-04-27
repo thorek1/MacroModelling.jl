@@ -197,10 +197,21 @@ function Find_shocks_workspace(;T::Type = Float64)
         zeros(T,0,0),           # kron_buffer2 (n_exo × n_exo)
         zeros(T,0),             # kron_buffer² (n_exo^3)
         zeros(T,0,0),           # kron_buffer3 (n_exo × n_exo^2)
-        zeros(T,0,0))           # kron_buffer4 (n_exo^2 × n_exo)
+        zeros(T,0,0),           # kron_buffer4 (n_exo^2 × n_exo)
+        0,                      # n_past dimension
+        zeros(T,0),             # kron_state_vol
+        zeros(T,0),             # kron_state_vol3
+        zeros(T,0),             # kron_state₁₂
+        zeros(T,0,0),           # kron_I_state
+        zeros(T,0,0),           # kron_I_state₂
+        zeros(T,0,0))           # kron_I_state_state
 end
 
 function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
+    empty_dx_prob = 𝒮.LinearProblem(zeros(Float64, 0, 0), zeros(Float64, 0))
+    empty_dx_lu_buffer = 𝒮.init(empty_dx_prob,
+                                𝒮.FastLUFactorization(),
+                                verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
     higher_order_workspace(spzeros(T,0,0),
                         spzeros(T,0,0),
                         spzeros(T,0,0),
@@ -263,6 +274,20 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(T,0,0),  # ∂∇₁₊𝐒₁➕∇₁₀_3rd
                         zeros(T,0,0),  # ∇₂t_∂out2_3rd
                         zeros(T,0,0),  # mul_tmp_3rd
+                        # LinearSolve cache (FastLUFactorization) for SSS Newton iter ∂x \ Δx
+                        empty_dx_lu_buffer,                              # dx_lu_buffer
+                        # LinearSolve cache (FastLUFactorization) for SSS common-block tmp \ vec
+                        let p = 𝒮.LinearProblem(zeros(Float64, 0, 0), zeros(Float64, 0))
+                            𝒮.init(p,
+                                   𝒮.FastLUFactorization(),
+                                   verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+                        end,                                             # sss_tmp_lu_buffer
+                        # SSS Newton iter kron! buffers
+                        zeros(T, 0),    # x_aug_buf
+                        zeros(T, 0),    # kron_x_aug_xx
+                        zeros(T, 0),    # kron_x_aug_x_kron
+                        zeros(T, 0, 0), # kron_x_aug_I
+                        zeros(T, 0, 0), # kron_x_kron_I
                         # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
                         zeros(S,0,0),  # ∂x_second_order
                         zeros(S,0,0))  # ∂x_third_order
@@ -272,6 +297,67 @@ function ensure_higher_order_solution_buffers!(ws::higher_order_workspace{S,G,H}
     size(ws.𝐒₁) == (n, nₑ₋) || (ws.𝐒₁ = zeros(S, n, nₑ₋))
     size(ws.𝐒₁₋╱𝟏ₑ) == (nₑ₋, nₑ₋) || (ws.𝐒₁₋╱𝟏ₑ = zeros(S, nₑ₋, nₑ₋))
     return ws
+end
+
+"""
+    ensure_sss_kron_buffers!(ws, nPast; third_order=false)
+
+Lazily (re)allocate kron! buffers used by the stochastic-steady-state Newton iter
+on `ws` (a `higher_order_workspace`). `nPast` is `T.nPast_not_future_and_mixed`.
+The 3rd-order-only buffers are only sized when `third_order=true`.
+"""
+function ensure_sss_kron_buffers!(ws::higher_order_workspace{S,G,H}, nPast::Int; third_order::Bool=false) where {S <: Real, G <: AbstractFloat, H <: Real}
+    n_aug = nPast + 1
+    length(ws.x_aug_buf) == n_aug || (ws.x_aug_buf = zeros(S, n_aug))
+    length(ws.kron_x_aug_xx) == n_aug^2 || (ws.kron_x_aug_xx = zeros(S, n_aug^2))
+    size(ws.kron_x_aug_I) == (n_aug * nPast, nPast) || (ws.kron_x_aug_I = zeros(S, n_aug * nPast, nPast))
+    if third_order
+        length(ws.kron_x_aug_x_kron) == n_aug^3 || (ws.kron_x_aug_x_kron = zeros(S, n_aug^3))
+        size(ws.kron_x_kron_I) == (n_aug^2 * nPast, nPast) || (ws.kron_x_kron_I = zeros(S, n_aug^2 * nPast, nPast))
+    end
+    return ws
+end
+
+"""
+    ensure_dx_lu_buffer!(ws, ∂x, Δx)
+
+Ensure the LinearSolve cache `ws.dx_lu_buffer` is sized for the SSS Newton iter
+linear system `∂x * y = Δx`. If dimensions match, reuse the cache and just rebind
+`A` and `b`; otherwise re-`init` the cache (FastLUFactorization backend).
+"""
+function ensure_dx_lu_buffer!(ws::higher_order_workspace, ∂x::AbstractMatrix{Float64}, Δx::AbstractVector{Float64})
+    cache = ws.dx_lu_buffer
+    if size(cache.A) != size(∂x) || length(cache.b) != length(Δx)
+        prob = 𝒮.LinearProblem(∂x, Δx)
+        ws.dx_lu_buffer = 𝒮.init(prob,
+                                 𝒮.FastLUFactorization(),
+                                 verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    else
+        cache.A = ∂x
+        cache.b = Δx
+    end
+    return ws.dx_lu_buffer
+end
+
+"""
+    ensure_sss_tmp_lu_buffer!(ws, tmp, rhs)
+
+Ensure the LinearSolve cache `ws.sss_tmp_lu_buffer` is sized for the SSS common-block
+solve `tmp * y = rhs`. If dimensions match, reuse the cache and just rebind `A` and `b`;
+otherwise re-`init` the cache (FastLUFactorization backend).
+"""
+function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatrix{Float64}, rhs::AbstractVector{Float64})
+    cache = ws.sss_tmp_lu_buffer
+    if size(cache.A) != size(tmp) || length(cache.b) != length(rhs)
+        prob = 𝒮.LinearProblem(tmp, rhs)
+        ws.sss_tmp_lu_buffer = 𝒮.init(prob,
+                                      𝒮.FastLUFactorization(),
+                                      verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    else
+        cache.A = tmp
+        cache.b = rhs
+    end
+    return ws.sss_tmp_lu_buffer
 end
 
 """
@@ -673,6 +759,47 @@ function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; t
         end
     end
     
+    return ws
+end
+
+"""
+    ensure_find_shocks_state_buffers!(ws, n_exo, n_past; third_order=false, third_order_pruning=false)
+
+Ensure state-related kron buffers used by `find_shocks_conditional_forecast` are sized
+for the given dimensions. `n_exo` is `T.nExo`; `n_past` is `T.nPast_not_future_and_mixed`.
+The `state_vol` vector has length `n_past+1`. 3rd-order-only and pruning-only buffers
+are sized only when those flags are set.
+"""
+function ensure_find_shocks_state_buffers!(ws::find_shocks_workspace{T}, n_exo::Int, n_past::Int;
+                                           third_order::Bool = false,
+                                           third_order_pruning::Bool = false) where T
+    ws.n_past = n_past
+    n_aug = n_past + 1
+
+    if length(ws.kron_state_vol) != n_aug^2
+        ws.kron_state_vol = zeros(T, n_aug^2)
+    end
+    if size(ws.kron_I_state) != (n_exo * n_aug, n_exo)
+        ws.kron_I_state = zeros(T, n_exo * n_aug, n_exo)
+    end
+
+    if third_order
+        if length(ws.kron_state_vol3) != n_aug^3
+            ws.kron_state_vol3 = zeros(T, n_aug^3)
+        end
+        if size(ws.kron_I_state_state) != (n_exo * n_aug^2, n_exo)
+            ws.kron_I_state_state = zeros(T, n_exo * n_aug^2, n_exo)
+        end
+        if third_order_pruning
+            if length(ws.kron_state₁₂) != n_past^2
+                ws.kron_state₁₂ = zeros(T, n_past^2)
+            end
+            if size(ws.kron_I_state₂) != (n_exo * n_past, n_exo)
+                ws.kron_I_state₂ = zeros(T, n_exo * n_past, n_exo)
+            end
+        end
+    end
+
     return ws
 end
 

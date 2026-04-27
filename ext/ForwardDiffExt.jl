@@ -80,36 +80,50 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     B = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
  
-    # Allocate or reuse workspace for partials
-    if size(ℂ.∂x_second_order) != (length(x̂), N)
-        ℂ.∂x_second_order = zeros(S, length(x̂), N)
+    # Allocate or reuse workspace for partials and SSS kron buffers
+    nPast = length(x̂)
+    MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
+    if size(ℂ.∂x_second_order) != (nPast, N)
+        ℂ.∂x_second_order = zeros(S, nPast, N)
     else
         fill!(ℂ.∂x_second_order, zero(S))
     end
     ∂x̄ = ℂ.∂x_second_order
-    
+    x_aug = ℂ.x_aug_buf
+    x_aug[end] = one(S)
+    kron_x_aug = ℂ.kron_x_aug_xx
+    kron_x_aug_I = ℂ.kron_x_aug_I
+
     max_iters = 100
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast)
+        copyto!(x_aug, 1, x̂, 1, nPast)
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ∂x = (A + B * kron_x_aug_I - I_nPast)
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+        ℒ.kron!(kron_x_aug, x_aug, x_aug)
+        Δx = A * x̂ + B̂ * kron_x_aug / 2 - x̂
+        dx_cache = MacroModelling.ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             break
         end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 - x̂)
+        copyto!(Δx, sol.u)
 
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
+        if i > 5 && isapprox(A * x̂ + B̂ * kron_x_aug / 2, x̂, rtol = tol)
             break
         end
         
         ℒ.axpy!(-1, Δx, x̂)
     end
 
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
+    copyto!(x_aug, 1, x̂, 1, nPast)
+    ℒ.kron!(kron_x_aug, x_aug, x_aug)
+    ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+    solved = isapprox(A * x̂ + B̂ * kron_x_aug / 2, x̂, rtol = tol)
 
     if solved
+        TMP = A + B * kron_x_aug_I - I_nPast
         for i in 1:N
             ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
@@ -117,9 +131,7 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
             ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
             ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
 
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast
+            tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2
 
             ∂x̄[:,i] = -TMP \ tmp
         end
@@ -167,36 +179,56 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     C = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
     Ĉ = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
-    # Allocate or reuse workspace for partials
-    if size(ℂ.∂x_third_order) != (length(x̂), N)
-        ℂ.∂x_third_order = zeros(S, length(x̂), N)
+    # Allocate or reuse workspace for partials and SSS kron buffers
+    nPast = length(x̂)
+    MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
+    if size(ℂ.∂x_third_order) != (nPast, N)
+        ℂ.∂x_third_order = zeros(S, nPast, N)
     else
         fill!(ℂ.∂x_third_order, zero(S))
     end
     ∂x̄ = ℂ.∂x_third_order
-    
+    x_aug = ℂ.x_aug_buf
+    x_aug[end] = one(S)
+    kron_x_aug = ℂ.kron_x_aug_xx
+    kron_x_kron = ℂ.kron_x_aug_x_kron
+    kron_x_aug_I = ℂ.kron_x_aug_I
+    kron_x_kron_I = ℂ.kron_x_kron_I
+
     max_iters = 100
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast)
+        copyto!(x_aug, 1, x̂, 1, nPast)
+        ℒ.kron!(kron_x_aug, x_aug, x_aug)
+        ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+        ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+        Δx = A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x̂
+        dx_cache = MacroModelling.ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             break
         end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
+        copyto!(Δx, sol.u)
 
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
+        if i > 5 && isapprox(A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x̂, rtol = tol)
             break
         end
         
         ℒ.axpy!(-1, Δx, x̂)
     end
 
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
+    copyto!(x_aug, 1, x̂, 1, nPast)
+    ℒ.kron!(kron_x_aug, x_aug, x_aug)
+    ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
+    ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+    ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+    solved = isapprox(A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x̂, rtol = tol)
     
     if solved
+        TMP = A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast
         for i in 1:N
             ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
@@ -206,9 +238,7 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
             ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
             ∂Ĉ = ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast
+            tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2 + ∂Ĉ * kron_x_kron / 6
 
             ∂x̄[:,i] = -TMP \ tmp
         end
@@ -1035,7 +1065,9 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     n_x = length(x_f)
     partials_matrix = zeros(V, n_x, N)
 
-    jacc_lu = ℒ.lu(jacc_f)
+    jacc_prob = 𝒮.LinearProblem(jacc_f, zeros(V, n_x))
+    jacc_lu = 𝒮.init(jacc_prob, 𝒮.FastLUFactorization(),
+                       verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     for k in 1:N
         d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
@@ -1043,7 +1075,12 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
         d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k] for i in eachindex(𝐒ⁱ²ᵉ)]
 
         rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f - reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx
-        partials_matrix[:, k] = jacc_lu \ rhs
+        jacc_lu.b = rhs
+        sol = 𝒮.solve!(jacc_lu)
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
+            return ℱ.Dual{Z,V,N}.(x_f), false
+        end
+        partials_matrix[:, k] = sol.u
     end
 
     x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)
@@ -1105,7 +1142,9 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     n_x = length(x_f)
     partials_matrix = zeros(V, n_x, N)
 
-    jacc_lu = ℒ.lu(jacc_f)
+    jacc_prob = 𝒮.LinearProblem(jacc_f, zeros(V, n_x))
+    jacc_lu = 𝒮.init(jacc_prob, 𝒮.FastLUFactorization(),
+                       verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     for k in 1:N
         d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
@@ -1116,7 +1155,12 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
         rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f -
               reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx -
               reshape(d_Si3e, size(𝐒ⁱ³ᵉ)) * kxxx
-        partials_matrix[:, k] = jacc_lu \ rhs
+        jacc_lu.b = rhs
+        sol = 𝒮.solve!(jacc_lu)
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
+            return ℱ.Dual{Z,V,N}.(x_f), false
+        end
+        partials_matrix[:, k] = sol.u
     end
 
     x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)

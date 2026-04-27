@@ -70,6 +70,14 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
     J = ℒ.I(n_exo)
 
+    nPast = T.nPast_not_future_and_mixed
+    third_order_pruning = third_order && pruning
+    ensure_find_shocks_state_buffers!(ws, n_exo, nPast;
+                                      third_order = third_order,
+                                      third_order_pruning = third_order_pruning)
+    kron_state_vol = ws.kron_state_vol
+    kron_I_state = ws.kron_I_state
+
     if isnothing(𝐒₃)
         # Second order (pruned or non-pruned)
         if pruning
@@ -93,10 +101,10 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
                 𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
-                kron_state_vol = ℒ.kron(state_vol, state_vol)
+                ℒ.kron!(kron_state_vol, state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
-                kron_I_state = ℒ.kron(J, state_vol)
+                ℒ.kron!(kron_I_state, J, state_vol)
                 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_I_state
                 𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
             end
@@ -118,10 +126,10 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
                 𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
-                kron_state_vol = ℒ.kron(state_vol, state_vol)
+                ℒ.kron!(kron_state_vol, state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
-                kron_I_state = ℒ.kron(J, state_vol)
+                ℒ.kron!(kron_I_state, J, state_vol)
                 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_I_state
                 𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
             end
@@ -158,18 +166,22 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₃, -1, 1)
 
-            kron_state_vol = ℒ.kron(state_vol, state_vol)
+            ℒ.kron!(kron_state_vol, state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
-            kron_state₁₂ = ℒ.kron(state₁, state₂)
+            kron_state₁₂ = ws.kron_state₁₂
+            ℒ.kron!(kron_state₁₂, state₁, state₂)
             ℒ.mul!(shock_independent, 𝐒²⁻, kron_state₁₂, -1, 1)
 
-            kron_state_vol3 = ℒ.kron(state_vol, kron_state_vol)
+            kron_state_vol3 = ws.kron_state_vol3
+            ℒ.kron!(kron_state_vol3, state_vol, kron_state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
-            kron_I_state = ℒ.kron(J, state_vol)
-            kron_I_state₂ = ℒ.kron(J, state₂)
-            kron_I_state_state = ℒ.kron(J, kron_state_vol)
+            ℒ.kron!(kron_I_state, J, state_vol)
+            kron_I_state₂ = ws.kron_I_state₂
+            ℒ.kron!(kron_I_state₂, J, state₂)
+            kron_I_state_state = ws.kron_I_state_state
+            ℒ.kron!(kron_I_state_state, J, kron_state_vol)
 
             𝐒ⁱ = 𝐒¹ᵉ +
             𝐒²⁻ᵉ * kron_I_state +
@@ -197,14 +209,16 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
 
-            kron_state_vol = ℒ.kron(state_vol, state_vol)
+            ℒ.kron!(kron_state_vol, state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
-            kron_state_vol3 = ℒ.kron(state_vol, kron_state_vol)
+            kron_state_vol3 = ws.kron_state_vol3
+            ℒ.kron!(kron_state_vol3, state_vol, kron_state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
-            kron_I_state = ℒ.kron(J, state_vol)
-            kron_I_state_state = ℒ.kron(J, kron_state_vol)
+            ℒ.kron!(kron_I_state, J, state_vol)
+            kron_I_state_state = ws.kron_I_state_state
+            ℒ.kron!(kron_I_state_state, J, kron_state_vol)
 
             𝐒ⁱ = 𝐒¹ᵉ +
             𝐒²⁻ᵉ * kron_I_state +

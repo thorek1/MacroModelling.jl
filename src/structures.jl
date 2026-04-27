@@ -1061,6 +1061,15 @@ mutable struct find_shocks_workspace{T <: Real}
     kron_buffer²::Vector{T}  # n_exo^3 - for ℒ.kron(x, kron_buffer)
     kron_buffer3::Matrix{T}  # n_exo^3 × n_exo - for ℒ.kron(J, kron_buffer)
     kron_buffer4::Matrix{T}  # n_exo^3 × n_exo^2 - for ℒ.kron(kron(J,J), x)
+
+    # Conditional-forecast (find_shocks_conditional_forecast) state-related kron buffers
+    n_past::Int
+    kron_state_vol::Vector{T}        # (n_past+1)^2 - for ℒ.kron(state_vol, state_vol)
+    kron_state_vol3::Vector{T}       # (n_past+1)^3 - for ℒ.kron(state_vol, kron_state_vol) (3rd order)
+    kron_state₁₂::Vector{T}          # n_past^2 - for ℒ.kron(state₁, state₂) (3rd order pruned)
+    kron_I_state::Matrix{T}          # n_exo*(n_past+1) × n_exo - for ℒ.kron(J, state_vol)
+    kron_I_state₂::Matrix{T}         # n_exo*n_past × n_exo - for ℒ.kron(J, state₂) (3rd order pruned)
+    kron_I_state_state::Matrix{T}    # n_exo*(n_past+1)^2 × n_exo - for ℒ.kron(J, kron_state_vol) (3rd order)
 end
 
 
@@ -1221,6 +1230,20 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     ∂∇₁₊𝐒₁➕∇₁₀_3rd::Matrix{F}
     ∇₂t_∂out2_3rd::Matrix{F}
     mul_tmp_3rd::Matrix{F}
+    # LinearSolve cache (FastLUFactorization backend) for SSS Newton iter ∂x \ Δx
+    # Used by primal, rrule forward loop, and ForwardDiffExt (which strips Duals to Float64 first).
+    # Safe to share across calls because the cache is only mutated during forward Newton iteration;
+    # rrule pullback does not access this buffer (it builds a fresh LU on a different matrix).
+    dx_lu_buffer::𝒮.LinearCache
+    # LinearSolve cache (FastLUFactorization backend) for the SSS common-block solve
+    # tmp = (I_nPast - 𝐒₁[past, 1:nPast]); collect(tmp \ vec). Shared by primal and rrule.
+    sss_tmp_lu_buffer::𝒮.LinearCache
+    # SSS Newton iter kron! buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
+    x_aug_buf::Vector{F}            # length nPast+1, holds [x; 1]
+    kron_x_aug_xx::Vector{F}        # length (nPast+1)^2, holds kron(x_aug, x_aug)
+    kron_x_aug_x_kron::Vector{F}    # length (nPast+1)^3, holds kron(x_aug, kron_x_aug); 3rd order only
+    kron_x_aug_I::Matrix{F}         # size (nPast+1)*nPast × nPast, holds kron(x_aug, I_nPast)
+    kron_x_kron_I::Matrix{F}        # size (nPast+1)^2*nPast × nPast, holds kron(kron_x_aug, I_nPast); 3rd order only
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials

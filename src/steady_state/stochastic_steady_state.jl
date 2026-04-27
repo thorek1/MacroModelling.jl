@@ -80,24 +80,47 @@ function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
     𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
 
     aug_state₁ = sparse([zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)])
-    tmp = (T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
-    tmp̄ = ℒ.lu(tmp, check = false)
+    tmp = collect(T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
+    rhs = collect((𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
-    if !ℒ.issuccess(tmp̄)
-        if opts.verbose println("SSS not found") end
-        return (false,
-            all_SS,
-            SS_and_pars,
-            solution_error,
-            zeros(M,0,0),
-            spzeros(M,0,0),
-            zeros(M,0,0),
-            spzeros(M,0,0),
-            zeros(M,0),
-            constants)
+    if M === Float64
+        tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+        tmp_sol = 𝒮.solve!(tmp_cache)
+
+        if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
+            if opts.verbose println("SSS not found") end
+            return (false,
+                all_SS,
+                SS_and_pars,
+                solution_error,
+                zeros(M,0,0),
+                spzeros(M,0,0),
+                zeros(M,0,0),
+                spzeros(M,0,0),
+                zeros(M,0),
+                constants)
+        end
+
+        SSSstates = collect(tmp_sol.u)
+    else
+        tmp̄ = ℒ.lu(tmp, check = false)
+
+        if !ℒ.issuccess(tmp̄)
+            if opts.verbose println("SSS not found") end
+            return (false,
+                all_SS,
+                SS_and_pars,
+                solution_error,
+                zeros(M,0,0),
+                spzeros(M,0,0),
+                zeros(M,0,0),
+                spzeros(M,0,0),
+                zeros(M,0),
+                constants)
+        end
+
+        SSSstates = collect(tmp̄ \ rhs)
     end
-
-    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
         return (true,
             all_SS,
@@ -242,42 +265,46 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    
-    # Pre-allocate augmented state vector [x; 1]
-    x_aug = Vector{R}(undef, length(x) + 1)
-    x_aug[end] = one(R)
 
-    # end # timeit_debug
-      
-    # @timeit_debug timer "Iterations" begin
+    ℂ = 𝓂.workspaces.second_order
+    nPast = length(x)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
+    x_aug = ℂ.x_aug_buf
+    x_aug[end] = one(R)
+    kron_x_aug_xx = ℂ.kron_x_aug_xx
+    kron_x_aug_I = ℂ.kron_x_aug_I
 
     for i in 1:max_iters
-        copyto!(x_aug, 1, x, 1, length(x))
+        copyto!(x_aug, 1, x, 1, nPast)
 
-        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ∂x = (A + B * kron_x_aug_I - I_nPast)
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+        ℒ.kron!(kron_x_aug_xx, x_aug, x_aug)
+        x̂ = A * x + B̂ * kron_x_aug_xx / 2
+
+        Δx = x̂ - x
+        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
         end
+        copyto!(Δx, sol.u)
 
-        x̂ = A * x + B̂ * ℒ.kron(x_aug, x_aug) / 2
-
-        Δx = ∂x̂ \ (x̂ - x)
-        
         if i > 3 && isapprox(x̂, x, rtol = tol)
             break
         end
-        
+
         # x += Δx
         ℒ.axpy!(-1, Δx, x)
     end
 
     # end # timeit_debug
 
-    copyto!(x_aug, 1, x, 1, length(x))
-    return x, isapprox(A * x + B̂ * ℒ.kron(x_aug, x_aug) / 2, x, rtol = tol)
+    copyto!(x_aug, 1, x, 1, nPast)
+    ℒ.kron!(kron_x_aug_xx, x_aug, x_aug)
+    return x, isapprox(A * x + B̂ * kron_x_aug_xx / 2, x, rtol = tol)
 end
 
 
@@ -486,24 +513,33 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
 
-    # Pre-allocate augmented state vector [x; 1]
-    x_aug = Vector{Float64}(undef, length(x) + 1)
+    ℂ = 𝓂.workspaces.third_order
+    nPast = length(x)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
+    x_aug = ℂ.x_aug_buf
     x_aug[end] = 1.0
+    kron_x_aug = ℂ.kron_x_aug_xx
+    kron_x_kron = ℂ.kron_x_aug_x_kron
+    kron_x_aug_I = ℂ.kron_x_aug_I
+    kron_x_kron_I = ℂ.kron_x_kron_I
 
     for i in 1:max_iters
-        copyto!(x_aug, 1, x, 1, length(x))
-        kron_x_aug = ℒ.kron(x_aug, x_aug)
-        kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+        copyto!(x_aug, 1, x, 1, nPast)
+        ℒ.kron!(kron_x_aug, x_aug, x_aug)
+        ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
 
-        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
-        
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+        ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
+
+        Δx = (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
+        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
         end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
+        copyto!(Δx, sol.u)
 
         if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
             break
@@ -513,8 +549,8 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
         ℒ.axpy!(-1, Δx, x)
     end
 
-    copyto!(x_aug, 1, x, 1, length(x))
-    kron_x_aug = ℒ.kron(x_aug, x_aug)
-    kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+    copyto!(x_aug, 1, x, 1, nPast)
+    ℒ.kron!(kron_x_aug, x_aug, x_aug)
+    ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
     return x, isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
 end

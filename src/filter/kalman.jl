@@ -253,34 +253,48 @@ function filter_and_smooth(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    v = zeros(size(C,1), n_obs)
-    μ = zeros(size(A,1), n_obs+1) # filtered_states
-    P = zeros(size(A,1), size(A,1), n_obs+1) # filtered_covariances
-    σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
-    iF= zeros(size(C,1), size(C,1), n_obs)
-    L = zeros(size(A,1), size(A,1), n_obs)
+    n_obs_C = size(C,1)
+    n_states = size(A,1)
+    kalman_ws = ensure_kalman_workspaces!(𝓂.workspaces, n_obs_C, n_states)
+
+    v = zeros(n_obs_C, n_obs)
+    μ = zeros(n_states, n_obs+1) # filtered_states
+    P = zeros(n_states, n_states, n_obs+1) # filtered_covariances
+    σ = zeros(n_states, n_obs) # filtered_standard_deviations
+    iF= zeros(n_obs_C, n_obs_C, n_obs)
+    L = zeros(n_states, n_states, n_obs)
     ϵ = zeros(size(B,2), n_obs) # filtered_shocks
 
     P[:, :, 1] = P̄
+
+    F_buf = kalman_ws.F
 
     # Kalman Filter
     for t in axes(data_in_deviations,2)
         v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
 
-        F̄ = ℒ.lu(C * P[:, :, t] * C', check = false)
+        @views F_buf .= C * P[:, :, t] * C'
+        @views iF_t = iF[:, :, t]
+        fill!(iF_t, 0.0)
+        @inbounds for i in 1:n_obs_C
+            iF_t[i, i] = 1.0
+        end
 
-        if !ℒ.issuccess(F̄) 
+        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
+            factorize_lu!(F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+
+        if !solved_F
             @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
             break
         end
 
-        iF[:, :, t] .= inv(F̄)
-        PCiF         = P[:, :, t] * C' * iF[:, :, t]
+        solve_lu_left!(F_buf, iF_t, kalman_ws.fast_lu_ws_f, nothing) # iF_t = F̄ \ I
+        PCiF         = P[:, :, t] * C' * iF_t
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
         σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
-        ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
+        ϵ[:, t]     .= B' * C' * iF_t * v[:, t]
     end
 
 

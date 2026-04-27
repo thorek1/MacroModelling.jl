@@ -1984,17 +1984,29 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     # droptol!(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,tol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = collect(@views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * M₂.𝐈ₙ₋ - ∇₁[:,range(1,n) .+ n₊])
 
     # end # timeit_debug
 
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    qme_ws = workspaces.first_order
 
-    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if opts.verbose println("Second order solution: inversion failed") end
-        return ∇₁₊𝐒₁➕∇₁₀, false
+    if S === Float64
+        qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
+            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+
+        if !solved_∇lu
+            if opts.verbose println("Second order solution: inversion failed") end
+            return ∇₁₊𝐒₁➕∇₁₀, false
+        end
+    else
+        ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+        if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+            if opts.verbose println("Second order solution: inversion failed") end
+            return ∇₁₊𝐒₁➕∇₁₀, false
+        end
     end
 
     # spinv = inv(∇₁₊𝐒₁➕∇₁₀)
@@ -2006,7 +2018,12 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
-    A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
+    if S === Float64
+        A = ∇₁₊
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, A, qme_ws.fast_lu_ws_nabla0, lu_handle) # A = ∇₁₊𝐒₁➕∇₁₀ \ ∇₁₊
+    else
+        A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
+    end
     
     # end # timeit_debug
     # @timeit_debug timer "C" begin
@@ -2030,8 +2047,13 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     term2 = (∇₂ * kron_sigma_compressed) * M₂.𝛔c₂
 
     ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = term1 + term2
-    
-    C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+
+    if S === Float64
+        C = collect(∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹)
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, C, qme_ws.fast_lu_ws_nabla0, lu_handle)
+    else
+        C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    end
 
     # end # timeit_debug
     # @timeit_debug timer "B" begin
@@ -2176,26 +2198,43 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                     zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
     𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.third_order.droptol)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = collect(@views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊])
 
     # end # timeit_debug
     # @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+    qme_ws = workspaces.first_order
 
-    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, false)#, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    if S === Float64
+        qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
+            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+
+        if !solved_∇lu
+            if opts.verbose println("Second order solution: inversion failed") end
+            return (∇₁₊𝐒₁➕∇₁₀, false)
+        end
+    else
+        ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+        if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+            if opts.verbose println("Second order solution: inversion failed") end
+            return (∇₁₊𝐒₁➕∇₁₀, false)
+        end
     end
-        
+
     # spinv = inv(∇₁₊𝐒₁➕∇₁₀)
     # spinv = choose_matrix_format(spinv)
 
     # end # timeit_debug
-    
+
     ∇₁₊ = @views ∇₁[:,1:n₊] * M₂.𝐈ₙ₊
 
-    A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
+    if S === Float64
+        A = copy(∇₁₊) # solve in-place into a buffer; ∇₁₊ is reused later
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, A, qme_ws.fast_lu_ws_nabla0, lu_handle)
+    else
+        A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
+    end
 
     # @timeit_debug timer "Setup B" begin
     # @timeit_debug timer "Add tmpkron" begin
@@ -2303,7 +2342,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
 
-    C = ∇₁₊𝐒₁➕∇₁₀lu \ 𝐗₃# * M₃.𝐂₃
+    if S === Float64
+        C = collect(𝐗₃)
+        solve_lu_left!(∇₁₊𝐒₁➕∇₁₀, C, qme_ws.fast_lu_ws_nabla0, lu_handle)
+    else
+        C = ∇₁₊𝐒₁➕∇₁₀lu \ 𝐗₃# * M₃.𝐂₃
+    end
 
     # end # timeit_debug
     # end # timeit_debug

@@ -167,28 +167,37 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
     x_aug = Vector{Float64}(undef, length(x) + 1)
     x_aug[end] = 1.0
 
+    ℂ = 𝓂.workspaces.second_order
+    nPast = length(x)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
+    kron_x_aug_buf = ℂ.kron_x_aug_xx
+    kron_x_aug_I = ℂ.kron_x_aug_I
+
     for i in 1:max_iters
-        copyto!(x_aug, 1, x, 1, length(x))
-        kron_x_aug = ℒ.kron(x_aug, x_aug)
+        copyto!(x_aug, 1, x, 1, nPast)
+        ℒ.kron!(kron_x_aug_buf, x_aug, x_aug)
 
-        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ∂x = (A + B * kron_x_aug_I - I_nPast)
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+        Δx = (A * x + B̂ * kron_x_aug_buf / 2 - x)
+        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
         end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 - x)
+        copyto!(Δx, sol.u)
 
-        if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)
+        if i > 5 && isapprox(A * x + B̂ * kron_x_aug_buf / 2, x, rtol = tol)
             break
         end
         
         # x += Δx
         ℒ.axpy!(-1, Δx, x)
     end
-    copyto!(x_aug, 1, x, 1, length(x))
+    copyto!(x_aug, 1, x, 1, nPast)
+    # Local kron for closure capture (workspace buffers may be overwritten before pullback runs)
     kron_x_aug = ℒ.kron(x_aug, x_aug)
     solved = isapprox(A * x + B̂ * kron_x_aug / 2, x, rtol = tol)         
 
@@ -248,22 +257,33 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
     x_aug = Vector{Float64}(undef, length(x) + 1)
     x_aug[end] = 1.0
 
-    for i in 1:max_iters
-        copyto!(x_aug, 1, x, 1, length(x))
-        kron_x_aug = ℒ.kron(x_aug, x_aug)
-        kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
+    ℂ = 𝓂.workspaces.third_order
+    nPast = length(x)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
+    kron_x_aug_buf = ℂ.kron_x_aug_xx
+    kron_x_kron_buf = ℂ.kron_x_aug_x_kron
+    kron_x_aug_I = ℂ.kron_x_aug_I
+    kron_x_kron_I = ℂ.kron_x_kron_I
 
-        ∂x = (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
-        
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
+    for i in 1:max_iters
+        copyto!(x_aug, 1, x, 1, nPast)
+        ℒ.kron!(kron_x_aug_buf, x_aug, x_aug)
+        ℒ.kron!(kron_x_kron_buf, x_aug, kron_x_aug_buf)
+
+        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        ℒ.kron!(kron_x_kron_I, kron_x_aug_buf, I_nPast)
+        ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
+
+        Δx = (A * x + B̂ * kron_x_aug_buf / 2 + Ĉ * kron_x_kron_buf / 6 - x)
+        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(dx_cache)
+
+        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
         end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
+        copyto!(Δx, sol.u)
 
-        if i > 5 && isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
+        if i > 5 && isapprox(A * x + B̂ * kron_x_aug_buf / 2 + Ĉ * kron_x_kron_buf / 6, x, rtol = tol)
             break
         end
         
@@ -271,7 +291,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         ℒ.axpy!(-1, Δx, x)
     end
 
-    copyto!(x_aug, 1, x, 1, length(x))
+    copyto!(x_aug, 1, x, 1, nPast)
+    # Local kron for closure capture (workspace buffers may be overwritten before pullback runs)
     kron_x_aug = ℒ.kron(x_aug, x_aug)
     kron_x_kron = ℒ.kron(x_aug, kron_x_aug)
     solved = isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)         
@@ -793,10 +814,13 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     aug_state₁ = sparse([zeros(nPast); 1; zeros(nExo)])
     kron_aug1 = ℒ.kron(aug_state₁, aug_state₁)
 
-    tmp = (T.I_nPast - 𝐒₁[past_idx, 1:nPast])
-    tmp̄_lu = ℒ.lu(tmp, check = false)
+    tmp = collect(T.I_nPast - 𝐒₁[past_idx, 1:nPast])
+    rhs = collect((𝐒₂ * kron_aug1 / 2)[past_idx])
 
-    if !ℒ.issuccess(tmp̄_lu)
+    tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+    tmp_sol = 𝒮.solve!(tmp_cache)
+
+    if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
         common = (false,
                   all_SS,
                   SS_and_pars,
@@ -813,7 +837,7 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         return common, pullback
     end
 
-    SSSstates = collect(tmp̄_lu \ (𝐒₂ * kron_aug1 / 2)[past_idx])
+    SSSstates = collect(tmp_sol.u)
 
     common = (true,
               all_SS,
@@ -853,8 +877,9 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
         end
 
         if !isempty(∂SSSstates)
-            ∂rhs = tmp̄_lu' \ ∂SSSstates
-            ∂tmp = -(tmp̄_lu' \ ∂SSSstates) * SSSstates'
+            tmp_pb_lu = ℒ.lu(tmp)
+            ∂rhs = tmp_pb_lu' \ ∂SSSstates
+            ∂tmp = -∂rhs * SSSstates'
             ∂𝐒₁_aug[past_idx, 1:nPast] .-= ∂tmp
             ∂𝐒₂_from_rhs = spzeros(Float64, size(𝐒₂)...)
             ∂𝐒₂_from_rhs[past_idx, :] += ∂rhs * kron_aug1' / 2
@@ -1969,6 +1994,8 @@ function irf_bptt(::Val{:pruned_second_order},
     ∂state_init = [zeros(S, nVars), zeros(S, nVars)]
     ∂SS_from_init = zeros(S, nVar_len)
     n_aug = nPast + 1 + nExo
+    # Preallocated kron buffer reused across all (si, t) iterations
+    kaug₁ = Vector{S}(undef, n_aug^2)
 
     for si in 1:nShocks
         ∂y₁_accum = zeros(S, nVars)
@@ -1984,7 +2011,7 @@ function irf_bptt(::Val{:pruned_second_order},
 
             aug₁ = [prev_st[1][past_idx]; one(S); shock_t]
             aug₂ = [prev_st[2][past_idx]; zero(S); zero(shock_t)]
-            kaug₁ = ℒ.kron(aug₁, aug₁)
+            ℒ.kron!(kaug₁, aug₁, aug₁)
 
             # y₁_new = 𝐒₁ * aug₁
             ∂𝐒₁ .+= ∂y₁_t * aug₁'
@@ -2025,6 +2052,10 @@ function irf_bptt(::Val{:pruned_third_order},
     ∂state_init = [zeros(S, nVars), zeros(S, nVars), zeros(S, nVars)]
     ∂SS_from_init = zeros(S, nVar_len)
     n_aug = nPast + 1 + nExo
+    # Preallocated kron buffers reused across all (si, t) iterations
+    kaug₁ = Vector{S}(undef, n_aug^2)
+    kaug₁₁ = Vector{S}(undef, n_aug^3)
+    k_aug₁̂_aug₂ = Vector{S}(undef, n_aug^2)
 
     for si in 1:nShocks
         ∂y₁_accum = zeros(S, nVars)
@@ -2044,8 +2075,8 @@ function irf_bptt(::Val{:pruned_third_order},
             aug₁̂  = [prev_st[1][past_idx]; zero(S); shock_t]
             aug₂  = [prev_st[2][past_idx]; zero(S); zero(shock_t)]
             aug₃  = [prev_st[3][past_idx]; zero(S); zero(shock_t)]
-            kaug₁ = ℒ.kron(aug₁, aug₁)
-            kaug₁₁ = ℒ.kron(kaug₁, aug₁)
+            ℒ.kron!(kaug₁, aug₁, aug₁)
+            ℒ.kron!(kaug₁₁, kaug₁, aug₁)
 
             # y₁_new = 𝐒₁ * aug₁
             ∂𝐒₁ .+= ∂y₁_t * aug₁'
@@ -2063,7 +2094,7 @@ function irf_bptt(::Val{:pruned_third_order},
             ∂𝐒₁ .+= ∂ξ_t * aug₃'
             ∂aug₃ = 𝐒₁' * ∂ξ_t
 
-            k_aug₁̂_aug₂ = ℒ.kron(aug₁̂, aug₂)
+            ℒ.kron!(k_aug₁̂_aug₂, aug₁̂, aug₂)
             ∂𝐒₂ .+= ∂ξ_t * k_aug₁̂_aug₂'
             ∂k12 = 𝐒₂' * ∂ξ_t
             ∂k12_mat = reshape(∂k12, n_aug, n_aug)
@@ -2112,6 +2143,7 @@ function irf_bptt(::Val{:second_order},
     ∂state_init = zeros(S, nVars)
     ∂SS_from_init = zeros(S, nVar_len)
     n_aug = nPast + 1 + nExo
+    kaug = Vector{S}(undef, n_aug^2)
 
     for si in 1:nShocks
         ∂y_accum = zeros(S, nVars)
@@ -2122,7 +2154,7 @@ function irf_bptt(::Val{:second_order},
             prev_st = states_store[si, t]
             shock_t = shocks_store[si, t]
             aug = [prev_st[past_idx]; one(S); shock_t]
-            kaug = ℒ.kron(aug, aug)
+            ℒ.kron!(kaug, aug, aug)
 
             ∂𝐒₁ .+= ∂y_t * aug'
             ∂aug = 𝐒₁' * ∂y_t
@@ -2155,6 +2187,8 @@ function irf_bptt(::Val{:third_order},
     ∂state_init = zeros(S, nVars)
     ∂SS_from_init = zeros(S, nVar_len)
     n_aug = nPast + 1 + nExo
+    kaug = Vector{S}(undef, n_aug^2)
+    kaug3 = Vector{S}(undef, n_aug^3)
 
     for si in 1:nShocks
         ∂y_accum = zeros(S, nVars)
@@ -2165,8 +2199,8 @@ function irf_bptt(::Val{:third_order},
             prev_st = states_store[si, t]
             shock_t = shocks_store[si, t]
             aug = [prev_st[past_idx]; one(S); shock_t]
-            kaug = ℒ.kron(aug, aug)
-            kaug3 = ℒ.kron(kaug, aug)
+            ℒ.kron!(kaug, aug, aug)
+            ℒ.kron!(kaug3, kaug, aug)
 
             ∂𝐒₁ .+= ∂y_t * aug'
             ∂aug = 𝐒₁' * ∂y_t
