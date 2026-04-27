@@ -90,15 +90,33 @@ function calculate_loglikelihood(::Val{:inversion},
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables_index)
-        jacdecomp = ℒ.lu(jac, check = false)
+        if R <: AbstractFloat
+            lu_ws = FastLapackInterface.LUWs(jac)
+            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
 
-        if !ℒ.issuccess(jacdecomp)
-            if opts.verbose println("Inversion filter failed") end
-            return on_failure_loglikelihood
+            if !ok
+                if opts.verbose println("Inversion filter failed") end
+                return on_failure_loglikelihood
+            end
+
+            # logabsdet from U-factor diagonal (jac now holds LU factors in place)
+            logabsdets = zero(R)
+            @inbounds for k in 1:size(jac,1)
+                logabsdets += log(abs(jac[k,k]))
+            end
+            invjac = Matrix{R}(ℒ.I, size(jac))
+            solve_lu_left!(jac, invjac, lu_ws, lu_handle)
+        else
+            jacdecomp = ℒ.lu(jac, check = false)
+
+            if !ℒ.issuccess(jacdecomp)
+                if opts.verbose println("Inversion filter failed") end
+                return on_failure_loglikelihood
+            end
+
+            logabsdets = ℒ.logabsdet(jac)[1]
+            invjac = inv(jacdecomp)
         end
-
-        logabsdets = ℒ.logabsdet(jac)[1]
-        invjac = inv(jacdecomp)
     else
         jacdecomp = try ℒ.svd(jac)
         catch
@@ -1558,14 +1576,27 @@ function filter_data_with_model(𝓂::ℳ,
     jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = ℒ.lu(jac, check = false)
+        if eltype(jac) <: AbstractFloat
+            lu_ws = FastLapackInterface.LUWs(jac)
+            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
 
-        if !ℒ.issuccess(jacdecomp)
-            @error "Inversion filter failed"
-            return variables, shocks, zeros(0,0), decomposition
+            if !ok
+                @error "Inversion filter failed"
+                return variables, shocks, zeros(0,0), decomposition
+            end
+
+            invjac = Matrix{eltype(jac)}(ℒ.I, size(jac))
+            solve_lu_left!(jac, invjac, lu_ws, lu_handle)
+        else
+            jacdecomp = ℒ.lu(jac, check = false)
+
+            if !ℒ.issuccess(jacdecomp)
+                @error "Inversion filter failed"
+                return variables, shocks, zeros(0,0), decomposition
+            end
+
+            invjac = inv(jacdecomp)
         end
-
-        invjac = inv(jacdecomp)
     else
         # jacdecomp = ℒ.svd(jac)
         
