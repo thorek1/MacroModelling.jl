@@ -29,6 +29,7 @@ As of now the package can:
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
 - **differentiate** the model solution, loglikelihood (Kalman and inversion filters), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
+- **modify a model after it has been defined** — model and calibration equations can be updated, added, or removed in place (`update_equations!`, `add_equation!`, `remove_equation!`, and the `*_calibration_equation!` variants) without having to re-run the `@model` / `@parameters` macros. A chronological revision history is kept (`get_revision_history`); this mirrors the equation-revision workflow familiar from `TROLL`
 
 The package is not:
 
@@ -166,6 +167,51 @@ Steady state options:
 Parameter values can also be supplied later (delayed parameter definition) as illustrated above.
 
 See the documentation for more details on the [steady state](https://thorek1.github.io/MacroModelling.jl/stable/steady_state/).
+
+#### Modifying a model after definition
+
+Model and calibration equations can be edited in place after the `@model` /
+`@parameters` block has been evaluated, without having to re-declare the
+model. The `update_equations!`, `add_equation!`, and `remove_equation!`
+functions (plus their `*_calibration_equation!` counterparts) mutate the
+model object, invalidate cached solver results, and re-solve the
+non-stochastic steady state. Every change is appended to a revision log
+exposed via `get_revision_history`.
+
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+# Replace the technology-shock process with a more persistent one
+update_equations!(RBC, :(z[0] = ρ * z[-1] + std_z * eps_z[x]),
+                       :(z[0] = 0.9 * z[-1] + std_z * eps_z[x]))
+
+# Append an auxiliary equation defining log output
+add_equation!(RBC, :(log_q[0] = log(q[0])))
+
+# Drop it again
+remove_equation!(RBC, :(log_q[0] = log(q[0])))
+
+# Inspect what has been changed
+get_revision_history(RBC)
+```
+
+See the [how-to guide on modifying models](https://thorek1.github.io/MacroModelling.jl/stable/how-to/modify_equations/)
+for details, and calibration-equation examples.
 
 ## Models
 

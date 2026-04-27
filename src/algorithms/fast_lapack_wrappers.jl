@@ -136,7 +136,7 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
                                       qz_dims::NTuple{2, Int},
                                       eigenselect::AbstractVector{Bool};
                                       use_fastlapack_schur::Bool = true,
-                                      unit_root_tol::Float64 = 1e-8) where {R <: AbstractFloat}
+                                      unit_root_tol::Float64 = 1e-6) where {R <: AbstractFloat}
     if use_fastlapack_schur && R <: Union{Float32, Float64}
         dims = (size(D, 1), size(D, 2))
         if qz_dims != dims
@@ -145,13 +145,18 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
         end
 
         try
-            # FastLapackInterface.ed selects abs(lambda)^2 >= criterium.
-            # Nudging just inside the unit circle avoids LAPACK reordering
-            # failures for exactly unit-root blocks while preserving the
-            # exterior subspace used by the QME Schur extraction.
+            # FastLapackInterface.ed selects |λ|² ≥ criterium, putting those eigenvalues
+            # into the leading (unstable) block of the generalized Schur factorization.
+            # Pushing the cutoff well inside the unit circle (Dynare uses 1e-6) keeps
+            # eigenvalues clustered near unity entirely on one side of the boundary,
+            # which prevents LAPACK reordering failures and the resulting Z₁₁ ill-
+            # conditioning that otherwise blows up the QME residual (e.g. on FRB/US,
+            # where eigenvalues sit ~3e-8 from unity). A smaller offset such as
+            # sqrt(eps) is too tight and forces a costly fallback to the doubling
+            # algorithm for these models.
             S, T, α, β, _, Z = ℒ.LAPACK.gges!(qz_ws, 'N', 'V', D, E;
                                               select = FastLapackInterface.ed,
-                                              criterium = (1.0 - sqrt(eps(Float64)))^2,
+                                              criterium = (1.0 - unit_root_tol)^2,
                                               resize = true)
             has_ur = detect_unit_roots(α, β, unit_root_tol)
             return qz_ws, qz_dims, (S = S, T = T, Z = Z), true, has_ur
@@ -165,7 +170,11 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
             return qz_ws, qz_dims, nothing, false, false
         end
 
-        @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1
+        # Match the fast-path criterium: classify any eigenvalue with |λ| > 1 - unit_root_tol
+        # (including near-unit eigenvalues) into the leading "unstable" block, which keeps
+        # the stationary Z₁₁ block well-conditioned and avoids ordschur failures on
+        # exactly-unit blocks.
+        @. eigenselect = abs(schdcmp.β / schdcmp.α) < 1 / (1 - unit_root_tol)
 
         try
             ℒ.ordschur!(schdcmp, eigenselect)
