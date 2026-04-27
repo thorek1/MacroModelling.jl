@@ -53,6 +53,7 @@ makedocs(
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
+            "Modifying a model after definition" => "how-to/modify_equations.md",
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",
