@@ -1238,6 +1238,9 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     # LinearSolve cache (FastLUFactorization backend) for the SSS common-block solve
     # tmp = (I_nPast - 𝐒₁[past, 1:nPast]); collect(tmp \ vec). Shared by primal and rrule.
     sss_tmp_lu_buffer::𝒮.LinearCache
+    # Dedicated FastLapackInterface LU workspace for the SSS pullback transpose solve
+    fast_lu_ws_sss_pullback::FastLapackInterface.LUWs
+    fast_lu_dims_sss_pullback::NTuple{2, Int}
     # SSS Newton iter kron! buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
     x_aug_buf::Vector{F}            # length nPast+1, holds [x; 1]
     kron_x_aug_xx::Vector{F}        # length (nPast+1)^2, holds kron(x_aug, x_aug)

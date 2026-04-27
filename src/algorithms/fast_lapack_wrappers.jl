@@ -90,6 +90,30 @@ function solve_lu_left!(A::AbstractMatrix{R},
     return B
 end
 
+# B ← A' \ B  (overwrites B in-place)
+function solve_lu_left_transpose!(A::AbstractMatrix{R},
+                                  B::AbstractVecOrMat{R},
+                                  lu_ws,
+                                  lu;
+                                  use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    if use_fastlapack_lu && R <: Union{Float32, Float64}
+        ℒ.LAPACK.getrs!(lu_ws, 'T', A, B)
+    else
+        ℒ.ldiv!(lu', B)
+    end
+    return B
+end
+
+# B ← A' \ B  (Nothing-dispatch variant, always uses LAPACK)
+function solve_lu_left_transpose!(A::AbstractMatrix{R},
+                                  B::AbstractVecOrMat{R},
+                                  lu_ws,
+                                  lu::Nothing;
+                                  use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
+    ℒ.LAPACK.getrs!(lu_ws, 'T', A, B)
+    return B
+end
+
 # Old way (≤v0.1.42): X = B / A  — solves X * A = B, allocates result
 function solve_lu_right!(A::AbstractMatrix{R},
                          B::AbstractMatrix{R},

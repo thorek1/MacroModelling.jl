@@ -839,7 +839,17 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
     end
 
     SSSstates = collect(tmp_sol.u)
-    tmp_pb_lu = ℒ.lu!(tmp_for_pullback, check = false)
+    tmp_pb_lu_ws, tmp_pb_lu_dims = ensure_sss_pullback_fast_lu_workspace!(𝓂.workspaces.second_order, tmp_for_pullback)
+    tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu = factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
+    𝓂.workspaces.second_order.fast_lu_ws_sss_pullback = tmp_pb_lu_ws
+    𝓂.workspaces.second_order.fast_lu_dims_sss_pullback = tmp_pb_lu_dims
+    use_fastlapack_tmp_pb = solved_tmp_pb_lu
+    if !solved_tmp_pb_lu
+        tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu =
+            factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims; use_fastlapack_lu = false)
+        @assert solved_tmp_pb_lu "Could not factorize preserved stochastic steady-state pullback matrix."
+        use_fastlapack_tmp_pb = false
+    end
     ∂rhs_buffer = zeros(Float64, length(SSSstates))
 
     common = (true,
@@ -881,7 +891,8 @@ function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
 
         if !isempty(∂SSSstates)
             copyto!(∂rhs_buffer, ∂SSSstates)
-            ℒ.ldiv!(tmp_pb_lu', ∂rhs_buffer)
+            solve_lu_left_transpose!(tmp_for_pullback, ∂rhs_buffer, tmp_pb_lu_ws, tmp_pb_lu;
+                                     use_fastlapack_lu = use_fastlapack_tmp_pb)
             ∂tmp = -∂rhs_buffer * SSSstates'
             ∂𝐒₁_aug[past_idx, 1:nPast] .-= ∂tmp
             ∂𝐒₂_from_rhs = spzeros(Float64, size(𝐒₂)...)

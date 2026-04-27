@@ -212,6 +212,8 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
     empty_dx_lu_buffer = 𝒮.init(empty_dx_prob,
                                 𝒮.FastLUFactorization(),
                                 verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    empty_lu_factors = zeros(Float64, 0, 0)
+    empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
     higher_order_workspace(spzeros(T,0,0),
                         spzeros(T,0,0),
                         spzeros(T,0,0),
@@ -282,6 +284,9 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                                    𝒮.FastLUFactorization(),
                                    verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
                         end,                                             # sss_tmp_lu_buffer
+                        # Dedicated FastLapackInterface LU workspace for SSS pullback transpose solves
+                        empty_lu_ws,                                      # fast_lu_ws_sss_pullback
+                        (0, 0),                                           # fast_lu_dims_sss_pullback
                         # SSS Newton iter kron! buffers
                         zeros(T, 0),    # x_aug_buf
                         zeros(T, 0),    # kron_x_aug_xx
@@ -358,6 +363,15 @@ function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatr
         cache.b = rhs
     end
     return ws.sss_tmp_lu_buffer
+end
+
+function ensure_sss_pullback_fast_lu_workspace!(ws::higher_order_workspace{T}, tmp::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
+    dims = (size(tmp, 1), size(tmp, 2))
+    if ws.fast_lu_dims_sss_pullback != dims
+        ws.fast_lu_ws_sss_pullback = FastLapackInterface.LUWs(tmp)
+        ws.fast_lu_dims_sss_pullback = dims
+    end
+    return ws.fast_lu_ws_sss_pullback, ws.fast_lu_dims_sss_pullback
 end
 
 """
