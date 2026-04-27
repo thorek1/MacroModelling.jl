@@ -3,8 +3,7 @@
 `MacroModelling.jl` lets you edit a model in place after the `@model` and
 `@parameters` blocks have been evaluated. Equations (and calibration
 equations) can be replaced, appended, or removed without re-declaring the
-model: the package re-runs the equation-processing pipeline, invalidates
-cached solver results, and recomputes the non-stochastic steady state. Each
+model: the package re-runs the equation-processing pipeline, and recomputes the non-stochastic steady state. Each
 change is recorded in a chronological revision log.
 
 This is useful for iterating on model variants in the REPL, programmatically
