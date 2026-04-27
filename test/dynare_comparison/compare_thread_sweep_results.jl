@@ -4,6 +4,78 @@ const DEFAULT_SWEEP_ROOT = joinpath(@__DIR__, "output_thread_sweep")
 
 read_vector(path) = vec(readdlm(path, ',', Float64))
 
+function read_key_value_metadata(path)
+    metadata = Dict{String, String}()
+    if !isfile(path)
+        return metadata
+    end
+
+    for line in eachline(path)
+        stripped = strip(line)
+        isempty(stripped) && continue
+        idx = findfirst(==('='), stripped)
+        idx === nothing && continue
+        key = strip(stripped[begin:prevind(stripped, idx)])
+        value = strip(stripped[nextind(stripped, idx):end])
+        metadata[key] = value
+    end
+
+    return metadata
+end
+
+function format_memory_string(bytes_string)
+    try
+        gib = parse(Float64, bytes_string) / 1024.0^3
+        return string(round(gib, digits = 2), " GiB")
+    catch
+        return bytes_string
+    end
+end
+
+function print_environment_summary(thread_counts, thread_dirs)
+    first_thread = first(thread_counts)
+    metadata_root = thread_dirs[first_thread]
+    julia_metadata = read_key_value_metadata(joinpath(metadata_root, "comparison_environment_julia.txt"))
+    dynare_metadata = read_key_value_metadata(joinpath(metadata_root, "comparison_environment_dynare.txt"))
+
+    println("Run Environment (metadata source: threads_$(first_thread))")
+    println("  Julia:")
+    if isempty(julia_metadata)
+        println("    metadata unavailable")
+    else
+        println("    version: ", get(julia_metadata, "julia_version", "unknown"))
+        println("    BLAS/LAPACK: ", get(julia_metadata, "blas_lapack", "unknown"))
+        println("    machine: host=", get(julia_metadata, "hostname", "unknown"),
+                " kernel=", get(julia_metadata, "kernel", "unknown"),
+                " arch=", get(julia_metadata, "arch", "unknown"),
+                " cpu=", get(julia_metadata, "cpu_name", "unknown"),
+                " cpu_threads=", get(julia_metadata, "cpu_threads", "unknown"),
+                " memory=", format_memory_string(get(julia_metadata, "total_memory_bytes", "unknown")))
+    end
+
+    println("  Dynare:")
+    if isempty(dynare_metadata)
+        println("    metadata unavailable")
+    else
+        println("    driver/version: ", get(dynare_metadata, "dynare_driver", "unknown"),
+                " / ", get(dynare_metadata, "dynare_version", "unknown"))
+        if haskey(dynare_metadata, "matlab_version")
+            println("    MATLAB: ", get(dynare_metadata, "matlab_version", "unknown"),
+                    " release=", get(dynare_metadata, "matlab_release", "unknown"))
+        elseif haskey(dynare_metadata, "octave_version")
+            println("    Octave: ", get(dynare_metadata, "octave_version", "unknown"))
+        end
+        println("    BLAS/LAPACK: ", get(dynare_metadata, "blas", "unknown"),
+                " / ", get(dynare_metadata, "lapack", "unknown"))
+        println("    machine: host=", get(dynare_metadata, "hostname", "unknown"),
+                " os=", get(dynare_metadata, "os", get(dynare_metadata, "kernel", "unknown")),
+                " arch=", get(dynare_metadata, "arch", get(dynare_metadata, "computer", "unknown")),
+                " cpu_threads=", get(dynare_metadata, "cpu_threads", get(dynare_metadata, "max_num_comp_threads", "unknown")))
+        println("    threads: requested=", get(dynare_metadata, "thread_count_requested", "unknown"),
+                " active=", get(dynare_metadata, "max_num_comp_threads", "unknown"))
+    end
+end
+
 # Cache of parsed benchmarks.csv files: dir => Dict{String,Float64}.
 const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 
@@ -257,6 +329,7 @@ function main(args = ARGS)
 
     println("Thread sweep output root: $output_root")
     println("Detected thread counts: $(join(string.(thread_counts), ", "))")
+    print_environment_summary(thread_counts, thread_dirs)
 
     summaries = [
         ("First-Order Total", "benchmark_first_order_total_by_thread.csv", first_order_total),

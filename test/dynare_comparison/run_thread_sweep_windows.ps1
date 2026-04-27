@@ -173,12 +173,50 @@ function Invoke-DynarePhase {
     }
 }
 
-$resolvedOutputRoot = $OutputRoot
-$outputRootExists = Test-Path -LiteralPath $resolvedOutputRoot
-if (-not $outputRootExists) {
-    New-Item -ItemType Directory -Path $resolvedOutputRoot -Force | Out-Null
+function New-StagingOutputRoot {
+    param(
+        [string]$FinalOutputRoot,
+        [string]$ResolvedOutputParent,
+        [string]$OutputRootLeaf
+    )
+
+    Join-Path $ResolvedOutputParent ("{0}.__staging_{1}_{2}" -f $OutputRootLeaf, (Get-Date -Format 'yyyyMMddHHmmssfff'), (Get-Random -Minimum 10000 -Maximum 99999))
 }
-$resolvedOutputRoot = (Resolve-Path -LiteralPath $resolvedOutputRoot).Path
+
+function Publish-StagedOutputRoot {
+    param(
+        [string]$StageOutputRoot,
+        [string]$FinalOutputRoot,
+        [string]$ResolvedOutputParent,
+        [string]$OutputRootLeaf
+    )
+
+    if (-not (Test-Path -LiteralPath $StageOutputRoot)) {
+        throw "Staged sweep output not found: $StageOutputRoot"
+    }
+
+    if (Test-Path -LiteralPath $FinalOutputRoot) {
+        $previousOutputRoot = Join-Path $ResolvedOutputParent ("{0}.__previous_{1}_{2}" -f $OutputRootLeaf, (Get-Date -Format 'yyyyMMddHHmmssfff'), (Get-Random -Minimum 10000 -Maximum 99999))
+        Write-Host ("Moving existing output root aside: {0} -> {1}" -f $FinalOutputRoot, $previousOutputRoot)
+        Move-Item -LiteralPath $FinalOutputRoot -Destination $previousOutputRoot
+    }
+
+    Write-Host ("Publishing staged sweep output: {0} -> {1}" -f $StageOutputRoot, $FinalOutputRoot)
+    Move-Item -LiteralPath $StageOutputRoot -Destination $FinalOutputRoot
+}
+
+$requestedOutputRoot = $OutputRoot
+$outputRootLeaf = Split-Path -Leaf $requestedOutputRoot
+$outputRootParent = Split-Path -Parent $requestedOutputRoot
+if ([string]::IsNullOrWhiteSpace($outputRootParent)) {
+    $outputRootParent = '.'
+}
+if (-not (Test-Path -LiteralPath $outputRootParent)) {
+    New-Item -ItemType Directory -Path $outputRootParent -Force | Out-Null
+}
+$resolvedOutputParent = (Resolve-Path -LiteralPath $outputRootParent).Path
+$resolvedOutputRoot = Join-Path $resolvedOutputParent $outputRootLeaf
+$stagingOutputRoot = New-StagingOutputRoot -FinalOutputRoot $resolvedOutputRoot -ResolvedOutputParent $resolvedOutputParent -OutputRootLeaf $outputRootLeaf
 $resolvedJuliaExe = Get-JuliaExecutable -PreferredPath $JuliaExe
 $resolvedGenerateJuliaScript = Resolve-ExistingPath -Candidates @($GenerateJuliaScript) -Description 'Julia phase-1 script'
 $resolvedDynareScript = Resolve-ExistingPath -Candidates @($DynareScript) -Description 'Dynare phase-2 script'
@@ -200,36 +238,47 @@ if ($resolvedOnlyModels.Count -gt 0) {
     Write-Host ("Restricting sweep to models: {0}" -f ($resolvedOnlyModels -join ', '))
 }
 
-New-Item -ItemType Directory -Path $resolvedOutputRoot -Force | Out-Null
-
 Write-Host "Repository root: $repoRoot"
 Write-Host "Julia executable: $resolvedJuliaExe"
-Write-Host "Sweep output root: $resolvedOutputRoot"
+Write-Host "Final sweep output root: $resolvedOutputRoot"
+Write-Host "Sweep staging root: $stagingOutputRoot"
 Write-Host ("Thread counts: {0}" -f ($resolvedThreadCounts -join ', '))
 
 if ($ValidateOnly) {
     Write-Host 'Validation only mode enabled.'
     foreach ($threadCount in $resolvedThreadCounts) {
-        $threadOutputDir = Join-Path $resolvedOutputRoot ("threads_{0}" -f $threadCount)
+        $threadOutputDir = Join-Path $stagingOutputRoot ("threads_{0}" -f $threadCount)
         Write-Host ("Planned output directory: {0}" -f $threadOutputDir)
     }
     return
 }
 
-foreach ($threadCount in $resolvedThreadCounts) {
-    $threadOutputDir = Join-Path $resolvedOutputRoot ("threads_{0}" -f $threadCount)
+New-Item -ItemType Directory -Path $stagingOutputRoot -Force | Out-Null
 
-    Write-Host '========================================'
-    Write-Host ("Running sweep for thread count: {0}" -f $threadCount)
-    Write-Host '========================================'
+try {
+    foreach ($threadCount in $resolvedThreadCounts) {
+        $threadOutputDir = Join-Path $stagingOutputRoot ("threads_{0}" -f $threadCount)
 
-    Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedGenerateJuliaScript -OutputArgument $threadOutputDir -Description ("Phase 1 export for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -ExtraScriptArgs $phase1ExtraArgs -UseThreadCount
+        Write-Host '========================================'
+        Write-Host ("Running sweep for thread count: {0}" -f $threadCount)
+        Write-Host '========================================'
 
-    Invoke-DynarePhase -ScriptPath $resolvedDynareScript -ThreadOutputDir $threadOutputDir -RequestedThreadCount $threadCount -PreferredDynareMatlabPath $DynareMatlabPath -PreferredMatlabExe $MatlabExe -RequestedMaxLicenseRetries $MaxLicenseRetries -RequestedLicenseRetryDelaySeconds $LicenseRetryDelaySeconds -RequestedOnlyModels $resolvedOnlyModels
+        Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedGenerateJuliaScript -OutputArgument $threadOutputDir -Description ("Phase 1 export for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -ExtraScriptArgs $phase1ExtraArgs -UseThreadCount
 
-    Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedCompareScript -OutputArgument $threadOutputDir -Description ("Phase 3 compare for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -UseThreadCount
+        Invoke-DynarePhase -ScriptPath $resolvedDynareScript -ThreadOutputDir $threadOutputDir -RequestedThreadCount $threadCount -PreferredDynareMatlabPath $DynareMatlabPath -PreferredMatlabExe $MatlabExe -RequestedMaxLicenseRetries $MaxLicenseRetries -RequestedLicenseRetryDelaySeconds $LicenseRetryDelaySeconds -RequestedOnlyModels $resolvedOnlyModels
+
+        Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedCompareScript -OutputArgument $threadOutputDir -Description ("Phase 3 compare for {0} thread(s)" -f $threadCount) -RequestedThreadCount $threadCount -UseThreadCount
+    }
+
+    Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedSweepCompareScript -OutputArgument $stagingOutputRoot -Description 'Cross-thread benchmark summary' -RequestedThreadCount 1
+
+    Publish-StagedOutputRoot -StageOutputRoot $stagingOutputRoot -FinalOutputRoot $resolvedOutputRoot -ResolvedOutputParent $resolvedOutputParent -OutputRootLeaf $outputRootLeaf
 }
-
-Invoke-JuliaScript -Executable $resolvedJuliaExe -ProjectRoot $repoRoot -ScriptPath $resolvedSweepCompareScript -OutputArgument $resolvedOutputRoot -Description 'Cross-thread benchmark summary' -RequestedThreadCount 1
+catch {
+    if (Test-Path -LiteralPath $stagingOutputRoot) {
+        Write-Warning ("Keeping staged sweep output for inspection: {0}" -f $stagingOutputRoot)
+    }
+    throw
+}
 
 Write-Host 'Thread sweep complete.'

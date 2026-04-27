@@ -13,6 +13,7 @@ const RTOL = 1e-6
 const ATOL = 1e-7
 const DEFAULT_OUTPUT_ROOT = joinpath(@__DIR__, "output")
 const BENCHMARK_ONLY_MODELS = Set(["FRBUS"])
+const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 
 function print_usage()
     println("Usage: julia --project=. compare_results.jl [--output-root=PATH | PATH]")
@@ -48,6 +49,137 @@ end
 # CSV loading helpers
 # ─────────────────────────────────────────────
 read_names(path) = strip.(readlines(path))
+
+function load_benchmarks(dir)
+    haskey(_BENCH_CACHE, dir) && return _BENCH_CACHE[dir]
+    bundled = joinpath(dir, "benchmarks.csv")
+    benchmarks = Dict{String, Float64}()
+    if isfile(bundled)
+        raw = readdlm(bundled, ',')
+        for row in 1:size(raw, 1)
+            key = strip(string(raw[row, 1]))
+            isempty(key) && continue
+            benchmarks[key] = Float64(raw[row, 2])
+        end
+    end
+    _BENCH_CACHE[dir] = benchmarks
+    return benchmarks
+end
+
+function read_bench(dir, name)
+    key = endswith(name, ".csv") ? name[1:end-4] : name
+    benchmarks = load_benchmarks(dir)
+    if haskey(benchmarks, key)
+        return benchmarks[key]
+    end
+    legacy = joinpath(dir, key * ".csv")
+    return isfile(legacy) ? read_vector(legacy)[1] : NaN
+end
+
+function read_key_value_metadata(path)
+    metadata = Dict{String, String}()
+    if !isfile(path)
+        return metadata
+    end
+
+    for line in eachline(path)
+        stripped = strip(line)
+        isempty(stripped) && continue
+        idx = findfirst(==('='), stripped)
+        idx === nothing && continue
+        key = strip(stripped[begin:prevind(stripped, idx)])
+        value = strip(stripped[nextind(stripped, idx):end])
+        metadata[key] = value
+    end
+
+    return metadata
+end
+
+function current_julia_metadata()
+    blas_lapack = try
+        string(BLAS.get_config())
+    catch
+        "unknown"
+    end
+
+    return Dict(
+        "julia_version" => string(VERSION),
+        "julia_threads" => string(Threads.nthreads()),
+        "julia_threads_default" => string(Threads.nthreads(:default)),
+        "julia_threads_interactive" => string(Threads.nthreads(:interactive)),
+        "blas_threads" => string(BLAS.get_num_threads()),
+        "blas_lapack" => blas_lapack,
+        "hostname" => get(ENV, "COMPUTERNAME", get(ENV, "HOSTNAME", "unknown")),
+        "kernel" => string(Sys.KERNEL),
+        "arch" => string(Sys.ARCH),
+        "cpu_name" => string(Sys.CPU_NAME),
+        "cpu_threads" => string(Sys.CPU_THREADS),
+        "word_size" => string(Sys.WORD_SIZE),
+        "total_memory_bytes" => try
+            string(Sys.total_memory())
+        catch
+            "unknown"
+        end,
+    )
+end
+
+function format_memory_string(bytes_string)
+    try
+        gib = parse(Float64, bytes_string) / 1024.0^3
+        return string(round(gib, digits = 2), " GiB")
+    catch
+        return bytes_string
+    end
+end
+
+function print_environment_summary(output_root)
+    julia_metadata = read_key_value_metadata(joinpath(output_root, "comparison_environment_julia.txt"))
+    dynare_metadata = read_key_value_metadata(joinpath(output_root, "comparison_environment_dynare.txt"))
+    julia_source = "phase-1 metadata"
+    if isempty(julia_metadata)
+        julia_metadata = current_julia_metadata()
+        julia_source = "compare runtime fallback"
+    end
+
+    println("Run Environment")
+    println("  Julia ($julia_source):")
+    println("    version: ", get(julia_metadata, "julia_version", "unknown"))
+    println("    BLAS/LAPACK: ", get(julia_metadata, "blas_lapack", "unknown"))
+    println("    threads: Julia=", get(julia_metadata, "julia_threads", "unknown"),
+            " default=", get(julia_metadata, "julia_threads_default", "unknown"),
+            " interactive=", get(julia_metadata, "julia_threads_interactive", "unknown"),
+            " BLAS=", get(julia_metadata, "blas_threads", "unknown"))
+    println("    machine: host=", get(julia_metadata, "hostname", "unknown"),
+            " kernel=", get(julia_metadata, "kernel", "unknown"),
+            " arch=", get(julia_metadata, "arch", "unknown"),
+            " cpu=", get(julia_metadata, "cpu_name", "unknown"),
+            " cpu_threads=", get(julia_metadata, "cpu_threads", "unknown"),
+            " memory=", format_memory_string(get(julia_metadata, "total_memory_bytes", "unknown")))
+
+    println("  Dynare:")
+    if isempty(dynare_metadata)
+        println("    metadata unavailable")
+    else
+        driver = get(dynare_metadata, "dynare_driver", "unknown")
+        version = get(dynare_metadata, "dynare_version", "unknown")
+        blas = get(dynare_metadata, "blas", "unknown")
+        lapack = get(dynare_metadata, "lapack", "unknown")
+        println("    driver/version: ", driver, " / ", version)
+        if haskey(dynare_metadata, "matlab_version")
+            println("    MATLAB: ", get(dynare_metadata, "matlab_version", "unknown"),
+                    " release=", get(dynare_metadata, "matlab_release", "unknown"))
+        elseif haskey(dynare_metadata, "octave_version")
+            println("    Octave: ", get(dynare_metadata, "octave_version", "unknown"))
+        end
+        println("    BLAS/LAPACK: ", blas, " / ", lapack)
+        println("    machine: host=", get(dynare_metadata, "hostname", "unknown"),
+                " os=", get(dynare_metadata, "os", get(dynare_metadata, "kernel", "unknown")),
+                " arch=", get(dynare_metadata, "arch", get(dynare_metadata, "computer", "unknown")),
+                " cpu_threads=", get(dynare_metadata, "cpu_threads", get(dynare_metadata, "max_num_comp_threads", "unknown")))
+        println("    threads: requested=", get(dynare_metadata, "thread_count_requested", "unknown"),
+                " active=", get(dynare_metadata, "max_num_comp_threads", "unknown"))
+    end
+end
 
 function read_vector(path)
     vec(readdlm(path, ',', Float64))
@@ -505,6 +637,9 @@ function main(args = ARGS)
         error("No model directories with both julia/ and dynare/ results found in $output_root")
     end
 
+    println("Comparison output root: $output_root")
+    print_environment_summary(output_root)
+
     benchmark_only_dirs = filter(is_benchmark_only_model_dir, model_dirs)
     for mname in sort(benchmark_only_dirs)
         @info "Skipping correctness comparison for benchmark-only model: $mname"
@@ -604,12 +739,7 @@ function main(args = ARGS)
     println("  Benchmark Comparison: MacroModelling (median of 500 runs) vs Dynare (median of 500 runs)")
     println("="^100)
 
-    # Helper to read a benchmark value, returning NaN if file doesn't exist
-    read_bench(dir, name) = let p = joinpath(dir, name)
-        isfile(p) ? read_vector(p)[1] : NaN
-    end
-
-    has_bench(dir, name) = isfile(joinpath(dir, name))
+    has_bench(dir, name) = !isnan(read_bench(dir, name))
 
     function sum_bench_components(dir, files)
         total = 0.0
@@ -674,7 +804,7 @@ function main(args = ARGS)
     end
 
     # Hessian / second-order solve
-    ho_models = filter(d -> isfile(joinpath(output_root, d, "julia", "benchmark_hessian.csv")), model_dirs)
+    ho_models = filter(d -> has_bench(joinpath(output_root, d, "julia"), "benchmark_hessian.csv"), model_dirs)
     dy_decomposable_ho_models = filter(d -> has_bench(joinpath(output_root, d, "dynare"), "benchmark_hessian.csv"), ho_models)
     if !isempty(dy_decomposable_ho_models)
         print_bench_table("Hessian", dy_decomposable_ho_models,
@@ -763,32 +893,18 @@ function main(args = ARGS)
     end
 
     # Third-order components (MacroModelling only — Dynare uses k_order_pert for order=3)
-    to_models = filter(d -> isfile(joinpath(output_root, d, "julia", "benchmark_third_order_derivatives.csv")),
+    to_models = filter(d -> has_bench(joinpath(output_root, d, "julia"), "benchmark_third_order_derivatives.csv"),
                        model_dirs)
     if !isempty(to_models)
         println("\n--- Third-Order Components (MacroModelling only — Dynare k_order_pert is bundled) ---")
         println(rpad("Model", 50), rpad("3rd Derivs", 15), "3rd Solve")
         println("-"^100)
         for mname in sort(to_models)
-            td = let p = joinpath(output_root, mname, "julia", "benchmark_third_order_derivatives.csv")
-                isfile(p) ? format_time(read_vector(p)[1]) : "N/A"
-            end
-            ts = let p = joinpath(output_root, mname, "julia", "benchmark_third_order_solve.csv")
-                isfile(p) ? format_time(read_vector(p)[1]) : "N/A"
-            end
+            td_time = read_bench(joinpath(output_root, mname, "julia"), "benchmark_third_order_derivatives.csv")
+            ts_time = read_bench(joinpath(output_root, mname, "julia"), "benchmark_third_order_solve.csv")
+            td = isnan(td_time) ? "N/A" : format_time(td_time)
+            ts = isnan(ts_time) ? "N/A" : format_time(ts_time)
             println(rpad(mname, 50), rpad(td, 15), ts)
-        end
-
-        # Third-Order Total (Third-Order Derivatives + Third-Order Solve)
-        println("\n--- Third-Order Total (Third-Order Derivatives + Third-Order Solve) ---")
-        println("    MacroModelling only — Dynare k_order_pert bundles all orders")
-        println(rpad("Model", 50), "MacroModelling")
-        println("-"^100)
-        for mname in sort(to_models)
-            jl_dir = joinpath(output_root, mname, "julia")
-            jl_time = sum_bench_components(jl_dir, ["benchmark_third_order_derivatives.csv", "benchmark_third_order_solve.csv"])
-            jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
-            println(rpad(mname, 50), jl_str)
         end
     end
 

@@ -33,6 +33,7 @@ end
 using MacroModelling
 using DelimitedFiles
 using LinearAlgebra
+using Sockets
 
 const IRF_PERIODS = 40
 const DEFAULT_OUTPUT_ROOT = joinpath(@__DIR__, "output")
@@ -169,6 +170,55 @@ function write_thread_configuration(output_root, julia_threads, blas_threads)
         println(io, "julia_threads=$julia_threads")
         println(io, "blas_threads=$blas_threads")
     end
+end
+
+sanitize_metadata_value(value) = replace(string(value), r"[\r\n]+" => " | ")
+
+function machine_hostname()
+    try
+        return Sockets.gethostname()
+    catch
+        return get(ENV, "COMPUTERNAME", get(ENV, "HOSTNAME", "unknown"))
+    end
+end
+
+function write_key_value_metadata(path, entries)
+    open(path, "w") do io
+        for (key, value) in entries
+            println(io, key, "=", sanitize_metadata_value(value))
+        end
+    end
+end
+
+function write_julia_environment_metadata(output_root, julia_threads, blas_threads)
+    blas_lapack = try
+        string(BLAS.get_config())
+    catch
+        "unknown"
+    end
+    total_memory_bytes = try
+        Sys.total_memory()
+    catch
+        "unknown"
+    end
+
+    entries = [
+        "julia_version" => VERSION,
+        "julia_threads" => julia_threads,
+        "julia_threads_default" => Threads.nthreads(:default),
+        "julia_threads_interactive" => Threads.nthreads(:interactive),
+        "blas_threads" => blas_threads,
+        "blas_lapack" => blas_lapack,
+        "hostname" => machine_hostname(),
+        "kernel" => Sys.KERNEL,
+        "arch" => Sys.ARCH,
+        "cpu_name" => Sys.CPU_NAME,
+        "cpu_threads" => Sys.CPU_THREADS,
+        "word_size" => Sys.WORD_SIZE,
+        "total_memory_bytes" => total_memory_bytes,
+    ]
+
+    write_key_value_metadata(joinpath(output_root, "comparison_environment_julia.txt"), entries)
 end
 
 function export_names_and_steady_state(model, julia_dir, orig, state_vars, exo_vars)
@@ -600,6 +650,7 @@ function main(args = ARGS)
     end
     mkpath(output_root)
     write_thread_configuration(output_root, julia_threads, blas_threads)
+    write_julia_environment_metadata(output_root, julia_threads, blas_threads)
 
     only_set = Set(only_models)
     keep(name) = isempty(only_set) || (name in only_set)
