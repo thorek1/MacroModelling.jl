@@ -128,7 +128,6 @@ invoke_julia_script() {
     local requested_thread_count="$6"
     local use_thread_count="$7"
     shift 7
-    local extra_script_args=("$@")
 
     local julia_args=("--project=${project_root}")
     if [[ "$use_thread_count" == "1" ]]; then
@@ -137,11 +136,13 @@ invoke_julia_script() {
     julia_args+=("$script_path")
 
     local extra
-    for extra in "${extra_script_args[@]}"; do
-        if [[ -n "${extra// }" ]]; then
-            julia_args+=("$extra")
-        fi
-    done
+    if [[ $# -gt 0 ]]; then
+        for extra in "$@"; do
+            if [[ -n "${extra// }" ]]; then
+                julia_args+=("$extra")
+            fi
+        done
+    fi
 
     julia_args+=("$output_argument")
 
