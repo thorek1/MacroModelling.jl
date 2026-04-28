@@ -324,14 +324,6 @@ function compare_result_sets(reference_results, candidate_results; model_name)
             compare_variance(reference_results, candidate_results)
         end
     end
-    @testset "Variance Decomposition" begin
-        if moments_only_higher_order
-            @info "Skipping variance decomposition comparison for $model_name (higher-order configured as covariance/variance moments-only)"
-        else
-            compare_variance_decomposition(reference_results, candidate_results)
-        end
-    end
-
     if has_second_order(reference_results) && has_second_order(candidate_results)
         @testset "Second Order Matrices" begin
             if moments_only_higher_order

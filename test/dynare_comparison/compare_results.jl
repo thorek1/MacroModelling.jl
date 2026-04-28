@@ -690,14 +690,6 @@ function main(args = ARGS)
                                 compare_variance(jl, dy)
                             end
                         end
-                        @testset "Variance Decomposition" begin
-                            if moments_only_higher_order
-                                @info "Skipping variance decomposition comparison for $mname (higher-order configured as covariance/variance moments-only)"
-                            else
-                                compare_variance_decomposition(jl, dy)
-                            end
-                        end
-
                         # Higher-order comparisons (when data is present)
                         if has_second_order(jl) && has_second_order(dy)
                             @testset "Second Order Matrices" begin

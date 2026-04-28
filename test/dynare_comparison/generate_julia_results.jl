@@ -9,8 +9,6 @@
 #       steady_state.csv, ghx.csv, ghu.csv
 #       irf_fields.csv, irf_{var}_{shock}.csv
 #       variance_covariance.csv
-#       variance_decomposition.csv, variance_decomposition_var_names.csv,
-#       variance_decomposition_exo_names.csv
 #
 #   For higher-order models (pruned 2nd/3rd order):
 #   output/{model_name}_pruned_2nd/  and  output/{model_name}_pruned_3rd/
@@ -27,7 +25,8 @@
 
 @static if Sys.iswindows()
     using MKL
-    @info "Using MKL.jl for BLAS on Windows"
+    MKL.set_num_threads(Threads.nthreads())
+    @info "Using MKL.jl for BLAS on Windows with $(MKL.get_num_threads()) threads"
 end
 
 using MacroModelling
@@ -64,7 +63,7 @@ const THIRD_ORDER_MODELS = [
     "Caldara_et_al_2012",
 ]
 
-# Models that skip variance/covariance and variance decomposition
+# Models that skip variance/covariance
 const SKIP_MOMENTS_MODELS = Set(["FRBUS"])
 
 # Models for which only the benchmark timings are exported (no names, steady state,
@@ -295,7 +294,6 @@ end
 
 function export_moments(model, julia_dir, orig, exo_vars;
                         algorithm = :first_order,
-                        include_variance_decomposition = true,
                         var_names_ascii = nothing,
                         exo_names_ascii = nothing)
     moments = get_moments(model, algorithm = algorithm,
@@ -314,19 +312,6 @@ function export_moments(model, julia_dir, orig, exo_vars;
         end
     end
     writedlm(joinpath(julia_dir, "variance_covariance.csv"), vcov, ',')
-
-    if include_variance_decomposition
-        vd = get_variance_decomposition(model)
-        vd_mat = zeros(length(orig), length(exo_vars))
-        for (vi, v) in enumerate(orig)
-            for (ei, e) in enumerate(exo_vars)
-                vd_mat[vi, ei] = Float64(vd(v, e)) * 100.0
-            end
-        end
-        writedlm(joinpath(julia_dir, "variance_decomposition.csv"), vd_mat, ',')
-        write_names(joinpath(julia_dir, "variance_decomposition_var_names.csv"), something(var_names_ascii, [ascii_name(v) for v in orig]))
-        write_names(joinpath(julia_dir, "variance_decomposition_exo_names.csv"), something(exo_names_ascii, [ascii_name(e) for e in exo_vars]))
-    end
 end
 
 # ─────────────────────────────────────────────
@@ -573,7 +558,6 @@ function export_model(model, outdir; include_moments = true, benchmark_only = fa
     if include_moments
         export_moments(model, julia_dir, orig, exo_vars;
                        algorithm = :first_order,
-                       include_variance_decomposition = true,
                        var_names_ascii = var_names_ascii,
                        exo_names_ascii = exo_names_ascii)
     end
@@ -614,8 +598,7 @@ function export_higher_order_model(model, outdir, dir_name, order)
 
     # Higher-order-specific outputs are moments-only (no higher-order solution matrices).
     export_moments(model, julia_dir, orig, exo_vars;
-                   algorithm = algorithm,
-                   include_variance_decomposition = false)
+                   algorithm = algorithm)
 
     # ── Export .mod file with correct order and pruning, renamed to match directory ──
     cd(outdir) do

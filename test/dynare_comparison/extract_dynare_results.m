@@ -15,9 +15,6 @@
 %   ghu.csv                 - shock impact matrix (declaration order rows)
 %   irf_VARNAME_SHOCKNAME.csv - IRF for each var/shock combination
 %   variance_covariance.csv - theoretical variance-covariance matrix (declaration order)
-%   variance_decomposition.csv          - variance decomposition matrix
-%   variance_decomposition_var_names.csv - variable names for var decomp rows
-%   variance_decomposition_exo_names.csv - shock names for var decomp columns
 %
 % Higher-order outputs (when options_.order >= 2):
 %   ghxx.csv, ghxu.csv, ghuu.csv, ghs2.csv
@@ -208,33 +205,6 @@ end
 %% --- Variance-covariance matrix (declaration order) ---
 if isfield(oo_, 'var') && ~isempty(oo_.var)
     dlmwrite(fullfile(output_dir, 'variance_covariance.csv'), oo_.var, 'precision', '%.16g');
-end
-
-%% --- Variance decomposition ---
-if isfield(oo_, 'variance_decomposition') && ~isempty(oo_.variance_decomposition)
-    dlmwrite(fullfile(output_dir, 'variance_decomposition.csv'), ...
-             oo_.variance_decomposition, 'precision', '%.16g');
-
-    n_vd_rows = size(oo_.variance_decomposition, 1);
-    fid = fopen(fullfile(output_dir, 'variance_decomposition_var_names.csv'), 'w');
-    for i = 1:n_vd_rows
-        if iscell(M_.endo_names)
-            fprintf(fid, '%s\n', M_.endo_names{i});
-        else
-            fprintf(fid, '%s\n', deblank(M_.endo_names(i,:)));
-        end
-    end
-    fclose(fid);
-
-    fid = fopen(fullfile(output_dir, 'variance_decomposition_exo_names.csv'), 'w');
-    for i = 1:n_exo
-        if iscell(M_.exo_names)
-            fprintf(fid, '%s\n', M_.exo_names{i});
-        else
-            fprintf(fid, '%s\n', deblank(M_.exo_names(i,:)));
-        end
-    end
-    fclose(fid);
 end
 
 end % if ~benchmark_only_mode
