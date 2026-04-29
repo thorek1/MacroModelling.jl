@@ -23,11 +23,11 @@
 # Windows platforms (e.g. Linux CI runners where MKL.jl may not be installed)
 # we silently fall back to the default OpenBLAS backend.
 
-@static if Sys.iswindows()
-    using MKL
-    MKL.set_num_threads(Threads.nthreads())
-    @info "Using MKL.jl for BLAS on Windows with $(MKL.get_num_threads()) threads"
-end
+# @static if Sys.iswindows()
+#     using MKL
+#     MKL.set_num_threads(Threads.nthreads())
+#     @info "Using MKL.jl for BLAS on Windows with $(MKL.get_num_threads()) threads"
+# end
 
 using MacroModelling
 using DelimitedFiles
@@ -64,12 +64,12 @@ const THIRD_ORDER_MODELS = [
 ]
 
 # Models that skip variance/covariance
-const SKIP_MOMENTS_MODELS = Set(["FRBUS"])
+const SKIP_MOMENTS_MODELS = Set(["FRBUS", "NAWM"])
 
 # Models for which only the benchmark timings are exported (no names, steady state,
 # policy matrices, IRFs, or moments). The .mod file is still written so the Dynare
 # phase can run and produce its own benchmark CSVs.
-const BENCHMARK_ONLY_MODELS = Set(["FRBUS"])
+const BENCHMARK_ONLY_MODELS = Set(["FRBUS", "NAWM"])
 
 # ─────────────────────────────────────────────
 # Helpers

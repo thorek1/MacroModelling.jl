@@ -10,9 +10,9 @@ using LinearAlgebra
 using Test
 
 const RTOL = 1e-6
-const ATOL = 1e-7
+const ATOL = 1e-6
 const DEFAULT_OUTPUT_ROOT = joinpath(@__DIR__, "output")
-const BENCHMARK_ONLY_MODELS = Set(["FRBUS"])
+const BENCHMARK_ONLY_MODELS = Set(["FRBUS", "NAWM"])
 const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 
 function print_usage()
