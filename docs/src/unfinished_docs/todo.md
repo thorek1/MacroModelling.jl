@@ -2,6 +2,7 @@
 ## High priority
 
 - [ ] add higher order variance decomposition
+- [ ] let filters work with relevant subspace of solution only and also allow for missing obs
 - [ ] make package work with semi structural expectations models
 - [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
 - [ ] implement NestedSampling with NormalisingFlows in Julia
