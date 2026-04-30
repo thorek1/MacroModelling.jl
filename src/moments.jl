@@ -626,6 +626,408 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 end
 
 
+"""
+    calculate_per_shock_variance_second_order(parameters, 𝓂; opts)
+
+Compute per-shock unconditional variance contributions for the pruned second-order
+solution. Returns a tuple `(per_shock_var, total_var, slvd)` where:
+
+- `per_shock_var :: Matrix{R}` is `nVars × nExo`. Column `i` contains
+  `diag(Σʸ₂⁽ⁱ⁾)`, the unconditional variance of every endogenous variable
+  attributable to shock `i` acting alone.
+- `total_var :: Vector{R}` is `diag(Σʸ₂)` from the full-shock solution.
+- `slvd :: Bool` indicates that all underlying solves succeeded.
+
+The per-shock contribution is obtained by projecting the inner shock-cumulant
+block `Γ₂` to a single shock `i`: replacing `I(nᵉ)` with `eᵢ eᵢᵀ`, the centered
+4th-moment block with `2·(eᵢ⊗eᵢ)(eᵢ⊗eᵢ)ᵀ`, and `kron(Σᶻ₁, I)` with
+`kron(Σᶻ₁, eᵢ eᵢᵀ)`, then re-solving the same pruned-state Lyapunov equation
+`Σᶻ₂⁽ⁱ⁾ = ŝ_to_ŝ₂ Σᶻ₂⁽ⁱ⁾ ŝ_to_ŝ₂ᵀ + ê_to_ŝ₂ Γ₂⁽ⁱ⁾ ê_to_ŝ₂ᵀ`. The variable
+covariance is then `Σʸ₂⁽ⁱ⁾ = ŝ_to_y₂ Σᶻ₂⁽ⁱ⁾ ŝ_to_y₂ᵀ + ê_to_y₂ Γ₂⁽ⁱ⁾ ê_to_y₂ᵀ`.
+
+The residual `total_var - sum(per_shock_var; dims = 2)` corresponds to genuine
+cross-shock interaction terms in the centered higher moments — non-zero when
+products of distinct shocks appear in the model equations.
+"""
+function calculate_per_shock_variance_second_order(parameters::Vector{R},
+                                                    𝓂::ℳ;
+                                                    opts::CalculationOptions = merge_calculation_options()
+                                                    )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    moms = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd = moms
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    nᵉ = 𝓂.constants.post_model_macro.nExo
+
+    if !slvd
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    nˢ = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+    D₂ˢ = sub_idx.D₂ˢ
+    L₂ˢ = sub_idx.L₂ˢ
+    n₂ˢ = size(D₂ˢ, 2)
+
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+
+    kron_e_e = so.kron_e_e
+    kron_s_e = so.kron_s_e
+
+    e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+    e_e_to_y₂ = 𝐒₂[:, kron_e_e]
+    s_e_to_y₂ = 𝐒₂[:, kron_s_e]
+    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+    I_plus_s_s = so.I_plus_s_s
+    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+    s_to_s₁_by_e_to_s₁ = ℒ.kron(𝐒₁[iˢ, 1:nˢ], e_to_s₁)
+
+    ê_to_ŝ₂ = [ e_to_s₁          spzeros(R, nˢ, nᵉ^2 + nᵉ * nˢ)
+                spzeros(R, nˢ, nᵉ)   e_e_to_s₂ / 2       s_e_to_s₂
+                spzeros(R, n₂ˢ, nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁]
+
+    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+    n_ŝ₂ = size(ŝ_to_ŝ₂, 1)
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, n_ŝ₂, :second_order)
+
+    per_shock_var = zeros(R, nVars, nᵉ)
+    all_ok = true
+
+    for i in 1:nᵉ
+        eᵢ = zeros(R, nᵉ)
+        eᵢ[i] = one(R)
+        eᵢeᵢᵀ = eᵢ * eᵢ'
+        kron_eᵢ_eᵢ = ℒ.kron(eᵢ, eᵢ)
+        blk1 = eᵢeᵢᵀ
+        blk2 = 2 * kron_eᵢ_eᵢ * kron_eᵢ_eᵢ'
+        blk3 = ℒ.kron(Σᶻ₁, eᵢeᵢᵀ)
+
+        Γᵢ = [ blk1                            zeros(R, nᵉ, nᵉ^2)             zeros(R, nᵉ, nᵉ * nˢ)
+               zeros(R, nᵉ^2, nᵉ)              blk2                            zeros(R, nᵉ^2, nᵉ * nˢ)
+               zeros(R, nˢ * nᵉ, nᵉ)           zeros(R, nˢ * nᵉ, nᵉ^2)         blk3 ]
+
+        Cᵢ = ê_to_ŝ₂ * Γᵢ * ê_to_ŝ₂'
+
+        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Matrix(Cᵢ), lyap_ws,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.second_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+
+        if !info
+            all_ok = false
+            per_shock_var[:, i] .= R(NaN)
+            continue
+        end
+
+        Σʸᵢ = ŝ_to_y₂ * Σᶻᵢ * ŝ_to_y₂' + ê_to_y₂ * Γᵢ * ê_to_y₂'
+        per_shock_var[:, i] = ℒ.diag(Σʸᵢ)
+    end
+
+    return per_shock_var, ℒ.diag(Σʸ₂), all_ok
+end
+
+
+"""
+    calculate_per_shock_variance_third_order(parameters, 𝓂; opts)
+
+Compute per-shock unconditional variance contributions for the pruned third-order
+solution. Returns a tuple `(per_shock_var, total_var, slvd)` where:
+
+- `per_shock_var :: Matrix{R}` is `nVars × nExo`. Column `i` contains
+  `diag(Σʸ₃⁽ⁱ⁾)`, the unconditional variance of every endogenous variable
+  attributable to shock `i` acting alone.
+- `total_var :: Vector{R}` is `diag(Σʸ₃)` from the full-shock solution.
+- `slvd :: Bool` indicates that all underlying solves succeeded.
+
+The per-shock contribution is obtained by zeroing every component of the inner
+augmented-shock vector `ê` whose exogenous-shock indices are not all equal to
+`i`. Concretely, a binary mask `m⁽ⁱ⁾` of length `length(ê)` is built from the
+seven block sizes `(nᵉ, nᵉ², nˢ·nᵉ, nˢ·nᵉ, nˢ²·nᵉ, nˢ·nᵉ², nᵉ³)` so that
+`m⁽ⁱ⁾[k] = 1` only when every shock index in component `k` equals `i`. Then
+`Γ⁽ⁱ⁾ = diag(m⁽ⁱ⁾) Γ₃ diag(m⁽ⁱ⁾)` and `Eᴸᶻ⁽ⁱ⁾ = diag(m⁽ⁱ⁾) Eᴸᶻ`, and the same
+pruned-state Lyapunov equation is re-solved.
+
+The state-cumulant inputs (`Σᶻ₁`, `Σᶻ₂`, `Δμˢ₂`, `μˢ₃δμˢ₁`) are kept at their
+full-shock values, so the per-shock share captures the contribution of shock
+`i` against the realised dispersion of the pruned state. The residual
+`total_var - sum(per_shock_var; dims = 2)` corresponds to genuine cross-shock
+interaction terms in the higher centered moments.
+"""
+function calculate_per_shock_variance_third_order(parameters::Vector{R},
+                                                    𝓂::ℳ;
+                                                    opts::CalculationOptions = merge_calculation_options()
+                                                    )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    # Get the full third-order variance to use as denominator and to warm caches/derivatives
+    Σʸ₃_total, _μʸ₂, _SS_and_pars, slvd_total = calculate_third_order_moments(parameters, :full_covar, 𝓂; opts = opts)
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    nᵉ = 𝓂.constants.post_model_macro.nExo
+
+    if !slvd_total
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    # Recompute the same intermediates calculate_third_order_moments uses (cheap: cached).
+    second = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂_compressed, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd2 = second
+
+    if !slvd2
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
+
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
+                                                𝓂.constants,
+                                                𝓂.workspaces,
+                                                𝓂.caches;
+                                                initial_guess = 𝓂.caches.third_order_solution,
+                                                opts = opts, parameter_values = parameters)
+
+    if !solved3
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    𝐒₃ = sparse(𝐒₃ * 𝓂.constants.third_order.𝐔₃)
+
+    nˢ = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+
+    sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+    D₂ˢ = sub_idx.D₂ˢ
+    L₂ˢ = sub_idx.L₂ˢ
+    D₃ˢ = sub_idx.D₃ˢ
+    L₃ˢ = sub_idx.L₃ˢ
+    I_plus_s_s = sub_idx.I_plus_s_s
+    e_es = sub_idx.e_es
+    e_ss = sub_idx.e_ss
+    ss_s = sub_idx.ss_s
+    s_s = sub_idx.s_s
+    n₂ˢ = size(D₂ˢ, 2)
+    n₃ˢ = size(D₃ˢ, 2)
+
+    # Expand compressed Σᶻ₂ back to full form (block 3 is vech-compressed).
+    E₂_exp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, n₂ˢ)
+              spzeros(nˢ^2, 2*nˢ)        D₂ˢ]
+    Σᶻ₂ = E₂_exp * Σᶻ₂_compressed * E₂_exp'
+
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
+
+    vec_Iₑ = so.vec_Iₑ
+    e4_nᵉ²_nᵉ² = so.e4_nᵉ²_nᵉ²
+    e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
+    e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
+    e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    # Single-block (:full_covar): all variables, all states.
+    obs_in_y = collect(1:nVars)
+    dependencies_in_states_idx = collect(1:nˢ)
+    dependencies_in_var_idx = iˢ
+
+    Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σ̂ᶻ₂ = Σᶻ₂
+    Δ̂μˢ₂ = Δμˢ₂
+
+    s_in_s⁺ = BitVector(vcat(trues(nˢ), zeros(Bool, nᵉ + 1)))
+
+    # First order
+    s_to_y₁ = 𝐒₁[obs_in_y, dependencies_in_states_idx]
+    e_to_y₁ = 𝐒₁[obs_in_y, (nˢ + 1):end]
+    s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+    # Second order
+    dep_kron = ensure_moments_dependency_kron_indices!(𝓂, 𝓂.constants.post_model_macro.past_not_future_and_mixed, s_in_s⁺)
+    kron_s_s = dep_kron.kron_s_s
+    kron_s_e = dep_kron.kron_s_e
+    kron_s_v = dep_kron.kron_s_v
+
+    s_s_to_y₂ = 𝐒₂[obs_in_y, kron_s_s]
+    e_e_to_y₂ = 𝐒₂[obs_in_y, kron_e_e]
+    s_e_to_y₂ = 𝐒₂[obs_in_y, kron_s_e]
+
+    s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+    v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+    s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+    s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+    s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
+
+    # Third order
+    s_s_s_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    N_upper = 2 * nˢ + n₂ˢ
+    N_lower = nˢ + nˢ^2 + n₃ˢ
+
+    A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+            spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+            spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+    A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+            spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+    A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+            spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+            spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+
+    ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+
+    ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                        spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+    ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
+
+    ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+    μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec(
+                                (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
+                                s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
+                                s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
+                                s_v_v_to_s₃ * Σ̂ᶻ₁ / 2) * s_to_s₁' +
+                                (s_e_to_s₂  * ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ)) +
+                                e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
+                                s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                ), nˢ, nˢ)
+
+    Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
+            spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δ̂μˢ₂ * Δ̂μˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+            ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σ̂ᶻ₁), e4_nᵉ_nᵉ³)
+            spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)    spzeros(nˢ*nᵉ^2,nᵉ^3)
+            e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
+
+    Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+            ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   spzeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+            spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
+
+    droptol!(A_UU, eps())
+    droptol!(A_LU, eps())
+    droptol!(A_LL, eps())
+    droptol!(ê_to_ŝ₃, eps())
+    droptol!(Eᴸᶻ, eps())
+    droptol!(Γ₃, eps())
+
+    # Per-shock mask construction. ê has 7 blocks with sizes:
+    #   (nᵉ, nᵉ², nˢ·nᵉ, nˢ·nᵉ, nˢ²·nᵉ, nˢ·nᵉ², nᵉ³).
+    # All blocks except 1, 2, 7 carry "s outer, e inner" Kronecker layouts; block 6 carries
+    # "s outer, e⊗e inner". A component k of ê is retained for shock i iff every shock
+    # index in component k equals i. Build the mask once per i.
+    block_sizes = (nᵉ, nᵉ^2, nˢ*nᵉ, nˢ*nᵉ, nˢ^2*nᵉ, nˢ*nᵉ^2, nᵉ^3)
+    block_offsets = cumsum(collect((0, block_sizes[1:end-1]...,)))
+    N_e_aug = sum(block_sizes)
+
+    function build_per_shock_mask(i)
+        m = falses(N_e_aug)
+        # Block 1: e_j → keep j = i
+        m[block_offsets[1] + i] = true
+        # Block 2: kron(e, e), index = (j-1)*nᵉ + k → keep j = k = i
+        m[block_offsets[2] + (i - 1) * nᵉ + i] = true
+        # Block 3: kron(s, e), index = (a-1)*nᵉ + j → keep j = i, all a
+        for a in 1:nˢ
+            m[block_offsets[3] + (a - 1) * nᵉ + i] = true
+        end
+        # Block 4: kron(s, e), same as block 3
+        for a in 1:nˢ
+            m[block_offsets[4] + (a - 1) * nᵉ + i] = true
+        end
+        # Block 5: kron(vec(s⊗s), e) = nˢ²·nᵉ in (s⊗s)-outer, e-inner layout
+        for p in 1:nˢ^2
+            m[block_offsets[5] + (p - 1) * nᵉ + i] = true
+        end
+        # Block 6: kron(s, e⊗e), s-outer (size nˢ), e⊗e-inner (size nᵉ²) → keep e⊗e at (i,i)
+        for a in 1:nˢ
+            m[block_offsets[6] + (a - 1) * nᵉ^2 + (i - 1) * nᵉ + i] = true
+        end
+        # Block 7: kron(e, kron(e, e)) = nᵉ³ → keep (i, i, i)
+        m[block_offsets[7] + (i - 1) * nᵉ^2 + (i - 1) * nᵉ + i] = true
+        return m
+    end
+
+    n_ŝ₃ = size(ŝ_to_ŝ₃, 1)
+    lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, n_ŝ₃, :third_order)
+
+    per_shock_var = zeros(R, nVars, nᵉ)
+    all_ok = true
+
+    Γ₃_dense = Matrix(Γ₃)
+    Eᴸᶻ_dense = Matrix(Eᴸᶻ)
+
+    for i in 1:nᵉ
+        m = build_per_shock_mask(i)
+        midx = findall(m)
+
+        # Γ⁽ⁱ⁾ = diag(m) Γ₃ diag(m): only rows/cols in midx survive.
+        Γᵢ = zeros(R, N_e_aug, N_e_aug)
+        Γᵢ[midx, midx] = Γ₃_dense[midx, midx]
+
+        # Eᴸᶻ⁽ⁱ⁾ = diag(m) Eᴸᶻ: only rows in midx survive.
+        Eᴸᶻᵢ = zeros(R, size(Eᴸᶻ_dense)...)
+        Eᴸᶻᵢ[midx, :] = Eᴸᶻ_dense[midx, :]
+
+        Aᵢ = ê_to_ŝ₃ * Eᴸᶻᵢ * ŝ_to_ŝ₃'
+        Cᵢ = ê_to_ŝ₃ * Γᵢ * ê_to_ŝ₃' + Aᵢ + Aᵢ'
+
+        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Matrix(Cᵢ), lyap_ws_3rd,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.third_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+
+        if !info
+            all_ok = false
+            per_shock_var[:, i] .= R(NaN)
+            continue
+        end
+
+        Σʸᵢ = ŝ_to_y₃ * Σᶻᵢ * ŝ_to_y₃' + ê_to_y₃ * Γᵢ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻᵢ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻᵢ' * ê_to_y₃'
+        per_shock_var[:, i] = ℒ.diag(Σʸᵢ)
+    end
+
+    return per_shock_var, ℒ.diag(Σʸ₃_total), all_ok
+end
+
+
 # Block-triangular Lyapunov solver for third-order pruned state covariance.
 # Solves the block-triangular Lyapunov equation for the third-order pruned state covariance.
 # Accepts pre-sliced sub-blocks of the transition matrix [A_UU 0; A_LU A_LL]

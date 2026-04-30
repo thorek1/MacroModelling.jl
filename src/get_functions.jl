@@ -2442,7 +2442,9 @@ fevd = get_conditional_variance_decomposition
 
 """
 $(SIGNATURES)
-Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
+Return the variance decomposition of endogenous variables with regards to the shocks. By default the linearised solution is used; with `algorithm = :pruned_second_order` or `algorithm = :pruned_third_order` the per-shock variance contributions are computed under the corresponding pruned higher-order solution and an extra column `:Cross_shock_interaction` is appended that captures the residual variance attributable to genuine cross-shock interaction terms in the centered higher moments (this column is zero whenever no products of distinct shocks appear in the model equations). Rows always sum to one.
+
+Per-shock contributions are obtained by projecting the inner shock-cumulant block to a single shock `i` and re-solving the same pruned-state Lyapunov equation. At third order the projection is implemented as a binary mask on the augmented shock vector `ê`, retaining only those components whose exogenous-shock indices are all equal to `i`. Raw shares are returned without clipping; tiny negative entries can occur from numerical noise on near-zero contributions.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -2451,13 +2453,14 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
+- `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm. Supports `:first_order`, `:pruned_second_order`, and `:pruned_third_order`.
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` (from the `AxisKeys` package) with variables in rows, and shocks in columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows and shocks in columns. Under `:pruned_second_order` and `:pruned_third_order` an additional `:Cross_shock_interaction` column is appended.
 
 # Examples
 ```jldoctest part1
@@ -2499,11 +2502,42 @@ And data, 7×2 Matrix{Float64}:
   (:k)         0.00869568    0.991304
   (:y)         0.000313462   0.999687
   (:z_delta)   1.0           0.0
+
+get_variance_decomposition(RBC_CME, algorithm = :pruned_second_order)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 3-element Vector{Symbol}
+And data, 7×3 Matrix{Float64}:
+              (:delta_eps)  (:eps_z)   (:Cross_shock_interaction)
+  (:A)         1.25281e-29   1.0       -1.77636e-14
+  (:Pi)        0.0156729     0.984327   6.2818e-8
+  (:R)         0.0156728     0.984327   6.49478e-8
+  (:c)         0.0134703     0.98653    5.05321e-8
+  (:k)         0.00870033    0.9913     1.0625e-7
+  (:y)         0.000313525   0.999686   1.24335e-9
+  (:z_delta)   1.0           0.0        0.0
+
+get_variance_decomposition(RBC_CME, algorithm = :pruned_third_order)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 3-element Vector{Symbol}
+And data, 7×3 Matrix{Float64}:
+              (:delta_eps)  (:eps_z)   (:Cross_shock_interaction)
+  (:A)         2.53946e-21   1.0        0.0
+  (:Pi)        0.0156663     0.984334   1.44707e-7
+  (:R)         0.015666      0.984334   1.53738e-7
+  (:c)         0.013479      0.986521   1.20429e-7
+  (:k)         0.00871219    0.991288   2.71141e-7
+  (:y)         0.000313643   0.999686  -2.3992e-10
+  (:z_delta)   1.0           0.0        0.0
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
                                     steady_state_function::SteadyStateFunctionType = missing,
+                                    algorithm::Symbol = :first_order,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
@@ -2523,10 +2557,48 @@ function get_variance_decomposition(𝓂::ℳ;
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "algorithm must be :first_order, :pruned_second_order, or :pruned_third_order"
+
     solve!(𝓂, 
             opts = opts, 
             steady_state_function = steady_state_function, 
-            parameters = parameters)
+            parameters = parameters,
+            algorithm = algorithm,
+            dynamics = algorithm != :first_order)
+
+    if algorithm == :pruned_second_order || algorithm == :pruned_third_order
+        if algorithm == :pruned_second_order
+            per_shock_var, total_var, ok = calculate_per_shock_variance_second_order(𝓂.parameter_values, 𝓂; opts = opts)
+            order_label = "second"
+        else
+            per_shock_var, total_var, ok = calculate_per_shock_variance_third_order(𝓂.parameter_values, 𝓂; opts = opts)
+            order_label = "third"
+        end
+
+        if !ok
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            error("Per-shock $order_label-order variance decomposition failed (Lyapunov did not converge for at least one shock).")
+        end
+
+        # Use total variance for normalisation (rather than sum over shocks) so the
+        # `:Cross_shock_interaction` column captures the residual exactly. Raw
+        # shares are returned without clipping; tiny negative entries can occur
+        # from numerical noise on near-zero contributions.
+        denom = max.(total_var, eps())
+
+        shares = per_shock_var ./ denom
+        interaction = 1 .- vec(sum(shares, dims = 2))
+
+        var_decomp = hcat(shares, interaction)
+
+        ensure_name_display_constants!(𝓂)
+        axis1 = 𝓂.constants.post_complete_parameters.var_axis
+        axis2 = vcat(𝓂.constants.post_complete_parameters.exo_axis_plain, :Cross_shock_interaction)
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        return KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
+    end
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     

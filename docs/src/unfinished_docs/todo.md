@@ -1,7 +1,7 @@
 # Todo list
 ## High priority
 
-- [ ] add higher order variance decomposition
+- [x] add higher order variance decomposition
 - [ ] make package work with semi structural expectations models
 - [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
 - [ ] implement NestedSampling with NormalisingFlows in Julia
@@ -65,7 +65,7 @@
 - [ ] do proper testing of ss solver with random set of params, equal across configs
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
-- [ ] implement higher order (pruned) variance decomposition
+- [x] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
@@ -364,5 +364,5 @@ The following tasks were extracted from comments in the code base. Each item ref
 - [ ] `src/filter/find_shocks.jl`: add `ForwardDiff` support for `find_shocks`
 - [ ] `src/get_functions.jl`: verify derivatives against finite differences
 - [ ] `src/get_functions.jl` (`get_conditional_variance_decomposition`): extend to higher order solutions
-- [ ] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions
+- [x] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions
 - [ ] `src/get_functions.jl` (`get_loglikelihood`): error when bounds are violated to catch wrong parameter ordering

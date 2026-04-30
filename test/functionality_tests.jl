@@ -2037,6 +2037,18 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 fevd(m)
             end
 
+            if algorithm == :pruned_second_order || algorithm == :pruned_third_order
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_higher = get_variance_decomposition(m, algorithm = algorithm)
+
+                nE = length(m.constants.post_model_macro.exo)
+
+                @test size(var_decomp_higher, 2) == nE + 1
+                @test axiskeys(var_decomp_higher, 2)[end] == :Cross_shock_interaction
+                @test all(isapprox.(sum(collect(var_decomp_higher), dims = 2), 1, atol = 1e-6))
+            end
+
             
             
             for parameters in params
