@@ -2446,6 +2446,8 @@ Return the variance decomposition of endogenous variables with regards to the sh
 
 Per-shock contributions are obtained by projecting the inner shock-cumulant block to a single shock `i` and re-solving the same pruned-state Lyapunov equation. At third order the projection is implemented as a binary mask on the augmented shock vector `ê`, retaining only those components whose exogenous-shock indices are all equal to `i`. Raw shares are returned without clipping; tiny negative entries can occur from numerical noise on near-zero contributions.
 
+Setting `marginal_contribution = true` (only meaningful for the two pruned higher-order algorithms) instead allocates the cross-shock interaction across the individual shocks via marginal contributions (Shapley values). The result is a `nVars × nExo` table without a `:Cross_shock_interaction` column whose rows still sum to one (up to numerical noise; rows whose total variance is below `eps()` are reported as zero). The characteristic function `V(S)` is the same projected coalition variance used for the raw shares (state cumulants are kept at their full-shock values), so this is a marginal-contribution allocation of the projected higher-order variance, not a counterfactual recomputation of model variance under a sub-set of active shocks. Because `V(S)` need not be monotone, individual shares may be negative or exceed one. The number of coalitions to evaluate is ``2^{n_\\varepsilon}`` (subsets of the *shock set*) regardless of approximation order — the order only changes which Lyapunov system is solved for each `V(S)`, not the count of coalitions; a warning is emitted when ``n_\\varepsilon > 10``. At `:first_order` the option is silently ignored (with an `@info` notice) because the first-order decomposition is already additive across shocks.
+
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
@@ -2454,13 +2456,14 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
 - `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm. Supports `:first_order`, `:pruned_second_order`, and `:pruned_third_order`.
+- `marginal_contribution` [Default: `false`, Type: `Bool`]: when `true` and `algorithm` is one of the pruned higher-order solutions, return marginal-contribution (Shapley-allocated) per-shock variance shares instead of raw shares plus a `:Cross_shock_interaction` column. At `:first_order` the option is silently ignored (with an `@info` notice).
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` (from the `AxisKeys` package) with variables in rows and shocks in columns. Under `:pruned_second_order` and `:pruned_third_order` an additional `:Cross_shock_interaction` column is appended.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows and shocks in columns. Under `:pruned_second_order` and `:pruned_third_order` an additional `:Cross_shock_interaction` column is appended unless `marginal_contribution = true`, in which case only the per-shock columns are returned.
 
 # Examples
 ```jldoctest part1
@@ -2502,42 +2505,112 @@ And data, 7×2 Matrix{Float64}:
   (:k)         0.00869568    0.991304
   (:y)         0.000313462   0.999687
   (:z_delta)   1.0           0.0
+```
 
-get_variance_decomposition(RBC_CME, algorithm = :pruned_second_order)
+The higher-order variants are illustrated on the Caldara, Fernández-Villaverde & Yao (2012) model, which has a level shock `ϵᶻ` and a stochastic-volatility shock `ω`:
+
+```jldoctest part2
+using MacroModelling
+
+@model Caldara_et_al_2012 begin
+    V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
+    1 = (1 + ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ) * c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    Rᵏ[0] = ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ
+    SDF⁺¹[0] = c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    1 + Rᶠ[0] = 1 / SDF⁺¹[0]
+    (1 - ν) / ν * c[0] / (1 - l[0]) = (1 - ζ) * exp(z[0]) * k[-1] ^ ζ * l[0] ^ (-ζ)
+    c[0] + i[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    k[0] = i[0] + k[-1] * (1 - δ)
+    z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
+    y[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
+    dy[0] = 100 * (y[0] / y[-1] - 1) + dȳ
+    dc[0] = 100 * (c[0] / c[-1] - 1) + dc̄
+end
+
+@parameters Caldara_et_al_2012 begin
+    dȳ = 2.0
+    dc̄ = 2.0
+    β = 0.991
+    l[ss] = 1/3 | ν
+    ζ = 0.3
+    δ = 0.0196
+    λ = 0.95
+    ψ = 0.5
+    σ̄ = 0.021
+    η = 0.1
+    ρ = 0.9
+end
+
+get_variance_decomposition(Caldara_et_al_2012, algorithm = :pruned_second_order)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Variables ∈ 7-element Vector{Symbol}
+↓   Variables ∈ 13-element Vector{Symbol}
 →   Shocks ∈ 3-element Vector{Symbol}
-And data, 7×3 Matrix{Float64}:
-              (:delta_eps)  (:eps_z)   (:Cross_shock_interaction)
-  (:A)         1.25281e-29   1.0       -1.77636e-14
-  (:Pi)        0.0156729     0.984327   6.2818e-8
-  (:R)         0.0156728     0.984327   6.49478e-8
-  (:c)         0.0134703     0.98653    5.05321e-8
-  (:k)         0.00870033    0.9913     1.0625e-7
-  (:y)         0.000313525   0.999686   1.24335e-9
-  (:z_delta)   1.0           0.0        0.0
+And data, 13×3 Matrix{Float64}:
+            (:ω)  (:ϵᶻ)      (:Cross_shock_interaction)
+  (:Rᵏ)      0.0   0.990522   0.0094784
+  (:Rᶠ)      0.0   0.990522   0.0094784
+  (:SDF⁺¹)   0.0   0.99052    0.00948043
+  (:V)       0.0   0.990504   0.00949593
+  (:c)       0.0   0.990526   0.00947405
+  (:dc)      0.0   0.990504   0.00949552
+  (:dy)      0.0   0.990505   0.00949515
+  (:i)       0.0   0.990592   0.00940813
+  (:k)       0.0   0.990564   0.00943632
+  (:l)       0.0   0.990506   0.0094941
+  (:y)       0.0   0.990554   0.0094464
+  (:z)       0.0   0.9905     0.0095
+  (:σ)       1.0   0.0        0.0
 
-get_variance_decomposition(RBC_CME, algorithm = :pruned_third_order)
+get_variance_decomposition(Caldara_et_al_2012, algorithm = :pruned_second_order, marginal_contribution = true)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Variables ∈ 7-element Vector{Symbol}
-→   Shocks ∈ 3-element Vector{Symbol}
-And data, 7×3 Matrix{Float64}:
-              (:delta_eps)  (:eps_z)   (:Cross_shock_interaction)
-  (:A)         2.53946e-21   1.0        0.0
-  (:Pi)        0.0156663     0.984334   1.44707e-7
-  (:R)         0.015666      0.984334   1.53738e-7
-  (:c)         0.013479      0.986521   1.20429e-7
-  (:k)         0.00871219    0.991288   2.71141e-7
-  (:y)         0.000313643   0.999686  -2.3992e-10
-  (:z_delta)   1.0           0.0        0.0
+↓   Variables ∈ 13-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+And data, 13×2 Matrix{Float64}:
+            (:ω)         (:ϵᶻ)
+  (:Rᵏ)      0.0047392    0.995261
+  (:Rᶠ)      0.0047392    0.995261
+  (:SDF⁺¹)   0.00474022   0.99526
+  (:V)       0.00474796   0.995252
+  (:c)       0.00473702   0.995263
+  (:dc)      0.00474776   0.995252
+  (:dy)      0.00474757   0.995252
+  (:i)       0.00470406   0.995296
+  (:k)       0.00471816   0.995282
+  (:l)       0.00474705   0.995253
+  (:y)       0.0047232    0.995277
+  (:z)       0.00475      0.99525
+  (:σ)       1.0          0.0
+
+get_variance_decomposition(Caldara_et_al_2012, algorithm = :pruned_third_order, marginal_contribution = true)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 13-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+And data, 13×2 Matrix{Float64}:
+            (:ω)         (:ϵᶻ)
+  (:Rᵏ)      0.0093913    0.990609
+  (:Rᶠ)      0.00939245   0.990608
+  (:SDF⁺¹)   0.00939535   0.990605
+  (:V)       0.00933759   0.990662
+  (:c)       0.00928112   0.990719
+  (:dc)      0.00936725   0.990633
+  (:dy)      0.00934246   0.990658
+  (:i)       0.00917571   0.990824
+  (:k)       0.00916176   0.990838
+  (:l)       0.00933518   0.990665
+  (:y)       0.0092273    0.990773
+  (:z)       0.00935325   0.990647
+  (:σ)       1.0          0.0
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
                                     steady_state_function::SteadyStateFunctionType = missing,
                                     algorithm::Symbol = :first_order,
+                                    marginal_contribution::Bool = false,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
@@ -2559,6 +2632,18 @@ function get_variance_decomposition(𝓂::ℳ;
 
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "algorithm must be :first_order, :pruned_second_order, or :pruned_third_order"
 
+    if marginal_contribution && algorithm == :first_order
+        @info "marginal_contribution = true has no effect for algorithm = :first_order. The first-order variance decomposition is already additive across shocks (no cross-shock interaction term to allocate); standard shares are returned."
+        marginal_contribution = false
+    end
+
+    if marginal_contribution
+        nᵉ_pre = 𝓂.constants.post_model_macro.nExo
+        if nᵉ_pre > 10
+            @warn "marginal_contribution = true requires 2^nᵉ Lyapunov solves (nᵉ = $nᵉ_pre ⇒ $(2^nᵉ_pre) solves)."
+        end
+    end
+
     solve!(𝓂, 
             opts = opts, 
             steady_state_function = steady_state_function, 
@@ -2567,6 +2652,38 @@ function get_variance_decomposition(𝓂::ℳ;
             dynamics = algorithm != :first_order)
 
     if algorithm == :pruned_second_order || algorithm == :pruned_third_order
+        if marginal_contribution
+            if algorithm == :pruned_second_order
+                shares_var, total_var, ok = calculate_marginal_contribution_second_order(𝓂.parameter_values, 𝓂; opts = opts)
+                order_label = "second"
+            else
+                shares_var, total_var, ok = calculate_marginal_contribution_third_order(𝓂.parameter_values, 𝓂; opts = opts)
+                order_label = "third"
+            end
+
+            if !ok
+                if !use_workspaces; 𝓂.workspaces = orig_ws; end
+                error("Marginal-contribution (Shapley) $order_label-order variance decomposition failed (Lyapunov did not converge for at least one coalition).")
+            end
+
+            # Normalise by total variance. Rows whose total variance is below
+            # `eps()` are reported as zero shares (attribution is undefined).
+            denom = max.(total_var, eps())
+            var_decomp = shares_var ./ denom
+            zero_rows = total_var .< eps()
+            if any(zero_rows)
+                var_decomp[zero_rows, :] .= zero(eltype(var_decomp))
+            end
+
+            ensure_name_display_constants!(𝓂)
+            axis1 = 𝓂.constants.post_complete_parameters.var_axis
+            axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
+
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+            return KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
+        end
+
         if algorithm == :pruned_second_order
             per_shock_var, total_var, ok = calculate_per_shock_variance_second_order(𝓂.parameter_values, 𝓂; opts = opts)
             order_label = "second"

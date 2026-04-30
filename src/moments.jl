@@ -1028,6 +1028,466 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
 end
 
 
+# Coalition-mask builders for the augmented shock vector ê used in pruned
+# higher-order moment recursions. A component k is retained for coalition R iff
+# every exogenous-shock index that k carries lies in R. Singleton R = {i}
+# reproduces the per-shock mask used by `calculate_per_shock_variance_*_order`.
+function build_coalition_mask_second_order(coalition, nᵉ::Int, nˢ::Int)
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
+    block_offsets = cumsum(collect((0, block_sizes[1], block_sizes[2])))
+    N = sum(block_sizes)
+    R_set = Set(coalition)
+    m = falses(N)
+    for j in R_set
+        m[block_offsets[1] + j] = true
+    end
+    for j in R_set, k in R_set
+        m[block_offsets[2] + (j - 1) * nᵉ + k] = true
+    end
+    for a in 1:nˢ, j in R_set
+        m[block_offsets[3] + (a - 1) * nᵉ + j] = true
+    end
+    return m
+end
+
+function build_coalition_mask_third_order(coalition, nᵉ::Int, nˢ::Int)
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
+    block_offsets = cumsum(collect((0, block_sizes[1:end-1]...,)))
+    N = sum(block_sizes)
+    R_set = Set(coalition)
+    m = falses(N)
+    for j in R_set
+        m[block_offsets[1] + j] = true
+    end
+    for j in R_set, k in R_set
+        m[block_offsets[2] + (j - 1) * nᵉ + k] = true
+    end
+    for a in 1:nˢ, j in R_set
+        m[block_offsets[3] + (a - 1) * nᵉ + j] = true
+    end
+    for a in 1:nˢ, j in R_set
+        m[block_offsets[4] + (a - 1) * nᵉ + j] = true
+    end
+    for p in 1:nˢ^2, j in R_set
+        m[block_offsets[5] + (p - 1) * nᵉ + j] = true
+    end
+    for a in 1:nˢ, j in R_set, k in R_set
+        m[block_offsets[6] + (a - 1) * nᵉ^2 + (j - 1) * nᵉ + k] = true
+    end
+    for j in R_set, k in R_set, l in R_set
+        m[block_offsets[7] + (j - 1) * nᵉ^2 + (k - 1) * nᵉ + l] = true
+    end
+    return m
+end
+
+# Enumerate every subset of {1, …, n} as a vector of Int. Subset at index
+# `bits + 1` consists of {j : bit (j-1) of `bits` is set}.
+function enumerate_subsets(n::Int)
+    coalitions = Vector{Vector{Int}}(undef, 2^n)
+    for bits in 0:(2^n - 1)
+        S = Int[]
+        for j in 1:n
+            if (bits >> (j - 1)) & 1 == 1
+                push!(S, j)
+            end
+        end
+        coalitions[bits + 1] = S
+    end
+    return coalitions
+end
+
+# Aggregate coalition variances into Shapley shares.
+# `coal_vars[v, bits + 1]` must hold V_v(S) for the subset encoded by `bits`,
+# with V(∅) = 0 at index 1 and V(N) = total at index 2^n. The Shapley weight
+# for a marginal contribution at coalition size s is `1 / (n * binomial(n-1, s))`,
+# which is numerically stable and avoids factorial overflow.
+function aggregate_marginal_contribution_shares(coal_vars::Matrix{R}, n::Int) where R <: Real
+    nVars = size(coal_vars, 1)
+    weights = [R(1) / R(n * binomial(n - 1, s)) for s in 0:(n - 1)]
+    shapley = zeros(R, nVars, n)
+    total_subsets = 2^n
+    for i in 1:n
+        bit_i = 1 << (i - 1)
+        for bits in 0:(total_subsets - 1)
+            if bits & bit_i != 0
+                continue
+            end
+            s = count_ones(bits)
+            w = weights[s + 1]
+            with_i = bits | bit_i
+            for v in 1:nVars
+                shapley[v, i] += w * (coal_vars[v, with_i + 1] - coal_vars[v, bits + 1])
+            end
+        end
+    end
+    return shapley
+end
+
+
+"""
+$(SIGNATURES)
+Allocate the pruned second-order variance to individual shocks via Shapley
+values. Returns `(shapley_var::Matrix{R}, total_var::Vector{R}, ok::Bool)`
+where `shapley_var[v, i]` is the Shapley contribution of shock `i` to the
+variance of variable `v` and `sum(shapley_var, dims = 2) ≈ total_var`.
+
+The characteristic function `V(S)` is obtained by masking the augmented-shock
+cumulant block `Γ` to retain only components whose every shock index lies in
+`S`, then re-solving the same pruned-state Lyapunov equation. State cumulants
+are kept at their full-shock values, consistent with
+`calculate_per_shock_variance_second_order`. `V(∅) = 0` and `V(N) = total`
+are taken as exact, so only `2^nᵉ - 2` extra Lyapunov solves are required.
+"""
+function calculate_marginal_contribution_second_order(parameters::Vector{R},
+                                                       𝓂::ℳ;
+                                                       opts::CalculationOptions = merge_calculation_options()
+                                                       )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    moms = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd = moms
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    nᵉ = 𝓂.constants.post_model_macro.nExo
+
+    if !slvd
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    total_var = ℒ.diag(Σʸ₂)
+
+    if nᵉ == 1
+        # Trivial case: single shock owns the entire variance.
+        return reshape(copy(total_var), nVars, 1), total_var, true
+    end
+
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    nˢ = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+    D₂ˢ = sub_idx.D₂ˢ
+    L₂ˢ = sub_idx.L₂ˢ
+    n₂ˢ = size(D₂ˢ, 2)
+
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+
+    kron_e_e = so.kron_e_e
+    kron_s_e = so.kron_s_e
+
+    e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+    e_e_to_y₂ = 𝐒₂[:, kron_e_e]
+    s_e_to_y₂ = 𝐒₂[:, kron_s_e]
+    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+    I_plus_s_s = so.I_plus_s_s
+    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+    s_to_s₁_by_e_to_s₁ = ℒ.kron(𝐒₁[iˢ, 1:nˢ], e_to_s₁)
+
+    ê_to_ŝ₂ = [ e_to_s₁          spzeros(R, nˢ, nᵉ^2 + nᵉ * nˢ)
+                spzeros(R, nˢ, nᵉ)   e_e_to_s₂ / 2       s_e_to_s₂
+                spzeros(R, n₂ˢ, nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁]
+
+    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+    n_ŝ₂ = size(ŝ_to_ŝ₂, 1)
+    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, n_ŝ₂, :second_order)
+
+    # Build the full Γ₂ once (block-diagonal of the three cumulant pieces).
+    Γ_full = sparse([ ℒ.I(nᵉ)                spzeros(R, nᵉ, nᵉ^2)         spzeros(R, nᵉ, nˢ * nᵉ)
+                      spzeros(R, nᵉ^2, nᵉ)   so.e4_minus_vecIₑ_outer      spzeros(R, nᵉ^2, nˢ * nᵉ)
+                      spzeros(R, nˢ * nᵉ, nᵉ)   spzeros(R, nˢ * nᵉ, nᵉ^2)   ℒ.kron(Σᶻ₁, ℒ.I(nᵉ)) ])
+    Γ_full_dense = Matrix(Γ_full)
+
+    coalitions = enumerate_subsets(nᵉ)
+    n_coal = length(coalitions)
+    coal_vars = zeros(R, nVars, n_coal)
+    all_ok = true
+
+    # V(∅) = 0 (already initialised). V(N) = total_var (set directly).
+    coal_vars[:, n_coal] .= total_var
+
+    ê_to_ŝ₂_dense = Matrix(ê_to_ŝ₂)
+    ê_to_y₂_dense = Matrix(ê_to_y₂)
+
+    for idx in 2:(n_coal - 1)
+        S = coalitions[idx]
+        m = build_coalition_mask_second_order(S, nᵉ, nˢ)
+        midx = findall(m)
+
+        E_aug = ê_to_ŝ₂_dense[:, midx]
+        Γ_sub = Γ_full_dense[midx, midx]
+        Cᴿ = E_aug * Γ_sub * E_aug'
+
+        Σᶻᴿ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Matrix(Cᴿ), lyap_ws,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.second_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+
+        if !info
+            all_ok = false
+            coal_vars[:, idx] .= R(NaN)
+            continue
+        end
+
+        E_y = ê_to_y₂_dense[:, midx]
+        Σʸᴿ = ŝ_to_y₂ * Σᶻᴿ * ŝ_to_y₂' + E_y * Γ_sub * E_y'
+        coal_vars[:, idx] = ℒ.diag(Σʸᴿ)
+    end
+
+    if !all_ok
+        return fill(R(NaN), nVars, nᵉ), total_var, false
+    end
+
+    return aggregate_marginal_contribution_shares(coal_vars, nᵉ), total_var, true
+end
+
+
+"""
+$(SIGNATURES)
+Allocate the pruned third-order variance to individual shocks via Shapley
+values. See `calculate_marginal_contribution_second_order` for the
+characteristic-function definition; here `Eᴸᶻ` is masked together with `Γ₃`
+on the row dimension while its state-side columns and all state cumulants
+remain at their full-shock values.
+"""
+function calculate_marginal_contribution_third_order(parameters::Vector{R},
+                                                      𝓂::ℳ;
+                                                      opts::CalculationOptions = merge_calculation_options()
+                                                      )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    Σʸ₃_total, _μʸ₂, _SS_and_pars, slvd_total = calculate_third_order_moments(parameters, :full_covar, 𝓂; opts = opts)
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    nᵉ = 𝓂.constants.post_model_macro.nExo
+
+    if !slvd_total
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+    end
+
+    total_var = ℒ.diag(Σʸ₃_total)
+
+    if nᵉ == 1
+        return reshape(copy(total_var), nVars, 1), total_var, true
+    end
+
+    second = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
+    Σʸ₂, Σᶻ₂_compressed, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd2 = second
+
+    if !slvd2
+        return fill(R(NaN), nVars, nᵉ), total_var, false
+    end
+
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+
+    ensure_moments_constants!(𝓂.constants)
+    so = 𝓂.constants.second_order
+    to = 𝓂.constants.third_order
+
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
+                                                𝓂.constants,
+                                                𝓂.workspaces,
+                                                𝓂.caches;
+                                                initial_guess = 𝓂.caches.third_order_solution,
+                                                opts = opts, parameter_values = parameters)
+
+    if !solved3
+        return fill(R(NaN), nVars, nᵉ), total_var, false
+    end
+
+    𝐒₃ = sparse(𝐒₃ * 𝓂.constants.third_order.𝐔₃)
+
+    nˢ = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+    iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+
+    sub_idx = ensure_moments_substate_indices!(𝓂, nˢ)
+    D₂ˢ = sub_idx.D₂ˢ
+    L₂ˢ = sub_idx.L₂ˢ
+    D₃ˢ = sub_idx.D₃ˢ
+    L₃ˢ = sub_idx.L₃ˢ
+    I_plus_s_s = sub_idx.I_plus_s_s
+    e_es = sub_idx.e_es
+    e_ss = sub_idx.e_ss
+    ss_s = sub_idx.ss_s
+    s_s = sub_idx.s_s
+    n₂ˢ = size(D₂ˢ, 2)
+    n₃ˢ = size(D₃ˢ, 2)
+
+    E₂_exp = [sparse(ℒ.I, 2*nˢ, 2*nˢ)  spzeros(2*nˢ, n₂ˢ)
+              spzeros(nˢ^2, 2*nˢ)        D₂ˢ]
+    Σᶻ₂ = E₂_exp * Σᶻ₂_compressed * E₂_exp'
+
+    kron_e_e = so.kron_e_e
+    kron_v_v = so.kron_v_v
+    kron_e_v = to.kron_e_v
+    e_in_s⁺ = so.e_in_s⁺
+    v_in_s⁺ = so.v_in_s⁺
+
+    vec_Iₑ = so.vec_Iₑ
+    e4_nᵉ²_nᵉ² = so.e4_nᵉ²_nᵉ²
+    e4_nᵉ_nᵉ³ = so.e4_nᵉ_nᵉ³
+    e4_minus_vecIₑ_outer = so.e4_minus_vecIₑ_outer
+    e6_nᵉ³_nᵉ³ = to.e6_nᵉ³_nᵉ³
+
+    obs_in_y = collect(1:nVars)
+    dependencies_in_states_idx = collect(1:nˢ)
+
+    Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σ̂ᶻ₂ = Σᶻ₂
+    Δ̂μˢ₂ = Δμˢ₂
+
+    s_in_s⁺ = BitVector(vcat(trues(nˢ), zeros(Bool, nᵉ + 1)))
+
+    s_to_y₁ = 𝐒₁[obs_in_y, dependencies_in_states_idx]
+    e_to_y₁ = 𝐒₁[obs_in_y, (nˢ + 1):end]
+    s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+    dep_kron = ensure_moments_dependency_kron_indices!(𝓂, 𝓂.constants.post_model_macro.past_not_future_and_mixed, s_in_s⁺)
+    kron_s_s = dep_kron.kron_s_s
+    kron_s_e = dep_kron.kron_s_e
+    kron_s_v = dep_kron.kron_s_v
+
+    s_s_to_y₂ = 𝐒₂[obs_in_y, kron_s_s]
+    e_e_to_y₂ = 𝐒₂[obs_in_y, kron_e_e]
+    s_e_to_y₂ = 𝐒₂[obs_in_y, kron_s_e]
+
+    s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+    v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+    s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+    s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+    s_to_s₁_by_s_to_s₁_c = L₂ˢ * s_to_s₁_by_s_to_s₁ * D₂ˢ
+
+    s_s_s_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_y₃ = 𝐒₃[obs_in_y, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    N_upper = 2 * nˢ + n₂ˢ
+    N_lower = nˢ + nˢ^2 + n₃ˢ
+
+    A_UU = [s_to_s₁                spzeros(nˢ, nˢ + n₂ˢ)
+            spzeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2 * D₂ˢ
+            spzeros(n₂ˢ, 2 * nˢ)               s_to_s₁_by_s_to_s₁_c]
+
+    A_LU = [s_v_v_to_s₃ / 2                    spzeros(nˢ, nˢ + n₂ˢ)
+            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    spzeros(nˢ^2, nˢ + n₂ˢ)
+            spzeros(n₃ˢ, 2 * nˢ + n₂ˢ)]
+
+    A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
+            spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
+            spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+
+    ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
+
+    ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                        spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+    ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
+
+    ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+    μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec(
+                                (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
+                                s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
+                                s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
+                                s_v_v_to_s₃ * Σ̂ᶻ₁ / 2) * s_to_s₁' +
+                                (s_e_to_s₂  * ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ)) +
+                                e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
+                                s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                ), nˢ, nˢ)
+
+    Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
+            spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δ̂μˢ₂ * Δ̂μˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
+            ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σ̂ᶻ₁), e4_nᵉ_nᵉ³)
+            spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)    spzeros(nˢ*nᵉ^2,nᵉ^3)
+            e4_nᵉ_nᵉ³'  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', e4_nᵉ_nᵉ³')     ℒ.kron(vec(Σ̂ᶻ₁)', e4_nᵉ_nᵉ³')  spzeros(nᵉ^3, nˢ*nᵉ^2)     e6_nᵉ³_nᵉ³]
+
+    Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)
+            ℒ.kron(Σ̂ᶻ₁,vec_Iₑ)   spzeros(nˢ*nᵉ^2, nˢ + n₂ˢ)  ℒ.kron(μˢ₃δμˢ₁',vec_Iₑ)    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec_Iₑ)  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3) * L₃ˢ', vec_Iₑ)
+            spzeros(nᵉ^3, 3*nˢ + n₂ˢ + nˢ^2 + n₃ˢ)]
+
+    droptol!(A_UU, eps())
+    droptol!(A_LU, eps())
+    droptol!(A_LL, eps())
+    droptol!(ê_to_ŝ₃, eps())
+    droptol!(Eᴸᶻ, eps())
+    droptol!(Γ₃, eps())
+
+    n_ŝ₃ = size(ŝ_to_ŝ₃, 1)
+    lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, n_ŝ₃, :third_order)
+
+    Γ₃_dense = Matrix(Γ₃)
+    Eᴸᶻ_dense = Matrix(Eᴸᶻ)
+    ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
+    ê_to_y₃_dense = Matrix(ê_to_y₃)
+
+    coalitions = enumerate_subsets(nᵉ)
+    n_coal = length(coalitions)
+    coal_vars = zeros(R, nVars, n_coal)
+    all_ok = true
+    coal_vars[:, n_coal] .= total_var
+
+    for idx in 2:(n_coal - 1)
+        S = coalitions[idx]
+        m = build_coalition_mask_third_order(S, nᵉ, nˢ)
+        midx = findall(m)
+
+        E_aug = ê_to_ŝ₃_dense[:, midx]
+        Γ_sub = Γ₃_dense[midx, midx]
+        EL_sub = Eᴸᶻ_dense[midx, :]
+
+        Aᴿ = E_aug * EL_sub * ŝ_to_ŝ₃'
+        Cᴿ = E_aug * Γ_sub * E_aug' + Aᴿ + Aᴿ'
+
+        Σᶻᴿ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Matrix(Cᴿ), lyap_ws_3rd,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.third_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+
+        if !info
+            all_ok = false
+            coal_vars[:, idx] .= R(NaN)
+            continue
+        end
+
+        E_y = ê_to_y₃_dense[:, midx]
+        Σʸᴿ = ŝ_to_y₃ * Σᶻᴿ * ŝ_to_y₃' + E_y * Γ_sub * E_y' + E_y * EL_sub * ŝ_to_y₃' + ŝ_to_y₃ * EL_sub' * E_y'
+        coal_vars[:, idx] = ℒ.diag(Σʸᴿ)
+    end
+
+    if !all_ok
+        return fill(R(NaN), nVars, nᵉ), total_var, false
+    end
+
+    return aggregate_marginal_contribution_shares(coal_vars, nᵉ), total_var, true
+end
+
+
 # Block-triangular Lyapunov solver for third-order pruned state covariance.
 # Solves the block-triangular Lyapunov equation for the third-order pruned state covariance.
 # Accepts pre-sliced sub-blocks of the transition matrix [A_UU 0; A_LU A_LL]

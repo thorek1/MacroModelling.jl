@@ -2047,6 +2047,34 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test size(var_decomp_higher, 2) == nE + 1
                 @test axiskeys(var_decomp_higher, 2)[end] == :Cross_shock_interaction
                 @test all(isapprox.(sum(collect(var_decomp_higher), dims = 2), 1, atol = 1e-6))
+
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_mc = get_variance_decomposition(m, algorithm = algorithm, marginal_contribution = true)
+
+                @test size(var_decomp_mc, 2) == nE
+                @test :Cross_shock_interaction ∉ axiskeys(var_decomp_mc, 2)
+                # Rows whose total variance is non-trivial must satisfy Shapley
+                # efficiency (per-shock shares sum to one). Rows with negligible
+                # variance are reported as exact zeros.
+                row_sums_mc = vec(sum(collect(var_decomp_mc), dims = 2))
+                row_sums_raw = vec(sum(collect(var_decomp_higher), dims = 2))
+                for v in eachindex(row_sums_mc)
+                    if isapprox(row_sums_raw[v], 1, atol = 1e-6)
+                        @test isapprox(row_sums_mc[v], 1, atol = 1e-6)
+                    else
+                        @test isapprox(row_sums_mc[v], 0, atol = 1e-10)
+                    end
+                end
+
+                # First-order with marginal_contribution = true is silently
+                # ignored (with an @info notice) and returns the standard
+                # first-order shares (additive across shocks, no interaction
+                # column).
+                vd_first_default = get_variance_decomposition(m)
+                vd_first_mc      = get_variance_decomposition(m, marginal_contribution = true)
+                @test axiskeys(vd_first_mc, 2) == axiskeys(vd_first_default, 2)
+                @test isapprox(collect(vd_first_mc), collect(vd_first_default), rtol = 1e-10)
             end
 
             

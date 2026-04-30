@@ -66,6 +66,7 @@
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
 - [x] implement higher order (pruned) variance decomposition
+- [x] add `marginal_contribution` (Shapley) option to `get_variance_decomposition` for pruned higher-order solutions
 - [ ] try slicesampler instead of pigeons
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
