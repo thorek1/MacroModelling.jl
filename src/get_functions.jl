@@ -3555,6 +3555,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. For grouped covariance computation, pass a `Vector` of `Vector`s (e.g. `[[:y, :c], [:k, :i]]`) to compute covariances only within each group, returning a single covariance matrix where cross-group covariances are set to zero. This allows more granular control over which covariances to compute. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all variables less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all variables less those related to occasionally binding constraints. `:all` will contain all variables.
+- `correlation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the correlation matrix of selected variables. Inputs follow the same format as `covariance`, including grouped input (e.g. `[[:y, :c], [:k, :i]]`) which restricts the returned matrix to within-group correlations and sets cross-group entries to zero. Variables with non-positive variance produce `NaN` entries (left unchanged). `:all_excluding_auxiliary_and_obc` contains all variables less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all variables less those related to occasionally binding constraints. `:all` will contain all variables.
 - `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
 - $STEADY_STATE_FUNCTION®
@@ -3608,6 +3609,7 @@ function get_statistics(𝓂::ℳ,
                         standard_deviation::Union{Symbol_input,String_input} = Symbol[],
                         variance::Union{Symbol_input,String_input} = Symbol[],
                         covariance::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
+                        correlation::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
                         autocorrelation::Union{Symbol_input,String_input} = Symbol[],
                         autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -3631,9 +3633,9 @@ function get_statistics(𝓂::ℳ,
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
     
-    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
-    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
     SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
 
@@ -3648,6 +3650,10 @@ function get_statistics(𝓂::ℳ,
     # Parse covariance groups if input is grouped format
     covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
 
+    corr_var_idx = parse_variables_input_to_index(correlation, 𝓂)
+
+    corr_groups = is_grouped_covariance_input(correlation) ? parse_covariance_groups(correlation, 𝓂.constants) : nothing
+
     autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
 
 
@@ -3659,7 +3665,7 @@ function get_statistics(𝓂::ℳ,
 
     solved = true
 
-    if algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+    if algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[]))
         algorithm = :pruned_second_order
     end
 
@@ -3668,7 +3674,7 @@ function get_statistics(𝓂::ℳ,
            steady_state_function = steady_state_function,
            opts = opts)
 
-    if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+    if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (correlation == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
         SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
@@ -3684,19 +3690,19 @@ function get_statistics(𝓂::ℳ,
     if algorithm == :pruned_third_order
 
         if !(autocorrelation == Symbol[])
-            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, corr_var_idx)
 
-            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.constants.post_model_macro.var[second_mom_third_order], 𝓂, covariance = 𝓂.constants.post_model_macro.var[covar_var_idx], opts = opts, autocorrelation_periods = autocorrelation_periods)
+            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.constants.post_model_macro.var[second_mom_third_order], 𝓂, covariance = 𝓂.constants.post_model_macro.var[union(covar_var_idx, corr_var_idx)], opts = opts, autocorrelation_periods = autocorrelation_periods)
 
-        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx)], 𝓂, covariance = 𝓂.constants.post_model_macro.var[covar_var_idx], opts = opts)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx, corr_var_idx)], 𝓂, covariance = 𝓂.constants.post_model_macro.var[union(covar_var_idx, corr_var_idx)], opts = opts)
 
         end
 
     elseif algorithm == :pruned_second_order
 
-        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[])
             covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(all_parameters, 𝓂, opts = opts)
         else
             state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂, opts = opts)
@@ -3804,6 +3810,34 @@ function get_statistics(𝓂::ℳ,
             # Original behavior for non-grouped input
             # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
             ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
+    end
+    if !(correlation == Symbol[])
+        if solved
+            diag_C = ℒ.diag(covar_dcmp)
+            s_corr = T[d > 0 ? sqrt(d) : convert(T, NaN) for d in diag_C]
+            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+
+            if !isnothing(corr_groups)
+                # Block-grouped correlation: cross-group entries left as zero
+                corr_result = zeros(T, length(corr_var_idx), length(corr_var_idx))
+                for group in corr_groups
+                    for i in group
+                        i_pos = findfirst(==(i), corr_var_idx)
+                        isnothing(i_pos) && continue
+                        for j in group
+                            j_pos = findfirst(==(j), corr_var_idx)
+                            isnothing(j_pos) && continue
+                            corr_result[i_pos, j_pos] = corr_full_mat[i, j]
+                        end
+                    end
+                end
+                ret[:correlation] = corr_result
+            else
+                ret[:correlation] = corr_full_mat[corr_var_idx, corr_var_idx]
+            end
+        else
+            ret[:correlation] = fill(Inf * sum(abs2, parameter_values), isnothing(corr_var_idx) ? 0 : length(corr_var_idx), isnothing(corr_var_idx) ? 0 : length(corr_var_idx))
         end
     end
     if !(autocorrelation == Symbol[]) 
