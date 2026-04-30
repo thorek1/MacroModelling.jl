@@ -189,6 +189,8 @@ include("./algorithms/lyapunov.jl")
 include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
 
+include("polynomial_coalition.jl")
+
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")

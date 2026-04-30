@@ -1,5 +1,151 @@
 @stable default_mode = "disable" begin
 
+# ---------------------------------------------------------------------
+# Polynomial-coefficient marginal-contribution (Shapley) helpers
+# ---------------------------------------------------------------------
+#
+# These helpers replace the historical 2^nᵉ exhaustive coalition
+# propagation. The pruned-state value V(S) is a polynomial of total
+# degree ≤ k in the binary indicator vector `1_S`, so it is fully
+# captured by its `Σ_{j≤k} C(nᵉ, j)` monomial coefficients (rather than
+# its 2^nᵉ coalition values). See `src/polynomial_coalition.jl` for the
+# `MonomialIndex` / `PolyState` primitives.
+#
+# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Shapley
+# attributions and `decomposition[:, nᵉ+1, :]` with the residual
+# `V(∅) + (variables − V(N))`, matching the layout the public API
+# expects when `marginal_contribution = true`.
+
+function _marginal_contribution_pruned_2nd_order!(decomposition::AbstractArray,
+                                                  variables::AbstractMatrix,
+                                                  shocks::AbstractMatrix,
+                                                  initial_state,
+                                                  𝐒,
+                                                  T,
+                                                  nE::Int)
+    nVars = T.nVars
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past = length(past_idx)
+    n_aug = n_past + 1 + nE
+    nT = size(decomposition, 3)
+
+    idx = MonomialIndex(nE, 2)
+
+    poly_state₁     = PolyState(nVars, idx)
+    poly_state₂     = PolyState(nVars, idx)
+    new_poly_state₁ = PolyState(nVars, idx)
+    new_poly_state₂ = PolyState(nVars, idx)
+
+    aug₁_buf       = PolyState(n_aug,     idx)
+    aug₂_buf       = PolyState(n_aug,     idx)
+    kron_aug₁_buf  = PolyState(n_aug^2,   idx)
+    coal_path_poly = PolyState(nVars,     idx)
+
+    poly_constant!(poly_state₁, initial_state[1])
+    poly_constant!(poly_state₂, initial_state[2])
+
+    sck = zeros(nE)
+
+    for t in 1:nT
+        @views sck .= shocks[:, t]
+
+        poly_aug₁!(aug₁_buf, poly_state₁, past_idx, true,  sck)
+        poly_aug₁!(aug₂_buf, poly_state₂, past_idx, false, zero(sck))
+        poly_kron!(kron_aug₁_buf, aug₁_buf, aug₁_buf; truncate_to = 2)
+
+        poly_apply!(new_poly_state₁, 𝐒[1], aug₁_buf)
+        poly_apply!(new_poly_state₂, 𝐒[1], aug₂_buf)
+        poly_apply!(new_poly_state₂, 𝐒[2], kron_aug₁_buf; α = 0.5, β = 1.0)
+
+        coal_path_poly.coefs .= new_poly_state₁.coefs .+ new_poly_state₂.coefs
+
+        @views shapley_from_poly!(decomposition[:, 1:nE, t], coal_path_poly)
+        v_empty = poly_value_at_empty(coal_path_poly)
+        v_full  = poly_value_at_full(coal_path_poly)
+        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- v_full)
+
+        poly_state₁, new_poly_state₁ = new_poly_state₁, poly_state₁
+        poly_state₂, new_poly_state₂ = new_poly_state₂, poly_state₂
+    end
+
+    return decomposition
+end
+
+function _marginal_contribution_pruned_3rd_order!(decomposition::AbstractArray,
+                                                  variables::AbstractMatrix,
+                                                  shocks::AbstractMatrix,
+                                                  initial_state,
+                                                  𝐒,
+                                                  T,
+                                                  nE::Int)
+    nVars = T.nVars
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past = length(past_idx)
+    n_aug = n_past + 1 + nE
+    nT = size(decomposition, 3)
+
+    idx = MonomialIndex(nE, 3)
+
+    poly_state₁     = PolyState(nVars, idx)
+    poly_state₂     = PolyState(nVars, idx)
+    poly_state₃     = PolyState(nVars, idx)
+    new_poly_state₁ = PolyState(nVars, idx)
+    new_poly_state₂ = PolyState(nVars, idx)
+    new_poly_state₃ = PolyState(nVars, idx)
+
+    aug₁_buf       = PolyState(n_aug,     idx)
+    aug₁̂_buf       = PolyState(n_aug,     idx)
+    aug₂_buf       = PolyState(n_aug,     idx)
+    aug₃_buf       = PolyState(n_aug,     idx)
+    kron_aug₁_buf  = PolyState(n_aug^2,   idx)
+    kron_₁̂_₂_buf   = PolyState(n_aug^2,   idx)
+    kron_kron_buf  = PolyState(n_aug^3,   idx)
+    coal_path_poly = PolyState(nVars,     idx)
+
+    poly_constant!(poly_state₁, initial_state[1])
+    poly_constant!(poly_state₂, initial_state[2])
+    poly_constant!(poly_state₃, initial_state[3])
+
+    sck = zeros(nE)
+
+    for t in 1:nT
+        @views sck .= shocks[:, t]
+
+        poly_aug₁!(aug₁_buf, poly_state₁, past_idx, true,  sck)
+        poly_aug₁!(aug₁̂_buf, poly_state₁, past_idx, false, sck)
+        poly_aug₁!(aug₂_buf, poly_state₂, past_idx, false, zero(sck))
+        poly_aug₁!(aug₃_buf, poly_state₃, past_idx, false, zero(sck))
+
+        poly_kron!(kron_aug₁_buf, aug₁_buf, aug₁_buf;  truncate_to = 3)
+        poly_kron!(kron_₁̂_₂_buf,  aug₁̂_buf, aug₂_buf;  truncate_to = 3)
+        poly_kron!(kron_kron_buf, kron_aug₁_buf, aug₁_buf; truncate_to = 3)
+
+        poly_apply!(new_poly_state₁, 𝐒[1], aug₁_buf)
+
+        poly_apply!(new_poly_state₂, 𝐒[1], aug₂_buf)
+        poly_apply!(new_poly_state₂, 𝐒[2], kron_aug₁_buf; α = 0.5, β = 1.0)
+
+        poly_apply!(new_poly_state₃, 𝐒[1], aug₃_buf)
+        poly_apply!(new_poly_state₃, 𝐒[2], kron_₁̂_₂_buf;  α = 1.0,    β = 1.0)
+        poly_apply!(new_poly_state₃, 𝐒[3], kron_kron_buf; α = 1/6,    β = 1.0)
+
+        coal_path_poly.coefs .= new_poly_state₁.coefs .+
+                                new_poly_state₂.coefs .+
+                                new_poly_state₃.coefs
+
+        @views shapley_from_poly!(decomposition[:, 1:nE, t], coal_path_poly)
+        v_empty = poly_value_at_empty(coal_path_poly)
+        v_full  = poly_value_at_full(coal_path_poly)
+        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- v_full)
+
+        poly_state₁, new_poly_state₁ = new_poly_state₁, poly_state₁
+        poly_state₂, new_poly_state₂ = new_poly_state₂, poly_state₂
+        poly_state₃, new_poly_state₃ = new_poly_state₃, poly_state₃
+    end
+
+    return decomposition
+end
+
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
@@ -2091,32 +2237,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        n_coal = 1 << nE
-        coal_states = [deepcopy(initial_state) for _ in 1:n_coal]
-        coal_paths_t = zeros(T.nVars, n_coal)
-
-        for t in 1:size(data_in_deviations, 2)
-            for idx in 0:(n_coal - 1)
-                cs = coal_states[idx + 1]
-                sck = zeros(nE)
-                for j in 1:nE
-                    if (idx >> (j - 1)) & 1 == 1
-                        sck[j] = shocks[j, t]
-                    end
-                end
-
-                aug_state₁ = [cs[1][T.past_not_future_and_mixed_idx]; 1; sck]
-                aug_state₂ = [cs[2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
-
-                new_state = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2]
-                coal_states[idx + 1] = new_state
-                coal_paths_t[:, idx + 1] .= sum(new_state)
-            end
-
-            decomposition[:, 1:nE, t] .= aggregate_marginal_contribution_shares(coal_paths_t, nE)
-            decomposition[:, nE + 1, t] .= coal_paths_t[:, 1] .+ (variables[:, t] .- coal_paths_t[:, end])
-        end
-
+        _marginal_contribution_pruned_2nd_order!(decomposition,
+                                                 variables,
+                                                 shocks,
+                                                 initial_state,
+                                                 𝐒,
+                                                 T,
+                                                 nE)
         return variables, shocks, zeros(0,0), decomposition
     end
 
@@ -2833,38 +2960,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        n_coal = 1 << nE
-        coal_states = [deepcopy(initial_state) for _ in 1:n_coal]
-        coal_paths_t = zeros(T.nVars, n_coal)
-
-        for t in 1:size(data_in_deviations, 2)
-            for idx in 0:(n_coal - 1)
-                cs = coal_states[idx + 1]
-                sck = zeros(nE)
-                for j in 1:nE
-                    if (idx >> (j - 1)) & 1 == 1
-                        sck[j] = shocks[j, t]
-                    end
-                end
-
-                aug_state₁ = [cs[1][T.past_not_future_and_mixed_idx]; 1; sck]
-                aug_state₁̂ = [cs[1][T.past_not_future_and_mixed_idx]; 0; sck]
-                aug_state₂ = [cs[2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
-                aug_state₃ = [cs[3][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
-
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-
-                new_state = [𝐒[1] * aug_state₁,
-                             𝐒[1] * aug_state₂ + 𝐒[2] * kron_aug_state₁ / 2,
-                             𝐒[1] * aug_state₃ + 𝐒[2] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3] * ℒ.kron(kron_aug_state₁, aug_state₁) / 6]
-                coal_states[idx + 1] = new_state
-                coal_paths_t[:, idx + 1] .= sum(new_state)
-            end
-
-            decomposition[:, 1:nE, t] .= aggregate_marginal_contribution_shares(coal_paths_t, nE)
-            decomposition[:, nE + 1, t] .= coal_paths_t[:, 1] .+ (variables[:, t] .- coal_paths_t[:, end])
-        end
-
+        _marginal_contribution_pruned_3rd_order!(decomposition,
+                                                 variables,
+                                                 shocks,
+                                                 initial_state,
+                                                 𝐒,
+                                                 T,
+                                                 nE)
         return variables, shocks, zeros(0,0), decomposition
     end
 
