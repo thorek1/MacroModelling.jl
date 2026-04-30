@@ -66,6 +66,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
+import AxisKeys
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 # Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
@@ -1149,7 +1150,7 @@ end
 
 
 
-function get_and_check_observables(T::post_model_macro, data::KeyedArray{Float64})::Vector{Symbol}
+function get_and_check_observables(T::post_model_macro, data::KeyedArray)::Vector{Symbol}
     @assert size(data,1) <= T.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))

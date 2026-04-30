@@ -77,7 +77,7 @@ And data, 4×2×40 Array{Float64, 3}:
 ```
 """
 function get_shock_decomposition(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -124,9 +124,9 @@ function get_shock_decomposition(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = missing_data_to_nan(data)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -214,7 +214,7 @@ And data, 1×40 Matrix{Float64}:
 ```
 """
 function get_estimated_shocks(𝓂::ℳ,
-                            data::KeyedArray{Float64};
+                            data::KeyedArray;
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -261,9 +261,9 @@ function get_estimated_shocks(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = missing_data_to_nan(data)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -345,7 +345,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variables(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -393,9 +393,9 @@ function get_estimated_variables(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = missing_data_to_nan(data)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -480,7 +480,7 @@ And data, 5×40 Matrix{Float64}:
 ```
 """
 function get_model_estimates(𝓂::ℳ,
-                             data::KeyedArray{Float64};
+                             data::KeyedArray;
                              parameters::ParameterType = nothing,
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -596,7 +596,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
-                                                    data::KeyedArray{Float64};
+                                                    data::KeyedArray;
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
@@ -636,9 +636,9 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = missing_data_to_nan(data)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
@@ -3874,7 +3874,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 ```
 """
 function get_loglikelihood(𝓂::ℳ, 
-                            data::KeyedArray{Float64}, 
+                            data::KeyedArray, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -3956,7 +3956,7 @@ function get_loglikelihood(𝓂::ℳ,
     dt = collect(data(observables))
 
     # prepare data
-    data_in_deviations = dt .- SS_and_pars[obs_indices]
+    data_in_deviations = missing_data_to_nan(dt) .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 

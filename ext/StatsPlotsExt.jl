@@ -730,7 +730,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -842,9 +842,9 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
     x_axis = axiskeys(data,2)
@@ -1361,7 +1361,7 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 ```
 """
 function plot_model_estimates!(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1471,9 +1471,9 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
     x_axis = axiskeys(data,2)

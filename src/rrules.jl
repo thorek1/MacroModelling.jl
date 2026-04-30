@@ -1827,7 +1827,7 @@ end
 
 function rrule(::typeof(get_loglikelihood),
                 𝓂::ℳ,
-                data::KeyedArray{Float64},
+                data::KeyedArray,
                 parameter_values::Vector{S};
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1892,7 +1892,7 @@ function rrule(::typeof(get_loglikelihood),
         collect(data(observables))
     end
 
-    data_in_deviations = dt .- SS_and_pars[obs_indices]
+    data_in_deviations = missing_data_to_nan(dt) .- SS_and_pars[obs_indices]
 
     # ── step 3: calculate_loglikelihood ──
     llh_rrule = rrule(calculate_loglikelihood,
@@ -10615,19 +10615,32 @@ function rrule(::typeof(calculate_loglikelihood),
     Tt = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
-    ū = zeros(size(C,2))
+    ū = zeros(size(C,2))
     P̄ = deepcopy(P)
 
     temp_N_N = similar(P)
     PCtmp = similar(P, size(P, 1), size(C, 1))
     F = similar(P, size(C, 1), size(C, 1))
 
-    u = [similar(ū) for _ in 1:Tt]
+    u = [similar(ū) for _ in 1:Tt]
     P_seq = [copy(P̄) for _ in 1:Tt]
     CP = [zeros(eltype(P), size(C, 1), size(P, 2)) for _ in 1:Tt]
     K = [similar(P, size(P, 1), size(C, 1)) for _ in 1:Tt]
     invF = [similar(F) for _ in 1:Tt]
     v = [zeros(size(data_in_deviations, 1)) for _ in 1:Tt]
+
+    # Missing-value support: per-period observable indices.  When all entries
+    # of data_in_deviations are finite, obs_idx_per_t[t] == 1:n_obs_full and
+    # the m == n_obs_full branch reduces to the original dense fast path
+    # (zero overhead).  When missing values are present, the forward step
+    # computes the reduced (m × m) innovation/F/K/invF on sub-views, then
+    # scatters them back into the full-size buffers with zeros outside the
+    # observed rows/columns.  Because every product in the analytical
+    # pullback that touches a "missing" row of v[t]/invF[t]/K[t]/CP[t] then
+    # sees a zero, the existing pullback math is correct unchanged.
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    n_obs_full = size(C, 1)
+    n_obs_total = 0  # observed scalars contributing to the loglik normaliser
 
     loglik = 0.0
 
@@ -10637,68 +10650,179 @@ function rrule(::typeof(calculate_loglikelihood),
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
-        v[t] .= data_in_deviations[:, t-1] .- z  # v[t] = data - C * u_predict
+        idx = obs_idx_per_t[t-1]
+        m   = length(idx)
 
-        ℒ.mul!(CP[t], C, P̄)  # CP[t] = C * P
-        ℒ.mul!(F, CP[t], C')  # F = CP[t] * C' = C * P * C'
+        # Always zero the full-size storage so missing rows/columns stay zero.
+        fill!(v[t], 0.0)
+        fill!(K[t], 0.0)
+        fill!(CP[t], 0.0)
+        fill!(invF[t], 0.0)
 
-        # Old way (≤v0.1.42): luF = lu(F)
-        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
-                                                                                           kalman_ws.fast_lu_ws_f,
-                                                                                           kalman_ws.fast_lu_dims_f)
+        if m == 0
+            # Pure predict step: no innovation, no Kalman gain.
+            copyto!(P_seq[t], P̄)            # used by pullback at step t+1
+            copyto!(u[t], ū)                 # u[t] = u_predict (no update)
 
-        if !solved_F
-            if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            ℒ.mul!(ū, A, u[t])
+            ℒ.mul!(z, C, ū)
+
+            ℒ.mul!(temp_N_N, P_seq[t], A')
+            ℒ.mul!(P̄, A, temp_N_N)
+            P̄ .+= 𝐁
+            continue
         end
 
-        # Old way (≤v0.1.42): logabsdetF = log(abs(det(luF)))
-        logabsdetF = 0.0
-        signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, eachindex(kalman_ws.fast_lu_ws_f.ipiv))) ? -1.0 : 1.0
-        @inbounds for i in 1:size(F, 1)
-            di = F[i, i]
-            if di == 0
+        if m == n_obs_full
+            # Original dense fast path.
+            v[t] .= data_in_deviations[:, t-1] .- z
+
+            ℒ.mul!(CP[t], C, P̄)
+            ℒ.mul!(F, CP[t], C')
+
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+                                                                                                kalman_ws.fast_lu_ws_f,
+                                                                                                kalman_ws.fast_lu_dims_f)
+
+            if !solved_F
                 if opts.verbose println("KF factorisation failed step $t") end
                 return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
-            logabsdetF += log(abs(di))
-            signF *= sign(di)
+
+            logabsdetF = 0.0
+            signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, eachindex(kalman_ws.fast_lu_ws_f.ipiv))) ? -1.0 : 1.0
+            @inbounds for i in 1:size(F, 1)
+                di = F[i, i]
+                if di == 0
+                    if opts.verbose println("KF factorisation failed step $t") end
+                    return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                logabsdetF += log(abs(di))
+                signF *= sign(di)
+            end
+
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if opts.verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+
+            @inbounds for i in 1:size(invF[t], 1)
+                invF[t][i, i] = 1.0
+            end
+            solve_lu_left!(F, invF[t], kalman_ws.fast_lu_ws_f, luF)
+
+            if t - 1 > presample_periods
+                loglik += logabsdetF + ℒ.dot(v[t], invF[t], v[t])
+                n_obs_total += m
+            end
+
+            ℒ.mul!(PCtmp, P̄, C')
+            copyto!(K[t], PCtmp)
+            solve_lu_right!(F, K[t], kalman_ws.fast_lu_ws_f, luF, kalman_ws.fast_lu_rhs_t_k)
+
+            ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)
+            P_seq[t] .+= P̄
+
+            ℒ.mul!(temp_N_N, P_seq[t], A')
+            ℒ.mul!(P̄, A, temp_N_N)
+            P̄ .+= 𝐁
+
+            ℒ.mul!(u[t], K[t], v[t])
+            u[t] .+= ū
+
+            ℒ.mul!(ū, A, u[t])
+            ℒ.mul!(z, C, ū)
+        else
+            # Partial-missing step: compute reduced m × m quantities on
+            # sub-views, then scatter back into full-size storage.
+            Cv  = view(C, idx, :)                    # m × n_state
+            Fv  = view(F, 1:m, 1:m)                  # m × m
+            CPv = view(CP[t], idx, :)                # m × n_state (target)
+
+            ℒ.mul!(CPv, Cv, P̄)
+            ℒ.mul!(Fv, CPv, Cv')
+
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Fv,
+                                                                                                kalman_ws.fast_lu_ws_f,
+                                                                                                kalman_ws.fast_lu_dims_f)
+
+            if !solved_F
+                if opts.verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+
+            logabsdetF = 0.0
+            signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, 1:m)) ? -1.0 : 1.0
+            @inbounds for i in 1:m
+                di = Fv[i, i]
+                if di == 0
+                    if opts.verbose println("KF factorisation failed step $t") end
+                    return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                logabsdetF += log(abs(di))
+                signF *= sign(di)
+            end
+
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if opts.verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+
+            # Solve invF_m = Fv \ I, then scatter into invF[t][idx, idx].
+            invF_scratch = view(temp_N_N, 1:m, 1:m)
+            fill!(invF_scratch, 0.0)
+            @inbounds for i in 1:m
+                invF_scratch[i, i] = 1.0
+            end
+            solve_lu_left!(Fv, invF_scratch, kalman_ws.fast_lu_ws_f, luF)
+            @inbounds for j in 1:m, i in 1:m
+                invF[t][idx[i], idx[j]] = invF_scratch[i, j]
+            end
+
+            # innovation v_m = data[idx, t-1] - C[idx,:] * u_predict
+            vv = view(v[t], idx)
+            @inbounds for i in 1:m
+                acc = 0.0
+                for k in 1:size(C, 2)
+                    acc += C[idx[i], k] * ū[k]
+                end
+                vv[i] = data_in_deviations[idx[i], t-1] - acc
+            end
+
+            if t - 1 > presample_periods
+                loglik += logabsdetF + ℒ.dot(vv, invF_scratch, vv)
+                n_obs_total += m
+            end
+
+            # K_m = P̄ * C[idx,:]' / Fv  →  scatter into K[t][:, idx]
+            Kv_scratch = view(PCtmp, :, 1:m)
+            ℒ.mul!(Kv_scratch, P̄, Cv')
+            rhs_t_kv = view(kalman_ws.fast_lu_rhs_t_k, 1:m, :)
+            solve_lu_right!(Fv, Kv_scratch, kalman_ws.fast_lu_ws_f, luF, rhs_t_kv)
+            @inbounds for j in 1:m, i in 1:size(K[t], 1)
+                K[t][i, idx[j]] = Kv_scratch[i, j]
+            end
+
+            # P_seq[t] = P̄ - K[t] * CP[t]   (zero outside idx in K and CP).
+            ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)
+            P_seq[t] .+= P̄
+
+            ℒ.mul!(temp_N_N, P_seq[t], A')
+            ℒ.mul!(P̄, A, temp_N_N)
+            P̄ .+= 𝐁
+
+            ℒ.mul!(u[t], K[t], v[t])
+            u[t] .+= ū
+
+            ℒ.mul!(ū, A, u[t])
+            ℒ.mul!(z, C, ū)
         end
-
-        if signF <= 0 || logabsdetF < log(eps(Float64))
-            if opts.verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
-        end
-
-        fill!(invF[t], 0.0)
-        @inbounds for i in 1:size(invF[t], 1)
-            invF[t][i, i] = 1.0
-        end
-        solve_lu_left!(F, invF[t], kalman_ws.fast_lu_ws_f, luF)  # invF[t] = F \ I
-
-        if t - 1 > presample_periods
-            loglik += logabsdetF + ℒ.dot(v[t], invF[t], v[t])  # Old way: loglik += log(det(F)) + v' * inv(F) * v
-        end
-
-        ℒ.mul!(PCtmp, P̄, C')  # PCtmp = P * C'
-        copyto!(K[t], PCtmp)  # K[t] = P * C' (before solving)
-        solve_lu_right!(F, K[t], kalman_ws.fast_lu_ws_f, luF, kalman_ws.fast_lu_rhs_t_k)  # K[t] = P * C' / F
-
-        ℒ.mul!(P_seq[t], K[t], CP[t], -1, 0)  # P_seq[t] = -K[t] * CP[t]
-        P_seq[t] .+= P̄  # P_seq[t] = P - K[t] * C * P
-
-        ℒ.mul!(temp_N_N, P_seq[t], A')  # temp = P_seq[t] * A'
-        ℒ.mul!(P̄, A, temp_N_N)  # P = A * P_seq[t] * A'
-        P̄ .+= 𝐁  # P = A * P_seq[t] * A' + B
-
-        ℒ.mul!(u[t], K[t], v[t])  # u[t] = K[t] * v[t]
-        u[t] .+= ū  # u[t] = K[t] * v[t] + u_predicted
-
-        ℒ.mul!(ū, A, u[t])  # u_predict = A * u[t]
-        ℒ.mul!(z, C, ū)  # z = C * u_predict
     end
 
-    llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+    llh = -(loglik + (has_missing ?
+                        n_obs_total :
+                        ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1))) *
+            log(2 * 3.141592653589793)) / 2
 
     ∂F = zero(F)
     ∂Faccum = zero(F)
