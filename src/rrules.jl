@@ -8896,22 +8896,28 @@ function rrule(::typeof(calculate_loglikelihood),
             # ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
             ℒ.axpy!(1, ∂aug_state₂[1:length(∂state[1])], ∂state[2])
 
-            # shocks² += sum(abs2,x[i])
-            if i < size(data_in_deviations,2)
-                ∂x -= copy(x[i])
-            else
-                ∂x += copy(x[i])
+            # shocks² += sum(abs2,x[i]) — only for i > presample_periods
+            if i > presample_periods
+                if i < size(data_in_deviations,2)
+                    ∂x -= copy(x[i])
+                else
+                    ∂x += copy(x[i])
+                end
             end
 
-            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                            inv(jacc[i])'
-                        else
-                            ℒ.pinv(jacc[i])'
+            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
+            if i > presample_periods
+                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                                inv(jacc[i])'
+                            else
+                                ℒ.pinv(jacc[i])'
+                            end
+                        catch
+                            return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                         end
-                    catch
-                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                    end
+            else
+                ∂jacc = zero(jacc[i])
+            end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             # ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
@@ -9386,22 +9392,28 @@ function rrule(::typeof(calculate_loglikelihood),
             # aug_state[i] = [stt; 1; x[i]]
             ∂x = ∂aug_state[T.nPast_not_future_and_mixed+2:end]
 
-            # shocks² += sum(abs2,x[i])
-            if i < size(data_in_deviations,2)
-                ∂x -= copy(x[i])
-            else
-                ∂x += copy(x[i])
+            # shocks² += sum(abs2,x[i]) — only contributes for i > presample_periods
+            if i > presample_periods
+                if i < size(data_in_deviations,2)
+                    ∂x -= copy(x[i])
+                else
+                    ∂x += copy(x[i])
+                end
             end
 
-            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                            inv(jacc[i])'
-                        else
-                            ℒ.pinv(jacc[i])'
+            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
+            if i > presample_periods
+                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                                inv(jacc[i])'
+                            else
+                                ℒ.pinv(jacc[i])'
+                            end
+                        catch
+                            return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                         end
-                    catch
-                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                    end
+            else
+                ∂jacc = zero(jacc[i])
+            end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             ℒ.mul!(∂kronIx, 𝐒ⁱ²ᵉ', ∂jacc)
@@ -9906,22 +9918,28 @@ function rrule(::typeof(calculate_loglikelihood),
             # aug_state₃[i] = [state₃; 0; zeros(T.nExo)]
             ∂state[3] += ∂aug_state₃[1:length(∂state[1])]
 
-            # shocks² += sum(abs2,x[i])
-            if i < size(data_in_deviations,2)
-                ∂x -= copy(x[i])
-            else
-                ∂x += copy(x[i])
+            # shocks² += sum(abs2,x[i]) — only for i > presample_periods
+            if i > presample_periods
+                if i < size(data_in_deviations,2)
+                    ∂x -= copy(x[i])
+                else
+                    ∂x += copy(x[i])
+                end
             end
 
-            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                            inv(jacc[i])'
-                        else
-                            ℒ.pinv(jacc[i])'
+            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
+            if i > presample_periods
+                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                                inv(jacc[i])'
+                            else
+                                ℒ.pinv(jacc[i])'
+                            end
+                        catch
+                            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                         end
-                    catch
-                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                    end
+            else
+                ∂jacc = zero(jacc[i])
+            end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
@@ -10404,22 +10422,28 @@ function rrule(::typeof(calculate_loglikelihood),
             # aug_state[i] = [stt; 1; x[i]]
             ∂x = ∂aug_state[T.nPast_not_future_and_mixed+2:end]
 
-            # shocks² += sum(abs2,x[i])
-            if i < size(data_in_deviations,2)
-                ∂x -= copy(x[i])
-            else
-                ∂x += copy(x[i])
+            # shocks² += sum(abs2,x[i]) — only for i > presample_periods
+            if i > presample_periods
+                if i < size(data_in_deviations,2)
+                    ∂x -= copy(x[i])
+                else
+                    ∂x += copy(x[i])
+                end
             end
 
-            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                            inv(jacc[i])'
-                        else
-                            ℒ.pinv(jacc[i])'
+            # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
+            if i > presample_periods
+                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                                inv(jacc[i])'
+                            else
+                                ℒ.pinv(jacc[i])'
+                            end
+                        catch
+                            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                         end
-                    catch
-                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                    end
+            else
+                ∂jacc = zero(jacc[i])
+            end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
