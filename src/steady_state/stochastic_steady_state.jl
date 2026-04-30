@@ -1,4 +1,4 @@
-function _prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
+function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
                                                      opts::CalculationOptions = merge_calculation_options(),
                                                      estimation::Bool = false,
@@ -156,7 +156,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
         end
     end
 
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
+    common = prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -213,7 +213,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
         end
     end
 
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
+    common = prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -335,7 +335,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
         end
     end
 
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
+    common = prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok
@@ -429,7 +429,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
         end
     end
 
-    common = _prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
+    common = prepare_stochastic_steady_state_base_terms(parameters, 𝓂, opts = opts, estimation = estimation, caching = caching)
     ok, all_SS, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂_raw, SSSstates, _ = common
 
     if !ok

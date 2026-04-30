@@ -406,7 +406,7 @@ function rrule(::typeof(calculate_third_order_derivatives),
 end
 
 
-function _incremental_cotangent!(Δ, prev_ref::Base.RefValue)
+function incremental_cotangent!(Δ, prev_ref::Base.RefValue)
     if Δ isa Union{NoTangent, AbstractZero}
         return Δ
     end
@@ -718,7 +718,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     return y, pullback
 end
 
-function rrule(::typeof(_prepare_stochastic_steady_state_base_terms),
+function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
                 parameters::Vector{Float64},
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
@@ -942,7 +942,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false)
-    common, common_pullback = rrule(_prepare_stochastic_steady_state_base_terms,
+    common, common_pullback = rrule(prepare_stochastic_steady_state_base_terms,
                                     parameters,
                                     𝓂;
                                     opts = opts,
@@ -1075,7 +1075,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false)
-    common, common_pullback = rrule(_prepare_stochastic_steady_state_base_terms,
+    common, common_pullback = rrule(prepare_stochastic_steady_state_base_terms,
                                     parameters,
                                     𝓂;
                                     opts = opts,
@@ -1170,7 +1170,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false)
-    common, common_pullback = rrule(_prepare_stochastic_steady_state_base_terms,
+    common, common_pullback = rrule(prepare_stochastic_steady_state_base_terms,
                                     parameters,
                                     𝓂;
                                     opts = opts,
@@ -1378,7 +1378,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
                 𝓂::ℳ;
                 opts::CalculationOptions = merge_calculation_options(),
                 estimation::Bool = false)
-    common, common_pullback = rrule(_prepare_stochastic_steady_state_base_terms,
+    common, common_pullback = rrule(prepare_stochastic_steady_state_base_terms,
                                     parameters,
                                     𝓂;
                                     opts = opts,
@@ -2600,7 +2600,7 @@ end
 
 # ── Helper: VJP of kron(A, B) ───────────────────────────────────────────────────
 # Given C = kron(A, B) and cotangent ∂C, returns (∂A, ∂B).
-function _kron_vjp(∂C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
+function kron_vjp_helper(∂C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
     m, n = size(A)
     p, q = size(B)
     S = eltype(∂C)
@@ -2807,8 +2807,8 @@ function rrule(::typeof(calculate_mean),
         ∂s₁ks₁       = ∂ŝ_to_ŝ₂[2nˢ+1:end, 2nˢ+1:end]
 
         # ── Kron VJPs ──
-        ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁, s_to_s₁, s_to_s₁)
-        ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁, e_to_s₁, e_to_s₁)
+        ∂s₁_L, ∂s₁_R = kron_vjp_helper(∂s₁ks₁, s_to_s₁, s_to_s₁)
+        ∂e₁_L, ∂e₁_R = kron_vjp_helper(∂e₁ke₁, e_to_s₁, e_to_s₁)
 
         # Aggregate into 𝐒₁
         ∂𝐒₁_acc[iˢ, 1:nˢ]      .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R
@@ -3023,8 +3023,8 @@ function rrule(::typeof(calculate_second_order_moments),
             ∂s₁ks₁       = ∂ŝ_to_ŝ₂[2nˢ+1:end, 2nˢ+1:end]
 
             # ── Kron VJPs ──
-            ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁, s_to_s₁, s_to_s₁)
-            ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁, e_to_s₁, e_to_s₁)
+            ∂s₁_L, ∂s₁_R = kron_vjp_helper(∂s₁ks₁, s_to_s₁, s_to_s₁)
+            ∂e₁_L, ∂e₁_R = kron_vjp_helper(∂e₁ke₁, e_to_s₁, e_to_s₁)
 
             # Aggregate into 𝐒₁
             ∂𝐒₁_acc[iˢ, 1:nˢ]      .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R
@@ -3319,7 +3319,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
         # Only the bottom-right block kron(Σᶻ₁, Iₑ) depends on parameters
         br_row = nᵉ + nᵉ^2
         ∂Γ₂_br = ∂Γ₂_acc[br_row+1:end, br_row+1:end]
-        ∂Σᶻ₁_from_Γ₂, _ = _kron_vjp(∂Γ₂_br, Σᶻ₁, Iₑ)
+        ∂Σᶻ₁_from_Γ₂, _ = kron_vjp_helper(∂Γ₂_br, Σᶻ₁, Iₑ)
         ∂Σᶻ₁_acc .+= ∂Σᶻ₁_from_Γ₂
 
         # ──── Backprop through μʸ₂ (same as base) ────
@@ -3383,10 +3383,10 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
         ∂s₁ke₁_from_ê = I_plus_s_s' * ∂Ips_s₁ke₁
 
         # ──── Kron VJPs ────
-        ∂s₁_L, ∂s₁_R = _kron_vjp(∂s₁ks₁_from_ŝŝ, s_to_s₁, s_to_s₁)
+        ∂s₁_L, ∂s₁_R = kron_vjp_helper(∂s₁ks₁_from_ŝŝ, s_to_s₁, s_to_s₁)
         ∂e₁ke₁_total = ∂e₁ke₁_from_ŝv .+ ∂e₁ke₁_from_ê
-        ∂e₁_L, ∂e₁_R = _kron_vjp(∂e₁ke₁_total, e_to_s₁, e_to_s₁)
-        ∂s₁_se_L, ∂e₁_se_R = _kron_vjp(∂s₁ke₁_from_ê, s_to_s₁, e_to_s₁)
+        ∂e₁_L, ∂e₁_R = kron_vjp_helper(∂e₁ke₁_total, e_to_s₁, e_to_s₁)
+        ∂s₁_se_L, ∂e₁_se_R = kron_vjp_helper(∂s₁ke₁_from_ê, s_to_s₁, e_to_s₁)
 
         # Aggregate into 𝐒₁
         ∂𝐒₁_acc[iˢ, 1:nˢ]     .+= ∂s₁_from_ŝŝ .+ ∂s₁_L .+ ∂s₁_R .+ ∂s₁_se_L
@@ -4067,50 +4067,50 @@ function rrule(::typeof(calculate_third_order_moments),
             vΣ = vec(d.Σ̂ᶻ₁)
 
             # Row 1: (1,4) kron(Δ̂μˢ₂',Ine)
-            ∂tmp14 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
+            ∂tmp14 = kron_vjp_helper(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
             ∂Δ̂μˢ₂_l .+= vec(∂tmp14')
             # (1,5) kron(vec(Σ̂ᶻ₁)',Ine)
-            ∂tmp15 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
+            ∂tmp15 = kron_vjp_helper(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
             ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp15'), n, n)
             # Row 3: (3,3) kron(Σ̂ᶻ₁,Ine)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
             # Row 4: (4,1) kron(Δ̂μˢ₂,Ine)
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
             # (4,4) kron(Σ̂ᶻ₂_22 + Δ*Δ', Ine)
             M44 = d.Σ̂ᶻ₂[n+1:2n, n+1:2n] + d.Δ̂μˢ₂ * d.Δ̂μˢ₂'
-            ∂M44 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
+            ∂M44 = kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
             ∂Σ̂ᶻ₂[n+1:2n, n+1:2n] .+= ∂M44
             ∂Δ̂μˢ₂_l .+= (∂M44 + ∂M44') * d.Δ̂μˢ₂
             # (4,5) kron(Σ̂ᶻ₂_23 + Δ*vΣ', Ine)
             M45 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
-            ∂M45 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
+            ∂M45 = kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂M45
             ∂Δ̂μˢ₂_l .+= ∂M45 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂M45' * d.Δ̂μˢ₂, n, n)
             # (4,7) kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
             # Row 5: (5,1) kron(vΣ, Ine)
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
             # (5,4) kron(Σ̂ᶻ₂_32 + vΣ*Δ', Ine)
             M54 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
-            ∂M54 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
+            ∂M54 = kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
             ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂M54
             ∂Σ̂ᶻ₁ .+= reshape(∂M54 * d.Δ̂μˢ₂, n, n)
             ∂Δ̂μˢ₂_l .+= ∂M54' * vΣ
             # (5,5) kron(Σ̂ᶻ₂_33 + vΣ*vΣ', Ine)
             M55 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
-            ∂M55 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
+            ∂M55 = kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂M55
             ∂Σ̂ᶻ₁ .+= reshape((∂M55 + ∂M55') * vΣ, n, n)
             # (5,7) kron(vΣ, e4_nᵉ_nᵉ³)
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
             # Row 6: (6,6) kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
             # Row 7: (7,4) kron(Δ̂μˢ₂', e4')
-            ∂tmp74 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂tmp74 = kron_vjp_helper(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
             ∂Δ̂μˢ₂_l .+= vec(∂tmp74')
             # (7,5) kron(vΣ', e4')
-            ∂tmp75 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂tmp75 = kron_vjp_helper(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
             ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp75'), n, n)
 
             # ── 3b: Eᴸᶻ disaggregation ──
@@ -4118,15 +4118,15 @@ function rrule(::typeof(calculate_third_order_moments),
             # Only row block 6 is data-dependent
             ∂EL6 = ∂EL[gb[6]+1:gb[7], :]
             # Col 1: kron(Σ̂ᶻ₁, vec_Ie)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
             # Col 4: kron(μˢ₃δμˢ₁', vec_Ie)
-            ∂μ_T = _kron_vjp(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
+            ∂μ_T = kron_vjp_helper(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
             ∂μˢ₃δμˢ₁ = Matrix(∂μ_T')   # n×n
             # Col 5: kron(C₄, vec_Ie)
             inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
             ss_s_M = Matrix(d.ss_s)
             C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
-            ∂C4 = _kron_vjp(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
+            ∂C4 = kron_vjp_helper(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
             ∂iC4 = reshape(ss_s_M' * vec(∂C4), n, n^2)
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
@@ -4135,7 +4135,7 @@ function rrule(::typeof(calculate_third_order_moments),
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
             C5m_c = C5m * Matrix(d.L₃ˢ)'
-            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5_c = kron_vjp_helper(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
             ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
@@ -4201,11 +4201,11 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iM2
             ∂Σ̂ᶻ₁ .+= reshape((∂iM2 + ∂iM2') * vΣ, n, n)
             # Decompose ∂M3 → ∂Σ̂ᶻ₁
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
             # Decompose ∂M4 → ∂Δ̂μˢ₂
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
             # Decompose ∂M6 → ∂Σ̂ᶻ₁
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
 
             # ── 4: Scatter local cotangents to global accumulators ──
             ∂𝐒₁_acc[d.iˢ, d.dependencies_in_states_idx] .+= ∂s₁_l
@@ -4827,13 +4827,13 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
                     # Col 1: kron(s₁ⁱ * Σ̂ᶻ₁, vec_Ie)
                     A_c1 = s₁ⁱ * Matrix{T}(d.Σ̂ᶻ₁)
-                    ∂A_c1 = _kron_vjp(∂ELⁱ6[:, sb_ac[1]+1:sb_ac[2]], A_c1, vec_Ie_col)[1]
+                    ∂A_c1 = kron_vjp_helper(∂ELⁱ6[:, sb_ac[1]+1:sb_ac[2]], A_c1, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_c1 * Matrix{T}(d.Σ̂ᶻ₁)'
                     ∂Σ̂ᶻ₁_ac .+= s₁ⁱ' * ∂A_c1
 
                     # Col 4: kron(s₁ⁱ * μˢ₃δμˢ₁', vec_Ie)
                     A_c4 = s₁ⁱ * Matrix{T}(d.μˢ₃δμˢ₁')
-                    ∂A_c4 = _kron_vjp(∂ELⁱ6[:, sb_ac[4]+1:sb_ac[5]], A_c4, vec_Ie_col)[1]
+                    ∂A_c4 = kron_vjp_helper(∂ELⁱ6[:, sb_ac[4]+1:sb_ac[5]], A_c4, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_c4 * Matrix{T}(d.μˢ₃δμˢ₁)
                     ∂μˢ₃δμˢ₁_ac .+= ∂A_c4' * s₁ⁱ
 
@@ -4841,7 +4841,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ_ac'
                     C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
                     A_c5 = s₁ⁱ * C4m
-                    ∂A_c5 = _kron_vjp(∂ELⁱ6[:, sb_ac[5]+1:sb_ac[6]], A_c5, vec_Ie_col)[1]
+                    ∂A_c5 = kron_vjp_helper(∂ELⁱ6[:, sb_ac[5]+1:sb_ac[6]], A_c5, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_c5 * C4m'
                     ∂C4_i = s₁ⁱ' * ∂A_c5
                     ∂iC4_i = reshape(ss_s_M' * vec(∂C4_i), n, n^2)
@@ -4854,7 +4854,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     C5m = reshape(Matrix{T}(inner_C5), n, n^3)
                     C5m_c = C5m * Matrix(d.L₃ˢ)'
                     A_c6 = s₁ⁱ * C5m_c
-                    ∂A_c6 = _kron_vjp(∂ELⁱ6[:, sb_ac[6]+1:sb_ac[7]], A_c6, vec_Ie_col)[1]
+                    ∂A_c6 = kron_vjp_helper(∂ELⁱ6[:, sb_ac[6]+1:sb_ac[7]], A_c6, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_c6 * C5m_c'
                     ∂C5m_c_i = s₁ⁱ' * ∂A_c6
                     ∂C5_i = ∂C5m_c_i * Matrix(d.L₃ˢ)
@@ -4885,13 +4885,13 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
                     # Col 1
                     A_pc1 = s₁ⁱ_prev * Matrix{T}(d.Σ̂ᶻ₁)
-                    ∂A_pc1 = _kron_vjp(∂ELprev6[:, sb_ac[1]+1:sb_ac[2]], A_pc1, vec_Ie_col)[1]
+                    ∂A_pc1 = kron_vjp_helper(∂ELprev6[:, sb_ac[1]+1:sb_ac[2]], A_pc1, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_pc1 * Matrix{T}(d.Σ̂ᶻ₁)'
                     ∂Σ̂ᶻ₁_ac .+= s₁ⁱ_prev' * ∂A_pc1
 
                     # Col 4
                     A_pc4 = s₁ⁱ_prev * Matrix{T}(d.μˢ₃δμˢ₁')
-                    ∂A_pc4 = _kron_vjp(∂ELprev6[:, sb_ac[4]+1:sb_ac[5]], A_pc4, vec_Ie_col)[1]
+                    ∂A_pc4 = kron_vjp_helper(∂ELprev6[:, sb_ac[4]+1:sb_ac[5]], A_pc4, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_pc4 * Matrix{T}(d.μˢ₃δμˢ₁)
                     ∂μˢ₃δμˢ₁_ac .+= ∂A_pc4' * s₁ⁱ_prev
 
@@ -4899,7 +4899,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     inner_C4p = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ_ac'
                     C4mp = reshape(ss_s_M * vec(inner_C4p), n, n^2)
                     A_pc5 = s₁ⁱ_prev * C4mp
-                    ∂A_pc5 = _kron_vjp(∂ELprev6[:, sb_ac[5]+1:sb_ac[6]], A_pc5, vec_Ie_col)[1]
+                    ∂A_pc5 = kron_vjp_helper(∂ELprev6[:, sb_ac[5]+1:sb_ac[6]], A_pc5, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_pc5 * C4mp'
                     ∂C4p = s₁ⁱ_prev' * ∂A_pc5
                     ∂iC4p = reshape(ss_s_M' * vec(∂C4p), n, n^2)
@@ -4912,7 +4912,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                     C5mp = reshape(Matrix{T}(inner_C5p), n, n^3)
                     C5mp_c = C5mp * Matrix(d.L₃ˢ)'
                     A_pc6 = s₁ⁱ_prev * C5mp_c
-                    ∂A_pc6 = _kron_vjp(∂ELprev6[:, sb_ac[6]+1:sb_ac[7]], A_pc6, vec_Ie_col)[1]
+                    ∂A_pc6 = kron_vjp_helper(∂ELprev6[:, sb_ac[6]+1:sb_ac[7]], A_pc6, vec_Ie_col)[1]
                     ∂s_to_s₁ⁱ_co .+= ∂A_pc6 * C5mp_c'
                     ∂C5m_c_p = s₁ⁱ_prev' * ∂A_pc6
                     ∂C5p = ∂C5m_c_p * Matrix(d.L₃ˢ)
@@ -5083,14 +5083,14 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂ss₂_l .+= ∂A_UU[bu[2]+1:bu[3], bu[3]+1:bu[4]] * Matrix(d.D₂ˢ)' ./ 2
             # (3,3) L₂ˢ * kron(s₁,s₁) * D₂ˢ — decompress then kron_vjp
             ∂inner33 = Matrix(d.L₂ˢ)' * Matrix(∂A_UU[bu[3]+1:bu[4], bu[3]+1:bu[4]]) * Matrix(d.D₂ˢ)'
-            tmpL, tmpR = _kron_vjp(∂inner33, s₁, s₁)
+            tmpL, tmpR = kron_vjp_helper(∂inner33, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
 
             # ── From ∂A_LU ──
             # (1,1) s_vv₃/2
             ∂S3f_acc[d.iˢ, d.kron_s_v_v] .+= ∂A_LU[bl[1]+1:bl[2], bu[1]+1:bu[2]] ./ 2
             # (2,1) kron(s₁, vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
+            tmpA, tmpB = kron_vjp_helper(Matrix(∂A_LU[bl[2]+1:bl[3], bu[1]+1:bu[2]]), s₁, vvh)
             ∂s₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
 
             # ── From ∂A_LL ──
@@ -5101,17 +5101,17 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # (1,3) sss₃/6 * D₃ˢ — decompress cols
             ∂S3f_acc[d.iˢ, d.kron_s_s_s] .+= ∂A_LL[bl[1]+1:bl[2], bl[3]+1:bl[4]] * Matrix(d.D₃ˢ)' ./ 6
             # (2,2) kron(s₁,s₁)
-            tmpL, tmpR = _kron_vjp(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
+            tmpL, tmpR = kron_vjp_helper(Matrix(∂A_LL[bl[2]+1:bl[3], bl[2]+1:bl[3]]), s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
             # (2,3) kron(s₁, ss₂/2) * D₃ˢ — decompress cols then kron_vjp
             ∂inner56 = Matrix(∂A_LL[bl[2]+1:bl[3], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
-            tmpA, tmpB = _kron_vjp(∂inner56, s₁, ssh)
+            tmpA, tmpB = kron_vjp_helper(∂inner56, s₁, ssh)
             ∂s₁_l .+= tmpA;  ∂ss₂_l .+= tmpB ./ 2
             # (3,3) L₃ˢ * kron(s₁, kron(s₁,s₁)) * D₃ˢ — decompress then kron_vjp
             ∂inner66 = Matrix(d.L₃ˢ)' * Matrix(∂A_LL[bl[3]+1:bl[4], bl[3]+1:bl[4]]) * Matrix(d.D₃ˢ)'
-            tmpA, tmpB = _kron_vjp(∂inner66, s₁, s₁²)
+            tmpA, tmpB = kron_vjp_helper(∂inner66, s₁, s₁²)
             ∂s₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁)
+            tmpL, tmpR = kron_vjp_helper(tmpB, s₁, s₁)
             ∂s₁_l .+= tmpL .+ tmpR
 
             # ── 2b: ê_to_ŝ₃ disaggregation ──
@@ -5124,11 +5124,11 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂ee₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[2]+1:eb[3]] ./ 2
             ∂se₂_l .+= ∂ê₃[sb[2]+1:sb[3], eb[3]+1:eb[4]]
             # Row 3: (3,2) L₂ˢ * kron(e₁,e₁) — decompress rows
-            tmpL, tmpR = _kron_vjp(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
+            tmpL, tmpR = kron_vjp_helper(Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[2]+1:eb[3]]), e₁, e₁)
             ∂e₁_l .+= tmpL .+ tmpR
             # (3,3) L₂ˢ * I_plus_s_s * kron(s₁,e₁) — decompress rows
             ∂k33 = Matrix(d.I_plus_s_s') * Matrix(d.L₂ˢ)' * Matrix(∂ê₃[sb[3]+1:sb[4], eb[3]+1:eb[4]])
-            tmpA, tmpB = _kron_vjp(∂k33, s₁, e₁)
+            tmpA, tmpB = kron_vjp_helper(∂k33, s₁, e₁)
             ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
             # Row 4: direct S₃ slices
             ∂S3f_acc[d.iˢ, d.kron_e_v_v] .+= ∂ê₃[sb[4]+1:sb[5], eb[1]+1:eb[2]] ./ 2
@@ -5137,109 +5137,109 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂S3f_acc[d.iˢ, d.kron_s_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[6]+1:eb[7]] ./ 2
             ∂S3f_acc[d.iˢ, d.kron_e_e_e] .+= ∂ê₃[sb[4]+1:sb[5], eb[7]+1:eb[8]] ./ 6
             # Row 5: (5,1) kron(e₁,vv₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
+            tmpA, tmpB = kron_vjp_helper(Matrix(∂ê₃[sb[5]+1:sb[6], eb[1]+1:eb[2]]), e₁, vvh)
             ∂e₁_l .+= tmpA;  ∂vv₂_l .+= tmpB ./ 2
             # (5,4) s_s * kron(s₁,e₁)
             ∂k54 = Matrix(d.s_s') * Matrix(∂ê₃[sb[5]+1:sb[6], eb[4]+1:eb[5]])
-            tmpA, tmpB = _kron_vjp(∂k54, s₁, e₁)
+            tmpA, tmpB = kron_vjp_helper(∂k54, s₁, e₁)
             ∂s₁_l .+= tmpA;  ∂e₁_l .+= tmpB
             # (5,5) kron(s₁,se₂) + s_s * kron(ss₂/2, e₁)
             ∂b55 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b55, s₁, se₂)
+            tmpA, tmpB = kron_vjp_helper(∂b55, s₁, se₂)
             ∂s₁_l .+= tmpA;  ∂se₂_l .+= tmpB
             ∂k55b = Matrix(d.s_s') * ∂b55
-            tmpA, tmpB = _kron_vjp(∂k55b, ssh, e₁)
+            tmpA, tmpB = kron_vjp_helper(∂k55b, ssh, e₁)
             ∂ss₂_l .+= tmpA ./ 2;  ∂e₁_l .+= tmpB
             # (5,6) kron(s₁,ee₂/2) + s_s * kron(se₂, e₁)
             ∂b56 = Matrix(∂ê₃[sb[5]+1:sb[6], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b56, s₁, eeh)
+            tmpA, tmpB = kron_vjp_helper(∂b56, s₁, eeh)
             ∂s₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
             ∂k56b = Matrix(d.s_s') * ∂b56
-            tmpA, tmpB = _kron_vjp(∂k56b, se₂, e₁)
+            tmpA, tmpB = kron_vjp_helper(∂k56b, se₂, e₁)
             ∂se₂_l .+= tmpA;  ∂e₁_l .+= tmpB
             # (5,7) kron(e₁, ee₂/2)
-            tmpA, tmpB = _kron_vjp(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
+            tmpA, tmpB = kron_vjp_helper(Matrix(∂ê₃[sb[5]+1:sb[6], eb[7]+1:eb[8]]), e₁, eeh)
             ∂e₁_l .+= tmpA;  ∂ee₂_l .+= tmpB ./ 2
             # Row 6: (6,5) L₃ˢ * (kron(s₁²,e₁) + kron(s₁,s_s*s₁e₁) + kron(e₁,s₁²)*e_ss) — decompress rows
             ∂b65 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[5]+1:eb[6]])
-            tmpA, tmpB = _kron_vjp(∂b65, s₁², e₁)
+            tmpA, tmpB = kron_vjp_helper(∂b65, s₁², e₁)
             ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
-            tmpA, tmpB = _kron_vjp(∂b65, s₁, ss_s1e1)
+            tmpL, tmpR = kron_vjp_helper(tmpA, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            tmpA, tmpB = kron_vjp_helper(∂b65, s₁, ss_s1e1)
             ∂s₁_l .+= tmpA
             tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpL, tmpR = kron_vjp_helper(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
             ∂k65c = ∂b65 * Matrix(d.e_ss')
-            tmpA, tmpB = _kron_vjp(∂k65c, e₁, s₁²)
+            tmpA, tmpB = kron_vjp_helper(∂k65c, e₁, s₁²)
             ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            tmpL, tmpR = kron_vjp_helper(tmpB, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
             # (6,6) L₃ˢ * (kron(s₁e₁,e₁) + kron(e₁,s₁e₁)*e_es + kron(e₁,s_s*s₁e₁)*e_es) — decompress rows
             ∂b66 = Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[6]+1:eb[7]])
-            tmpA, tmpB = _kron_vjp(∂b66, s₁e₁, e₁)
+            tmpA, tmpB = kron_vjp_helper(∂b66, s₁e₁, e₁)
             ∂e₁_l .+= tmpB
-            tmpL, tmpR = _kron_vjp(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpL, tmpR = kron_vjp_helper(tmpA, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
             ∂pre = ∂b66 * Matrix(d.e_es')
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, s₁e₁)
+            tmpA, tmpB = kron_vjp_helper(∂pre, e₁, s₁e₁)
             ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
-            tmpA, tmpB = _kron_vjp(∂pre, e₁, ss_s1e1)
+            tmpL, tmpR = kron_vjp_helper(tmpB, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpA, tmpB = kron_vjp_helper(∂pre, e₁, ss_s1e1)
             ∂e₁_l .+= tmpA
             tmpC = Matrix(d.s_s') * tmpB
-            tmpL, tmpR = _kron_vjp(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
+            tmpL, tmpR = kron_vjp_helper(tmpC, s₁, e₁);  ∂s₁_l .+= tmpL;  ∂e₁_l .+= tmpR
             # (6,7) L₃ˢ * kron(e₁, e₁²) — decompress rows
-            tmpA, tmpB = _kron_vjp(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
+            tmpA, tmpB = kron_vjp_helper(Matrix(d.L₃ˢ)' * Matrix(∂ê₃[sb[6]+1:sb[7], eb[7]+1:eb[8]]), e₁, e₁²)
             ∂e₁_l .+= tmpA
-            tmpL, tmpR = _kron_vjp(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
+            tmpL, tmpR = kron_vjp_helper(tmpB, e₁, e₁);  ∂e₁_l .+= tmpL .+ tmpR
 
             # ── 3a: Γ₃ disaggregation → ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂, ∂Δ̂μˢ₂ ──
             ∂Γ = Matrix{T}(∂Γ₃_iter)
             vΣ = vec(d.Σ̂ᶻ₁)
 
             # Row 1: (1,4) kron(Δ̂μˢ₂',Ine)
-            ∂tmp14 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
+            ∂tmp14 = kron_vjp_helper(∂Γ[gb[1]+1:gb[2], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Ine)[1]
             ∂Δ̂μˢ₂_l .+= vec(∂tmp14')
             # (1,5) kron(vec(Σ̂ᶻ₁)',Ine)
-            ∂tmp15 = _kron_vjp(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
+            ∂tmp15 = kron_vjp_helper(∂Γ[gb[1]+1:gb[2], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Ine)[1]
             ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp15'), n, n)
             # Row 3: (3,3) kron(Σ̂ᶻ₁,Ine)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂Γ[gb[3]+1:gb[4], gb[3]+1:gb[4]], Matrix(d.Σ̂ᶻ₁), Ine)[1]
             # Row 4: (4,1) kron(Δ̂μˢ₂,Ine)
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[1]+1:gb[2]], reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
             # (4,4) kron(Σ̂ᶻ₂_22 + Δ*Δ', Ine)
             M44 = d.Σ̂ᶻ₂[n+1:2n, n+1:2n] + d.Δ̂μˢ₂ * d.Δ̂μˢ₂'
-            ∂M44 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
+            ∂M44 = kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[4]+1:gb[5]], Matrix(M44), Ine)[1]
             ∂Σ̂ᶻ₂[n+1:2n, n+1:2n] .+= ∂M44
             ∂Δ̂μˢ₂_l .+= (∂M44 + ∂M44') * d.Δ̂μˢ₂
             # (4,5) kron(Σ̂ᶻ₂_23 + Δ*vΣ', Ine)
             M45 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
-            ∂M45 = _kron_vjp(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
+            ∂M45 = kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[5]+1:gb[6]], Matrix(M45), Ine)[1]
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂M45
             ∂Δ̂μˢ₂_l .+= ∂M45 * vΣ
             ∂Σ̂ᶻ₁ .+= reshape(∂M45' * d.Δ̂μˢ₂, n, n)
             # (4,7) kron(Δ̂μˢ₂, e4_nᵉ_nᵉ³)
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂Γ[gb[4]+1:gb[5], gb[7]+1:gb[8]], reshape(d.Δ̂μˢ₂, :, 1), Matrix(e4_nᵉ_nᵉ³))[1])
             # Row 5: (5,1) kron(vΣ, Ine)
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[1]+1:gb[2]], reshape(vΣ, :, 1), Ine)[1], n, n)
             # (5,4) kron(Σ̂ᶻ₂_32 + vΣ*Δ', Ine)
             M54 = d.Σ̂ᶻ₂[2n+1:end, n+1:2n] + vΣ * d.Δ̂μˢ₂'
-            ∂M54 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
+            ∂M54 = kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[4]+1:gb[5]], Matrix(M54), Ine)[1]
             ∂Σ̂ᶻ₂[2n+1:end, n+1:2n] .+= ∂M54
             ∂Σ̂ᶻ₁ .+= reshape(∂M54 * d.Δ̂μˢ₂, n, n)
             ∂Δ̂μˢ₂_l .+= ∂M54' * vΣ
             # (5,5) kron(Σ̂ᶻ₂_33 + vΣ*vΣ', Ine)
             M55 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
-            ∂M55 = _kron_vjp(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
+            ∂M55 = kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[5]+1:gb[6]], Matrix(M55), Ine)[1]
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂M55
             ∂Σ̂ᶻ₁ .+= reshape((∂M55 + ∂M55') * vΣ, n, n)
             # (5,7) kron(vΣ, e4_nᵉ_nᵉ³)
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂Γ[gb[5]+1:gb[6], gb[7]+1:gb[8]], reshape(vΣ, :, 1), Matrix(e4_nᵉ_nᵉ³))[1], n, n)
             # Row 6: (6,6) kron(Σ̂ᶻ₁, e4_nᵉ²_nᵉ²)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂Γ[gb[6]+1:gb[7], gb[6]+1:gb[7]], Matrix(d.Σ̂ᶻ₁), Matrix(e4_nᵉ²_nᵉ²))[1]
             # Row 7: (7,4) kron(Δ̂μˢ₂', e4')
-            ∂tmp74 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂tmp74 = kron_vjp_helper(∂Γ[gb[7]+1:gb[8], gb[4]+1:gb[5]], reshape(d.Δ̂μˢ₂, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
             ∂Δ̂μˢ₂_l .+= vec(∂tmp74')
             # (7,5) kron(vΣ', e4')
-            ∂tmp75 = _kron_vjp(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
+            ∂tmp75 = kron_vjp_helper(∂Γ[gb[7]+1:gb[8], gb[5]+1:gb[6]], reshape(vΣ, 1, :), Matrix(e4_nᵉ_nᵉ³'))[1]
             ∂Σ̂ᶻ₁ .+= reshape(vec(∂tmp75'), n, n)
 
             # ── 3b: Eᴸᶻ disaggregation ──
@@ -5247,14 +5247,14 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             # Only row block 6 is data-dependent
             ∂EL6 = ∂EL[gb[6]+1:gb[7], :]
             # Col 1: kron(Σ̂ᶻ₁, vec_Ie)
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂EL6[:, sb[1]+1:sb[2]], Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
             # Col 4: kron(μˢ₃δμˢ₁', vec_Ie)
-            ∂μ_T = _kron_vjp(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
+            ∂μ_T = kron_vjp_helper(∂EL6[:, sb[4]+1:sb[5]], Matrix(d.μˢ₃δμˢ₁'), vec_Ie_col)[1]
             ∂μˢ₃δμˢ₁ = ∂μˢ₃δμˢ₁_ac .+ Matrix(∂μ_T')
             # Col 5: kron(C₄, vec_Ie)
             inner_C4 = d.Σ̂ᶻ₂[n+1:2n, 2n+1:end] + d.Δ̂μˢ₂ * vΣ'
             C4m = reshape(ss_s_M * vec(inner_C4), n, n^2)
-            ∂C4 = _kron_vjp(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
+            ∂C4 = kron_vjp_helper(∂EL6[:, sb[5]+1:sb[6]], C4m, vec_Ie_col)[1]
             ∂iC4 = reshape(ss_s_M' * vec(∂C4), n, n^2)
             ∂Σ̂ᶻ₂[n+1:2n, 2n+1:end] .+= ∂iC4
             ∂Δ̂μˢ₂_l .+= ∂iC4 * vΣ
@@ -5263,7 +5263,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             inner_C5 = d.Σ̂ᶻ₂[2n+1:end, 2n+1:end] + vΣ * vΣ'
             C5m = reshape(Matrix(inner_C5), n, n^3)
             C5m_c = C5m * Matrix(d.L₃ˢ)'
-            ∂C5_c = _kron_vjp(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
+            ∂C5_c = kron_vjp_helper(∂EL6[:, sb[6]+1:sb[7]], C5m_c, vec_Ie_col)[1]
             ∂C5 = ∂C5_c * Matrix(d.L₃ˢ)
             ∂iC5 = reshape(∂C5, n^2, n^2)
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iC5
@@ -5274,7 +5274,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             I_m_s₁² = Matrix{T}(ℒ.I(n^2)) - s₁²
             ∂b_μ = I_m_s₁²' \ ∂x_μ
             ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
-            tmpL, tmpR = _kron_vjp(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
+            tmpL, tmpR = kron_vjp_helper(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
 
             ∂RHS = reshape(∂b_μ, n, n)
 
@@ -5325,11 +5325,11 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂Σ̂ᶻ₂[2n+1:end, 2n+1:end] .+= ∂iM2
             ∂Σ̂ᶻ₁ .+= reshape((∂iM2 + ∂iM2') * vΣ, n, n)
             # Decompose ∂M3 → ∂Σ̂ᶻ₁
-            ∂Σ̂ᶻ₁ .+= _kron_vjp(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
+            ∂Σ̂ᶻ₁ .+= kron_vjp_helper(∂M3_raw, Matrix(d.Σ̂ᶻ₁), vec_Ie_col)[1]
             # Decompose ∂M4 → ∂Δ̂μˢ₂
-            ∂Δ̂μˢ₂_l .+= vec(_kron_vjp(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
+            ∂Δ̂μˢ₂_l .+= vec(kron_vjp_helper(∂M4_raw, reshape(d.Δ̂μˢ₂, :, 1), Ine)[1])
             # Decompose ∂M6 → ∂Σ̂ᶻ₁
-            ∂Σ̂ᶻ₁ .+= reshape(_kron_vjp(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
+            ∂Σ̂ᶻ₁ .+= reshape(kron_vjp_helper(∂M6_raw, reshape(vΣ, :, 1), Ine)[1], n, n)
 
             # ── 4: Scatter local cotangents to global accumulators ──
             ∂𝐒₁_acc[d.iˢ, d.dependencies_in_states_idx] .+= ∂s₁_l
@@ -11014,7 +11014,7 @@ function rrule(::typeof(calculate_loglikelihood),
 end
 
 
-function _get_statistics_cotangent(Δret, key::Symbol)
+function get_statistics_cotangent_helper(Δret, key::Symbol)
     Δ = unthunk(Δret)
     if Δ isa Union{NoTangent, AbstractZero}
         return NoTangent()
@@ -11187,7 +11187,7 @@ function rrule(::typeof(get_statistics),
         ret[:non_stochastic_steady_state] = solution_error < opts.tol.nsss.acceptance_tol ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
 
         function nsss_only_pullback(Δret)
-            Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
+            Δnsss = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :non_stochastic_steady_state), prev_Δnsss)
             if Δnsss isa Union{NoTangent, AbstractZero}
                 return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
             end
@@ -11435,13 +11435,13 @@ function rrule(::typeof(get_statistics),
             return NoTangent(), NoTangent(), zeros(T, length(parameter_values))
         end
 
-        Δnsss = _incremental_cotangent!(_get_statistics_cotangent(Δret, :non_stochastic_steady_state), prev_Δnsss)
-        Δmean = _incremental_cotangent!(_get_statistics_cotangent(Δret, :mean), prev_Δmean)
-        Δstd = _incremental_cotangent!(_get_statistics_cotangent(Δret, :standard_deviation), prev_Δstd)
-        Δvar = _incremental_cotangent!(_get_statistics_cotangent(Δret, :variance), prev_Δvar)
-        Δcov = _incremental_cotangent!(_get_statistics_cotangent(Δret, :covariance), prev_Δcov)
-        Δcorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :correlation), prev_Δcorr)
-        Δautocorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :autocorrelation), prev_Δautocorr)
+        Δnsss = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :non_stochastic_steady_state), prev_Δnsss)
+        Δmean = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :mean), prev_Δmean)
+        Δstd = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :standard_deviation), prev_Δstd)
+        Δvar = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :variance), prev_Δvar)
+        Δcov = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :covariance), prev_Δcov)
+        Δcorr = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :correlation), prev_Δcorr)
+        Δautocorr = incremental_cotangent!(get_statistics_cotangent_helper(Δret, :autocorrelation), prev_Δautocorr)
 
         ∂SS_and_pars = zeros(T, length(SS_and_pars))
         ∂state_μ = length(state_μ) == 0 ? zeros(T, 0) : zeros(T, length(state_μ))

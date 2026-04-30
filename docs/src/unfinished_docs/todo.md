@@ -1,6 +1,8 @@
 # Todo list
 ## High priority
 
+- [ ] check dispatch doctor coverage in new functions
+- [ ] dont use variable, parameter, function names starting with _
 - [ ] add higher order variance decomposition
 - [ ] let filters work with relevant subspace of solution only and also allow for missing obs
 - [ ] make package work with semi structural expectations models

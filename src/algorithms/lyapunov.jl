@@ -46,7 +46,7 @@ end
 
 # Approximate symmetry check (allocation-free).  Returns true when
 # max|C[i,j] - C[j,i]| ≤ rtol · max|C[i,j]| over all off-diagonal pairs.
-function _is_approx_symmetric(C::AbstractMatrix;
+function is_approx_symmetric(C::AbstractMatrix;
                               rtol::Real = sqrt(eps(real(eltype(C)))))
     m, n = size(C)
     m == n || return false
@@ -85,7 +85,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
         
-    if lyapunov_algorithm == :bartels_stewart && !_has_bartels_stewart()
+    if lyapunov_algorithm == :bartels_stewart && !has_bartels_stewart()
         error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
     end
 
@@ -169,7 +169,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
         end
     end
 
-    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 && _has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
+    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 && has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
         A = collect(A)
 
         C = collect(C)
@@ -447,7 +447,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     
-    if _is_approx_symmetric(C)
+    if is_approx_symmetric(C)
         # vech-space Krylov: solve for n(n+1)/2 unique elements only
         ensure_lyapunov_krylov_vech_solver!(workspace, :bicgstab)
         tmp̄ = workspace.tmp̄
@@ -521,7 +521,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     
-    if _is_approx_symmetric(C)
+    if is_approx_symmetric(C)
         # vech-space Krylov: solve for n(n+1)/2 unique elements only
         ensure_lyapunov_krylov_vech_solver!(workspace, :gmres)
         tmp̄ = workspace.tmp̄
@@ -595,7 +595,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense Krylov buffer workspace.𝐗.
     
-    if _is_approx_symmetric(C)
+    if is_approx_symmetric(C)
         # vech-space Krylov: solve for n(n+1)/2 unique elements only
         ensure_lyapunov_krylov_vech_solver!(workspace, :dqgmres)
         tmp̄ = workspace.tmp̄
@@ -810,7 +810,7 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
         X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bicgstab), ws_stable; tol = tol)
     end
 
-    if sub_tol > tol.acceptance_tol && _has_bartels_stewart() && length(C_ss) < 5e7
+    if sub_tol > tol.acceptance_tol && has_bartels_stewart() && length(C_ss) < 5e7
         X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bartels_stewart), ws_stable; tol = tol)
     end
 
