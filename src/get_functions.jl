@@ -4,6 +4,8 @@ Return the shock decomposition in absolute deviations from the relevant steady s
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
+Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order`) instead allocates the cross-shock interaction across shocks via marginal contributions (Shapley values): each shock's column then carries its average marginal contribution across all coalitions of the other shocks, and the `Nonlinearities` column is omitted. The cost is `2^nᵉ` pruned-state propagations per period; a warning is emitted when `nᵉ > 10`. For first-order solutions the option has no effect (silent fallback).
+
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
@@ -16,6 +18,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
+- `marginal_contribution` [Default: `false`, Type: `Bool`]: if `true` and the algorithm is `:pruned_second_order` or `:pruned_third_order`, attribute the cross-shock interaction across shocks via marginal contributions (Shapley values) and omit the `Nonlinearities` column.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -85,6 +88,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                marginal_contribution::Bool = false,
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
@@ -105,6 +109,15 @@ function get_shock_decomposition(𝓂::ℳ,
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
+
+    if marginal_contribution && !pruning
+        @info "`marginal_contribution = true` is only meaningful for pruned higher-order solutions (`:pruned_second_order`, `:pruned_third_order`). Setting `marginal_contribution = false` for `algorithm = $(algorithm)`." maxlog = 3
+        marginal_contribution = false
+    end
+
+    if marginal_contribution && 𝓂.constants.post_model_macro.nExo > 10
+        @warn "`marginal_contribution = true` propagates 2^nᵉ pruned states per period. With nᵉ = $(𝓂.constants.post_model_macro.nExo) shocks this may be slow and memory-intensive." maxlog = 3
+    end
 
     solve!(𝓂, 
             parameters = parameters,
@@ -129,24 +142,32 @@ function get_shock_decomposition(𝓂::ℳ,
         data_in_deviations = data
     end
 
+    extra_kw = marginal_contribution ? (; marginal_contribution = true) : NamedTuple()
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
-                                                                                    smooth = smooth)
+                                                                                    smooth = smooth;
+                                                                                    extra_kw...)
     
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
-    if pruning
+    if pruning && !marginal_contribution
         axis2 = vcat(exo_axis, :Nonlinearities, :Initial_values)
     else
         axis2 = vcat(exo_axis, :Initial_values)
     end
 
     if pruning
-        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
-        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+        if marginal_contribution
+            nE = 𝓂.constants.post_model_macro.nExo
+            decomposition[:, 1:nE, :]   .+= SSS_delta
+            decomposition[:, nE + 1, :] .-= SSS_delta * (nE - 1)
+        else
+            decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+            decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+        end
     end
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end

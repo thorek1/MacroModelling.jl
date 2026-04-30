@@ -1648,6 +1648,49 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             verbose = false)
                 end
             end
+
+            if algorithm in (:pruned_second_order, :pruned_third_order)
+                clear_solution_caches!(m, algorithm)
+
+                sd_default = get_shock_decomposition(m, data,
+                                                    algorithm = algorithm,
+                                                    data_in_levels = false,
+                                                    verbose = false)
+                sd_mc = get_shock_decomposition(m, data,
+                                                algorithm = algorithm,
+                                                data_in_levels = false,
+                                                marginal_contribution = true,
+                                                verbose = false)
+
+                @test :Nonlinearities ∈ axiskeys(sd_default, :Shocks)
+                @test :Nonlinearities ∉ axiskeys(sd_mc, :Shocks)
+                @test :Initial_values ∈ axiskeys(sd_mc, :Shocks)
+                @test size(sd_mc, :Shocks) == size(sd_default, :Shocks) - 1
+                # Per-period totals match the default (Shapley efficiency: the
+                # cross-shock interaction is fully redistributed across the
+                # per-shock columns, leaving the row-sum invariant unchanged).
+                sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
+                sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
+                @test isapprox(sum_default, sum_mc, atol = 1e-8)
+            end
+
+            # First-order with marginal_contribution = true is silently ignored
+            # (with an @info notice) and returns the standard first-order
+            # decomposition.
+            if algorithm == :first_order
+                clear_solution_caches!(m, algorithm)
+                sd_fo_default = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        verbose = false)
+                sd_fo_mc      = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        marginal_contribution = true,
+                                                        verbose = false)
+                @test axiskeys(sd_fo_mc, :Shocks) == axiskeys(sd_fo_default, :Shocks)
+                @test isapprox(collect(sd_fo_mc), collect(sd_fo_default), rtol = 1e-10)
+            end
         end
 
         

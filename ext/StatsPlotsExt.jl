@@ -657,7 +657,7 @@ Plot model estimates of the variables given the data. The default plot shows the
 The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
 In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
 
-For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
+For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks. Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order` together with `shock_decomposition = true`) instead allocates this cross-shock interaction across shocks via marginal contributions (Shapley values) and omits the `Nonlinearities` bar.
 
 If occasionally binding constraints are present in the model, they are not taken into account here.
 
@@ -676,6 +676,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
+- `marginal_contribution` [Default: `false`, Type: `Bool`]: if `true` and the algorithm is `:pruned_second_order` or `:pruned_third_order` with `shock_decomposition = true`, attribute the cross-shock interaction across shocks via marginal contributions (Shapley values) and omit the `Nonlinearities` bar.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -743,6 +744,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                marginal_contribution::Bool = false,
                                 label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -781,6 +783,17 @@ function plot_model_estimates(𝓂::ℳ,
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
+
+    if marginal_contribution && shock_decomposition && !pruning
+        @info "`marginal_contribution = true` is only meaningful for pruned higher-order solutions (`:pruned_second_order`, `:pruned_third_order`). Setting `marginal_contribution = false` for `algorithm = $(algorithm)`." maxlog = 3
+        marginal_contribution = false
+    end
+    mc = marginal_contribution && shock_decomposition && pruning
+    if mc && 𝓂.constants.post_model_macro.nExo > 10
+        @warn "`marginal_contribution = true` propagates 2^nᵉ pruned states per period. With nᵉ = $(𝓂.constants.post_model_macro.nExo) shocks this may be slow and memory-intensive." maxlog = 3
+    end
+    is_pruned = pruning
+    pruning = pruning && !mc
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -857,12 +870,20 @@ function plot_model_estimates(𝓂::ℳ,
 
     x_axis = x_axis[periods]
     
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
 
-    if pruning
-        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
-        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
-        decomposition[:,end,:]                      .+= SSS_delta
+    if is_pruned
+        if mc
+            nE = 𝓂.constants.post_model_macro.nExo
+            decomposition[:, 1:nE, :]   .+= SSS_delta
+            decomposition[:, nE + 1, :] .-= SSS_delta * (nE - 1)
+            decomposition[:, end, :]    .+= SSS_delta
+        else
+            decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+            decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+            decomposition[:,end,:]                      .+= SSS_delta
+        end
     end
     
     variables_to_plot                           .+= SSS_delta

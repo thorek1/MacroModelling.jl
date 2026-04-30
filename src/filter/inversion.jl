@@ -1866,6 +1866,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
+                                marginal_contribution::Bool = false,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -1874,7 +1875,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, marginal_contribution ? T.nExo + 2 : T.nExo + 3, size(data_in_deviations, 2))
 
     observables = get_and_check_observables(T, data_in_deviations)
     
@@ -2087,6 +2088,37 @@ function filter_data_with_model(𝓂::ℳ,
     states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
+
+    if marginal_contribution
+        nE = 𝓂.constants.post_model_macro.nExo
+        n_coal = 1 << nE
+        coal_states = [deepcopy(initial_state) for _ in 1:n_coal]
+        coal_paths_t = zeros(T.nVars, n_coal)
+
+        for t in 1:size(data_in_deviations, 2)
+            for idx in 0:(n_coal - 1)
+                cs = coal_states[idx + 1]
+                sck = zeros(nE)
+                for j in 1:nE
+                    if (idx >> (j - 1)) & 1 == 1
+                        sck[j] = shocks[j, t]
+                    end
+                end
+
+                aug_state₁ = [cs[1][T.past_not_future_and_mixed_idx]; 1; sck]
+                aug_state₂ = [cs[2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
+
+                new_state = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2]
+                coal_states[idx + 1] = new_state
+                coal_paths_t[:, idx + 1] .= sum(new_state)
+            end
+
+            decomposition[:, 1:nE, t] .= aggregate_marginal_contribution_shares(coal_paths_t, nE)
+            decomposition[:, nE + 1, t] .= coal_paths_t[:, 1] .+ (variables[:, t] .- coal_paths_t[:, end])
+        end
+
+        return variables, shocks, zeros(0,0), decomposition
+    end
 
     for i in 1:𝓂.constants.post_model_macro.nExo
         sck = zeros(𝓂.constants.post_model_macro.nExo)
@@ -2452,6 +2484,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
+                                marginal_contribution::Bool = false,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -2460,7 +2493,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, marginal_contribution ? T.nExo + 2 : T.nExo + 3, size(data_in_deviations, 2))
     
     observables = get_and_check_observables(T, data_in_deviations)
 
@@ -2797,6 +2830,43 @@ function filter_data_with_model(𝓂::ℳ,
     states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
+
+    if marginal_contribution
+        nE = 𝓂.constants.post_model_macro.nExo
+        n_coal = 1 << nE
+        coal_states = [deepcopy(initial_state) for _ in 1:n_coal]
+        coal_paths_t = zeros(T.nVars, n_coal)
+
+        for t in 1:size(data_in_deviations, 2)
+            for idx in 0:(n_coal - 1)
+                cs = coal_states[idx + 1]
+                sck = zeros(nE)
+                for j in 1:nE
+                    if (idx >> (j - 1)) & 1 == 1
+                        sck[j] = shocks[j, t]
+                    end
+                end
+
+                aug_state₁ = [cs[1][T.past_not_future_and_mixed_idx]; 1; sck]
+                aug_state₁̂ = [cs[1][T.past_not_future_and_mixed_idx]; 0; sck]
+                aug_state₂ = [cs[2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
+                aug_state₃ = [cs[3][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
+
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+
+                new_state = [𝐒[1] * aug_state₁,
+                             𝐒[1] * aug_state₂ + 𝐒[2] * kron_aug_state₁ / 2,
+                             𝐒[1] * aug_state₃ + 𝐒[2] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3] * ℒ.kron(kron_aug_state₁, aug_state₁) / 6]
+                coal_states[idx + 1] = new_state
+                coal_paths_t[:, idx + 1] .= sum(new_state)
+            end
+
+            decomposition[:, 1:nE, t] .= aggregate_marginal_contribution_shares(coal_paths_t, nE)
+            decomposition[:, nE + 1, t] .= coal_paths_t[:, 1] .+ (variables[:, t] .- coal_paths_t[:, end])
+        end
+
+        return variables, shocks, zeros(0,0), decomposition
+    end
 
     for i in 1:𝓂.constants.post_model_macro.nExo
         sck = zeros(𝓂.constants.post_model_macro.nExo)
