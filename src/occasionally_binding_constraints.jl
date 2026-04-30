@@ -568,30 +568,30 @@ function compute_obc_analytical_jacobian!(jac::Matrix{S}, X::Vector{S}, p) where
     dYdx = zeros(S, nv, n_x, periods + 1)
 
     if algorithm == :first_order
-        _obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
+        obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
                                past_idx, n_past, obc_idx, Ŝ₁, periods)
 
     elseif algorithm ∈ [:second_order, :third_order]
-        _obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
+        obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
                                     past_idx, n_past, n_shocks, obc_idx,
                                     Ŝ₁, 𝓂, algorithm, periods)
 
     elseif algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        _obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
+        obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
                           past_idx, n_past, n_shocks, obc_idx,
                           Ŝ₁, 𝓂, algorithm, periods)
     end
 
     Y .+= @view reference_steady_state[1:nv]
 
-    _fill_obc_constraint_jacobian!(jac, Y, dYdx,
+    fill_obc_constraint_jacobian!(jac, Y, dYdx,
                                    𝓂.functions.obc_constraint_info, n_x, P)
     return nothing
 end
 
 
 # ── First-order: purely linear propagation ───────────────────────────────────
-function _obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
+function obc_dYdx_first_order!(Y, dYdx, state, shock_vals, zero_shock,
                                 past_idx, n_past, obc_idx, Ŝ₁, periods)
     A = @view Ŝ₁[:, 1:n_past]
     Y[:, 1] = Ŝ₁ * [state[past_idx]; shock_vals]
@@ -604,7 +604,7 @@ end
 
 
 # ── Non-pruned second / third order ─────────────────────────────────────────
-function _obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
+function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
                                      past_idx, n_past, n_shocks, obc_idx,
                                      Ŝ₁, 𝓂, algorithm, periods)
     S = eltype(Y)
@@ -660,7 +660,7 @@ end
 
 
 # ── Pruned second / third order ─────────────────────────────────────────────
-function _obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
+function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
                            past_idx, n_past, n_shocks, obc_idx,
                            Ŝ₁, 𝓂, algorithm, periods)
     S = eltype(Y)
@@ -788,7 +788,7 @@ end
 
 
 # ── Fill NLopt Jacobian from dY/dx and constraint structure ──────────────────
-function _fill_obc_constraint_jacobian!(jac, Y, dYdx, constraint_info, n_x, P)
+function fill_obc_constraint_jacobian!(jac, Y, dYdx, constraint_info, n_x, P)
     row_offset = 0
     for (left_idx, right_idx, sign) in constraint_info
         # Complementary-slackness scalar: sum(Y[left,1:P] .* Y[right,1:P])

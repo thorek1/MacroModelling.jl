@@ -2,7 +2,7 @@
 
 # Extract unique nonzero row indices, column indices, and nnz count from a dense
 # matrix without allocating a sparse copy.  Returns sorted unique indices.
-function _dense_nz_structure(â::AbstractMatrix{T}) where T
+function dense_nz_structure(â::AbstractMatrix{T}) where T
     nrows, ncols = size(â)
     row_has_nz = falses(nrows)
     col_has_nz = falses(ncols)
@@ -1120,7 +1120,7 @@ function compressed_kron³(a::AbstractMatrix{T};
         end
     end
     # Extract unique nonzero row/col indices directly from dense matrix
-    ui, uj, lennz = _dense_nz_structure(â)
+    ui, uj, lennz = dense_nz_structure(â)
 
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
@@ -1339,7 +1339,7 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
     nzv_M = nonzeros(M)
 
     # Extract unique nonzero row/col indices directly from dense matrix
-    ui, uj, lennz = _dense_nz_structure(â)
+    ui, uj, lennz = dense_nz_structure(â)
     n_ui = length(ui)
     n_uj = length(uj)
 
@@ -1502,7 +1502,7 @@ function compressed_kron²(a::AbstractMatrix{T};
 
     # Initialize arrays to collect indices and values
     # Extract unique nonzero row/col indices directly from dense matrix
-    ui, uj, lennz = _dense_nz_structure(â)
+    ui, uj, lennz = dense_nz_structure(â)
 
     m2_c = length(colmask) > 0 ? length(colmask) : m2_cols
     m2_r = length(rowmask) > 0 ? length(rowmask) : m2_rows
