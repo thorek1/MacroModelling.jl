@@ -3540,7 +3540,7 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non-stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix. Values are returned in the order given for the specific moment.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non-stochastic steady state (NSSS), and standard deviations, but can also return variances, covariance matrix, and correlation matrix. Values are returned in the order given for the specific moment.
 Function to use when differentiating model moments with respect to parameters.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
@@ -3567,7 +3567,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `Dict` with the name of the statistics and the corresponding vectors (NSSS, mean, standard deviation, variance) or matrices (covariance, autocorrelation).
+- `Dict` with the name of the statistics and the corresponding vectors (NSSS, mean, standard deviation, variance) or matrices (covariance, correlation, autocorrelation).
 
 # Examples
 ```jldoctest
@@ -3593,11 +3593,20 @@ get_statistics(RBC, RBC.parameter_values, parameters = get_parameters(RBC), stan
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
 
-# For grouped covariance (computing covariances only within specified groups):
-get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:y, :i]])
+# For grouped covariance (computing covariances only within specified groups; cross-group
+# entries are set to zero):
+get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:q, :z]])
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
+  :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0 0.00546602 0.000728709; 0.0 0.0 0.0 0.000104167]
+
+# For correlation (returns the correlation matrix among the selected variables;
+# diagonal is 1; supports the same grouped input as `covariance`, with cross-group
+# entries set to zero):
+get_statistics(RBC, RBC.parameter_values, correlation = [:c, :k])
+# output
+Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+  :correlation => [1.0 0.999812; 0.999812 1.0]
 ```
 """
 function get_statistics(𝓂::ℳ,
