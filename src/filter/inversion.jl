@@ -16,7 +16,7 @@
 # `V(∅) + (variables − V(N))`, matching the layout the public API
 # expects when `marginal_contribution = true`.
 
-function _marginal_contribution_pruned_2nd_order!(decomposition::AbstractArray,
+function shapley_shock_decomposition_pruned_2nd_order!(decomposition::AbstractArray,
                                                   variables::AbstractMatrix,
                                                   shocks::AbstractMatrix,
                                                   initial_state,
@@ -71,7 +71,7 @@ function _marginal_contribution_pruned_2nd_order!(decomposition::AbstractArray,
     return decomposition
 end
 
-function _marginal_contribution_pruned_3rd_order!(decomposition::AbstractArray,
+function shapley_shock_decomposition_pruned_3rd_order!(decomposition::AbstractArray,
                                                   variables::AbstractMatrix,
                                                   shocks::AbstractMatrix,
                                                   initial_state,
@@ -2237,13 +2237,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        _marginal_contribution_pruned_2nd_order!(decomposition,
-                                                 variables,
-                                                 shocks,
-                                                 initial_state,
-                                                 𝐒,
-                                                 T,
-                                                 nE)
+        shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                      variables,
+                                                      shocks,
+                                                      initial_state,
+                                                      𝐒,
+                                                      T,
+                                                      nE)
         return variables, shocks, zeros(0,0), decomposition
     end
 
@@ -2960,13 +2960,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        _marginal_contribution_pruned_3rd_order!(decomposition,
-                                                 variables,
-                                                 shocks,
-                                                 initial_state,
-                                                 𝐒,
-                                                 T,
-                                                 nE)
+        shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                      variables,
+                                                      shocks,
+                                                      initial_state,
+                                                      𝐒,
+                                                      T,
+                                                      nE)
         return variables, shocks, zeros(0,0), decomposition
     end
 
