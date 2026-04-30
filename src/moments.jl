@@ -1080,48 +1080,7 @@ function build_coalition_mask_third_order(coalition, nᵉ::Int, nˢ::Int)
     return m
 end
 
-# Enumerate every subset of {1, …, n} as a vector of Int. Subset at index
-# `bits + 1` consists of {j : bit (j-1) of `bits` is set}.
-function enumerate_subsets(n::Int)
-    coalitions = Vector{Vector{Int}}(undef, 2^n)
-    for bits in 0:(2^n - 1)
-        S = Int[]
-        for j in 1:n
-            if (bits >> (j - 1)) & 1 == 1
-                push!(S, j)
-            end
-        end
-        coalitions[bits + 1] = S
-    end
-    return coalitions
-end
 
-# Aggregate coalition variances into Shapley shares.
-# `coal_vars[v, bits + 1]` must hold V_v(S) for the subset encoded by `bits`,
-# with V(∅) = 0 at index 1 and V(N) = total at index 2^n. The Shapley weight
-# for a marginal contribution at coalition size s is `1 / (n * binomial(n-1, s))`,
-# which is numerically stable and avoids factorial overflow.
-function aggregate_marginal_contribution_shares(coal_vars::Matrix{R}, n::Int) where R <: Real
-    nVars = size(coal_vars, 1)
-    weights = [R(1) / R(n * binomial(n - 1, s)) for s in 0:(n - 1)]
-    shapley = zeros(R, nVars, n)
-    total_subsets = 2^n
-    for i in 1:n
-        bit_i = 1 << (i - 1)
-        for bits in 0:(total_subsets - 1)
-            if bits & bit_i != 0
-                continue
-            end
-            s = count_ones(bits)
-            w = weights[s + 1]
-            with_i = bits | bit_i
-            for v in 1:nVars
-                shapley[v, i] += w * (coal_vars[v, with_i + 1] - coal_vars[v, bits + 1])
-            end
-        end
-    end
-    return shapley
-end
 
 
 """
@@ -1200,20 +1159,21 @@ function calculate_marginal_contribution_second_order(parameters::Vector{R},
                       spzeros(R, nˢ * nᵉ, nᵉ)   spzeros(R, nˢ * nᵉ, nᵉ^2)   ℒ.kron(Σᶻ₁, ℒ.I(nᵉ)) ])
     Γ_full_dense = Matrix(Γ_full)
 
-    coalitions = enumerate_subsets(nᵉ)
-    n_coal = length(coalitions)
-    coal_vars = zeros(R, nVars, n_coal)
-    all_ok = true
-
-    # V(∅) = 0 (already initialised). V(N) = total_var (set directly).
-    coal_vars[:, n_coal] .= total_var
-
     ê_to_ŝ₂_dense = Matrix(ê_to_ŝ₂)
     ê_to_y₂_dense = Matrix(ê_to_y₂)
 
-    for idx in 2:(n_coal - 1)
-        S = coalitions[idx]
-        m = build_coalition_mask_second_order(S, nᵉ, nˢ)
+    # Polynomial path: V(S) = diag(Σʸ(S)) is a polynomial in 1_S of degree ≤ 4
+    # (each ê column has shock-support of size ≤ 2; pairs accumulate via
+    # Lyapunov linearity). We solve one Lyapunov per monomial mask of size ≤ 4,
+    # recover monomial coefficients via recursive subtraction over proper
+    # subsets, then aggregate equal-share Shapley shares.
+    # Cost: Σ_{j≤min(4,nᵉ)} C(nᵉ,j) Lyapunov solves vs 2^nᵉ for exhaustive.
+    mon_idx = MonomialIndex(nᵉ, min(4, nᵉ))
+
+    V_at_T = zeros(R, nVars, mon_idx.n_monomials)
+    for j in 2:mon_idx.n_monomials
+        T = mon_idx.members[j]
+        m = build_coalition_mask_second_order(T, nᵉ, nˢ)
         midx = findall(m)
 
         E_aug = ê_to_ŝ₂_dense[:, midx]
@@ -1227,21 +1187,20 @@ function calculate_marginal_contribution_second_order(parameters::Vector{R},
                                             has_unit_roots = 𝓂.caches.has_unit_roots)
 
         if !info
-            all_ok = false
-            coal_vars[:, idx] .= R(NaN)
-            continue
+            return fill(R(NaN), nVars, nᵉ), total_var, false
         end
 
         E_y = ê_to_y₂_dense[:, midx]
         Σʸᴿ = ŝ_to_y₂ * Σᶻᴿ * ŝ_to_y₂' + E_y * Γ_sub * E_y'
-        coal_vars[:, idx] = ℒ.diag(Σʸᴿ)
+        V_at_T[:, j] = ℒ.diag(Σʸᴿ)
     end
 
-    if !all_ok
-        return fill(R(NaN), nVars, nᵉ), total_var, false
-    end
+    poly_coefs = zeros(R, nVars, mon_idx.n_monomials)
+    poly_coefs_from_subset_values!(poly_coefs, V_at_T, mon_idx)
 
-    return aggregate_marginal_contribution_shares(coal_vars, nᵉ), total_var, true
+    shares = zeros(R, nVars, nᵉ)
+    shapley_from_poly!(shares, poly_coefs, mon_idx)
+    return shares, total_var, true
 end
 
 
@@ -1445,15 +1404,19 @@ function calculate_marginal_contribution_third_order(parameters::Vector{R},
     ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
     ê_to_y₃_dense = Matrix(ê_to_y₃)
 
-    coalitions = enumerate_subsets(nᵉ)
-    n_coal = length(coalitions)
-    coal_vars = zeros(R, nVars, n_coal)
-    all_ok = true
-    coal_vars[:, n_coal] .= total_var
+    # Polynomial path. For pruned third order each ê column has shock-support
+    # of size ≤ 3 (block 7 holds the kron(e,e,e) part), so V(S) is a polynomial
+    # in 1_S of degree ≤ 6. The Eᴸᶻ row-only term is naturally absorbed
+    # because we evaluate V at every monomial mask and the recursive
+    # subset-subtraction reconstructs all polynomial coefficients regardless
+    # of which Γ block contributed them.
+    # Cost: Σ_{j≤min(6,nᵉ)} C(nᵉ,j) Lyapunov solves vs 2^nᵉ for exhaustive.
+    mon_idx = MonomialIndex(nᵉ, min(6, nᵉ))
 
-    for idx in 2:(n_coal - 1)
-        S = coalitions[idx]
-        m = build_coalition_mask_third_order(S, nᵉ, nˢ)
+    V_at_T = zeros(R, nVars, mon_idx.n_monomials)
+    for j in 2:mon_idx.n_monomials
+        T = mon_idx.members[j]
+        m = build_coalition_mask_third_order(T, nᵉ, nˢ)
         midx = findall(m)
 
         E_aug = ê_to_ŝ₃_dense[:, midx]
@@ -1470,21 +1433,21 @@ function calculate_marginal_contribution_third_order(parameters::Vector{R},
                                             has_unit_roots = 𝓂.caches.has_unit_roots)
 
         if !info
-            all_ok = false
-            coal_vars[:, idx] .= R(NaN)
-            continue
+            return fill(R(NaN), nVars, nᵉ), total_var, false
         end
 
         E_y = ê_to_y₃_dense[:, midx]
-        Σʸᴿ = ŝ_to_y₃ * Σᶻᴿ * ŝ_to_y₃' + E_y * Γ_sub * E_y' + E_y * EL_sub * ŝ_to_y₃' + ŝ_to_y₃ * EL_sub' * E_y'
-        coal_vars[:, idx] = ℒ.diag(Σʸᴿ)
+        Σʸᴿ = ŝ_to_y₃ * Σᶻᴿ * ŝ_to_y₃' + E_y * Γ_sub * E_y' +
+              E_y * EL_sub * ŝ_to_y₃' + ŝ_to_y₃ * EL_sub' * E_y'
+        V_at_T[:, j] = ℒ.diag(Σʸᴿ)
     end
 
-    if !all_ok
-        return fill(R(NaN), nVars, nᵉ), total_var, false
-    end
+    poly_coefs = zeros(R, nVars, mon_idx.n_monomials)
+    poly_coefs_from_subset_values!(poly_coefs, V_at_T, mon_idx)
 
-    return aggregate_marginal_contribution_shares(coal_vars, nᵉ), total_var, true
+    shares = zeros(R, nVars, nᵉ)
+    shapley_from_poly!(shares, poly_coefs, mon_idx)
+    return shares, total_var, true
 end
 
 

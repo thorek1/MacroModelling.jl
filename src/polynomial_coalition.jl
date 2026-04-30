@@ -322,28 +322,31 @@ coefficient matrix.
 poly_value_at_full(p::PolyState) = vec(sum(p.coefs, dims = 2))
 
 """
-    shapley_from_poly!(φ, p)
+    shapley_from_poly!(φ, p::PolyState)
+    shapley_from_poly!(φ, coefs::AbstractMatrix, idx::MonomialIndex)
 
-Aggregate per-shock Shapley values from the polynomial state `p`.
+Aggregate per-shock Shapley values from polynomial coefficients.
 
 For a polynomial coalitional game with monomials `T ⊆ {1..nᵉ}`, the
 Shapley value satisfies the equal-share property: each monomial of size
 `m ≥ 1` contributes its full coefficient divided equally among its `m`
 member shocks (this follows from Shapley symmetry on monomial games).
 
-`φ` must be `(n_state(p), nᵉ)` and is overwritten.
+`φ` must be `(size(coefs, 1), idx.nᵉ)` and is overwritten.
 """
-function shapley_from_poly!(φ::AbstractMatrix, p::PolyState)
-    idx = p.idx
-    @assert size(φ) == (n_state(p), idx.nᵉ) "shapley output size mismatch"
+function shapley_from_poly!(φ::AbstractMatrix, coefs::AbstractMatrix,
+                            idx::MonomialIndex)
+    n = size(coefs, 1)
+    @assert size(φ) == (n, idx.nᵉ) "shapley output size mismatch"
+    @assert size(coefs, 2) == idx.n_monomials "coefs/monomial-count mismatch"
     fill!(φ, 0)
     @inbounds for j in 2:idx.n_monomials
         m = idx.sizes[j]
         m == 0 && continue
         invm = 1.0 / m
         members = idx.members[j]
-        for v in 1:n_state(p)
-            cv = p.coefs[v, j]
+        for v in 1:n
+            cv = coefs[v, j]
             cv == 0 && continue
             contrib = cv * invm
             for i in members
@@ -353,3 +356,165 @@ function shapley_from_poly!(φ::AbstractMatrix, p::PolyState)
     end
     return φ
 end
+
+shapley_from_poly!(φ::AbstractMatrix, p::PolyState) =
+    shapley_from_poly!(φ, p.coefs, p.idx)
+
+"""
+    poly_coefs_from_subset_values!(poly_coefs, V_at_T, idx)
+
+Given `V_at_T[:, j] == V(T_j)`, the value of a polynomial coalitional game
+at the subset corresponding to monomial id `j`, fill `poly_coefs[:, j]`
+with the unanimity-basis (i.e. polynomial) coefficient at monomial `T_j`,
+using the recursive identity
+
+    V(T) = Σ_{T' ⊆ T} poly_coefs[T']
+  ⇒ poly_coefs[T] = V(T) − Σ_{T' ⊊ T} poly_coefs[T']
+
+Monomials are processed in increasing-size order (already guaranteed by
+`MonomialIndex` construction), so every proper subset's coefficient is
+already available when its parent is processed.
+
+`poly_coefs` and `V_at_T` must be `(n_state, idx.n_monomials)`.
+"""
+function poly_coefs_from_subset_values!(poly_coefs::AbstractMatrix,
+                                        V_at_T::AbstractMatrix,
+                                        idx::MonomialIndex)
+    @assert size(poly_coefs) == size(V_at_T) "size mismatch"
+    @assert size(poly_coefs, 2) == idx.n_monomials "monomial count mismatch"
+    fill!(poly_coefs, 0)
+    @views poly_coefs[:, 1] .= V_at_T[:, 1]
+    @inbounds for j in 2:idx.n_monomials
+        T_mask = idx.masks[j]
+        @views poly_coefs[:, j] .= V_at_T[:, j]
+        # iterate strict proper subsets of T_mask via Knuth's subset-of-mask trick
+        sub = (T_mask - UInt64(1)) & T_mask
+        while sub > 0
+            Tp_id = idx.id[sub]
+            @views poly_coefs[:, j] .-= poly_coefs[:, Tp_id]
+            sub = (sub - UInt64(1)) & T_mask
+        end
+        # also subtract the constant (∅) coefficient
+        @views poly_coefs[:, j] .-= poly_coefs[:, 1]
+    end
+    return poly_coefs
+end
+
+"""
+    column_supports_second_order(nᵉ, nˢ) -> Vector{UInt64}
+
+For each column of the augmented shock vector `ê` used by the
+second-order pruned variance decomposition, return a `UInt64` bitmask of
+the shock indices that column depends on. Block layout matches
+`build_coalition_mask_second_order`:
+
+  block 1: nᵉ        cols, support = {j}
+  block 2: nᵉ²       cols, support = {j, k}
+  block 3: nˢ · nᵉ   cols, support = {j}
+
+A column `c` is included in coalition `S` iff its support mask is a
+subset of `S`'s mask, exactly mirroring the masking the existing
+exhaustive code performs.
+"""
+function column_supports_second_order(nᵉ::Int, nˢ::Int)
+    @assert nᵉ ≤ 64 "column_supports_second_order requires nᵉ ≤ 64"
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
+    N = sum(block_sizes)
+    sup = zeros(UInt64, N)
+    bit(i) = UInt64(1) << (i - 1)
+
+    off = 0
+    for j in 1:nᵉ
+        sup[off + j] = bit(j)
+    end
+    off += nᵉ
+
+    for j in 1:nᵉ, k in 1:nᵉ
+        sup[off + (j - 1) * nᵉ + k] = bit(j) | bit(k)
+    end
+    off += nᵉ^2
+
+    for a in 1:nˢ, j in 1:nᵉ
+        sup[off + (a - 1) * nᵉ + j] = bit(j)
+    end
+
+    return sup
+end
+
+"""
+    column_supports_third_order(nᵉ, nˢ) -> Vector{UInt64}
+
+Per-column shock-index support masks for the third-order augmented
+shock vector `ê`. Block layout matches `build_coalition_mask_third_order`:
+
+  block 1: nᵉ          cols, support = {j}
+  block 2: nᵉ²         cols, support = {j, k}
+  block 3: nˢ · nᵉ     cols, support = {j}
+  block 4: nˢ · nᵉ     cols, support = {j}
+  block 5: nˢ² · nᵉ    cols, support = {j}
+  block 6: nˢ · nᵉ²    cols, support = {j, k}
+  block 7: nᵉ³         cols, support = {j, k, l}
+"""
+function column_supports_third_order(nᵉ::Int, nˢ::Int)
+    @assert nᵉ ≤ 64 "column_supports_third_order requires nᵉ ≤ 64"
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
+    N = sum(block_sizes)
+    sup = zeros(UInt64, N)
+    bit(i) = UInt64(1) << (i - 1)
+
+    off = 0
+    for j in 1:nᵉ
+        sup[off + j] = bit(j)
+    end
+    off += nᵉ
+
+    for j in 1:nᵉ, k in 1:nᵉ
+        sup[off + (j - 1) * nᵉ + k] = bit(j) | bit(k)
+    end
+    off += nᵉ^2
+
+    for a in 1:nˢ, j in 1:nᵉ
+        sup[off + (a - 1) * nᵉ + j] = bit(j)
+    end
+    off += nˢ * nᵉ
+
+    for a in 1:nˢ, j in 1:nᵉ
+        sup[off + (a - 1) * nᵉ + j] = bit(j)
+    end
+    off += nˢ * nᵉ
+
+    for p in 1:nˢ^2, j in 1:nᵉ
+        sup[off + (p - 1) * nᵉ + j] = bit(j)
+    end
+    off += nˢ^2 * nᵉ
+
+    for a in 1:nˢ, j in 1:nᵉ, k in 1:nᵉ
+        sup[off + (a - 1) * nᵉ^2 + (j - 1) * nᵉ + k] = bit(j) | bit(k)
+    end
+    off += nˢ * nᵉ^2
+
+    for j in 1:nᵉ, k in 1:nᵉ, l in 1:nᵉ
+        sup[off + (j - 1) * nᵉ^2 + (k - 1) * nᵉ + l] = bit(j) | bit(k) | bit(l)
+    end
+
+    return sup
+end
+
+"""
+    monomial_column_index(supports, idx) -> Vector{Int}
+
+Map each column of the augmented shock vector to the id of the monomial
+its shock-support equals. The result lets per-monomial code build its
+column mask in `O(N)` rather than `O(N · nᵉ)` lookups.
+
+Columns whose support exceeds `idx.k` (which would lie outside `idx`) are
+flagged with `0` and must be filtered out by the caller.
+"""
+function monomial_column_index(supports::Vector{UInt64}, idx::MonomialIndex)
+    out = zeros(Int, length(supports))
+    @inbounds for (c, m) in enumerate(supports)
+        out[c] = get(idx.id, m, 0)
+    end
+    return out
+end
+
