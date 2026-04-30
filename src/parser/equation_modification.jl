@@ -747,6 +747,9 @@ end
 
 add_equation!(RBC, :(y[0] = c[0] + k[0] - (1 - δ) * k[-1]))
 get_revision_history(RBC)
+# output
+1-element Vector{@NamedTuple{timestamp::Dates.DateTime, action::Symbol, equation_index::Union{Nothing, Int64}, old_equation::Union{Nothing, Expr}, new_equation::Union{Nothing, Expr}}}:
+ (timestamp = ..., action = :add_equation, equation_index = 5, old_equation = nothing, new_equation = :(y[0] = (c[0] + k[0]) - (1 - δ) * k[-1]))
 ```
 """
 function get_revision_history(𝓂::ℳ)::Vector{RevisionEntry}

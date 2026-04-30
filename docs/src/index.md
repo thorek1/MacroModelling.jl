@@ -19,6 +19,7 @@ As of now the package can:
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet)) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
 - **differentiate** the model solution, loglikelihood (Kalman and inversion filters), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
+- **modify a model after it has been defined** — model and calibration equations can be updated, added, or removed in place ([`update_equations!`](@ref), [`add_equation!`](@ref), [`remove_equation!`](@ref), and the `*_calibration_equation!` variants) without re-running the [`@model`](@ref) / [`@parameters`](@ref) macros. A chronological revision history is kept ([`get_revision_history`](@ref)) and the revised model can be serialised to a Julia source file ([`write_julia_model_file`](@ref)). See the [how-to guide on modifying models](@ref "Modifying a model after definition").
 
 The package is not:
 
