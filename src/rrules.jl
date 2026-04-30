@@ -8375,12 +8375,89 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    @assert warmup_iterations == 0 "Warmup iterations not yet implemented for reverse-mode automatic differentiation."
+    # Warmup forward pass.  When `warmup_iterations > 0` we build a
+    # block-concatenated jacobian, solve a min-norm linear system to recover
+    # `warmup_iterations` worth of shocks, propagate the state through the
+    # warmup window, and add the corresponding contributions to `logabsdets`
+    # and `shocks²`.  Intermediates are captured so the pullback can backprop
+    # through the linear solve, the state propagation and the jacobian
+    # construction.
+    warmup_jac           = zeros(0, 0)
+    warmup_x             = zeros(0)
+    warmup_y             = zeros(0)              # = inv(JJt) * data[:,1]   (fat case only)
+    warmup_state_history = Vector{Vector{Float64}}()
+    warmup_Sᵉ_powers     = Matrix{Float64}[]     # [I, Sᵉ, Sᵉ², …, Sᵉ^(N-2)]
+    warmup_data_first    = zeros(length(obs_idx))
+
+    if warmup_iterations > 0
+        warmup_data_first = collect(data_in_deviations[:,1])
+
+        warmup_jac = 𝐒[obs_idx, end-T.nExo+1:end]
+
+        if warmup_iterations >= 2
+            warmup_jac = hcat(𝐒[obs_idx, 1:T.nPast_not_future_and_mixed] *
+                              𝐒[t⁻, end-T.nExo+1:end], warmup_jac)
+            push!(warmup_Sᵉ_powers, Matrix{Float64}(ℒ.I, T.nPast_not_future_and_mixed,
+                                                     T.nPast_not_future_and_mixed))   # Sᵉ^0
+            if warmup_iterations >= 3
+                Sᵉ_pow = 𝐒[t⁻, 1:T.nPast_not_future_and_mixed]
+                push!(warmup_Sᵉ_powers, copy(Sᵉ_pow))                                  # Sᵉ^1
+                for e in 1:warmup_iterations-2
+                    warmup_jac = hcat(𝐒[obs_idx, 1:T.nPast_not_future_and_mixed] *
+                                      Sᵉ_pow * 𝐒[t⁻, end-T.nExo+1:end], warmup_jac)
+                    if e < warmup_iterations - 2
+                        Sᵉ_pow = Sᵉ_pow * 𝐒[t⁻, 1:T.nPast_not_future_and_mixed]
+                        push!(warmup_Sᵉ_powers, copy(Sᵉ_pow))
+                    end
+                end
+            end
+        end
+
+        # Solve linear system
+        if size(warmup_jac, 1) == size(warmup_jac, 2)
+            warmup_lu = ℒ.lu(warmup_jac, check = false)
+            if !ℒ.issuccess(warmup_lu)
+                if opts.verbose println("Inversion filter failed (warmup, rrule)") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+            warmup_x = warmup_lu \ warmup_data_first
+        else
+            JJt_w    = warmup_jac * warmup_jac'
+            JJt_w_lu = ℒ.lu(JJt_w, check = false)
+            if !ℒ.issuccess(JJt_w_lu)
+                if opts.verbose println("Inversion filter failed (warmup, rrule)") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+            end
+            warmup_y = JJt_w_lu \ warmup_data_first
+            warmup_x = warmup_jac' * warmup_y
+        end
+
+        warmup_shocks_mat = reshape(warmup_x, T.nExo, warmup_iterations)
+
+        # State propagation across warmup window
+        st_local = copy(state)
+        push!(warmup_state_history, copy(st_local))
+        for i in 1:warmup_iterations-1
+            st_concat = vcat(st_local[t⁻], warmup_shocks_mat[:,i])
+            st_local  = 𝐒 * st_concat
+            push!(warmup_state_history, copy(st_local))
+        end
+        state = st_local
+
+        # logabsdets contribution (square or fat per block)
+        for i in 1:warmup_iterations
+            jac_i = warmup_jac[:, (i-1)*T.nExo+1:i*T.nExo]
+            if size(jac_i, 1) == size(jac_i, 2)
+                logabsdets += ℒ.logabsdet(jac_i)[1]
+            else
+                logabsdets += ℒ.logabsdet(jac_i * jac_i')[1] / 2
+            end
+        end
+
+        shocks² += sum(abs2, warmup_x)
+    end
 
     state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
-
-    shocks² = 0.0
-    logabsdets = 0.0
 
     y = zeros(length(obs_idx))
     x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
@@ -8541,6 +8618,101 @@ function rrule(::typeof(calculate_loglikelihood),
         ∂𝐒[obs_idx, :]                      -= M³ * ∂𝐒t⁻
         
         ∂𝐒[obs_idx,end-T.nExo+1:end] -= (size(data_in_deviations,2) - presample_periods) * invjac' / 2
+
+        # ----- Warmup pullback ------------------------------------------------
+        # Backprop through the warmup forward.  At this point ∂state holds the
+        # adjoint of the state at the start of the main loop, which equals the
+        # state at the end of the warmup window (i.e. ∂state_after_warmup).
+        # We propagate it back through (i) state propagation across the warmup
+        # window, (ii) the linear-solve recovery of the warmup shocks, and
+        # (iii) the block-concatenated jacobian construction.
+        if warmup_iterations > 0
+            N    = warmup_iterations
+            nExo = T.nExo
+            n_pnf = T.nPast_not_future_and_mixed
+
+            # ∂x_warmup gets contributions from (a) shocks² += sum(abs2, x_warmup)
+            # and (b) the state-propagation backward sweep.
+            ∂x_warmup = -copy(warmup_x)        # from shocks² (∂llh*-1/2 implicit)
+
+            # Backprop state propagation (warmup_iterations-1 evolution steps).
+            ∂state_local = copy(∂state)        # = ∂state_after_warmup
+            for i in (N-1):-1:1
+                state_concat_i = vcat(warmup_state_history[i][t⁻],
+                                       warmup_x[(i-1)*nExo+1 : i*nExo])
+                ∂𝐒 .+= ∂state_local * state_concat_i'
+                ∂state_concat = 𝐒' * ∂state_local
+                # ∂warmup_shocks[:,i] contribution
+                ∂x_warmup[(i-1)*nExo+1 : i*nExo] .+= ∂state_concat[n_pnf+1:end]
+                # Reset ∂state and inject t⁻ slots for previous step
+                ∂state_local = zero(∂state_local)
+                ∂state_local[t⁻] .= ∂state_concat[1:n_pnf]
+            end
+            # After the loop, ∂state_local is the gradient wrt state_initial,
+            # supported only on t⁻ slots.  Override the ∂state we'll return.
+            ∂state .= ∂state_local
+
+            # Logabsdets contribution to ∂jac_concat.
+            ∂jac_concat = zeros(size(warmup_jac))
+            for i in 1:N
+                jac_i = warmup_jac[:, (i-1)*nExo+1 : i*nExo]
+                if size(jac_i, 1) == size(jac_i, 2)
+                    ∂jac_concat[:, (i-1)*nExo+1 : i*nExo] .-= inv(jac_i)' / 2
+                else
+                    ∂jac_concat[:, (i-1)*nExo+1 : i*nExo] .-= ℒ.pinv(jac_i)' / 2
+                end
+            end
+
+            # Backprop the linear solve to recover warmup shocks.
+            ∂data_first = zeros(length(obs_idx))
+            if size(warmup_jac, 1) == size(warmup_jac, 2)
+                # x = jac \ data;  ∂data = jac' \ ∂x;  ∂jac = -∂data * x'
+                ∂data_first = warmup_jac' \ ∂x_warmup
+                ∂jac_concat .-= ∂data_first * warmup_x'
+            else
+                # x = jac' * inv(JJt) * data,  JJt = jac*jac', y = inv(JJt)*data
+                # ∂data = inv(JJt) * jac * ∂x
+                # ∂jac  += y * ∂x' - ∂data * x' - y * (jac' * ∂data)'
+                JJt_w   = warmup_jac * warmup_jac'
+                ∂data_first = JJt_w \ (warmup_jac * ∂x_warmup)
+                ∂jac_concat .+= warmup_y * ∂x_warmup'
+                ∂jac_concat .-= ∂data_first * warmup_x'
+                ∂jac_concat .-= warmup_y * (warmup_jac' * ∂data_first)'
+            end
+            ∂data_in_deviations[:,1] .+= ∂data_first
+
+            # Map ∂jac_concat → ∂𝐒.
+            # Block N is C = 𝐒[obs_idx, end-nExo+1:end].
+            ∂𝐒[obs_idx, end-nExo+1:end] .+= ∂jac_concat[:, (N-1)*nExo+1 : N*nExo]
+            # Blocks 1..N-1 are A * Sᵉ^(N-1-k) * B.
+            if N >= 2
+                A  = 𝐒[obs_idx, 1:n_pnf]
+                B  = 𝐒[t⁻,   end-nExo+1:end]
+                Sᵉ = 𝐒[t⁻,   1:n_pnf]
+                ∂A  = zeros(size(A))
+                ∂B  = zeros(size(B))
+                ∂Sᵉ = zeros(size(Sᵉ))
+                for k in 1:(N-1)
+                    p     = N - 1 - k                         # power of Sᵉ
+                    M     = warmup_Sᵉ_powers[p+1]             # Sᵉ^p (1-indexed)
+                    ∂blk  = ∂jac_concat[:, (k-1)*nExo+1 : k*nExo]
+                    ∂A   .+= ∂blk * (M * B)'
+                    ∂B   .+= (A * M)' * ∂blk
+                    if p >= 1
+                        ∂M = A' * ∂blk * B'
+                        for j in 0:p-1
+                            Sj  = warmup_Sᵉ_powers[j+1]
+                            Spj = warmup_Sᵉ_powers[p-j]       # Sᵉ^(p-1-j) → index p-j
+                            ∂Sᵉ .+= Sj' * ∂M * Spj'
+                        end
+                    end
+                end
+                ∂𝐒[obs_idx, 1:n_pnf]      .+= ∂A
+                ∂𝐒[t⁻,    end-nExo+1:end] .+= ∂B
+                ∂𝐒[t⁻,    1:n_pnf]        .+= ∂Sᵉ
+            end
+        end
+        # ----- end warmup pullback --------------------------------------------
 
         # end # timeit_debug
 
