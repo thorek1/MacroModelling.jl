@@ -1,5 +1,41 @@
 @stable default_mode = "disable" begin
 
+# ---------------------------------------------------------------------------
+# Missing-value support helpers (inversion filter)
+# ---------------------------------------------------------------------------
+# The inversion filter accepts data that may contain missing/NaN values. The
+# canonical sentinel is NaN (produced by `missing_data_to_nan` at the public
+# API boundary, shared with the Kalman filter). For each period a vector of
+# observed row indices is built once via `build_obs_index` (defined in
+# `kalman.jl`). Periods with `m_t == 0` are pure predict-only steps. Periods
+# with `0 < m_t < n_exo` use a sliced (m × n_exo) Jacobian / find_shocks call
+# and produce a min-norm shock vector. Periods with `m_t > n_exo` are not
+# supported for higher-order inversion (the equality-constrained system is
+# overdetermined); the call returns `on_failure_loglikelihood` in that case.
+
+"""
+    inversion_missing_state_update_first_order!(state, state_concat, 𝐒,
+                                                t⁻, n_past, x)
+
+Apply the first-order state recursion `state ← 𝐒 * vcat(state[t⁻], x)` using
+the preallocated `state_concat` buffer (length `n_past + n_exo`).
+"""
+function inversion_missing_state_update_first_order!(state::AbstractVector,
+                                                     state_concat::AbstractVector,
+                                                     𝐒::AbstractMatrix,
+                                                     t⁻::Vector{Int},
+                                                     n_past::Int,
+                                                     x::AbstractVector)
+    @inbounds for k in 1:n_past
+        state_concat[k] = state[t⁻[k]]
+    end
+    @inbounds for k in eachindex(x)
+        state_concat[n_past + k] = x[k]
+    end
+    ℒ.mul!(state, 𝐒, state_concat)
+    return state
+end
+
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
@@ -27,6 +63,18 @@ function calculate_loglikelihood(::Val{:inversion},
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     ensure_inversion_estimation_buffers!(ws, T.nExo, length(observables_index))
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return calculate_loglikelihood_inversion_missing_first_order(
+            observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
+            warmup_iterations = warmup_iterations,
+            presample_periods = presample_periods,
+            on_failure_loglikelihood = on_failure_loglikelihood,
+            opts = opts,
+            filter_algorithm = filter_algorithm)::R
+    end
+
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = convert(Vector{R}, state[1])
@@ -191,6 +239,17 @@ function calculate_loglikelihood(::Val{:inversion},
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index))
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return calculate_loglikelihood_inversion_missing_pruned_second_order(
+            observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
+            warmup_iterations = warmup_iterations,
+            presample_periods = presample_periods,
+            on_failure_loglikelihood = on_failure_loglikelihood,
+            opts = opts,
+            filter_algorithm = filter_algorithm)::R
+    end
 
     n_obs = size(data_in_deviations,2)
 
@@ -466,6 +525,17 @@ function calculate_loglikelihood(::Val{:inversion},
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index))
 
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return calculate_loglikelihood_inversion_missing_second_order(
+            observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
+            warmup_iterations = warmup_iterations,
+            presample_periods = presample_periods,
+            on_failure_loglikelihood = on_failure_loglikelihood,
+            opts = opts,
+            filter_algorithm = filter_algorithm)::R
+    end
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -710,6 +780,17 @@ function calculate_loglikelihood(::Val{:inversion},
     n_past = T.nPast_not_future_and_mixed
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return calculate_loglikelihood_inversion_missing_pruned_third_order(
+            observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
+            warmup_iterations = warmup_iterations,
+            presample_periods = presample_periods,
+            on_failure_loglikelihood = on_failure_loglikelihood,
+            opts = opts,
+            filter_algorithm = filter_algorithm)::R
+    end
 
     precision_factor = 1.0
 
@@ -1155,6 +1236,17 @@ function calculate_loglikelihood(::Val{:inversion},
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return calculate_loglikelihood_inversion_missing_third_order(
+            observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
+            warmup_iterations = warmup_iterations,
+            presample_periods = presample_periods,
+            on_failure_loglikelihood = on_failure_loglikelihood,
+            opts = opts,
+            filter_algorithm = filter_algorithm)::R
+    end
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -1541,6 +1633,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables, sort(union(T.aux,T.var,T.exo_present)))
 
+    data_arr = collect(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_arr)
+    if has_missing && warmup_iterations > 0
+        @error "Inversion filter: warmup_iterations > 0 is not supported with missing observations."
+        return variables, shocks, zeros(0,0), decomposition
+    end
+
     jac = zeros(0, 0)
 
     if warmup_iterations > 0
@@ -1607,7 +1706,19 @@ function filter_data_with_model(𝓂::ℳ,
         @views ℒ.mul!(y, 𝐒₁[cond_var_idx,1:end-T.nExo], state[T.past_not_future_and_mixed_idx])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
 
-        ℒ.mul!(x, invjac, y)
+        if has_missing
+            idx = obs_idx_per_t[i]
+            m = length(idx)
+            if m == 0
+                fill!(x, 0)
+            else
+                jac_v = jac[idx, :]
+                y_v   = y[idx]
+                x .= jac_v \ y_v
+            end
+        else
+            ℒ.mul!(x, invjac, y)
+        end
 
         ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], x))
 
@@ -1740,6 +1851,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     init_guess = zeros(size(𝐒ⁱ, 2))
 
+    data_arr = collect(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_arr)
+    n_exo = T.nExo
+
     for i in axes(data_in_deviations,2)
         # state¹⁻ = state#[T.past_not_future_and_mixed_idx]
         # state¹⁻_vol = vcat(state¹⁻, 1)
@@ -1763,7 +1878,31 @@ function filter_data_with_model(𝓂::ℳ,
 
         init_guess *= 0
 
-        x, matched = find_shocks(Val(filter_algorithm), 
+        if has_missing
+            idx = obs_idx_per_t[i]
+            m = length(idx)
+            if m == 0
+                x = zeros(n_exo)
+                matched = true
+            else
+                if m > n_exo
+                    @error "Inversion filter (2nd) failed at step $i: m=$m > n_exo=$n_exo"
+                    return variables, shocks, zeros(0,0), zeros(0,0)
+                end
+                𝐒ⁱ_v   = 𝐒ⁱ[idx, :]
+                𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+                si_v   = shock_independent[idx]
+                x, matched = find_shocks(Val(filter_algorithm),
+                                        zeros(n_exo),
+                                        kron_buffer,
+                                        kron_buffer2,
+                                        J,
+                                        𝐒ⁱ_v,
+                                        𝐒ⁱ²ᵉ_v,
+                                        si_v)
+            end
+        else
+            x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
                                 kron_buffer2,
@@ -1773,6 +1912,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end
 
         # if !matched
         #     x, matched = find_shocks(Val(:COBYLA), 
@@ -1965,6 +2105,10 @@ function filter_data_with_model(𝓂::ℳ,
         
     init_guess = zeros(size(𝐒ⁱ, 2))
 
+    data_arr = collect(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_arr)
+    n_exo = T.nExo
+
     for i in axes(data_in_deviations, 2)
         # state¹⁻ = state₁
         # state¹⁻_vol = vcat(state¹⁻, 1)
@@ -1993,7 +2137,31 @@ function filter_data_with_model(𝓂::ℳ,
 
         init_guess *= 0
 
-        x, matched = find_shocks(Val(filter_algorithm), 
+        if has_missing
+            idx = obs_idx_per_t[i]
+            m = length(idx)
+            if m == 0
+                x = zeros(n_exo)
+                matched = true
+            else
+                if m > n_exo
+                    @error "Inversion filter (pruned 2nd) failed at step $i: m=$m > n_exo=$n_exo"
+                    return variables, shocks, zeros(0,0), decomposition
+                end
+                𝐒ⁱ_v   = 𝐒ⁱ[idx, :]
+                𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+                si_v   = shock_independent[idx]
+                x, matched = find_shocks(Val(filter_algorithm),
+                                        zeros(n_exo),
+                                        kron_buffer,
+                                        kron_buffer2,
+                                        J,
+                                        𝐒ⁱ_v,
+                                        𝐒ⁱ²ᵉ_v,
+                                        si_v)
+            end
+        else
+            x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
                                 kron_buffer2,
@@ -2003,6 +2171,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end
                      
         # if matched println("$filter_algorithm: $matched; current x: $x") end      
         # if !matched
@@ -2260,6 +2429,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     II = sparse(ℒ.I(T.nExo^2))
 
+    data_arr = collect(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_arr)
+    n_exo = T.nExo
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state
 
@@ -2283,7 +2456,29 @@ function filter_data_with_model(𝓂::ℳ,
 
         init_guess = zeros(size(𝐒ⁱ, 2))
 
-        x, matched = find_shocks(Val(filter_algorithm), 
+        if has_missing
+            idx = obs_idx_per_t[i]
+            m = length(idx)
+            if m == 0
+                x = zeros(n_exo)
+                matched = true
+            else
+                if m > n_exo
+                    @error "Inversion filter (3rd) failed at step $i: m=$m > n_exo=$n_exo"
+                    return variables, shocks, zeros(0,0), zeros(0,0)
+                end
+                𝐒ⁱ_v   = 𝐒ⁱ[idx, :]
+                𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+                𝐒ⁱ³ᵉ_v = 𝐒ⁱ³ᵉ[idx, :]
+                si_v   = shock_independent[idx]
+                x, matched = find_shocks(Val(filter_algorithm),
+                                        zeros(n_exo),
+                                        kron_buffer, kron_buffer², kron_buffer2,
+                                        kron_buffer3, kron_buffer4, J,
+                                        𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
+            end
+        else
+            x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
                                 kron_buffer²,
@@ -2297,6 +2492,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 shock_independent,
                                 # max_iter = 200
                                 )
+        end
                                 
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
         # if !matched
@@ -2583,6 +2779,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
 
+    data_arr = collect(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_arr)
+    n_exo = T.nExo
+
     for i in axes(data_in_deviations,2)
         # state¹⁻ = state₁
 
@@ -2629,7 +2829,29 @@ function filter_data_with_model(𝓂::ℳ,
         #                         )
         #                         println(x²)
 
-        x, matched = find_shocks(Val(filter_algorithm), 
+        if has_missing
+            idx = obs_idx_per_t[i]
+            m = length(idx)
+            if m == 0
+                x = zeros(n_exo)
+                matched = true
+            else
+                if m > n_exo
+                    @error "Inversion filter (pruned 3rd) failed at step $i: m=$m > n_exo=$n_exo"
+                    return variables, shocks, zeros(0,0), zeros(0,0)
+                end
+                𝐒ⁱ_v   = 𝐒ⁱ[idx, :]
+                𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+                𝐒ⁱ³ᵉ_v = 𝐒ⁱ³ᵉ[idx, :]
+                si_v   = shock_independent[idx]
+                x, matched = find_shocks(Val(filter_algorithm),
+                                        zeros(n_exo),
+                                        kron_buffer, kron_buffer², kron_buffer2,
+                                        kron_buffer3, kron_buffer4, J,
+                                        𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
+            end
+        else
+            x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
                                 kron_buffer²,
@@ -2643,6 +2865,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 shock_independent,
                                 # max_iter = 200
                                 )
+        end
                                 
                                 # println(x)
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
@@ -2857,6 +3080,687 @@ function filter_data_with_model(𝓂::ℳ,
     end
 
     return variables, shocks, zeros(0,0), decomposition
+end
+
+# ===========================================================================
+# Missing-value variants of `calculate_loglikelihood(::Val{:inversion}, ...)`.
+# Routed to from the dense entry points when `build_obs_index` reports any
+# non-finite entry. These functions never run when the data are dense (zero
+# overhead for existing callers).
+# ===========================================================================
+
+function calculate_loglikelihood_inversion_missing_first_order(
+                                                    observables_index::Vector{Int},
+                                                    𝐒::Matrix{R},
+                                                    data_in_deviations::Matrix{R},
+                                                    constants::constants,
+                                                    state,
+                                                    workspaces::workspaces,
+                                                    obs_idx_per_t::Vector{Vector{Int}};
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
+    if warmup_iterations > 0
+        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
+        return on_failure_loglikelihood
+    end
+    T = constants.post_model_macro
+    ws = workspaces.inversion
+    state = convert(Vector{R}, state[1])
+
+    n_exo = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
+    t⁻ = T.past_not_future_and_mixed_idx
+
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    n_obs_total = 0
+
+    jac_full = 𝐒[cond_var_idx, end-n_exo+1:end]
+    𝐒obs    = 𝐒[cond_var_idx, 1:end-n_exo]
+
+    state_concat = ws.state_concat
+    y_full = Vector{R}(undef, n_cond)
+    x_buf  = zeros(R, n_exo)
+
+    for i in axes(data_in_deviations, 2)
+        idx = obs_idx_per_t[i]
+        m = length(idx)
+
+        if m == 0
+            fill!(x_buf, zero(R))
+            inversion_missing_state_update_first_order!(state, state_concat, 𝐒, t⁻, n_past, x_buf)
+            continue
+        end
+
+        ℒ.mul!(y_full, 𝐒obs, view(state, t⁻))
+        @inbounds for k in 1:m
+            ii = idx[k]
+            y_full[ii] = data_in_deviations[ii, i] - y_full[ii]
+        end
+
+        jac_v  = jac_full[idx, :]
+        y_v    = y_full[idx]
+
+        if m == n_exo
+            jacdecomp = ℒ.lu(jac_v, check = false)
+            if !ℒ.issuccess(jacdecomp)
+                if opts.verbose println("Inversion filter failed at step $i (LU singular)") end
+                return on_failure_loglikelihood
+            end
+            x_v = jacdecomp \ y_v
+            if i > presample_periods
+                logabsdets += ℒ.logabsdet(jacdecomp)[1]
+            end
+        else
+            jacdecomp = try ℒ.svd(jac_v)
+            catch
+                if opts.verbose println("Inversion filter failed at step $i (SVD)") end
+                return on_failure_loglikelihood
+            end
+            x_v = jacdecomp \ y_v
+            if i > presample_periods
+                logabsdets += sum(s -> log(abs(s)), jacdecomp.S)
+            end
+        end
+
+        copyto!(x_buf, x_v)
+
+        if i > presample_periods
+            shocks² += sum(abs2, x_buf)
+            n_obs_total += m
+            if !isfinite(shocks²) || !isfinite(logabsdets)
+                return on_failure_loglikelihood
+            end
+        end
+
+        inversion_missing_state_update_first_order!(state, state_concat, 𝐒, t⁻, n_past, x_buf)
+    end
+
+    return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
+end
+
+
+function calculate_loglikelihood_inversion_missing_pruned_second_order(
+                                                    observables_index::Vector{Int},
+                                                    𝐒::Vector{AbstractMatrix{R}},
+                                                    data_in_deviations::Matrix{R},
+                                                    constants::constants,
+                                                    state,
+                                                    workspaces::workspaces,
+                                                    obs_idx_per_t::Vector{Vector{Int}};
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
+    if warmup_iterations > 0
+        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
+        return on_failure_loglikelihood
+    end
+    T = constants.post_model_macro
+    n_exo  = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    cond_var_idx = observables_index
+
+    cc = ensure_computational_constants!(constants)
+    e_in_s⁺  = cc.e_in_s⁺
+    sv_in_s⁺ = cc.s_in_s⁺
+    s_in_s⁺  = cc.s_in_s
+
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse;  shock_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse;             shock²_idxs = tmp.nzind
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse;           var_vol²_idxs = tmp.nzind
+    tmp = ℒ.kron(s_in_s⁺,  s_in_s⁺)  |> sparse;           var²_idxs    = tmp.nzind
+
+    𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
+    𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:n_past]
+    𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
+    𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs] |> collect
+    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]     |> collect
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
+    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
+    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+
+    state₁ = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
+    state₂ = convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx])
+
+    J = ℒ.I(n_exo)
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+    state¹⁻_vol = vcat(state₁, one(R))
+    aug_state₁ = vcat(state₁, one(R), zeros(R, n_exo))
+    aug_state₂ = vcat(state₂, zero(R), zeros(R, n_exo))
+    kronaug_state₁ = zeros(R, length(aug_state₁)^2)
+    kron_buffer  = zeros(R, n_exo^2)
+    kron_buffer2 = zeros(R, n_exo^2, n_exo)
+    kron_buffer3 = zeros(R, n_exo * (n_past + 1), n_exo)
+    kronstate¹⁻_vol = zeros(R, (n_past+1)^2)
+    shock_independent = zeros(R, length(cond_var_idx))
+    𝐒ⁱ_full = zeros(R, length(cond_var_idx), n_exo)
+
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    n_obs_total = 0
+
+    for i in axes(data_in_deviations, 2)
+        idx = obs_idx_per_t[i]
+        m = length(idx)
+
+        copyto!(state¹⁻_vol, 1, state₁, 1)
+        state¹⁻_vol[end] = one(R)
+
+        copyto!(shock_independent, view(data_in_deviations, :, i))
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
+
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer3)
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
+
+        if m == 0
+            x = zeros(R, n_exo)
+        else
+            if m > n_exo
+                if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i: m=$m > n_exo=$n_exo") end
+                return on_failure_loglikelihood
+            end
+            𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
+            𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+            si_v   = shock_independent[idx]
+            init_guess = zeros(R, n_exo)
+            x, matched = find_shocks(Val(filter_algorithm),
+                                    init_guess, kron_buffer, kron_buffer2, J,
+                                    𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
+            if !matched
+                if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i") end
+                return on_failure_loglikelihood
+            end
+            if i > presample_periods
+                jacc_v = similar(𝐒ⁱ_v)
+                ℒ.kron!(kron_buffer2, J, x)
+                ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
+                ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
+                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                shocks² += sum(abs2, x)
+                n_obs_total += m
+                if !isfinite(logabsdets) || !isfinite(shocks²)
+                    return on_failure_loglikelihood
+                end
+            end
+        end
+
+        copyto!(aug_state₁, 1, state₁, 1)
+        aug_state₁[length(state₁) + 1] = one(R)
+        copyto!(aug_state₁, length(state₁) + 2, x, 1)
+        copyto!(aug_state₂, 1, state₂, 1)
+        aug_state₂[length(state₂) + 1] = zero(R)
+        fill!(view(aug_state₂, length(state₂) + 2:length(aug_state₂)), zero(R))
+
+        ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
+        ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
+        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+        ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
+    end
+
+    return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
+end
+
+
+function calculate_loglikelihood_inversion_missing_second_order(
+                                                    observables_index::Vector{Int},
+                                                    𝐒::Vector{AbstractMatrix{R}},
+                                                    data_in_deviations::Matrix{R},
+                                                    constants::constants,
+                                                    state,
+                                                    workspaces::workspaces,
+                                                    obs_idx_per_t::Vector{Vector{Int}};
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
+    if warmup_iterations > 0
+        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
+        return on_failure_loglikelihood
+    end
+    T = constants.post_model_macro
+    n_exo  = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    cond_var_idx = observables_index
+
+    cc = ensure_computational_constants!(constants)
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺  = cc.e_in_s⁺
+
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse;  shock_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse;             shock²_idxs = tmp.nzind
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse;           var_vol²_idxs = tmp.nzind
+
+    𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
+    𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
+    𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs] |> collect
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
+    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
+    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+
+    st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
+
+    J = ℒ.I(n_exo)
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+    state¹⁻_vol = vcat(st, one(R))
+    aug_state = vcat(st, one(R), zeros(R, n_exo))
+    kronaug_state = zeros(R, length(aug_state)^2)
+    kron_buffer  = zeros(R, n_exo^2)
+    kron_buffer2 = zeros(R, n_exo^2, n_exo)
+    kron_buffer3 = zeros(R, n_exo * (n_past + 1), n_exo)
+    kronstate¹⁻_vol = zeros(R, (n_past+1)^2)
+    shock_independent = zeros(R, length(cond_var_idx))
+    𝐒ⁱ_full = zeros(R, length(cond_var_idx), n_exo)
+
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    n_obs_total = 0
+
+    for i in axes(data_in_deviations, 2)
+        idx = obs_idx_per_t[i]
+        m = length(idx)
+
+        copyto!(state¹⁻_vol, 1, st, 1)
+        state¹⁻_vol[end] = one(R)
+
+        copyto!(shock_independent, view(data_in_deviations, :, i))
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
+
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer3)
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
+
+        if m == 0
+            x = zeros(R, n_exo)
+        else
+            if m > n_exo
+                if opts.verbose println("Inversion filter (2nd) failed at step $i: m=$m > n_exo=$n_exo") end
+                return on_failure_loglikelihood
+            end
+            𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
+            𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
+            si_v   = shock_independent[idx]
+            init_guess = zeros(R, n_exo)
+            x, matched = find_shocks(Val(filter_algorithm),
+                                    init_guess, kron_buffer, kron_buffer2, J,
+                                    𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
+            if !matched
+                if opts.verbose println("Inversion filter (2nd) failed at step $i") end
+                return on_failure_loglikelihood
+            end
+            if i > presample_periods
+                jacc_v = similar(𝐒ⁱ_v)
+                ℒ.kron!(kron_buffer2, J, x)
+                ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
+                ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
+                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                shocks² += sum(abs2, x)
+                n_obs_total += m
+                if !isfinite(logabsdets) || !isfinite(shocks²)
+                    return on_failure_loglikelihood
+                end
+            end
+        end
+
+        copyto!(aug_state, 1, st, 1)
+        aug_state[length(st) + 1] = one(R)
+        copyto!(aug_state, length(st) + 2, x, 1)
+
+        ℒ.kron!(kronaug_state, aug_state, aug_state)
+        ℒ.mul!(st, 𝐒⁻¹, aug_state)
+        ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
+    end
+
+    return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
+end
+
+
+function calculate_loglikelihood_inversion_missing_pruned_third_order(
+                                                    observables_index::Vector{Int},
+                                                    𝐒::Vector{AbstractMatrix{R}},
+                                                    data_in_deviations::Matrix{R},
+                                                    constants::constants,
+                                                    state,
+                                                    workspaces::workspaces,
+                                                    obs_idx_per_t::Vector{Vector{Int}};
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
+    if warmup_iterations > 0
+        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
+        return on_failure_loglikelihood
+    end
+    T = constants.post_model_macro
+    n_exo  = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
+
+    cc = ensure_computational_constants!(constants)
+    s_in_s⁺  = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺  = cc.e_in_s⁺
+    shockvar_idxs = cc.shockvar_idxs
+    shock_idxs    = cc.shock_idxs
+    shock²_idxs   = cc.shock²_idxs
+    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
+    var_vol²_idxs  = cc.var_vol²_idxs
+
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse; var²_idxs = tmp.nzind
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse; var_vol³_idxs = tmp.nzind
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs2 = tmp.nzind
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs3 = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shock³_idxs = tmp.nzind
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shockvar1_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse; shockvar2_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse; shockvar3_idxs = tmp.nzind
+    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    shockvar³_idxs  = setdiff(shock_idxs3, shock³_idxs)
+
+    𝐒⁻¹   = 𝐒[1][T.past_not_future_and_mixed_idx, :]
+    𝐒¹⁻   = 𝐒[1][cond_var_idx, 1:n_past]
+    𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
+    𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
+    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]  |> collect
+    𝐒²⁻   = 𝐒[2][cond_var_idx, var²_idxs]      |> collect
+    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, shockvar_idxs]  |> collect
+    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
+    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]  |> collect
+    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
+    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs] |> collect
+    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]    |> collect
+    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :] |> collect
+
+    st1 = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
+    st2 = convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx])
+    st3 = convert(Vector{R}, state[3][T.past_not_future_and_mixed_idx])
+
+    J  = ℒ.I(n_exo)
+    II = ℒ.I(n_exo^2)
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+
+    state_vol      = zeros(R, n_past + 1)
+    kronstate_vol  = zeros(R, (n_past+1)^2)
+    kronstate_vol³ = zeros(R, (n_past+1)^3)
+    state²⁻_vol    = zeros(R, n_past + 1)
+    kron_buffer_state = zeros(R, n_exo * (n_past+1), n_exo)
+    kron_buffer3sv = zeros(R, n_exo * (n_past+1)^2, n_exo)
+    kron_buffer4sv = zeros(R, n_exo^2 * (n_past+1), n_exo^2)
+    kron_buffer2ss = zeros(R, n_past^2)
+    kron_buffer  = zeros(R, n_exo^2)
+    kron_buffer² = zeros(R, n_exo^3)
+    kron_buffer2 = zeros(R, n_exo^2, n_exo)
+    kron_buffer3 = zeros(R, n_exo^3, n_exo)
+    kron_buffer4 = zeros(R, n_exo^3, n_exo^2)
+    shock_independent = zeros(R, n_cond)
+    𝐒ⁱ_full = zeros(R, n_cond, n_exo)
+    aug_state₁  = zeros(R, n_past + 1 + n_exo)
+    aug_state₁̂ = zeros(R, n_past + 1 + n_exo)
+    aug_state₂  = zeros(R, n_past + 1 + n_exo)
+    aug_state₃  = zeros(R, n_past + 1 + n_exo)
+    kron_aug_state₁ = zeros(R, length(aug_state₁)^2)
+    kron_kron_aug_state₁ = zeros(R, length(aug_state₁)^3)
+
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    n_obs_total = 0
+
+    for i in axes(data_in_deviations, 2)
+        idx = obs_idx_per_t[i]
+        m = length(idx)
+
+        copyto!(state_vol, 1, st1, 1, n_past); state_vol[end] = one(R)
+        state¹⁻_vol = state_vol
+
+        copyto!(shock_independent, view(data_in_deviations, :, i))
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒¹⁻, st2, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒¹⁻, st3, -1, 1)
+        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
+        ℒ.kron!(kron_buffer2ss, st1, st2)
+        ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
+        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)
+
+        copyto!(state²⁻_vol, 1, st2, 1); state²⁻_vol[end] = zero(R)
+        ℒ.kron!(kron_buffer_state, J, state²⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵛᵉ, kron_buffer_state)
+        ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
+        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
+
+        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        𝐒ⁱ²ᵉ_full = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * kron_buffer4sv / 2
+
+        if m == 0
+            x = zeros(R, n_exo)
+        else
+            if m > n_exo
+                if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i: m=$m > n_exo=$n_exo") end
+                return on_failure_loglikelihood
+            end
+            𝐒ⁱ_v    = 𝐒ⁱ_full[idx, :]
+            𝐒ⁱ²ᵉ_v  = 𝐒ⁱ²ᵉ_full[idx, :]
+            𝐒ⁱ³ᵉ_v  = 𝐒ⁱ³ᵉ[idx, :]
+            si_v    = shock_independent[idx]
+            init_guess = zeros(R, n_exo)
+            x, matched = find_shocks(Val(filter_algorithm),
+                                    init_guess, kron_buffer, kron_buffer², kron_buffer2,
+                                    kron_buffer3, kron_buffer4, J,
+                                    𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
+            if !matched
+                if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i") end
+                return on_failure_loglikelihood
+            end
+            if i > presample_periods
+                ℒ.kron!(kron_buffer2, J, x)
+                ℒ.kron!(kron_buffer3, kron_buffer2, x)
+                jacc_v = similar(𝐒ⁱ_v)
+                ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
+                ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 2)
+                ℒ.axpby!(-1, 𝐒ⁱ_v, -1, jacc_v)
+                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                shocks² += sum(abs2, x)
+                n_obs_total += m
+                if !isfinite(logabsdets) || !isfinite(shocks²)
+                    return on_failure_loglikelihood
+                end
+            end
+        end
+
+        copyto!(aug_state₁, 1, st1, 1, n_past); aug_state₁[n_past+1] = one(R); copyto!(aug_state₁, n_past+2, x, 1, n_exo)
+        copyto!(aug_state₁̂, 1, st1, 1, n_past); aug_state₁̂[n_past+1] = zero(R); copyto!(aug_state₁̂, n_past+2, x, 1, n_exo)
+        copyto!(aug_state₂, 1, st2, 1, n_past); aug_state₂[n_past+1] = zero(R); fill!(view(aug_state₂, n_past+2:n_past+1+n_exo), zero(R))
+        copyto!(aug_state₃, 1, st3, 1, n_past); aug_state₃[n_past+1] = zero(R); fill!(view(aug_state₃, n_past+2:n_past+1+n_exo), zero(R))
+
+        ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
+        ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+
+        ℒ.mul!(st1, 𝐒⁻¹, aug_state₁)
+        ℒ.mul!(st2, 𝐒⁻¹, aug_state₂); ℒ.mul!(st2, 𝐒⁻², kron_aug_state₁, 1/2, 1)
+        ℒ.mul!(st3, 𝐒⁻¹, aug_state₃)
+        ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+        ℒ.mul!(st3, 𝐒⁻², kron_aug_state₁, 1, 1)
+        ℒ.mul!(st3, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
+    end
+
+    return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
+end
+
+
+function calculate_loglikelihood_inversion_missing_third_order(
+                                                    observables_index::Vector{Int},
+                                                    𝐒::Vector{AbstractMatrix{R}},
+                                                    data_in_deviations::Matrix{R},
+                                                    constants::constants,
+                                                    state,
+                                                    workspaces::workspaces,
+                                                    obs_idx_per_t::Vector{Vector{Int}};
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
+                                                    opts::CalculationOptions = merge_calculation_options(),
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
+    if warmup_iterations > 0
+        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
+        return on_failure_loglikelihood
+    end
+    T = constants.post_model_macro
+    n_exo  = T.nExo
+    n_past = T.nPast_not_future_and_mixed
+    cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
+
+    cc = ensure_computational_constants!(constants)
+    s_in_s⁺  = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺  = cc.e_in_s⁺
+
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse; shock²_idxs = tmp.nzind
+    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse; var_vol²_idxs = tmp.nzind
+    tmp = ℒ.kron(s_in_s⁺,  s_in_s⁺)  |> sparse; var²_idxs    = tmp.nzind
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse; var_vol³_idxs = tmp.nzind
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs2 = tmp.nzind
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs3 = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shock³_idxs = tmp.nzind
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shockvar1_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse; shockvar2_idxs = tmp.nzind
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse; shockvar3_idxs = tmp.nzind
+    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    shockvar³_idxs  = setdiff(shock_idxs3, shock³_idxs)
+
+    𝐒⁻¹   = 𝐒[1][T.past_not_future_and_mixed_idx, :]
+    𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
+    𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
+    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]  |> collect
+    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
+    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
+    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]  |> collect
+    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
+    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs] |> collect
+    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]    |> collect
+    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :] |> collect
+
+    st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
+
+    J  = ℒ.I(n_exo)
+    II = sparse(ℒ.I(n_exo^2))
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+
+    state_vol      = zeros(R, n_past + 1)
+    kronstate_vol  = zeros(R, (n_past+1)^2)
+    kronstate_vol³ = zeros(R, (n_past+1)^3)
+    kron_buffer_state = zeros(R, n_exo * (n_past+1), n_exo)
+    kron_buffer  = zeros(R, n_exo^2)
+    kron_buffer² = zeros(R, n_exo^3)
+    kron_buffer2 = zeros(R, n_exo^2, n_exo)
+    kron_buffer3 = zeros(R, n_exo^3, n_exo)
+    kron_buffer4 = zeros(R, n_exo^3, n_exo^2)
+    shock_independent = zeros(R, n_cond)
+    𝐒ⁱ_full = zeros(R, n_cond, n_exo)
+    aug_state = zeros(R, n_past + 1 + n_exo)
+    kronaug_state = zeros(R, length(aug_state)^2)
+    kron_kron_aug_state = zeros(R, length(aug_state)^3)
+
+    shocks² = zero(R)
+    logabsdets = zero(R)
+    n_obs_total = 0
+
+    for i in axes(data_in_deviations, 2)
+        idx = obs_idx_per_t[i]
+        m = length(idx)
+
+        copyto!(state_vol, 1, st, 1, n_past); state_vol[end] = one(R)
+        state¹⁻_vol = state_vol
+
+        copyto!(shock_independent, view(data_in_deviations, :, i))
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
+        ℒ.kron!(kronstate_vol³, state¹⁻_vol, kronstate_vol)
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)
+
+        ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
+        copyto!(𝐒ⁱ_full, 𝐒¹ᵉ)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², ℒ.kron(kron_buffer_state, state¹⁻_vol), 1/2, 1)
+
+        𝐒ⁱ²ᵉ_full = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+
+        if m == 0
+            x = zeros(R, n_exo)
+        else
+            if m > n_exo
+                if opts.verbose println("Inversion filter (3rd) failed at step $i: m=$m > n_exo=$n_exo") end
+                return on_failure_loglikelihood
+            end
+            𝐒ⁱ_v    = 𝐒ⁱ_full[idx, :]
+            𝐒ⁱ²ᵉ_v  = 𝐒ⁱ²ᵉ_full[idx, :]
+            𝐒ⁱ³ᵉ_v  = 𝐒ⁱ³ᵉ[idx, :]
+            si_v    = shock_independent[idx]
+            init_guess = zeros(R, n_exo)
+            x, matched = find_shocks(Val(filter_algorithm),
+                                    init_guess, kron_buffer, kron_buffer², kron_buffer2,
+                                    kron_buffer3, kron_buffer4, J,
+                                    𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
+            if !matched
+                if opts.verbose println("Inversion filter (3rd) failed at step $i") end
+                return on_failure_loglikelihood
+            end
+            if i > presample_periods
+                ℒ.kron!(kron_buffer2, J, x)
+                ℒ.kron!(kron_buffer, x, x)
+                ℒ.kron!(kron_buffer3, J, kron_buffer)
+                jacc_v = similar(𝐒ⁱ_v)
+                copyto!(jacc_v, 𝐒ⁱ_v)
+                ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2, 2, 1)
+                ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 1)
+                ℒ.rmul!(jacc_v, -1)
+                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                shocks² += sum(abs2, x)
+                n_obs_total += m
+                if !isfinite(logabsdets) || !isfinite(shocks²)
+                    return on_failure_loglikelihood
+                end
+            end
+        end
+
+        copyto!(aug_state, 1, st, 1, n_past); aug_state[n_past+1] = one(R); copyto!(aug_state, n_past+2, x, 1, n_exo)
+        ℒ.kron!(kronaug_state, aug_state, aug_state)
+        ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+        ℒ.mul!(st, 𝐒⁻¹, aug_state)
+        ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
+        ℒ.mul!(st, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
+    end
+
+    return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 end
 
 end # dispatch_doctor
