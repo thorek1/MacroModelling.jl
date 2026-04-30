@@ -752,16 +752,16 @@ sol = get_solution(FRBUS, algorithm = :first_order)
 @test isapprox(sol(:ex_l₍₋₁₎, :ex_l), 0.892272127137, rtol = 1e-5)
 
 # Test impulse responses to fiscal shock (impact and propagation)
-irf = get_irf(FRBUS, algorithm = :first_order, shocks = [:fiscal_aerr], periods = 5)
+irf_result = get_irf(FRBUS, algorithm = :first_order, shocks = [:fiscal_aerr], periods = 5)
 
-@test isapprox(irf(:rff, 1, :fiscal_aerr), 0.0144267064, rtol = 1e-4)
-@test isapprox(irf(:xgap2, 1, :fiscal_aerr), 0.0961780423, rtol = 1e-4)
-@test isapprox(irf(:eco_l, 1, :fiscal_aerr), 0.0010262957, rtol = 1e-4)
-@test isapprox(irf(:debt_to_gdp, 1, :fiscal_aerr), 0.0065268971, rtol = 1e-4)
+@test isapprox(irf_result(:rff, 1, :fiscal_aerr), 0.0144267064, rtol = 1e-4)
+@test isapprox(irf_result(:xgap2, 1, :fiscal_aerr), 0.0961780423, rtol = 1e-4)
+@test isapprox(irf_result(:eco_l, 1, :fiscal_aerr), 0.0010262957, rtol = 1e-4)
+@test isapprox(irf_result(:debt_to_gdp, 1, :fiscal_aerr), 0.0065268971, rtol = 1e-4)
 
-@test isapprox(irf(:rff, 5, :fiscal_aerr), 0.1445122073, rtol = 1e-4)
-@test isapprox(irf(:xgap2, 5, :fiscal_aerr), 0.3546553714, rtol = 1e-4)
-@test isapprox(irf(:debt_to_gdp, 5, :fiscal_aerr), 0.0685009926, rtol = 1e-4)
+@test isapprox(irf_result(:rff, 5, :fiscal_aerr), 0.1445122073, rtol = 1e-4)
+@test isapprox(irf_result(:xgap2, 5, :fiscal_aerr), 0.3546553714, rtol = 1e-4)
+@test isapprox(irf_result(:debt_to_gdp, 5, :fiscal_aerr), 0.0685009926, rtol = 1e-4)
 
 # Variance decomposition and loglikelihood tests are skipped for FRBUS:
 # the Lyapunov equation does not converge (covariance matrix not found),

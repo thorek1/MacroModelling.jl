@@ -20,8 +20,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         use_fastlapack_lu::Bool = true,
                                         tol::SolverTolerances = SolverTolerances(atol = 1e-14,
                                                                                 rtol = 1e-14,
-                                                                                initial_guess_acceptance_tol = 1e-8,
-                                                                                acceptance_tol = 1e-8),
+                                                                                initial_guess_acceptance_tol = 1e-10,
+                                                                                acceptance_tol = 1e-6),
                                         verbose::Bool = false,
                                         caching::Bool = true)::Tuple{Matrix{R}, Bool} where {R <: AbstractFloat}
     T = constants.post_model_macro

@@ -978,8 +978,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     A = 𝐒₁[:,1:nPast]
     B̂ = 𝐒₂[:,kron_s⁺_s⁺]
 
-    (SSSstates_final, converged), newton_pullback =
+    newton_result, newton_pullback =
         rrule(solve_stochastic_steady_state_newton, Val(:second_order), 𝐒₁, 𝐒₂, collect(SSSstates), 𝓂)
+    SSSstates_final, converged::Bool = newton_result
 
     if !converged
         result = (all_SS, false, SS_and_pars, solution_error,
@@ -1243,8 +1244,9 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
 
-    (SSSstates_final, converged), newton_pullback =
+    newton_result, newton_pullback =
         rrule(solve_stochastic_steady_state_newton, Val(:third_order), 𝐒₁, 𝐒₂, 𝐒₃̂, collect(SSSstates), 𝓂)
+    SSSstates_final, converged::Bool = newton_result
 
     if !converged
         result = (all_SS, false, SS_and_pars, solution_error,
