@@ -10877,6 +10877,7 @@ function rrule(::typeof(get_statistics),
                 standard_deviation::Union{Symbol_input,String_input} = Symbol[],
                 variance::Union{Symbol_input,String_input} = Symbol[],
                 covariance::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
+                correlation::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
                 autocorrelation::Union{Symbol_input,String_input} = Symbol[],
                 autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -10895,9 +10896,9 @@ function rrule(::typeof(get_statistics),
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
 
-    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
-    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
     SS_var_idx = parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
     mean_var_idx = parse_variables_input_to_index(mean, 𝓂)
@@ -10905,6 +10906,8 @@ function rrule(::typeof(get_statistics),
     var_var_idx = parse_variables_input_to_index(variance, 𝓂)
     covar_var_idx = parse_variables_input_to_index(covariance, 𝓂)
     covar_groups = is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.constants) : nothing
+    corr_var_idx = parse_variables_input_to_index(correlation, 𝓂)
+    corr_groups = is_grouped_covariance_input(correlation) ? parse_covariance_groups(correlation, 𝓂.constants) : nothing
     autocorr_var_idx = parse_variables_input_to_index(autocorrelation, 𝓂)
 
     other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.constants.post_complete_parameters.parameters, parameters), 𝓂.constants.post_complete_parameters.parameters)]
@@ -10915,7 +10918,7 @@ function rrule(::typeof(get_statistics),
     inv_sort = invperm(sort_idx)
 
     run_algorithm = algorithm
-    if run_algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+    if run_algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[]))
         run_algorithm = :pruned_second_order
     end
 
@@ -10926,7 +10929,7 @@ function rrule(::typeof(get_statistics),
 
     nVars = length(𝓂.constants.post_model_macro.var)
 
-    nsss_only = !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+    nsss_only = !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (correlation == Symbol[]) && (autocorrelation == Symbol[])
 
     nsss_pb = nothing
     cov_pb = nothing
@@ -10969,6 +10972,11 @@ function rrule(::typeof(get_statistics),
     covar_dcmp_sp = zeros(T, 0, 0)
     covar_group_pairs = NTuple{4,Int}[]
 
+    corr_full_mat = zeros(T, 0, 0)
+    diag_C_corr = zeros(T, 0)
+    s_corr = zeros(T, 0)
+    corr_group_pairs = NTuple{4,Int}[]
+
     if nsss_only
         prev_Δnsss = Ref{Any}(nothing)
 
@@ -11008,12 +11016,12 @@ function rrule(::typeof(get_statistics),
 
     if run_algorithm == :pruned_third_order
         if !(autocorrelation == Symbol[])
-            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, corr_var_idx)
             toma_out, toma_pb_local = rrule(calculate_third_order_moments_with_autocorrelation,
                                             all_parameters,
                                             𝓂.constants.post_model_macro.var[second_mom_third_order],
                                             𝓂;
-                                            covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                            covariance = 𝓂.constants.post_model_macro.var[union(covar_var_idx, corr_var_idx)],
                                             opts = opts,
                                             autocorrelation_periods = autocorrelation_periods)
             toma_pb = toma_pb_local
@@ -11023,12 +11031,12 @@ function rrule(::typeof(get_statistics),
             autocorr = toma_out[3]
             SS_and_pars = toma_out[4]
             solved = toma_out[5]
-        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[])
             tom_out, tom_pb_local = rrule(calculate_third_order_moments,
                                         all_parameters,
-                                        𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx)],
+                                        𝓂.constants.post_model_macro.var[union(std_var_idx, var_var_idx, corr_var_idx)],
                                         𝓂;
-                                        covariance = 𝓂.constants.post_model_macro.var[covar_var_idx],
+                                        covariance = 𝓂.constants.post_model_macro.var[union(covar_var_idx, corr_var_idx)],
                                         opts = opts)
             tom_pb = tom_pb_local
 
@@ -11038,7 +11046,7 @@ function rrule(::typeof(get_statistics),
             solved = tom_out[4]
         end
     elseif run_algorithm == :pruned_second_order
-        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(correlation == Symbol[]) || !(autocorrelation == Symbol[])
             somc_out, somc_pb_local = rrule(calculate_second_order_moments_with_covariance, all_parameters, 𝓂; opts = opts)
             somc_pb = somc_pb_local
 
@@ -11144,6 +11152,28 @@ function rrule(::typeof(get_statistics),
         end
     end
 
+    if !(correlation == Symbol[])
+        if size(covar_dcmp, 1) > 0
+            diag_C_corr = convert(Vector{T}, ℒ.diag(covar_dcmp))
+            s_corr = T[d > 0 ? sqrt(d) : convert(T, NaN) for d in diag_C_corr]
+            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+        end
+
+        if !isnothing(corr_groups)
+            for group in corr_groups
+                for i in group
+                    i_pos = findfirst(==(i), corr_var_idx)
+                    isnothing(i_pos) && continue
+                    for j in group
+                        j_pos = findfirst(==(j), corr_var_idx)
+                        isnothing(j_pos) && continue
+                        push!(corr_group_pairs, (i_pos, j_pos, i, j))
+                    end
+                end
+            end
+        end
+    end
+
     ret = Dict{Symbol,AbstractArray{T}}()
 
     if !(non_stochastic_steady_state == Symbol[])
@@ -11177,6 +11207,21 @@ function rrule(::typeof(get_statistics),
             ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx, covar_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
         end
     end
+    if !(correlation == Symbol[])
+        if solved
+            if !isnothing(corr_groups)
+                corr_result = zeros(T, length(corr_var_idx), length(corr_var_idx))
+                for (i_pos, j_pos, i, j) in corr_group_pairs
+                    corr_result[i_pos, j_pos] = corr_full_mat[i, j]
+                end
+                ret[:correlation] = corr_result
+            else
+                ret[:correlation] = corr_full_mat[corr_var_idx, corr_var_idx]
+            end
+        else
+            ret[:correlation] = fill(Inf * sum(abs2,parameter_values), isnothing(corr_var_idx) ? 0 : length(corr_var_idx), isnothing(corr_var_idx) ? 0 : length(corr_var_idx))
+        end
+    end
     if !(autocorrelation == Symbol[])
         ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx, :] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
     end
@@ -11186,6 +11231,7 @@ function rrule(::typeof(get_statistics),
     prev_Δstd = Ref{Any}(nothing)
     prev_Δvar = Ref{Any}(nothing)
     prev_Δcov = Ref{Any}(nothing)
+    prev_Δcorr = Ref{Any}(nothing)
     prev_Δautocorr = Ref{Any}(nothing)
 
     function get_statistics_pullback(Δret)
@@ -11198,6 +11244,7 @@ function rrule(::typeof(get_statistics),
         Δstd = _incremental_cotangent!(_get_statistics_cotangent(Δret, :standard_deviation), prev_Δstd)
         Δvar = _incremental_cotangent!(_get_statistics_cotangent(Δret, :variance), prev_Δvar)
         Δcov = _incremental_cotangent!(_get_statistics_cotangent(Δret, :covariance), prev_Δcov)
+        Δcorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :correlation), prev_Δcorr)
         Δautocorr = _incremental_cotangent!(_get_statistics_cotangent(Δret, :autocorrelation), prev_Δautocorr)
 
         ∂SS_and_pars = zeros(T, length(SS_and_pars))
@@ -11252,6 +11299,36 @@ function rrule(::typeof(get_statistics),
             end
 
             ∂covar_dcmp .+= ℒ.triu(∂covar_dcmp_sp)
+        end
+
+        if !(Δcorr isa Union{NoTangent, AbstractZero}) && !(correlation == Symbol[])
+            Δcorr_full = zeros(T, length(corr_var_idx), length(corr_var_idx))
+            if !isnothing(corr_groups)
+                for (i_pos, j_pos, i, j) in corr_group_pairs
+                    Δcorr_full[i_pos, j_pos] += Δcorr[i_pos, j_pos]
+                end
+            else
+                Δcorr_full .+= Δcorr
+            end
+
+            @inbounds for a_pos in eachindex(corr_var_idx)
+                a = corr_var_idx[a_pos]
+                sa = s_corr[a]
+                isnan(sa) && continue
+                for b_pos in eachindex(corr_var_idx)
+                    b = corr_var_idx[b_pos]
+                    g = Δcorr_full[a_pos, b_pos]
+                    g == 0 && continue
+                    sb = s_corr[b]
+                    isnan(sb) && continue
+                    sasb = sa * sb
+                    sasb == 0 && continue
+                    corr_ab = covar_dcmp[a, b] / sasb
+                    ∂covar_dcmp[a, b] += g / sasb
+                    ∂covar_dcmp[a, a] += -g * corr_ab / (2 * diag_C_corr[a])
+                    ∂covar_dcmp[b, b] += -g * corr_ab / (2 * diag_C_corr[b])
+                end
+            end
         end
 
         if !(Δautocorr isa Union{NoTangent, AbstractZero}) && !(autocorrelation == Symbol[])

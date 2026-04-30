@@ -2476,6 +2476,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                     standard_deviation = standard_deviation,
                                                     variance = variance,
                                                     covariance = covariance,
+                                                    correlation = covariance,
                                                     autocorrelation = autocorrelation
                                     )
                                 end
@@ -2498,6 +2499,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                     standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     variance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                    correlation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]))
 
             for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
@@ -2512,6 +2514,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                                 variance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                                 covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                                correlation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                                 autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2529,6 +2532,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 @test isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-8)
                                 @test isapprox(stats[:variance], STATS[:variance], rtol = 1e-8)
                                 @test isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-8)
+                                @test isapprox(stats[:correlation], STATS[:correlation], rtol = 1e-8)
                                 @test isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-8)
                             else
                                 @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
@@ -2731,6 +2735,35 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
             end
 
+            clear_solution_caches!(m, algorithm)
+
+            deriv7 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                            correlation = :all_excluding_obc)[:correlation], old_params)
+
+            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                deriv7_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                correlation = :all_excluding_obc)[:correlation], ADTypes.AutoMooncake(config = nothing), old_params)
+                deriv7_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                correlation = :all_excluding_obc)[:correlation], old_params)[1]
+            end
+
+            for i in 1:100
+                local deriv7_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                                                            x -> begin
+                                                                clear_solution_caches!(m, algorithm)
+
+                                                                get_statistics(m, x, algorithm = algorithm, correlation = :all_excluding_obc)[:correlation]
+                                                            end, old_params)
+                if isfinite(ℒ.norm(deriv7_fin[1]))
+                    if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                        @test isapprox(deriv7_moon, deriv7_fin[1], rtol = 1e-4)
+                        @test isapprox(deriv7_zyg, deriv7_fin[1], rtol = 1e-4)
+                    end
+                    @test isapprox(deriv7, deriv7_fin[1], rtol = 1e-4)
+                    break
+                end
+            end
+
             if algorithm == :pruned_third_order
                 var_obj = x -> begin
                     clear_solution_caches!(m, algorithm)
@@ -2759,6 +2792,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test all(isfinite, autocorr_grad_fin)
                 @test ℒ.norm(autocorr_grad_moon - autocorr_grad_fin) / max(ℒ.norm(autocorr_grad_fin), eps()) < 1e-4
                 @test ℒ.norm(autocorr_grad_zyg - autocorr_grad_fin) / max(ℒ.norm(autocorr_grad_fin), eps()) < 1e-4
+
+                corr_obj = x -> begin
+                    clear_solution_caches!(m, algorithm)
+                    get_statistics(m, x, algorithm = algorithm, correlation = :all_excluding_obc)[:correlation] |> sum
+                end
+
+                corr_grad_moon = DifferentiationInterface.gradient(corr_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                corr_grad_zyg = Zygote.gradient(corr_obj, old_params)[1]
+                corr_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), corr_obj, old_params)[1]
+                @test all(isfinite, corr_grad_moon)
+                @test all(isfinite, corr_grad_zyg)
+                @test all(isfinite, corr_grad_fin)
+                @test ℒ.norm(corr_grad_moon - corr_grad_fin) / max(ℒ.norm(corr_grad_fin), eps()) < 1e-4
+                @test ℒ.norm(corr_grad_zyg - corr_grad_fin) / max(ℒ.norm(corr_grad_fin), eps()) < 1e-4
             end
             end
         
@@ -2989,6 +3036,56 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             @test stats_varied[:covariance][1, 1] != 0  # within first group
             @test all(stats_varied[:covariance][1, 2:4] .== 0)  # cross-group
             @test all(stats_varied[:covariance][2:4, 1] .== 0)  # cross-group
+        end
+    end
+
+
+    @testset "get_statistics - correlation" begin
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            vars_corr = m.constants.post_model_macro.var[1:min(4, length(m.constants.post_model_macro.var))]
+
+            # Flat input: full correlation matrix among requested variables
+            stats_corr = get_statistics(m, old_params, algorithm = algorithm,
+                                        correlation = vars_corr)
+            @test haskey(stats_corr, :correlation)
+            @test stats_corr[:correlation] isa AbstractMatrix
+            @test size(stats_corr[:correlation]) == (length(vars_corr), length(vars_corr))
+            # Diagonal must be 1 (or NaN for degenerate variables, but selected vars should be non-degenerate)
+            for i in 1:length(vars_corr)
+                @test isapprox(stats_corr[:correlation][i, i], 1.0, atol = 1e-8)
+            end
+            # Symmetric
+            @test isapprox(stats_corr[:correlation], stats_corr[:correlation]', atol = 1e-10)
+            # All entries in [-1, 1]
+            @test all(-1 - 1e-8 .<= stats_corr[:correlation] .<= 1 + 1e-8)
+
+            # Cross-check correlation = covariance / (std * std')
+            stats_combo = get_statistics(m, old_params, algorithm = algorithm,
+                                         standard_deviation = vars_corr,
+                                         covariance = vars_corr,
+                                         correlation = vars_corr)
+            cov_full = stats_combo[:covariance] + stats_combo[:covariance]' - ℒ.Diagonal(stats_combo[:covariance])
+            sd = stats_combo[:standard_deviation]
+            expected_corr = cov_full ./ (sd * sd')
+            @test isapprox(stats_combo[:correlation], expected_corr, atol = 1e-10)
+
+            # Grouped correlation: cross-group entries are zero, within-group preserved
+            if length(vars_corr) >= 4
+                stats_grouped_corr = get_statistics(m, old_params, algorithm = algorithm,
+                                                    correlation = [vars_corr[1:2], vars_corr[3:4]])
+                @test stats_grouped_corr[:correlation] isa Matrix
+                @test size(stats_grouped_corr[:correlation]) == (4, 4)
+                # Within-group blocks match unrestricted correlation
+                stats_block1 = get_statistics(m, old_params, algorithm = algorithm,
+                                              correlation = vars_corr[1:2])
+                stats_block2 = get_statistics(m, old_params, algorithm = algorithm,
+                                              correlation = vars_corr[3:4])
+                @test isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-10)
+                @test isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-10)
+                # Cross-group entries are zero
+                @test all(stats_grouped_corr[:correlation][1:2, 3:4] .== 0)
+                @test all(stats_grouped_corr[:correlation][3:4, 1:2] .== 0)
+            end
         end
     end
 

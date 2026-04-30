@@ -64,7 +64,7 @@ using Pkg; Pkg.add("Optim")                         # LBFGS for conditional fore
 **Automatic differentiation backends:**
 
 - **[Mooncake.jl](https://github.com/compintell/Mooncake.jl)** (reverse-mode) is the recommended backend for gradient-based estimation with Turing.jl (NUTS, HMC). Custom ChainRules `rrule` definitions ensure efficient reverse-mode differentiation through all solvers and filters. Other ChainRules-compatible backends (e.g. Zygote.jl) also work through these same rrules.
-- **[ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)** (forward-mode) is supported via a package extension and provides `ForwardDiff.jacobian` / `ForwardDiff.gradient` compatibility for `get_solution`, `get_irf`, and `get_statistics` (steady state, mean, variance, standard deviation, covariance, autocorrelation) across all perturbation orders (first, second, third, and pruned variants), as well as `get_loglikelihood` (Kalman filter only; the inversion filter is not supported with ForwardDiff).
+- **[ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)** (forward-mode) is supported via a package extension and provides `ForwardDiff.jacobian` / `ForwardDiff.gradient` compatibility for `get_solution`, `get_irf`, and `get_statistics` (steady state, mean, variance, standard deviation, covariance, correlation, autocorrelation) across all perturbation orders (first, second, third, and pruned variants), as well as `get_loglikelihood` (Kalman filter only; the inversion filter is not supported with ForwardDiff).
 
 ### Example
 

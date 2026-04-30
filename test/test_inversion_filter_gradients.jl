@@ -1,0 +1,274 @@
+using Test
+using MacroModelling
+using Random
+using AxisKeys
+import LinearAlgebra as ℒ
+import ForwardDiff
+import Zygote
+import FiniteDifferences
+
+# -----------------------------------------------------------------------------
+# Verifies that ∂loglik/∂parameters for the inversion filter agrees between
+# ForwardDiff, Zygote, and FiniteDifferences across all five perturbation-order
+# dispatches (first_order, pruned_second_order, second_order, pruned_third_order,
+# third_order).
+#
+# Models:
+#   * Gali_2015_chapter_3_nonlinear — all 5 algorithms (under-identified obs;
+#     first_order also tested with square obs and FULL parameter vector)
+#   * Smets_Wouters_2007 — first_order (full param vector) + pruned_second_order
+#     (subset).
+#
+# Edge cases (where supported by the dispatch):
+#   * n_obs <  n_shocks  (under-identified — LagrangeNewton path)
+#   * n_obs == n_shocks  (square — first_order only; higher orders cannot
+#     invert square systems on this model with LagrangeNewton)
+#   * warmup_iterations > 0   (first_order only — codebase warns it's first-
+#     order-only and ignores it otherwise)
+#   * presample_periods > 0
+#
+# Note: MacroModelling enforces n_obs ≤ n_shocks at the API level, so the
+# over-identified case is intentionally not exercised.
+# -----------------------------------------------------------------------------
+
+const RTOL = 1e-5
+const FDM   = FiniteDifferences.central_fdm(5, 1)
+
+# Build a Zygote/ForwardDiff-friendly closure that varies a subset of params.
+# The full parameter vector is built via a comprehension (no in-place writes)
+# so that reverse-mode AD has no mutation to worry about.
+function make_llh_closure(model, data, base_params, idx, algorithm; kwargs...)
+    n   = length(base_params)
+    pos = zeros(Int, n)            # 0 ⇒ use base_params[j], else θ_subset[pos[j]]
+    @inbounds for (k, j) in enumerate(idx)
+        pos[j] = k
+    end
+    return function(θ_subset)
+        # Use `map` (Zygote-friendly, no in-place setindex! tracing) to splice
+        # θ_subset into the base-parameter vector.  An explicit element-type
+        # conversion makes the result eltype-stable so ForwardDiff sees a
+        # `Vector{Dual}` rather than `Vector{Real}`.
+        T = eltype(θ_subset)
+        full = map(j -> pos[j] == 0 ? T(base_params[j]) : θ_subset[pos[j]], 1:n)
+        return get_loglikelihood(model, data, full;
+                                 filter = :inversion,
+                                 algorithm = algorithm,
+                                 on_failure_loglikelihood = -Inf,
+                                 kwargs...)
+    end
+end
+
+function compare_gradients(label, model, data, base_params, idx, algorithm;
+                           rtol = RTOL, kwargs...)
+    @testset "$label" begin
+        f       = make_llh_closure(model, data, base_params, idx, algorithm; kwargs...)
+        θ       = base_params[idx]
+        llh_val = f(θ)
+        @test isfinite(llh_val)
+        if !isfinite(llh_val)
+            @info "Skipping $label: forward loglik not finite at base params"
+            return
+        end
+
+        # FiniteDifferences reference (slow, but accurate).
+        fd_grad = first(FiniteDifferences.grad(FDM, f, θ))
+        if !all(isfinite, fd_grad)
+            @info "Skipping $label: FD reference contains NaN/Inf — model fails under perturbation"
+            return
+        end
+
+        # ForwardDiff (forward-mode AD).  Wrapped so that a ForwardDiff failure
+        # does not prevent the Zygote check from running — they exercise
+        # different code paths (the generic primal vs. the rrules).
+        @testset "ForwardDiff vs FiniteDifferences" begin
+            fdiff_grad = nothing
+            fdiff_err  = nothing
+            try
+                fdiff_grad = ForwardDiff.gradient(f, θ)
+            catch err
+                fdiff_err = err
+            end
+            if fdiff_err !== nothing
+                @error "ForwardDiff threw" exception = (fdiff_err, catch_backtrace())
+                @test false
+            else
+                @test all(isfinite, fdiff_grad)
+                @test isapprox(fdiff_grad, fd_grad; rtol = rtol)
+            end
+        end
+
+        # Zygote (reverse-mode AD; exercises the rrules in src/rrules.jl).
+        @testset "Zygote vs FiniteDifferences" begin
+            zg_grad   = nothing
+            zg_err    = nothing
+            try
+                zg_grad, = Zygote.gradient(f, θ)
+            catch err
+                zg_err = err
+            end
+            if zg_err !== nothing
+                @error "Zygote threw" exception = (zg_err, catch_backtrace())
+                @test false
+            else
+                @test zg_grad !== nothing
+                @test all(isfinite, zg_grad)
+                @test isapprox(zg_grad, fd_grad; rtol = rtol)
+            end
+        end
+    end
+end
+
+# Build data as steady-state level + small Gaussian perturbations.  This keeps
+# the inversion filter inside its convergence basin at every perturbation
+# order, so any test failure reflects an AD problem rather than a numerical
+# breakdown of the filter itself.
+function ss_perturbed_data(model, observables; periods = 8, σ = 1e-4, seed = 42)
+    SS     = get_steady_state(model)
+    ss_obs = collect(SS(observables, :Steady_state))
+    Random.seed!(seed)
+    dat    = repeat(ss_obs, 1, periods) .+ σ .* randn(length(observables), periods)
+    return KeyedArray(dat; Variables = observables, Time = 1:periods)
+end
+
+# =============================================================================
+# Gali (2015) Chapter 3 nonlinear NK — all 5 algorithms
+# =============================================================================
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+const GALI = Gali_2015_chapter_3_nonlinear
+
+# 3 shocks total → under-identified = 1 or 2 obs, square = 3 obs.
+const GALI_OBS_UNDER  = [:log_y, :log_W_real]
+const GALI_OBS_SQUARE = [:log_y, :log_W_real, :log_N]
+
+const GALI_PARAM_SUBSET_NAMES = [:σ, :φ, :ϕᵖⁱ, :ρ_a, :ρ_z, :std_a, :std_z]
+
+function gali_subset_indices()
+    pnames = GALI.constants.post_complete_parameters.parameters
+    return [findfirst(==(p), pnames) for p in GALI_PARAM_SUBSET_NAMES]
+end
+
+@testset "inversion filter gradient cross-checks (Gali + SW07)" begin
+
+@testset "Gali_2015 nonlinear inversion filter — gradient cross-checks" begin
+    base_params = copy(GALI.parameter_values)
+    p_subset    = gali_subset_indices()
+
+    # --- (a) per-algorithm baseline: subset of params, under-identified obs --
+    algorithms = [:first_order, :pruned_second_order, :second_order,
+                  :pruned_third_order, :third_order]
+
+    for algo in algorithms
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 11)
+        compare_gradients("Gali :$algo (under-identified, $(length(p_subset)) params)",
+                          GALI, data, base_params, p_subset, algo)
+    end
+
+    # --- (b) FULL parameter vector — first_order only, under-identified ------
+    let algo = :first_order
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
+        compare_gradients("Gali :$algo (under-identified, FULL param vector)",
+                          GALI, data, base_params, collect(eachindex(base_params)), algo)
+    end
+
+    # --- (c) square observables (n_obs == n_shocks): first_order only -------
+    #   (higher-order inversion does not converge for square systems on this
+    #    model — exercising it would test the failure path, not the gradient.)
+    let algo = :first_order
+        # Use a tighter σ so that finite-difference perturbations keep the
+        # square-system inversion inside its convergence basin.
+        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
+        compare_gradients("Gali :$algo (square obs)",
+                          GALI, data, base_params, p_subset, algo)
+    end
+
+    # --- (d) warmup_iterations > 0 (first_order only, per implementation) ---
+    # ForwardDiff now works thanks to the LU-based logabsdet rewrite of the
+    # warmup inversion path; Zygote remains unsupported because the inversion
+    # rrule explicitly asserts `warmup_iterations == 0`.
+    @testset "Gali :first_order (warmup_iterations=2)" begin
+        let algo = :first_order
+            data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
+            f       = make_llh_closure(GALI, data, base_params, p_subset, algo;
+                                       warmup_iterations = 2)
+            θ       = base_params[p_subset]
+            llh_val = f(θ)
+            @test isfinite(llh_val)
+            if isfinite(llh_val)
+                fd_grad = first(FiniteDifferences.grad(FDM, f, θ))
+                if all(isfinite, fd_grad)
+                    @testset "ForwardDiff vs FiniteDifferences (warmup)" begin
+                        try
+                            fdiff_grad = ForwardDiff.gradient(f, θ)
+                            @test all(isfinite, fdiff_grad)
+                            @test isapprox(fdiff_grad, fd_grad; rtol = RTOL)
+                        catch e
+                            @info "ForwardDiff (warmup) threw" exception = e
+                            @test false
+                        end
+                    end
+                end
+            end
+        end
+        # Zygote pull-back path explicitly asserts warmup_iterations == 0.
+        @test_skip "Zygote: AssertionError 'Warmup iterations not yet implemented for reverse-mode AD'"
+    end
+
+    # --- (e) presample_periods > 0 — exercise across all 5 algorithms -------
+    for algo in algorithms
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 15)
+        compare_gradients("Gali :$algo (presample_periods=3)",
+                          GALI, data, base_params, p_subset, algo;
+                          presample_periods = 3)
+    end
+end  # Gali testset
+
+
+# =============================================================================
+# Smets-Wouters 2007 — first_order (full) + pruned_second_order (subset)
+# =============================================================================
+include("../models/Smets_Wouters_2007.jl")
+SW07 = Smets_Wouters_2007
+
+# 7 shocks → under-identified by using 3 obs.
+SW07_OBS = [:dy, :dc, :dinve]
+
+# Representative parameter subset for the higher-order pass.
+SW07_SUBSET_PREF = [:crhoa, :crhob, :crhog, :csadjcost, :chabb,
+                    :csigma, :cprobw]
+
+function sw07_subset_indices()
+    pnames = SW07.constants.post_complete_parameters.parameters
+    idx = Int[]
+    for p in SW07_SUBSET_PREF
+        j = findfirst(==(p), pnames)
+        if j !== nothing
+            push!(idx, j)
+        end
+    end
+    if length(idx) < 5
+        idx = collect(1:min(7, length(pnames)))
+    end
+    return idx
+end
+
+@testset "Smets-Wouters 2007 inversion filter — gradient cross-checks" begin
+    base_params = copy(SW07.parameter_values)
+
+    # First-order: FULL parameter vector
+    let algo = :first_order
+        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 21)
+        compare_gradients("SW07 :$algo (under-identified, FULL param vector, $(length(base_params)) params)",
+                          SW07, data, base_params,
+                          collect(eachindex(base_params)), algo)
+    end
+
+    # Pruned-2nd: subset only
+    let algo = :pruned_second_order
+        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 22)
+        p_subset = sw07_subset_indices()
+        compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
+                          SW07, data, base_params, p_subset, algo)
+    end
+end  # SW07 testset
+
+end  # outer wrapping testset
