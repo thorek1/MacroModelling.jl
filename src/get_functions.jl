@@ -2467,7 +2467,7 @@ Return the variance decomposition of endogenous variables with regards to the sh
 
 Per-shock contributions are obtained by projecting the inner shock-cumulant block to a single shock `i` and re-solving the same pruned-state Lyapunov equation. At third order the projection is implemented as a binary mask on the augmented shock vector `ê`, retaining only those components whose exogenous-shock indices are all equal to `i`. Raw shares are returned without clipping; tiny negative entries can occur from numerical noise on near-zero contributions.
 
-Setting `marginal_contribution = true` (only meaningful for the two pruned higher-order algorithms) instead allocates the cross-shock interaction across the individual shocks via marginal contributions (Shapley values). The result is a `nVars × nExo` table without a `:Cross_shock_interaction` column whose rows still sum to one (up to numerical noise; rows whose total variance is below `eps()` are reported as zero). The characteristic function `V(S)` is the same projected coalition variance used for the raw shares (state cumulants are kept at their full-shock values), so this is a marginal-contribution allocation of the projected higher-order variance, not a counterfactual recomputation of model variance under a sub-set of active shocks. Because `V(S)` need not be monotone, individual shares may be negative or exceed one. The number of coalitions to evaluate is ``2^{n_\\varepsilon}`` (subsets of the *shock set*) regardless of approximation order — the order only changes which Lyapunov system is solved for each `V(S)`, not the count of coalitions; a warning is emitted when ``n_\\varepsilon > 10``. At `:first_order` the option is silently ignored (with an `@info` notice) because the first-order decomposition is already additive across shocks.
+Setting `marginal_contribution = true` (only meaningful for the two pruned higher-order algorithms) instead allocates the cross-shock interaction across the individual shocks via marginal contributions (Shapley values). The result is a `nVars × nExo` table without a `:Cross_shock_interaction` column whose rows still sum to one (up to numerical noise; rows whose total variance is below `eps()` are reported as zero). The characteristic function `V(S)` is the same projected coalition variance used for the raw shares (state cumulants are kept at their full-shock values), so this is a marginal-contribution allocation of the projected higher-order variance, not a counterfactual recomputation of model variance under a sub-set of active shocks. Because `V(S)` need not be monotone, individual shares may be negative or exceed one. By default this uses the Aumann–Shapley path-integral identity with Gauss–Legendre quadrature on the multilinear extension of `V`. The integrand is exact for `V` polynomial of total degree `d` in the coalition indicator (`d = 4` at second order, `d = 6` at third order), so `ceil(d/2)` quadrature nodes integrate it exactly. The cost is `n_nodes * n_e` Lyapunov solves (`2 * n_e` at second order, `3 * n_e` at third) — independent of the number of coalitions. Pass `marginal_contribution = :polynomial` to instead use the polynomial-coalition driver, which evaluates `V` at every monomial mask and reconstructs Möbius coefficients directly; this needs `Σ_{j ≤ min(d, n_e)} C(n_e, j)` Lyapunov solves and is provided primarily for cross-validation. Both paths agree to numerical noise (machine precision at second order; within Lyapunov tolerance at third order). At `:first_order` the option is silently ignored (with an `@info` notice) because the first-order decomposition is already additive across shocks.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -2477,7 +2477,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
 - `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm. Supports `:first_order`, `:pruned_second_order`, and `:pruned_third_order`.
-- `marginal_contribution` [Default: `false`, Type: `Bool`]: when `true` and `algorithm` is one of the pruned higher-order solutions, return marginal-contribution (Shapley-allocated) per-shock variance shares instead of raw shares plus a `:Cross_shock_interaction` column. At `:first_order` the option is silently ignored (with an `@info` notice).
+- `marginal_contribution` [Default: `false`, Type: `Union{Bool, Symbol}`]: when truthy and `algorithm` is one of the pruned higher-order solutions, return marginal-contribution (Shapley-allocated) per-shock variance shares instead of raw shares plus a `:Cross_shock_interaction` column. `true` and `:aumann_shapley` use the Aumann–Shapley path-integral driver (`n_nodes * n_e` Lyapunov solves; default). `:polynomial` uses the polynomial-coalition driver (`Σ_{j ≤ min(d, n_e)} C(n_e, j)` Lyapunov solves; provided for cross-validation). `false` returns the raw shares with the cross-shock-interaction column. At `:first_order` the option is silently ignored (with an `@info` notice).
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2631,7 +2631,7 @@ function get_variance_decomposition(𝓂::ℳ;
                                     parameters::ParameterType = nothing,
                                     steady_state_function::SteadyStateFunctionType = missing,
                                     algorithm::Symbol = :first_order,
-                                    marginal_contribution::Bool = false,
+                                    marginal_contribution::Union{Bool, Symbol} = false,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
@@ -2653,15 +2653,28 @@ function get_variance_decomposition(𝓂::ℳ;
 
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "algorithm must be :first_order, :pruned_second_order, or :pruned_third_order"
 
-    if marginal_contribution && algorithm == :first_order
-        @info "marginal_contribution = true has no effect for algorithm = :first_order. The first-order variance decomposition is already additive across shocks (no cross-shock interaction term to allocate); standard shares are returned."
-        marginal_contribution = false
+    # Resolve the marginal-contribution backend.
+    # Accepts: false, true (= :aumann_shapley), :aumann_shapley, :polynomial.
+    mc_backend = if marginal_contribution === false
+        :off
+    elseif marginal_contribution === true || marginal_contribution === :aumann_shapley
+        :aumann_shapley
+    elseif marginal_contribution === :polynomial
+        :polynomial
+    else
+        error("marginal_contribution must be one of: false, true, :aumann_shapley, :polynomial. Got $(marginal_contribution).")
     end
 
-    if marginal_contribution
+    if mc_backend !== :off && algorithm == :first_order
+        @info "marginal_contribution = $(marginal_contribution) has no effect for algorithm = :first_order. The first-order variance decomposition is already additive across shocks (no cross-shock interaction term to allocate); standard shares are returned."
+        mc_backend = :off
+    end
+
+    if mc_backend === :polynomial
         nᵉ_pre = 𝓂.constants.post_model_macro.nExo
         if nᵉ_pre > 10
-            @warn "marginal_contribution = true requires 2^nᵉ Lyapunov solves (nᵉ = $nᵉ_pre ⇒ $(2^nᵉ_pre) solves)."
+            n_solves = sum(binomial(nᵉ_pre, j) for j in 1:min(6, nᵉ_pre))
+            @warn "marginal_contribution = :polynomial requires up to $(n_solves) Lyapunov solves at n_e = $(nᵉ_pre). Consider marginal_contribution = true (Aumann–Shapley) which needs only n_nodes * n_e."
         end
     end
 
@@ -2673,12 +2686,20 @@ function get_variance_decomposition(𝓂::ℳ;
             dynamics = algorithm != :first_order)
 
     if algorithm == :pruned_second_order || algorithm == :pruned_third_order
-        if marginal_contribution
+        if mc_backend !== :off
             if algorithm == :pruned_second_order
-                shares_var, total_var, ok = calculate_marginal_contribution_second_order(𝓂.parameter_values, 𝓂; opts = opts)
+                shares_var, total_var, ok = if mc_backend === :aumann_shapley
+                    calculate_aumann_shapley_second_order(𝓂.parameter_values, 𝓂; opts = opts)
+                else
+                    calculate_marginal_contribution_second_order(𝓂.parameter_values, 𝓂; opts = opts)
+                end
                 order_label = "second"
             else
-                shares_var, total_var, ok = calculate_marginal_contribution_third_order(𝓂.parameter_values, 𝓂; opts = opts)
+                shares_var, total_var, ok = if mc_backend === :aumann_shapley
+                    calculate_aumann_shapley_third_order(𝓂.parameter_values, 𝓂; opts = opts)
+                else
+                    calculate_marginal_contribution_third_order(𝓂.parameter_values, 𝓂; opts = opts)
+                end
                 order_label = "third"
             end
 
