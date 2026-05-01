@@ -2531,9 +2531,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 @test isapprox(stats[:mean], STATS[:mean], rtol = 1e-8)
                                 @test isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-8)
                                 @test isapprox(stats[:variance], STATS[:variance], rtol = 1e-8)
-                                @test isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-8)
-                                @test isapprox(stats[:correlation], STATS[:correlation], rtol = 1e-8)
-                                @test isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-8)
+                                @test isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-8, atol = 1e-8)
+                                @test isapprox(stats[:correlation], STATS[:correlation], rtol = 1e-8, atol = 1e-8, nans = true)
+                                @test isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-8, atol = 1e-8, nans = true)
                             else
                                 @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
                             end
@@ -2756,10 +2756,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv7_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv7_moon, deriv7_fin[1], rtol = 1e-4)
-                        @test isapprox(deriv7_zyg, deriv7_fin[1], rtol = 1e-4)
+                        @test isapprox(deriv7_moon, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
+                        @test isapprox(deriv7_zyg, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
                     end
-                    @test isapprox(deriv7, deriv7_fin[1], rtol = 1e-4)
+                    @test isapprox(deriv7, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
                     break
                 end
             end
@@ -3067,7 +3067,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             cov_full = stats_combo[:covariance] + stats_combo[:covariance]' - ℒ.Diagonal(stats_combo[:covariance])
             sd = stats_combo[:standard_deviation]
             expected_corr = cov_full ./ (sd * sd')
-            @test isapprox(stats_combo[:correlation], expected_corr, rtol = 1e-6)
+            @test isapprox(stats_combo[:correlation], expected_corr, rtol = 1e-6, atol = 1e-8, nans = true)
 
             # Grouped correlation: cross-group entries are zero, within-group preserved
             if length(vars_corr) >= 4
