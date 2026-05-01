@@ -8805,6 +8805,16 @@ function rrule(::typeof(calculate_loglikelihood),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
     ws = workspaces.inversion
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        # Forward primal handles missing data via per-period slicing through find_shocks.
+        # Reverse-mode AD for the missing-data case at this order is not yet implemented.
+        # Returning the correct loglikelihood with a NoTangent pullback would silently
+        # zero the gradient during estimation; instead error out with a clear message so
+        # users can fall back to the Kalman filter or to first-order inversion.
+        throw(ArgumentError("Inversion filter rrule with missing observations is not yet implemented for algorithm: pruned_2nd. Use the Kalman filter (filter = :kalman) or algorithm = :first_order with the inversion filter for AD-compatible estimation under missing data."))
+    end
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
                     
@@ -9299,6 +9309,16 @@ function rrule(::typeof(calculate_loglikelihood),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
     ws = workspaces.inversion
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        # Forward primal handles missing data via per-period slicing through find_shocks.
+        # Reverse-mode AD for the missing-data case at this order is not yet implemented.
+        # Returning the correct loglikelihood with a NoTangent pullback would silently
+        # zero the gradient during estimation; instead error out with a clear message so
+        # users can fall back to the Kalman filter or to first-order inversion.
+        throw(ArgumentError("Inversion filter rrule with missing observations is not yet implemented for algorithm: 2nd. Use the Kalman filter (filter = :kalman) or algorithm = :first_order with the inversion filter for AD-compatible estimation under missing data."))
+    end
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
     # @timeit_debug timer "Preallocation" begin
@@ -9776,6 +9796,16 @@ function rrule(::typeof(calculate_loglikelihood),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
     ws = workspaces.inversion
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        # Forward primal handles missing data via per-period slicing through find_shocks.
+        # Reverse-mode AD for the missing-data case at this order is not yet implemented.
+        # Returning the correct loglikelihood with a NoTangent pullback would silently
+        # zero the gradient during estimation; instead error out with a clear message so
+        # users can fall back to the Kalman filter or to first-order inversion.
+        throw(ArgumentError("Inversion filter rrule with missing observations is not yet implemented for algorithm: pruned_3rd. Use the Kalman filter (filter = :kalman) or algorithm = :first_order with the inversion filter for AD-compatible estimation under missing data."))
+    end
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
@@ -10346,6 +10376,16 @@ function rrule(::typeof(calculate_loglikelihood),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
     ws = workspaces.inversion
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        # Forward primal handles missing data via per-period slicing through find_shocks.
+        # Reverse-mode AD for the missing-data case at this order is not yet implemented.
+        # Returning the correct loglikelihood with a NoTangent pullback would silently
+        # zero the gradient during estimation; instead error out with a clear message so
+        # users can fall back to the Kalman filter or to first-order inversion.
+        throw(ArgumentError("Inversion filter rrule with missing observations is not yet implemented for algorithm: 3rd. Use the Kalman filter (filter = :kalman) or algorithm = :first_order with the inversion filter for AD-compatible estimation under missing data."))
+    end
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
 
