@@ -3042,7 +3042,17 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     @testset "get_statistics - correlation" begin
         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-            vars_corr = m.constants.post_model_macro.var[1:min(4, length(m.constants.post_model_macro.var))]
+            # Pick the first 4 model variables that are non-degenerate (positive variance,
+            # well above sqrt(eps)). Some models (e.g. Smets_Wouters_2007) have
+            # near-constant variables in their leading positions which would produce
+            # NaN/Inf-like correlation entries and break the cov/(sd*sd') cross-check.
+            _all_vars = m.constants.post_model_macro.var
+            _all_sd = let s = get_statistics(m, old_params, algorithm = algorithm,
+                                              standard_deviation = _all_vars)
+                s[:standard_deviation]
+            end
+            _nondeg_idx = findall(>(1e-6), _all_sd)
+            vars_corr = _all_vars[_nondeg_idx]
 
             # Flat input: full correlation matrix among requested variables
             stats_corr = get_statistics(m, old_params, algorithm = algorithm,
