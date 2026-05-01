@@ -89,7 +89,7 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), M
 # We mirror rrule_wrapper but reconstruct the Dict cotangent from MutableTangent fields.
 
 # Convert MutableTangent (Dict internals: slots/keys/vals/...) → actual Dict cotangent
-function _mooncake_dict_to_cr_tangent(primal_dict::Dict, mt::Mooncake.MutableTangent)
+function mooncake_dict_to_cr_tangent(primal_dict::Dict, mt::Mooncake.MutableTangent)
     result = Dict{Symbol,Any}()
     raw_vals = mt.fields.vals
     vals_tangent = if raw_vals isa Mooncake.PossiblyUninitTangent
@@ -102,19 +102,19 @@ function _mooncake_dict_to_cr_tangent(primal_dict::Dict, mt::Mooncake.MutableTan
         idx > 0 || continue
         isassigned(vals_tangent, idx) || continue
         vt = vals_tangent[idx]
-        cr_vt = _val_to_cr(vt)
+        cr_vt = val_to_cr(vt)
         cr_vt isa ChainRulesCore.AbstractZero && continue
         result[k] = cr_vt
     end
     return result
 end
-_mooncake_dict_to_cr_tangent(::Dict, ::Mooncake.NoTangent) = ChainRulesCore.NoTangent()
+mooncake_dict_to_cr_tangent(::Dict, ::Mooncake.NoTangent) = ChainRulesCore.NoTangent()
 
-_val_to_cr(x::AbstractArray{<:AbstractFloat}) = x
-_val_to_cr(::Mooncake.NoTangent) = ChainRulesCore.ZeroTangent()
-_val_to_cr(x::Mooncake.PossiblyUninitTangent) =
-    Mooncake.is_init(x) ? _val_to_cr(x.tangent) : ChainRulesCore.ZeroTangent()
-_val_to_cr(x) = Mooncake.to_cr_tangent(x)
+val_to_cr(x::AbstractArray{<:AbstractFloat}) = x
+val_to_cr(::Mooncake.NoTangent) = ChainRulesCore.ZeroTangent()
+val_to_cr(x::Mooncake.PossiblyUninitTangent) =
+    Mooncake.is_init(x) ? val_to_cr(x.tangent) : ChainRulesCore.ZeroTangent()
+val_to_cr(x) = Mooncake.to_cr_tangent(x)
 
 # Positional: get_statistics(model, params)
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_statistics), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat}
@@ -131,7 +131,7 @@ function Mooncake.rrule!!(
     y_primal, cr_pb = ChainRulesCore.rrule(primals...)
     y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
     function pb!!(y_rdata)
-        cr_tangent = _mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
+        cr_tangent = mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
         cr_dfargs = cr_pb(cr_tangent)
         return map(fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
             Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
@@ -161,7 +161,7 @@ function Mooncake.rrule!!(
     inner_fargs = (f_cd, model_cd, params_cd)
     lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
     function pb!!(y_rdata)
-        cr_tangent = _mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
+        cr_tangent = mooncake_dict_to_cr_tangent(y_primal, Mooncake.tangent(y_fdata, y_rdata))
         cr_dfargs = cr_pb(cr_tangent)
         kwargs_rdata = Mooncake.increment_and_get_rdata!(
             Mooncake.tangent(kwargs_cd),

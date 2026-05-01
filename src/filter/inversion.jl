@@ -170,7 +170,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
     ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     ensure_inversion_estimation_buffers!(ws, T.nExo, length(observables_index))
     # @timeit_debug timer "Inversion filter" begin    
@@ -204,11 +204,26 @@ function calculate_loglikelihood(::Val{:inversion},
                 end
             end
         end
-    
-        jacdecomp = ℒ.svd(jac)
 
-        x = jacdecomp \ data_in_deviations[:,1]
-    
+        # Warmup linear solve: LU instead of SVD so ForwardDiff Duals work.
+        warmup_rhs = data_in_deviations[:,1]
+        if size(jac,1) == size(jac,2)
+            warmup_lu = ℒ.lu(jac, check = false)
+            if !ℒ.issuccess(warmup_lu)
+                if opts.verbose println("Inversion filter failed") end
+                return on_failure_loglikelihood
+            end
+            x = warmup_lu \ warmup_rhs
+        else
+            JJt_w = jac * jac'
+            JJt_w_lu = ℒ.lu(JJt_w, check = false)
+            if !ℒ.issuccess(JJt_w_lu)
+                if opts.verbose println("Inversion filter failed") end
+                return on_failure_loglikelihood
+            end
+            x = jac' * (JJt_w_lu \ warmup_rhs)
+        end
+
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
     
         for i in 1:warmup_iterations-1
@@ -219,10 +234,11 @@ function calculate_loglikelihood(::Val{:inversion},
         end
 
         for i in 1:warmup_iterations
-            if T.nExo == length(observables_index)
-                logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
+            jac_i = jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor
+            if size(jac_i,1) == size(jac_i,2)
+                logabsdets += ℒ.logabsdet(jac_i)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
+                logabsdets += ℒ.logabsdet(jac_i * jac_i')[1] / 2
             end
         end
     
@@ -260,22 +276,20 @@ function calculate_loglikelihood(::Val{:inversion},
                 return on_failure_loglikelihood
             end
 
-            logabsdets = ℒ.logabsdet(jac)[1]
+            logabsdets = ℒ.logabsdet(jacdecomp)[1]
             invjac = inv(jacdecomp)
         end
     else
-        jacdecomp = try ℒ.svd(jac)
-        catch
+        # Fat jac (n_obs < n_exo): right pseudo-inverse via normal equations.
+        # LU is AD-friendly; original SVD/pinv have no ForwardDiff.Dual method.
+        JJt = jac * jac'
+        JJt_lu = ℒ.lu(JJt, check = false)
+        if !ℒ.issuccess(JJt_lu)
             if opts.verbose println("Inversion filter failed") end
             return on_failure_loglikelihood
         end
-        
-        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
-        invjac = try ℒ.pinv(jac)
-        catch
-            if opts.verbose println("Inversion filter failed") end
-            return on_failure_loglikelihood
-        end
+        logabsdets = ℒ.logabsdet(JJt_lu)[1] / 2
+        invjac = jac' / JJt_lu
     end
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
@@ -328,7 +342,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
     
@@ -381,8 +395,8 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    state₁ = state[1][T.past_not_future_and_mixed_idx]
-    state₂ = state[2][T.past_not_future_and_mixed_idx]
+    state₁ = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
+    state₂ = convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx])
 
     n_state_vol = n_past + 1
     n_aug = n_past + 1 + n_exo
@@ -554,7 +568,7 @@ function calculate_loglikelihood(::Val{:inversion},
             if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
+                logabsdets += ℒ.logabsdet(jacc * jacc')[1] / 2
             end
 
             shocks² += sum(abs2,x)
@@ -602,7 +616,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -612,14 +626,14 @@ function calculate_loglikelihood(::Val{:inversion},
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index))
 
-    precision_factor = 1.0
+    precision_factor = one(R)
 
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = observables_index
 
-    shocks² = 0.0
-    logabsdets = 0.0
+    shocks² = zero(R)
+    logabsdets = zero(R)
 
     # s_in_s⁺ = computational_constants.s_in_s
     cc = ensure_computational_constants!(constants)
@@ -657,7 +671,7 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    state = state[T.past_not_future_and_mixed_idx]
+    state = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
     # Use workspaces for model-constant allocations
     state¹⁻_vol = ws.state_vol
@@ -800,7 +814,7 @@ function calculate_loglikelihood(::Val{:inversion},
             if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1] # ./ precision_factor
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc)) # ./ precision_factor
+                logabsdets += ℒ.logabsdet(jacc * jacc')[1] / 2 # ./ precision_factor
             end
 
             shocks² += sum(abs2,x)
@@ -848,7 +862,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
     # @timeit_debug timer "Inversion filter" begin
 
     # Ensure workspaces are properly sized
@@ -857,14 +871,14 @@ function calculate_loglikelihood(::Val{:inversion},
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
-    precision_factor = 1.0
+    precision_factor = one(R)
 
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = observables_index
 
-    shocks² = 0.0
-    logabsdets = 0.0
+    shocks² = zero(R)
+    logabsdets = zero(R)
 
     cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
@@ -936,9 +950,13 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒³ᵉ     = nnz(𝐒³ᵉ)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
     𝐒⁻³     = nnz(𝐒⁻³)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
 
-    state[1] = state[1][T.past_not_future_and_mixed_idx]
-    state[2] = state[2][T.past_not_future_and_mixed_idx]
-    state[3] = state[3][T.past_not_future_and_mixed_idx]
+    # Shadow the input `state` with R-typed local copies so the kernel can
+    # be driven by ForwardDiff Duals (the input may be Vector{Vector{Float64}}).
+    state = Vector{R}[
+        convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx]),
+        convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx]),
+        convert(Vector{R}, state[3][T.past_not_future_and_mixed_idx]),
+    ]
 
     # Use workspace buffers
     kron_buffer = ws.kron_buffer
@@ -1211,7 +1229,7 @@ function calculate_loglikelihood(::Val{:inversion},
             if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
+                logabsdets += ℒ.logabsdet(jacc * jacc')[1] / 2
             end
 
             shocks² += sum(abs2,x)
@@ -1291,7 +1309,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1301,14 +1319,14 @@ function calculate_loglikelihood(::Val{:inversion},
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
-    precision_factor = 1.0
+    precision_factor = one(R)
 
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = observables_index
 
-    shocks² = 0.0
-    logabsdets = 0.0
+    shocks² = zero(R)
+    logabsdets = zero(R)
 
     cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
@@ -1349,7 +1367,7 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    state = state[T.past_not_future_and_mixed_idx]
+    state = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
     tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
     var_vol³_idxs = tmp.nzind
@@ -1605,7 +1623,7 @@ function calculate_loglikelihood(::Val{:inversion},
             if T.nExo == length(observables_index)
                 logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
+                logabsdets += ℒ.logabsdet(jacc * jacc')[1] / 2
             end
 
             shocks² += sum(abs2,x)

@@ -5,13 +5,13 @@ import MacroModelling:
     sylvester_workspace, lyapunov_workspace, SolverTolerances,
     solve_sylvester_equation, solve_lyapunov_equation,
     ensure_sylvester_krylov_buffers!, ensure_lyapunov_doubling_buffers!,
-    _BARTELS_STEWART_AVAILABLE
+    BARTELS_STEWART_AVAILABLE
 
 import MatrixEquations
 import LinearAlgebra as ℒ
 
 function __init__()
-    _BARTELS_STEWART_AVAILABLE[] = true
+    BARTELS_STEWART_AVAILABLE[] = true
 end
 
 # ── Sylvester: Bartels-Stewart via MatrixEquations.sylvd ──

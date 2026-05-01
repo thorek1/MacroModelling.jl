@@ -41,7 +41,7 @@ function solve_sylvester_equation(A::M,
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
 
-    if sylvester_algorithm == :bartels_stewart && !_has_bartels_stewart()
+    if sylvester_algorithm == :bartels_stewart && !has_bartels_stewart()
         error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
     end
 
@@ -112,7 +112,7 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
-    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && _has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
         aa = 𝕊ℂ.𝐀
         copyto!(aa, A)
 

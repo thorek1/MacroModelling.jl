@@ -80,19 +80,31 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     B = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
  
-    # Allocate or reuse workspace for partials and SSS kron buffers
+    # Allocate or reuse workspace for partials and SSS kron buffers.
+    # NOTE: when this overload is called from a higher-level ForwardDiff path,
+    # `ℂ` may have been mutated to a `Dual`-typed workspace by the upstream
+    # perturbation solver. Since the SSS Newton iter here is intentionally
+    # carried out on the primal (`S`) values only, we allocate fresh `S`-typed
+    # local buffers whenever the cached ones are not `S`-typed.
     nPast = length(x̂)
     MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
-    if size(ℂ.∂x_second_order) != (nPast, N)
+    if size(ℂ.∂x_second_order) != (nPast, N) || eltype(ℂ.∂x_second_order) !== S
         ℂ.∂x_second_order = zeros(S, nPast, N)
     else
         fill!(ℂ.∂x_second_order, zero(S))
     end
     ∂x̄ = ℂ.∂x_second_order
-    x_aug = ℂ.x_aug_buf
+    n_aug = nPast + 1
+    if eltype(ℂ.x_aug_buf) === S
+        x_aug = ℂ.x_aug_buf
+        kron_x_aug = ℂ.kron_x_aug_xx
+        kron_x_aug_I = ℂ.kron_x_aug_I
+    else
+        x_aug = zeros(S, n_aug)
+        kron_x_aug = zeros(S, n_aug^2)
+        kron_x_aug_I = zeros(S, n_aug * nPast, nPast)
+    end
     x_aug[end] = one(S)
-    kron_x_aug = ℂ.kron_x_aug_xx
-    kron_x_aug_I = ℂ.kron_x_aug_I
 
     max_iters = 100
     for i in 1:max_iters
@@ -102,13 +114,9 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
 
         ℒ.kron!(kron_x_aug, x_aug, x_aug)
         Δx = A * x̂ + B̂ * kron_x_aug / 2 - x̂
-        dx_cache = MacroModelling.ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
-
-        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
-            break
-        end
-        copyto!(Δx, sol.u)
+        ∂x_lu = ℒ.lu(∂x, check = false)
+        ℒ.issuccess(∂x_lu) || break
+        Δx = ∂x_lu \ Δx
 
         if i > 5 && isapprox(A * x̂ + B̂ * kron_x_aug / 2, x̂, rtol = tol)
             break
@@ -179,21 +187,33 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     C = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
     Ĉ = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
-    # Allocate or reuse workspace for partials and SSS kron buffers
+    # Allocate or reuse workspace for partials and SSS kron buffers.
+    # See note in the `:second_order` overload above — fall back to fresh
+    # `S`-typed local buffers when the cached workspace got mutated to a
+    # `Dual`-typed one upstream.
     nPast = length(x̂)
     MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
-    if size(ℂ.∂x_third_order) != (nPast, N)
+    if size(ℂ.∂x_third_order) != (nPast, N) || eltype(ℂ.∂x_third_order) !== S
         ℂ.∂x_third_order = zeros(S, nPast, N)
     else
         fill!(ℂ.∂x_third_order, zero(S))
     end
     ∂x̄ = ℂ.∂x_third_order
-    x_aug = ℂ.x_aug_buf
+    n_aug = nPast + 1
+    if eltype(ℂ.x_aug_buf) === S
+        x_aug = ℂ.x_aug_buf
+        kron_x_aug = ℂ.kron_x_aug_xx
+        kron_x_kron = ℂ.kron_x_aug_x_kron
+        kron_x_aug_I = ℂ.kron_x_aug_I
+        kron_x_kron_I = ℂ.kron_x_kron_I
+    else
+        x_aug = zeros(S, n_aug)
+        kron_x_aug = zeros(S, n_aug^2)
+        kron_x_kron = zeros(S, n_aug^3)
+        kron_x_aug_I = zeros(S, n_aug * nPast, nPast)
+        kron_x_kron_I = zeros(S, n_aug^2 * nPast, nPast)
+    end
     x_aug[end] = one(S)
-    kron_x_aug = ℂ.kron_x_aug_xx
-    kron_x_kron = ℂ.kron_x_aug_x_kron
-    kron_x_aug_I = ℂ.kron_x_aug_I
-    kron_x_kron_I = ℂ.kron_x_kron_I
 
     max_iters = 100
     for i in 1:max_iters
@@ -205,13 +225,9 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x̂
-        dx_cache = MacroModelling.ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
-
-        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
-            break
-        end
-        copyto!(Δx, sol.u)
+        ∂x_lu = ℒ.lu(∂x, check = false)
+        ℒ.issuccess(∂x_lu) || break
+        Δx = ∂x_lu \ Δx
 
         if i > 5 && isapprox(A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x̂, rtol = tol)
             break
@@ -1046,7 +1062,7 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     Si2e_f = ℱ.value.(𝐒ⁱ²ᵉ)
     si_f   = ℱ.value.(shock_independent)
 
-    # Solve with Float64 (uses LAPACK, numerically stable)
+    # Solve the primal LagrangeNewton on Float64.
     x_f, matched = find_shocks(Val(:LagrangeNewton),
         ig_f, kb_f, kb2_f, J, Si_f, Si2e_f, si_f; kwargs...)
 
@@ -1054,33 +1070,43 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
         return ℱ.Dual{Z,V,N}.(x_f), false
     end
 
-    # Implicit function theorem for partials:
-    # g(x; Si, Si2e, si) = si - Si*x - Si2e*kron(x,x) = 0
-    # dg/dx = -(Si + 2*Si2e*kron(I,x)) = -jacc
-    # dx = jacc \ (d_si - d_Si*x - d_Si2e*kron(x,x))
-    kx  = ℒ.kron(J, x_f)
-    jacc_f = Si_f + 2 * Si2e_f * kx
+    # Propagate partials through the linearised KKT system at the optimum.
+    # Implicit differentiation through the linearised KKT block.
+    # Build  fXλp = [A tmp'; -tmp 0]  once, factor it, and solve for each
+    # parameter direction. RHS is differentiation of the KKT residual:
+    #   g_x = tmp'·λ - 2x   →  d g_x = (d_Si + 2·d_Si2e·kron(I,x))' · λ
+    #   g_λ = si - Si·x - Si2e·kron(x,x)
+    n_x = length(x_f)
+    n_obs = size(Si_f, 1)
+    kIx = ℒ.kron(J, x_f)
+    tmp = Si_f + 2 * Si2e_f * kIx
+    λ = tmp' \ (2 .* x_f)
+    A_mat = reshape(2 * Si2e_f' * λ, n_x, n_x) - 2 * J
     kxx = ℒ.kron(x_f, x_f)
 
-    n_x = length(x_f)
-    partials_matrix = zeros(V, n_x, N)
+    fXλp = [A_mat   tmp';
+            -tmp    zeros(V, n_obs, n_obs)]
+    fXλp_lu = ℒ.lu(fXλp, check = false)
+    if !ℒ.issuccess(fXλp_lu)
+        return ℱ.Dual{Z,V,N}.(x_f), false
+    end
 
-    jacc_prob = 𝒮.LinearProblem(jacc_f, zeros(V, n_x))
-    jacc_lu = 𝒮.init(jacc_prob, 𝒮.FastLUFactorization(),
-                       verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    partials_matrix = zeros(V, n_x, N)
 
     for k in 1:N
         d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
-        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k] for i in eachindex(𝐒ⁱ)]
-        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k] for i in eachindex(𝐒ⁱ²ᵉ)]
+        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k]                for i in eachindex(𝐒ⁱ)]
+        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k]              for i in eachindex(𝐒ⁱ²ᵉ)]
 
-        rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f - reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx
-        jacc_lu.b = rhs
-        sol = 𝒮.solve!(jacc_lu)
-        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
-            return ℱ.Dual{Z,V,N}.(x_f), false
-        end
-        partials_matrix[:, k] = sol.u
+        d_Si_mat   = reshape(d_Si,   size(Si_f))
+        d_Si2e_mat = reshape(d_Si2e, size(Si2e_f))
+
+        dtmp = d_Si_mat + 2 * d_Si2e_mat * kIx
+        d_g_x = dtmp' * λ
+        d_g_λ = d_si - d_Si_mat * x_f - d_Si2e_mat * kxx
+
+        sol = fXλp_lu \ vcat(-d_g_x, -d_g_λ)
+        partials_matrix[:, k] = sol[1:n_x]
     end
 
     x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)
@@ -1124,7 +1150,6 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     Si3e_f = ℱ.value.(𝐒ⁱ³ᵉ)
     si_f   = ℱ.value.(shock_independent)
 
-    # Solve with Float64 (uses LAPACK, numerically stable)
     x_f, matched = find_shocks(Val(:LagrangeNewton),
         ig_f, kb_f, kb²_f, kb2_f, kb3_f, kb4_f, J, Si_f, Si2e_f, Si3e_f, si_f; kwargs...)
 
@@ -1132,35 +1157,46 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
         return ℱ.Dual{Z,V,N}.(x_f), false
     end
 
-    # Implicit function theorem for partials
-    kxx = ℒ.kron(x_f, x_f)
+    # Implicit differentiation through the linearised KKT block.
+    # fXλp = [A tmp'; -tmp 0] with
+    #   A = reshape((2·Si2e + 6·Si3e·kron(I,kIx))'·λ, n_x, n_x) - 2I
+    #   tmp = Si + 2·Si2e·kron(I,x) + 3·Si3e·kron(I,kron(x,x))
+    n_x = length(x_f)
+    n_obs = size(Si_f, 1)
+    kxx  = ℒ.kron(x_f, x_f)
     kxxx = ℒ.kron(x_f, kxx)
     kIx  = ℒ.kron(J, x_f)
     kIxx = ℒ.kron(J, kxx)
-    jacc_f = Si_f + 2 * Si2e_f * kIx + 3 * Si3e_f * kIxx
 
-    n_x = length(x_f)
+    tmp = Si_f + 2 * Si2e_f * kIx + 3 * Si3e_f * kIxx
+    λ = tmp' \ (2 .* x_f)
+    A_mat = reshape((2 * Si2e_f + 6 * Si3e_f * ℒ.kron(J, kIx))' * λ, n_x, n_x) - 2 * J
+
+    fXλp = [A_mat   tmp';
+            -tmp    zeros(V, n_obs, n_obs)]
+    fXλp_lu = ℒ.lu(fXλp, check = false)
+    if !ℒ.issuccess(fXλp_lu)
+        return ℱ.Dual{Z,V,N}.(x_f), false
+    end
+
     partials_matrix = zeros(V, n_x, N)
-
-    jacc_prob = 𝒮.LinearProblem(jacc_f, zeros(V, n_x))
-    jacc_lu = 𝒮.init(jacc_prob, 𝒮.FastLUFactorization(),
-                       verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     for k in 1:N
         d_si   = V[ℱ.partials(shock_independent[i])[k] for i in eachindex(shock_independent)]
-        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k] for i in eachindex(𝐒ⁱ)]
-        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k] for i in eachindex(𝐒ⁱ²ᵉ)]
-        d_Si3e = V[ℱ.partials(𝐒ⁱ³ᵉ[i])[k] for i in eachindex(𝐒ⁱ³ᵉ)]
+        d_Si   = V[ℱ.partials(𝐒ⁱ[i])[k]                for i in eachindex(𝐒ⁱ)]
+        d_Si2e = V[ℱ.partials(𝐒ⁱ²ᵉ[i])[k]              for i in eachindex(𝐒ⁱ²ᵉ)]
+        d_Si3e = V[ℱ.partials(𝐒ⁱ³ᵉ[i])[k]              for i in eachindex(𝐒ⁱ³ᵉ)]
 
-        rhs = d_si - reshape(d_Si, size(𝐒ⁱ)) * x_f -
-              reshape(d_Si2e, size(𝐒ⁱ²ᵉ)) * kxx -
-              reshape(d_Si3e, size(𝐒ⁱ³ᵉ)) * kxxx
-        jacc_lu.b = rhs
-        sol = 𝒮.solve!(jacc_lu)
-        if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
-            return ℱ.Dual{Z,V,N}.(x_f), false
-        end
-        partials_matrix[:, k] = sol.u
+        d_Si_mat   = reshape(d_Si,   size(Si_f))
+        d_Si2e_mat = reshape(d_Si2e, size(Si2e_f))
+        d_Si3e_mat = reshape(d_Si3e, size(Si3e_f))
+
+        dtmp = d_Si_mat + 2 * d_Si2e_mat * kIx + 3 * d_Si3e_mat * kIxx
+        d_g_x = dtmp' * λ
+        d_g_λ = d_si - d_Si_mat * x_f - d_Si2e_mat * kxx - d_Si3e_mat * kxxx
+
+        sol = fXλp_lu \ vcat(-d_g_x, -d_g_λ)
+        partials_matrix[:, k] = sol[1:n_x]
     end
 
     x_dual = Vector{ℱ.Dual{Z,V,N}}(undef, n_x)
