@@ -8341,6 +8341,229 @@ function rrule(::typeof(find_shocks),
 end
 
 
+function rrule_inversion_first_order_missing(observables_index::Vector{Int},
+                                              𝐒::Matrix{Float64},
+                                              data_in_deviations::Matrix{Float64},
+                                              constants::constants,
+                                              state::Vector{Vector{Float64}},
+                                              workspaces::workspaces,
+                                              obs_idx_per_t::Vector{Vector{Int}};
+                                              warmup_iterations::Int = 0,
+                                              on_failure_loglikelihood = -Inf,
+                                              presample_periods::Int = 0,
+                                              opts::CalculationOptions = merge_calculation_options(),
+                                              filter_algorithm::Symbol = :LagrangeNewton)
+    Tcc = constants.post_model_macro
+    n_exo = Tcc.nExo
+    obs_idx_full = observables_index
+    n_obs_full = length(obs_idx_full)
+    t⁻ = Tcc.past_not_future_and_mixed_idx
+    n_past = length(t⁻)
+    Tt = size(data_in_deviations, 2)
+
+    if warmup_iterations > 0
+        @error "Inversion filter rrule: warmup_iterations > 0 not supported with missing observations."
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    state₀ = copy(state[1])
+    state_seq = [copy(state₀) for _ in 1:Tt+1]
+
+    # full observation Jacobian (constant across periods)
+    jac_full = 𝐒[obs_idx_full, end-n_exo+1:end]
+    𝐒obs_past_full = 𝐒[obs_idx_full, 1:end-n_exo]
+
+    # per-period storage
+    x_seq = [zeros(n_exo) for _ in 1:Tt]
+    idx_seq = obs_idx_per_t
+    invjac_v_seq = Vector{Matrix{Float64}}(undef, Tt)  # m_t × m_t inverse for square; pinv-T for wide
+    G_seq = Vector{Matrix{Float64}}(undef, Tt)         # (jac_v jac_v')^{-1}, m_t × m_t
+    n_obs_total = 0
+    shocks² = 0.0
+    logabsdets = 0.0
+
+    for t in 1:Tt
+        idx = idx_seq[t]
+        m = length(idx)
+        # y_full = data[:,t] - 𝐒obs_past_full * state[t][t⁻]
+        y_full = data_in_deviations[:, t] - 𝐒obs_past_full * state_seq[t][t⁻]
+        if m == 0
+            x_seq[t] = zeros(n_exo)
+            invjac_v_seq[t] = zeros(0, 0)
+            G_seq[t] = zeros(0, 0)
+        else
+            jac_v = jac_full[idx, :]
+            y_v   = y_full[idx]
+            if m == n_exo
+                jac_v_lu = ℒ.lu(jac_v, check = false)
+                if !ℒ.issuccess(jac_v_lu)
+                    if opts.verbose println("Inversion filter rrule (missing) failed at step $t") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                xv = jac_v_lu \ y_v
+                invjac_v = inv(jac_v_lu)
+                G = invjac_v' * invjac_v  # = (jac_v jac_v')^{-1}
+            else
+                # m < n_exo (or > n_exo handled below)
+                if m > n_exo
+                    if opts.verbose println("Inversion filter rrule (missing) failed at step $t: m=$m > n_exo=$n_exo") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                JJt = jac_v * jac_v'
+                JJt_lu = ℒ.lu(JJt, check = false)
+                if !ℒ.issuccess(JJt_lu)
+                    if opts.verbose println("Inversion filter rrule (missing) failed at step $t (rank-deficient row block)") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                G = inv(JJt_lu)
+                # x = jac_v' * G * y_v (min-norm solution)
+                xv = jac_v' * (G * y_v)
+                invjac_v = G * jac_v  # this is pinv(jac_v)' (m × n_exo); useful below
+            end
+            x_seq[t] = xv
+            invjac_v_seq[t] = invjac_v
+            G_seq[t] = G
+
+            if t > presample_periods
+                shocks² += sum(abs2, xv)
+                # logabsdet[t] = sum log svdvals(jac_v) = (1/2) log det(jac_v jac_v')
+                # for square m == n_exo: = log|det(jac_v)|
+                if m == n_exo
+                    # use LU determinant magnitude
+                    ld = 0.0
+                    for k in 1:m
+                        ld += log(abs(jac_v[k, k]))  # cheap proxy; replace with svdvals for safety
+                    end
+                    # safer:
+                    logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                else
+                    logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                end
+                n_obs_total += m
+                if !isfinite(shocks²) || !isfinite(logabsdets)
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+            end
+        end
+        # state[t+1] = 𝐒 * vcat(state[t][t⁻], x_seq[t])
+        ℒ.mul!(state_seq[t+1], 𝐒, vcat(state_seq[t][t⁻], x_seq[t]))
+    end
+
+    llh = -(logabsdets + shocks² + n_obs_total * log(2π)) / 2
+    if llh < -1e12 || !isfinite(llh)
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    function inversion_pullback_missing(∂llh)
+        ∂𝐒 = zero(𝐒)
+        ∂data_in_deviations = zero(data_in_deviations)
+        ∂state_t⁻ = zeros(n_past)  # cotangent on state[t][t⁻] flowing back
+
+        # Backward pass over periods
+        for t in Tt:-1:1
+            # state[t+1] = 𝐒 * v where v = vcat(state[t][t⁻], x_seq[t])
+            v = vcat(state_seq[t][t⁻], x_seq[t])
+            # Cotangent on state[t+1] enters via the state recursion.
+            # ∂state[t+1] is the accumulated cotangent on state[t+1] from later steps;
+            # we represent it in its t⁻ projection only for the next iteration.
+            # Build full ∂state[t+1] by lifting ∂state_t⁻ into the n_vars-sized vector:
+            ∂state_full_next = zeros(size(𝐒, 1))
+            ∂state_full_next[t⁻] .= ∂state_t⁻
+
+            # ∂𝐒 += ∂state_full_next * v'
+            ℒ.mul!(∂𝐒, ∂state_full_next, v', 1.0, 1.0)
+
+            # ∂v = 𝐒' * ∂state_full_next
+            ∂v = 𝐒' * ∂state_full_next
+            ∂state_t⁻ = ∂v[1:n_past]
+            ∂x_t = ∂v[n_past+1:end]
+
+            idx = idx_seq[t]
+            m = length(idx)
+
+            if m > 0 && t > presample_periods
+                # shocks² adds: ∂x_t += -∂llh * x_seq[t]
+                ∂x_t = ∂x_t .+ (-∂llh) .* x_seq[t]
+            end
+
+            if m > 0
+                # x_seq[t] = pinv(jac_v) * y_v, where y_v = data[idx,t] - (𝐒obs_past)[idx,:] * state[t][t⁻]
+                # ∂y_v = (jac_v^+)' * ∂x_t
+                # For square m == n_exo: invjac_v_seq[t] = jac_v^{-1}; (jac_v^+)' = invjac_v'
+                # For wide m < n_exo:    invjac_v_seq[t] = pinv(jac_v)' = G * jac_v; so (pinv)' (above name) is invjac_v'... careful.
+                if m == n_exo
+                    invjac_v = invjac_v_seq[t]   # = jac_v^{-1}, m × m
+                    # ∂y_v = invjac_v' * ∂x_t
+                    ∂y_v = invjac_v' * ∂x_t
+                    # ∂jac_v from x = invjac * y: ∂jac_v += -invjac' * ∂x * x'  → here x = x_seq[t]
+                    ∂jac_v = -(invjac_v' * ∂x_t) * x_seq[t]'
+                else
+                    G = G_seq[t]
+                    jac_v = jac_full[idx, :]
+                    pinvA = jac_v' * G            # n_exo × m  (= pinv(jac_v))
+                    pinvA_T = G * jac_v           # m × n_exo  (= pinv(jac_v)')
+                    ∂y_v = pinvA_T * ∂x_t
+                    # ∂A = -(pinvA)' * ∂x_t * x_seq[t]'  + (I - pinvA * jac_v) * ∂x_t * g'
+                    # since x_seq[t] ∈ row(jac_v), the second term contribution to shocks² part
+                    # vanishes; but ∂x_t includes the state-recursion contribution which is NOT
+                    # guaranteed to lie in the same projection. So we keep both terms.
+                    g_t = G * (data_in_deviations[idx, t] - 𝐒obs_past_full[idx, :] * state_seq[t][t⁻])
+                    P_perp = ℒ.I(n_exo) - pinvA * jac_v
+                    ∂jac_v = -(pinvA' * ∂x_t) * x_seq[t]' + g_t * (P_perp * ∂x_t)'
+                end
+
+                # logabsdet[t] term (only if t > presample): ∂jac_v += -∂llh/2 * pinv(jac_v)'
+                if t > presample_periods
+                    if m == n_exo
+                        invjac_v = invjac_v_seq[t]
+                        ∂jac_v = ∂jac_v .+ (-∂llh / 2) .* invjac_v'
+                    else
+                        G = G_seq[t]
+                        jac_v = jac_full[idx, :]
+                        pinvA_T = G * jac_v
+                        ∂jac_v = ∂jac_v .+ (-∂llh / 2) .* pinvA_T
+                    end
+                end
+
+                # Scatter ∂jac_v into ∂𝐒[obs_idx_full[idx], end-n_exo+1:end]
+                rows = obs_idx_full[idx]
+                col_off = size(𝐒, 2) - n_exo
+                @inbounds for j in 1:n_exo
+                    c = col_off + j
+                    for i in 1:m
+                        ∂𝐒[rows[i], c] += ∂jac_v[i, j]
+                    end
+                end
+
+                # ∂y_v contributes to ∂data_in_deviations[obs_idx_full[idx], t] and ∂state[t][t⁻] via -𝐒obs_past[idx,:]
+                @inbounds for i in 1:m
+                    ∂data_in_deviations[rows[i], t] += ∂y_v[i]
+                end
+                # ∂(𝐒obs_past_full[idx,:]) += -∂y_v * state[t][t⁻]'  → goes into ∂𝐒[rows_full, 1:end-n_exo]
+                stm = state_seq[t][t⁻]
+                @inbounds for j in 1:n_past
+                    sj = stm[j]
+                    for i in 1:m
+                        ∂𝐒[rows[i], j] += -∂y_v[i] * sj
+                    end
+                end
+                # ∂state[t][t⁻] += -𝐒obs_past_full[idx,:]' * ∂y_v
+                ∂state_t⁻ = ∂state_t⁻ .+ (-𝐒obs_past_full[idx, :]' * ∂y_v)
+            end
+            # for m == 0: nothing else; state[t+1] depended only on state[t][t⁻] and x=0
+        end
+
+        # Initial state cotangent: ∂state[1] is zero except at t⁻ entries.
+        ∂state₀_full = zeros(size(state₀))
+        ∂state₀_full[t⁻] .= ∂state_t⁻
+
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), [∂state₀_full], NoTangent()
+    end
+
+    return llh, inversion_pullback_missing
+end
+
+
 function rrule(::typeof(calculate_loglikelihood), 
                 ::Val{:inversion},
                 ::Val{:first_order}, 
@@ -8360,7 +8583,18 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter - forward" begin    
-            
+
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    if has_missing
+        return rrule_inversion_first_order_missing(observables_index, 𝐒, data_in_deviations,
+                                                    constants, state, workspaces, obs_idx_per_t;
+                                                    warmup_iterations = warmup_iterations,
+                                                    on_failure_loglikelihood = on_failure_loglikelihood,
+                                                    presample_periods = presample_periods,
+                                                    opts = opts,
+                                                    filter_algorithm = filter_algorithm)
+    end
+
     # first order
     state = copy(state[1])
 
