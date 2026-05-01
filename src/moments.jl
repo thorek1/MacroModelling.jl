@@ -11,6 +11,8 @@ assembly.
 `tol` controls the drop tolerance during assembly (entries with `|v| < tol`
 are discarded).
 """
+@stable default_mode = "disable" begin
+
 function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
                      tol::Real = eps(T)) where T <: Real
     m, n = size(A)
@@ -130,7 +132,6 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
     return sparse(coo_I, coo_J, coo_V, m, m)
 end
 
-@stable default_mode = "disable" begin
 
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 

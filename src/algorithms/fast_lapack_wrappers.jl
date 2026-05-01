@@ -1,7 +1,7 @@
 @stable default_mode = "disable" begin
 
 # Old way (≤v0.1.42): Q = qr(A)  — allocates a new QR factorisation object each call
-function factorize_qr!(qr_mat::AbstractMatrix,
+@unstable function factorize_qr!(qr_mat::AbstractMatrix,
                        qr_factors::AbstractMatrix{R},
                        qr_ws::FastLapackInterface.QRWs{R};
                        use_fastlapack_qr::Bool = true) where {R <: AbstractFloat}
@@ -47,7 +47,7 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
 end
 
 # Old way (≤v0.1.42): F = lu(A)  — allocates a new LU factorisation object each call
-function factorize_lu!(A::AbstractMatrix{R},
+@unstable function factorize_lu!(A::AbstractMatrix{R},
                        lu_ws,
                        lu_dims::NTuple{2, Int};
                        use_fastlapack_lu::Bool = true) where {R <: AbstractFloat}
@@ -154,7 +154,7 @@ end
 # Old way (≤v0.1.42): S = schur(D, E); ordschur!(S, eigenselect)  — allocates Schur object
 # Returns (qz_ws, qz_dims, schdcmp, schur_ok, has_unit_root_eigenvalues).
 # has_unit_root_eigenvalues is true when any generalized eigenvalue has |λ| ∈ [1-tol, 1+tol].
-function factorize_generalized_schur!(D::AbstractMatrix{R},
+@unstable function factorize_generalized_schur!(D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
                                       qz_ws,
                                       qz_dims::NTuple{2, Int},

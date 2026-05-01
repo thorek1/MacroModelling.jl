@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
@@ -1411,7 +1413,7 @@ And data, 4×40×1 Array{Float64, 3}:
   (:z)    0.01          0.002             2.74878e-29     5.49756e-30
 ```
 """
-function get_irf(𝓂::ℳ; 
+@unstable function get_irf(𝓂::ℳ; 
                 periods::Int = DEFAULT_PERIODS, 
                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
@@ -1645,7 +1647,7 @@ And data, 4×6 Matrix{Float64}:
   (:z)   0.0              0.0       0.0      0.0       0.0        0.0
 ```
 """
-function get_steady_state(𝓂::ℳ; 
+@unstable function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
@@ -1937,7 +1939,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
   (:eps_z₍ₓ₎)       0.00674687   0.0620937   0.0688406   0.01
 ```
 """
-function get_solution(𝓂::ℳ; 
+@unstable function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
                         steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -4042,7 +4044,7 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4065,7 +4067,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4088,7 +4090,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4111,7 +4113,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4133,7 +4135,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4308,3 +4310,4 @@ get_residuals = get_non_stochastic_steady_state_residuals
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
 check_residuals = get_non_stochastic_steady_state_residuals
+end # dispatch_doctor

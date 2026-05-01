@@ -747,7 +747,7 @@ function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}};
 end
 
 
-function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
+@unstable function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -781,7 +781,7 @@ end
 #                         tol = tol)
 # end
 
-function choose_matrix_format(A::DenseMatrix{S}; 
+@unstable function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -799,7 +799,7 @@ function choose_matrix_format(A::DenseMatrix{S};
     end
 end
 
-function choose_matrix_format(A::AbstractSparseMatrix{S}; 
+@unstable function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -2002,7 +2002,7 @@ end
 
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
+@unstable function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     if variables == :all_excluding_auxiliary_and_obc
         return ms.vars_idx_excluding_aux_obc
@@ -2013,7 +2013,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
     return parse_variables_input_to_index(variables, 𝓂.constants)
 end
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
+@unstable function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
     T = constants.post_model_macro
     
 
@@ -2161,7 +2161,7 @@ function parse_shocks_input_to_index(shocks::BitMatrix, constants::constants)
     return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
 end
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
+@unstable function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
     T = constants.post_model_macro
     
 
@@ -2530,6 +2530,7 @@ function update_perturbation_counter!(counters::SolveCounters, solved::Bool; est
             end
         end
     end
+    return nothing
 end
 
 """
@@ -2550,6 +2551,7 @@ function update_ss_counter!(counters::SolveCounters, solved::Bool; estimation::B
             counters.ss_solves_failed += 1
         end
     end
+    return nothing
 end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 

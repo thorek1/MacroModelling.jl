@@ -10,7 +10,7 @@
 
 # solves: A * X * B + C = X for X
 @stable default_mode = "disable" begin
-function solve_sylvester_equation(A::M,
+@unstable function solve_sylvester_equation(A::M,
                                     B::N,
                                     C::O,
                                     𝕊ℂ::sylvester_workspace;

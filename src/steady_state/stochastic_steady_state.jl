@@ -1,4 +1,6 @@
-function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
+@stable default_mode = "disable" begin
+
+@unstable function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
                                                      opts::CalculationOptions = merge_calculation_options(),
                                                      estimation::Bool = false,
@@ -134,7 +136,7 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             constants)
 end
 
-function calculate_stochastic_steady_state(::Val{:second_order},
+@unstable function calculate_stochastic_steady_state(::Val{:second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
@@ -191,7 +193,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
-function calculate_stochastic_steady_state(::Val{:pruned_second_order},
+@unstable function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
@@ -239,7 +241,7 @@ end
 
 
 
-function solve_stochastic_steady_state_newton(::Val{:second_order}, 
+@unstable function solve_stochastic_steady_state_newton(::Val{:second_order}, 
                                               𝐒₁::Matrix{R}, 
                                               𝐒₂::AbstractSparseMatrix{R}, 
                                               x::Vector{R},
@@ -311,7 +313,7 @@ end
 
 
 
-function calculate_stochastic_steady_state(::Val{:third_order},
+@unstable function calculate_stochastic_steady_state(::Val{:third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
@@ -405,7 +407,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
-function calculate_stochastic_steady_state(::Val{:pruned_third_order},
+@unstable function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
@@ -482,7 +484,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
 end
 
 
-function solve_stochastic_steady_state_newton(::Val{:third_order}, 
+@unstable function solve_stochastic_steady_state_newton(::Val{:third_order}, 
                                               𝐒₁::Matrix{Float64}, 
                                               𝐒₂::AbstractSparseMatrix{Float64}, 
                                               𝐒₃::AbstractSparseMatrix{Float64},
@@ -554,3 +556,5 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
     ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
     return x, isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
 end
+
+end # dispatch_doctor

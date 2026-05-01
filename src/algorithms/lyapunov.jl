@@ -59,7 +59,7 @@ function is_approx_symmetric(C::AbstractMatrix;
     return max_abs == 0 ? true : max_asym ≤ rtol * max_abs
 end
 
-function solve_lyapunov_equation(A::AbstractMatrix{T},
+@unstable function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
                                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
