@@ -8444,15 +8444,12 @@ function rrule(::typeof(calculate_loglikelihood),
         end
         state = st_local
 
-        # logabsdets contribution (square or fat per block)
-        for i in 1:warmup_iterations
-            jac_i = warmup_jac[:, (i-1)*T.nExo+1:i*T.nExo]
-            if size(jac_i, 1) == size(jac_i, 2)
-                logabsdets += ℒ.logabsdet(jac_i)[1]
-            else
-                logabsdets += ℒ.logabsdet(jac_i * jac_i')[1] / 2
-            end
-        end
+        # NOTE: We deliberately do NOT add per-block logabsdets here.  The
+        # primal in `src/filter/inversion.jl` accumulates them at lines 90-97
+        # but then unconditionally overwrites `logabsdets` at lines 119/133/145
+        # before the main loop scales it by `(n_obs - presample)`.  As a result,
+        # warmup logabsdets contributions never enter `llh`, so the rrule must
+        # not produce gradients for them either.
 
         shocks² += sum(abs2, warmup_x)
     end
@@ -8652,16 +8649,12 @@ function rrule(::typeof(calculate_loglikelihood),
             # supported only on t⁻ slots.  Override the ∂state we'll return.
             ∂state .= ∂state_local
 
-            # Logabsdets contribution to ∂jac_concat.
+            # ∂jac_concat collects contributions from the linear-solve adjoint
+            # only.  We do NOT add per-block logabsdets contributions because
+            # the primal silently overwrites the accumulated warmup logabsdets
+            # before scaling (see note in the forward pass), so they don't
+            # enter llh and must not enter the gradient.
             ∂jac_concat = zeros(size(warmup_jac))
-            for i in 1:N
-                jac_i = warmup_jac[:, (i-1)*nExo+1 : i*nExo]
-                if size(jac_i, 1) == size(jac_i, 2)
-                    ∂jac_concat[:, (i-1)*nExo+1 : i*nExo] .-= inv(jac_i)' / 2
-                else
-                    ∂jac_concat[:, (i-1)*nExo+1 : i*nExo] .-= ℒ.pinv(jac_i)' / 2
-                end
-            end
 
             # Backprop the linear solve to recover warmup shocks.
             ∂data_first = zeros(length(obs_idx))
