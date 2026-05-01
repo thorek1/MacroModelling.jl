@@ -33,7 +33,7 @@ end
 end
 
 # Drop entries below threshold, sort survivors, append as column j of A, reset.
-function _flush_column!(A::SparseMatrixCSC, v::SparseAccum, j::Integer,
+function flush_column!(A::SparseMatrixCSC, v::SparseAccum, j::Integer,
                         drop, scale = one(eltype(A)))
     total = 0
     @inbounds for i = 1:v.nnz
@@ -165,8 +165,8 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
         end
 
         # --- Drop small entries, store columns of U and L ---
-        _flush_column!(U, Ur, k, τ)
-        _flush_column!(L, Lc, k, τ, inv(Ur.nzval[k]))
+        flush_column!(U, Ur, k, τ)
+        flush_column!(L, Lc, k, τ, inv(Ur.nzval[k]))
 
         # Register new entries in row-traversal index
         U_nxt[k] = U.colptr[k] + 1
@@ -195,9 +195,9 @@ end
 
 const DEFAULT_ILU_TAU = 1e-3
 
-_to_sparse(B::SparseMatrixCSC) = B
-_to_sparse(B::ThreadedSparseArrays.ThreadedSparseMatrixCSC) = B.A
-_to_sparse(B::AbstractMatrix) = sparse(B)
+to_sparse(B::SparseMatrixCSC) = B
+to_sparse(B::ThreadedSparseArrays.ThreadedSparseMatrixCSC) = B.A
+to_sparse(B::AbstractMatrix) = sparse(B)
 
 """
     build_ilu_preconditioner(A, B; τ) → LinearOperator
@@ -211,7 +211,7 @@ function build_ilu_preconditioner(A::DenseMatrix{T},
                                   B::AbstractMatrix{T};
                                   τ::Float64 = DEFAULT_ILU_TAU) where {T <: AbstractFloat}
     n = size(A, 1)
-    B_sp = _to_sparse(B)
+    B_sp = to_sparse(B)
     m = size(B_sp, 2)
     diag_B = Vector{T}(undef, m)
     @inbounds for j in 1:m

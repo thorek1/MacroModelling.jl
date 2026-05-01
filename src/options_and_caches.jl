@@ -1197,7 +1197,7 @@ function Constants(model_struct; T::Type = Float64, S::Type = Float64)
             NSSSSolverConstants())
 end
 
-function _axis_has_string(axis)
+function axis_has_string(axis)
     axis === nothing && return false
     T = eltype(axis)
     if T === String
@@ -1210,15 +1210,15 @@ function _axis_has_string(axis)
     return false
 end
 
-function _choose_axis_type(var_axis, calib_axis, exo_axis_plain, exo_axis_with_subscript, full_NSSS_display)
-    return (_axis_has_string(var_axis) ||
-            _axis_has_string(calib_axis) ||
-            _axis_has_string(exo_axis_plain) ||
-            _axis_has_string(exo_axis_with_subscript) ||
-            _axis_has_string(full_NSSS_display)) ? String : Symbol
+function choose_axis_type(var_axis, calib_axis, exo_axis_plain, exo_axis_with_subscript, full_NSSS_display)
+    return (axis_has_string(var_axis) ||
+            axis_has_string(calib_axis) ||
+            axis_has_string(exo_axis_plain) ||
+            axis_has_string(exo_axis_with_subscript) ||
+            axis_has_string(full_NSSS_display)) ? String : Symbol
 end
 
-function _convert_axis(axis, ::Type{S}) where {S <: Union{Symbol, String}}
+function convert_axis(axis, ::Type{S}) where {S <: Union{Symbol, String}}
     axis === nothing && return Vector{S}()
     return S === String ? string.(axis) : Symbol.(axis)
 end
@@ -1261,12 +1261,12 @@ function update_post_complete_parameters(p::post_complete_parameters; kwargs...)
     exo_axis_plain_in = get(kwargs, :exo_axis_plain, p.exo_axis_plain)
     exo_axis_with_subscript_in = get(kwargs, :exo_axis_with_subscript, p.exo_axis_with_subscript)
     full_NSSS_display_in = get(kwargs, :full_NSSS_display, p.full_NSSS_display)
-    S = _choose_axis_type(var_axis_in, calib_axis_in, exo_axis_plain_in, exo_axis_with_subscript_in, full_NSSS_display_in)
-    var_axis = _convert_axis(var_axis_in, S)
-    calib_axis = _convert_axis(calib_axis_in, S)
-    exo_axis_plain = _convert_axis(exo_axis_plain_in, S)
-    exo_axis_with_subscript = _convert_axis(exo_axis_with_subscript_in, S)
-    full_NSSS_display = _convert_axis(full_NSSS_display_in, S)
+    S = choose_axis_type(var_axis_in, calib_axis_in, exo_axis_plain_in, exo_axis_with_subscript_in, full_NSSS_display_in)
+    var_axis = convert_axis(var_axis_in, S)
+    calib_axis = convert_axis(calib_axis_in, S)
+    exo_axis_plain = convert_axis(exo_axis_plain_in, S)
+    exo_axis_with_subscript = convert_axis(exo_axis_with_subscript_in, S)
+    full_NSSS_display = convert_axis(full_NSSS_display_in, S)
     return post_complete_parameters{S}(
         get(kwargs, :parameters, p.parameters),
         get(kwargs, :missing_parameters, p.missing_parameters),
@@ -2116,23 +2116,23 @@ function SolverTolerances(; atol::Float64 = 1e-14,
     return SolverTolerances(atol, rtol, initial_guess_acceptance_tol, acceptance_tol)
 end
 
-# Generic SolverTolerances keyword-constructor defaults, used by _resolve_tol to detect
+# Generic SolverTolerances keyword-constructor defaults, used by resolve_tol to detect
 # which fields were left at their generic value and should be replaced by context defaults.
-const _GENERIC_SOLVER_TOL = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+const GENERIC_SOLVER_TOL = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
 
 # Merge a SolverTolerances with context-specific defaults.  Fields that still sit at the
 # generic SolverTolerances() defaults are replaced by the context base; explicitly changed
 # fields are kept.
-function _resolve_tol(override::SolverTolerances, base::SolverTolerances)
+function resolve_tol(override::SolverTolerances, base::SolverTolerances)
     SolverTolerances(
-        override.atol != _GENERIC_SOLVER_TOL.atol ? override.atol : base.atol,
-        override.rtol != _GENERIC_SOLVER_TOL.rtol ? override.rtol : base.rtol,
-        override.initial_guess_acceptance_tol != _GENERIC_SOLVER_TOL.initial_guess_acceptance_tol ? override.initial_guess_acceptance_tol : base.initial_guess_acceptance_tol,
-        override.acceptance_tol != _GENERIC_SOLVER_TOL.acceptance_tol ? override.acceptance_tol : base.acceptance_tol)
+        override.atol != GENERIC_SOLVER_TOL.atol ? override.atol : base.atol,
+        override.rtol != GENERIC_SOLVER_TOL.rtol ? override.rtol : base.rtol,
+        override.initial_guess_acceptance_tol != GENERIC_SOLVER_TOL.initial_guess_acceptance_tol ? override.initial_guess_acceptance_tol : base.initial_guess_acceptance_tol,
+        override.acceptance_tol != GENERIC_SOLVER_TOL.acceptance_tol ? override.acceptance_tol : base.acceptance_tol)
 end
 
 # Merge a NamedTuple of partial overrides with a SolverTolerances base.
-function _resolve_tol(nt::NamedTuple, base::SolverTolerances)
+function resolve_tol(nt::NamedTuple, base::SolverTolerances)
     SolverTolerances(
         Float64(get(nt, :atol, base.atol)),
         Float64(get(nt, :rtol, base.rtol)),
@@ -2172,8 +2172,8 @@ function NsssTolerances(; acceptance_tol::Float64 = 1e-12,
     return NsssTolerances(acceptance_tol, initial_guess_acceptance_tol, xtol, ftol, rel_xtol)
 end
 
-_resolve_tol(s::NsssTolerances, ::NsssTolerances) = s
-function _resolve_tol(nt::NamedTuple, base::NsssTolerances)
+resolve_tol(s::NsssTolerances, ::NsssTolerances) = s
+function resolve_tol(nt::NamedTuple, base::NsssTolerances)
     NsssTolerances(
         Float64(get(nt, :acceptance_tol, base.acceptance_tol)),
         Float64(get(nt, :initial_guess_acceptance_tol, base.initial_guess_acceptance_tol)),
@@ -2210,17 +2210,17 @@ function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
     _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
     _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     return AdTolerances(
-        _resolve_tol(qme, _base_qme),
-        _resolve_tol(sylvester, _base_sylv),
-        _resolve_tol(lyapunov, _base_lyap))
+        resolve_tol(qme, _base_qme),
+        resolve_tol(sylvester, _base_sylv),
+        resolve_tol(lyapunov, _base_lyap))
 end
 
-_resolve_tol(s::AdTolerances, ::AdTolerances) = s
-function _resolve_tol(nt::NamedTuple, base::AdTolerances)
+resolve_tol(s::AdTolerances, ::AdTolerances) = s
+function resolve_tol(nt::NamedTuple, base::AdTolerances)
     AdTolerances(
-        _resolve_tol(get(nt, :qme, (;)), base.qme),
-        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
-        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov))
+        resolve_tol(get(nt, :qme, (;)), base.qme),
+        resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov))
 end
 
 """
@@ -2259,20 +2259,20 @@ function FirstOrderTolerances(; qme = (;),
     _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     _base_ad   = AdTolerances()
     return FirstOrderTolerances(
-        _resolve_tol(qme, _base_qme),
-        _resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(qme, _base_qme),
+        resolve_tol(lyapunov, _base_lyap),
         droptol, dependencies_tol,
-        _resolve_tol(ad, _base_ad))
+        resolve_tol(ad, _base_ad))
 end
 
-_resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
-function _resolve_tol(nt::NamedTuple, base::FirstOrderTolerances)
+resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
+function resolve_tol(nt::NamedTuple, base::FirstOrderTolerances)
     FirstOrderTolerances(
-        _resolve_tol(get(nt, :qme, (;)), base.qme),
-        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        resolve_tol(get(nt, :qme, (;)), base.qme),
+        resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
         Float64(get(nt, :droptol, base.droptol)),
         Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
-        _resolve_tol(get(nt, :ad, (;)), base.ad))
+        resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 """
@@ -2311,20 +2311,20 @@ function HigherOrderTolerances(; sylvester = (;),
     _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     _base_ad   = AdTolerances()
     return HigherOrderTolerances(
-        _resolve_tol(sylvester, _base_sylv),
-        _resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(sylvester, _base_sylv),
+        resolve_tol(lyapunov, _base_lyap),
         droptol, dependencies_tol,
-        _resolve_tol(ad, _base_ad))
+        resolve_tol(ad, _base_ad))
 end
 
-_resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
-function _resolve_tol(nt::NamedTuple, base::HigherOrderTolerances)
+resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
+function resolve_tol(nt::NamedTuple, base::HigherOrderTolerances)
     HigherOrderTolerances(
-        _resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
-        _resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
+        resolve_tol(get(nt, :sylvester, (;)), base.sylvester),
+        resolve_tol(get(nt, :lyapunov, (;)), base.lyapunov),
         Float64(get(nt, :droptol, base.droptol)),
         Float64(get(nt, :dependencies_tol, base.dependencies_tol)),
-        _resolve_tol(get(nt, :ad, (;)), base.ad))
+        resolve_tol(get(nt, :ad, (;)), base.ad))
 end
 
 struct Tolerances
@@ -2428,19 +2428,19 @@ function Tolerances(; nsss = (;),
                            ad = AdTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-8),
                                              lyapunov  = SolverTolerances(acceptance_tol = 1e-8))))
     return Tolerances(
-        _resolve_tol(nsss, _base.nsss),
-        _resolve_tol(first_order, _base.first_order),
-        _resolve_tol(second_order, _base.second_order),
-        _resolve_tol(third_order, _base.third_order))
+        resolve_tol(nsss, _base.nsss),
+        resolve_tol(first_order, _base.first_order),
+        resolve_tol(second_order, _base.second_order),
+        resolve_tol(third_order, _base.third_order))
 end
 
-_resolve_tol(s::Tolerances, ::Tolerances) = s
-function _resolve_tol(nt::NamedTuple, base::Tolerances)
+resolve_tol(s::Tolerances, ::Tolerances) = s
+function resolve_tol(nt::NamedTuple, base::Tolerances)
     Tolerances(
-        _resolve_tol(get(nt, :nsss, (;)), base.nsss),
-        _resolve_tol(get(nt, :first_order, (;)), base.first_order),
-        _resolve_tol(get(nt, :second_order, (;)), base.second_order),
-        _resolve_tol(get(nt, :third_order, (;)), base.third_order))
+        resolve_tol(get(nt, :nsss, (;)), base.nsss),
+        resolve_tol(get(nt, :first_order, (;)), base.first_order),
+        resolve_tol(get(nt, :second_order, (;)), base.second_order),
+        resolve_tol(get(nt, :third_order, (;)), base.third_order))
 end
 
 

@@ -1,6 +1,10 @@
 # Todo list
 ## High priority
 
+- [ ] check dispatch doctor coverage in new functions
+- [ ] dont use variable, parameter, function names starting with _
+- [ ] add higher order variance decomposition
+- [ ] let filters work with relevant subspace of solution only and also allow for missing obs
 - [ ] make package work with semi structural expectations models
 - [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
 - [ ] implement NestedSampling with NormalisingFlows in Julia
@@ -32,7 +36,6 @@
 - [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
 - [ ] prettify plotlyjs plots
 - [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
-- [ ] add correlation and other moments to get statistics
 - [ ] get irf with parameters for higher order and make it zygote compatible
 - [ ] recheck function examples and docs (include output description)
 - [ ] Docs: document outputs and associated functions to work with function
@@ -119,6 +122,7 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] add correlation and other moments to get statistics
 - [x] add FRB US model
 - [x] include dynare computation in tests
 - [x] try nested samplers for estimation (use the python packages) at first, then implement in Julia if they are promising

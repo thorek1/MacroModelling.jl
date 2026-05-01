@@ -181,8 +181,8 @@ include("impulse_response_function.jl")
 
 # Sentinel for MatrixEquations extension (bartels_stewart algorithm).
 # Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
-const _BARTELS_STEWART_AVAILABLE = Ref(false)
-_has_bartels_stewart() = _BARTELS_STEWART_AVAILABLE[]
+const BARTELS_STEWART_AVAILABLE = Ref(false)
+has_bartels_stewart() = BARTELS_STEWART_AVAILABLE[]
 
 include("./algorithms/preconditioner.jl")
 include("./algorithms/sylvester.jl")
