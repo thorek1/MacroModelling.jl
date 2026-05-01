@@ -8535,9 +8535,11 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                     end
                 end
 
-                # ∂y_v contributes to ∂data_in_deviations[obs_idx_full[idx], t] and ∂state[t][t⁻] via -𝐒obs_past[idx,:]
+                # ∂y_v contributes to ∂data_in_deviations[idx, t] (data is indexed by
+                # observable position, NOT full variable position) and to ∂state[t][t⁻]
+                # via -𝐒obs_past_full[idx, :]
                 @inbounds for i in 1:m
-                    ∂data_in_deviations[rows[i], t] += ∂y_v[i]
+                    ∂data_in_deviations[idx[i], t] += ∂y_v[i]
                 end
                 # ∂(𝐒obs_past_full[idx,:]) += -∂y_v * state[t][t⁻]'  → goes into ∂𝐒[rows_full, 1:end-n_exo]
                 stm = state_seq[t][t⁻]
