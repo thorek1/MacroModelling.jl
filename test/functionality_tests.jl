@@ -2118,28 +2118,6 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 vd_first_mc      = get_variance_decomposition(m, marginal_contribution = true)
                 @test axiskeys(vd_first_mc, 2) == axiskeys(vd_first_default, 2)
                 @test isapprox(collect(vd_first_mc), collect(vd_first_default), rtol = 1e-10)
-
-                # Aumann–Shapley driver (default since marginal_contribution=true)
-                # must agree with the polynomial-coalition driver to numerical
-                # noise. Validate explicit aliases as well.
-                clear_solution_caches!(m, algorithm)
-                vd_mc_poly = get_variance_decomposition(m, algorithm = algorithm,
-                                                        marginal_contribution = :polynomial)
-                clear_solution_caches!(m, algorithm)
-                vd_mc_as   = get_variance_decomposition(m, algorithm = algorithm,
-                                                        marginal_contribution = :aumann_shapley)
-                @test size(vd_mc_as) == size(vd_mc_poly)
-                @test axiskeys(vd_mc_as, 2) == axiskeys(vd_mc_poly, 2)
-                # tolerance: machine precision at second order, Lyapunov tol at third
-                tol_as = algorithm == :pruned_third_order ? 1e-7 : 1e-10
-                @test all(isapprox.(collect(vd_mc_as), collect(vd_mc_poly), atol = tol_as))
-                # marginal_contribution = true must be the AS path
-                @test all(collect(vd_mc) .== collect(vd_mc_as))
-
-                # Reject an unknown backend value
-                @test_throws ErrorException get_variance_decomposition(m,
-                                                                       algorithm = algorithm,
-                                                                       marginal_contribution = :nope)
             end
 
             

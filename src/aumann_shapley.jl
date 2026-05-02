@@ -17,21 +17,19 @@ need `n_e` forward Lyapunov sensitivities (one per direction `eᵢ`); each
 sensitivity is one Lyapunov solve with right-hand side `Ċ(x;eᵢ)`.
 
 Total Lyapunov solves: `n_nodes · n_e`, independent of subset enumeration.
-For `n_e = 7` this is 14 (2nd order) and 21 (3rd order), versus 98 and 126
-for the polynomial-coalition path. Cost wins grow with `n_e`.
+For `n_e = 7` this is 14 (2nd order) and 21 (3rd order).
 
 This file provides:
 * `continuous_coalition_mask_second_order` / `_third_order`
 * `mask_directional_derivative_second_order` / `_third_order`
 * `gausslegendre_unit_interval`
-* The `calculate_aumann_shapley_*_order` drivers live in `moments.jl` next
-  to their polynomial counterparts so they share the heavy block setup.
+* The `calculate_aumann_shapley_*_order` drivers live in `moments.jl`.
 =#
 
 """
 $(SIGNATURES)
-Multilinear extension of `build_coalition_mask_second_order` evaluated at
-`x ∈ [0,1]^nᵉ`. Block layout matches: `[nᵉ, nᵉ², nˢ·nᵉ]`. For each block
+Multilinear extension of the second-order coalition indicator mask evaluated
+at `x ∈ [0,1]^nᵉ`. Block layout: `[nᵉ, nᵉ², nˢ·nᵉ]`. For each block
 entry indexed by tuple `I` of shock indices, `m_I(x) = ∏_{j ∈ unique(I)} x_j`
 so that on `x ∈ {0,1}^nᵉ` the result equals the original `BitVector` mask.
 """
@@ -88,7 +86,8 @@ end
 
 """
 $(SIGNATURES)
-Multilinear extension of `build_coalition_mask_third_order`. Block layout:
+Multilinear extension of the third-order coalition indicator mask. Block
+layout:
 `(nᵉ, nᵉ², nˢ·nᵉ, nˢ·nᵉ, nˢ²·nᵉ, nˢ·nᵉ², nᵉ³)`. Each entry's mask value
 equals the product of `x[j]` over the unique shock indices appearing in that
 entry's index tuple.

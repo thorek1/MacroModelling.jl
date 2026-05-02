@@ -1,17 +1,25 @@
 """
-Polynomial-coalition representation for marginal-contribution (Shapley)
-attribution under pruned higher-order solutions.
+Polynomial-coalition representation for the inversion-filter Shapley shock
+decomposition under pruned higher-order solutions.
 
 For pruned k-order perturbation, the value V(S) of a model variable as a
 function of the active shock coalition S ⊆ {1..nᵉ} is a polynomial of total
 degree ≤ k in the binary indicators `1_S`. Such a polynomial has only
-`Σ_{j=0..k} C(nᵉ, j) ≈ nᵉᵏ/k!` coefficients — far fewer than the 2^nᵉ
-coalition values an exhaustive enumeration would compute.
+`Σ_{j=0..k} C(nᵉ, j) ≈ nᵉᵏ/k!` Möbius coefficients — far fewer than the
+2^nᵉ coalition values an exhaustive enumeration would compute.
 
-Used by the inversion-filter shock decomposition (`PolyState` + Kronecker
-recursion) and the higher-order variance decomposition (`MonomialIndex` +
-recursive subset-subtraction). Both paths aggregate to per-shock Shapley
-shares via `shapley_from_poly!`.
+The per-period state recursion in `src/filter/inversion.jl`
+(`shapley_shock_decomposition_pruned_{2,3}_order!`) propagates these
+coefficients directly via `PolyState` + Kronecker products, then aggregates
+to per-shock Shapley shares via `shapley_from_poly!` (each monomial of
+size `m` contributes its coefficient equally to its `m` member shocks).
+This is the exact Shapley value (no quadrature error) at the minimum
+number of state propagations.
+
+The unconditional higher-order variance decomposition uses the
+Aumann–Shapley path-integral driver in `src/aumann_shapley.jl` instead,
+which is cheaper for that setting because the characteristic function
+there requires a Lyapunov solve per evaluation.
 """
 
 """
@@ -240,36 +248,3 @@ end
 shapley_from_poly!(φ::AbstractMatrix, p::PolyState) =
     shapley_from_poly!(φ, p.coefs, p.idx)
 
-"""
-    poly_coefs_from_subset_values!(poly_coefs, V_at_T, idx)
-
-Given `V_at_T[:, j] == V(T_j)`, fill `poly_coefs[:, j]` with the
-unanimity-basis (polynomial) coefficient at monomial `T_j`, using
-
-    V(T) = Σ_{T' ⊆ T} poly_coefs[T']
-  ⇒ poly_coefs[T] = V(T) − Σ_{T' ⊊ T} poly_coefs[T']
-
-Monomials are processed in increasing-size order (guaranteed by
-`MonomialIndex`), so every proper subset's coefficient is available when
-its parent is processed. Iterates strict proper subsets of each `T_mask`
-via Knuth's `(sub - 1) & T_mask` trick.
-"""
-function poly_coefs_from_subset_values!(poly_coefs::AbstractMatrix,
-                                        V_at_T::AbstractMatrix,
-                                        idx::MonomialIndex)
-    @assert size(poly_coefs) == size(V_at_T) "size mismatch"
-    @assert size(poly_coefs, 2) == idx.n_monomials "monomial count mismatch"
-    fill!(poly_coefs, 0)
-    @views poly_coefs[:, 1] .= V_at_T[:, 1]
-    @inbounds for j in 2:idx.n_monomials
-        T_mask = idx.masks[j]
-        @views poly_coefs[:, j] .= V_at_T[:, j]
-        sub = (T_mask - UInt64(1)) & T_mask
-        while sub > 0
-            @views poly_coefs[:, j] .-= poly_coefs[:, idx.id[sub]]
-            sub = (sub - UInt64(1)) & T_mask
-        end
-        @views poly_coefs[:, j] .-= poly_coefs[:, 1]
-    end
-    return poly_coefs
-end
