@@ -5,9 +5,9 @@ import StatsPlots
 using Random
 Random.seed!(1234)
 
-rndnmbr = rand(max(length(m.parameter_values),2))
 
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
+    rndnmbr = rand(max(length(m.parameter_values),2))
     old_params = copy(m.parameter_values)
     old_params2 = copy(m2.parameter_values)
     
