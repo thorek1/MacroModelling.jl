@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 # Available algorithms: 
 # :doubling     - fast and precise
 # :bartels_stewart     - fast for small matrices and precise, dense matrices only
@@ -852,4 +851,3 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 end
 
 
-end # dispatch_doctor

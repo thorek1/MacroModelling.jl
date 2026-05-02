@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 # ── Occasionally Binding Constraints (OBC) ───────────────────────────────────
 #
@@ -901,4 +900,3 @@ function obc_state_update(present_states, present_shocks::Vector{R}, state_updat
     return present_states, present_shocks, solved
 end
 
-end # dispatch_doctor

@@ -154,47 +154,57 @@ const ParameterType = Union{Nothing,
 const SteadyStateFunctionType = Union{Nothing, Function, Missing}
 
 using DispatchDoctor
-# @stable default_mode = "disable" begin
 
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
 include("structures.jl")
 include("./steady_state/solver_parameters.jl")
-include("options_and_caches.jl")
+# DispatchDoctor wraps these numerical includes (functions defined inside use
+# @unstable selectively where polymorphism is intentional). Files left outside
+# the wrap (parser/*, nsss_solver.jl, dynare.jl, rrules.jl) do heavy macro/
+# SymPy/file-IO work whose returns cannot be made concrete.
+@stable default_mode = "disable" begin
+    include("options_and_caches.jl")
+end # dispatch_doctor
 include("./steady_state/nsss_solver.jl")
-include("occasionally_binding_constraints.jl")
+@stable default_mode = "disable" begin
+    include("occasionally_binding_constraints.jl")
+end # dispatch_doctor
 include("./parser/macros.jl")
 include("./parser/equation_processing.jl")
 include("./parser/model_setup.jl")
 include("./parser/equation_modification.jl")
-include("get_functions.jl")
+@stable default_mode = "disable" begin
+    include("get_functions.jl")
+end # dispatch_doctor
 include("dynare.jl")
-include("inspect.jl")
-include("moments.jl")
-include("./algorithms/fast_lapack_wrappers.jl")
-include("./perturbation/derivatives.jl")
-include("./perturbation/solution.jl")
-include("./steady_state/stochastic_steady_state.jl")
-include("impulse_response_function.jl")
+@stable default_mode = "disable" begin
+    include("inspect.jl")
+    include("moments.jl")
+    include("./algorithms/fast_lapack_wrappers.jl")
+    include("./perturbation/derivatives.jl")
+    include("./perturbation/solution.jl")
+    include("./steady_state/stochastic_steady_state.jl")
+    include("impulse_response_function.jl")
+end # dispatch_doctor
 
 # Sentinel for MatrixEquations extension (bartels_stewart algorithm).
 # Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
 const BARTELS_STEWART_AVAILABLE = Ref(false)
 has_bartels_stewart() = BARTELS_STEWART_AVAILABLE[]
 
-include("./algorithms/preconditioner.jl")
-include("./algorithms/sylvester.jl")
-include("./algorithms/lyapunov.jl")
-include("./algorithms/nonlinear_solver.jl")
-include("./algorithms/quadratic_matrix_equation.jl")
+@stable default_mode = "disable" begin
+    include("./algorithms/preconditioner.jl")
+    include("./algorithms/sylvester.jl")
+    include("./algorithms/lyapunov.jl")
+    include("./algorithms/nonlinear_solver.jl")
+    include("./algorithms/quadratic_matrix_equation.jl")
 
-include("./filter/find_shocks.jl")
-include("./filter/inversion.jl")
-include("./filter/kalman.jl")
-
-
-# end # dispatch_doctor
+    include("./filter/find_shocks.jl")
+    include("./filter/inversion.jl")
+    include("./filter/kalman.jl")
+end # dispatch_doctor
 
 
 export @model, @parameters, solve!

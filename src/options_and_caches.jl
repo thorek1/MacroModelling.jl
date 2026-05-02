@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 """
     Second_order_indices()
@@ -2461,4 +2460,3 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                 verbose)
 end
 
-end # dispatch_doctor

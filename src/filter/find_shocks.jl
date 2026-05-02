@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
@@ -2018,4 +2017,3 @@ end
 #     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 #     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
 # end
-end # dispatch_doctor

@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 
 function calculate_first_order_solution(∇₁::Matrix{R},
@@ -2410,4 +2409,3 @@ function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
 end
 
 
-end # dispatch_doctor

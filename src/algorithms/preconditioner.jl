@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 # ─── Incomplete LU (ILU) preconditioner for Krylov Sylvester solvers ─────────
 #
@@ -251,4 +250,3 @@ function build_ilu_preconditioner(A::DenseMatrix{T},
     LinearOperators.LinearOperator(T, nm, nm, false, false, precond_ldiv!)
 end
 
-end # dispatch_doctor

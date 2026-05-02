@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 get_symbols(ex::Symbol) = [ex]
 
@@ -1172,4 +1171,3 @@ function get_jump_variables(𝓂::ℳ)::Vector{String}
     𝓂.constants.post_model_macro.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
-end # dispatch_doctor

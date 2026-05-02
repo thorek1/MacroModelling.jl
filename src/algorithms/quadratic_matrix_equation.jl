@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 # Solves A * X ^ 2 + B * X + C = 0
 
 # Algorithms:
@@ -683,4 +682,3 @@ end
 
 
 
-end # dispatch_doctor
