@@ -27,7 +27,6 @@ function get_symbols(ex::Expr)
     return par
 end
 
-end # dispatch_doctor
 
 """
     replace_curly_braces_in_symbols(expr) -> Union{Expr, Symbol, Any}
@@ -115,7 +114,6 @@ function parse_filter_term(term::Union{Symbol, String})
     return (Symbol(m.captures[1]), Meta.parse(term_str))
 end
 
-@stable default_mode = "disable" begin
 
 """
     expr_contains(expr, sym::Symbol, pattern) -> Bool

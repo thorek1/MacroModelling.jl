@@ -1,3 +1,4 @@
+@stable default_mode = "disable" begin
 # Available algorithms: 
 # :doubling     - fast and precise
 # :bartels_stewart     - fast for small matrices and precise, dense matrices only
@@ -11,7 +12,6 @@
 # :speedmapping - slow and very precise
 
 # solves: A * X * A' + C = X
-@stable default_mode = "disable" begin
 
 # Pack upper triangle of a symmetric matrix into a vech vector (in-place).
 function vech!(vech_vector::AbstractVector, symmetric_matrix::AbstractMatrix)

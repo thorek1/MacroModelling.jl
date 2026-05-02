@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 """
     sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
                 tol::Real = eps(T)) -> SparseMatrixCSC{T}
@@ -11,8 +13,6 @@ assembly.
 `tol` controls the drop tolerance during assembly (entries with `|v| < tol`
 are discarded).
 """
-@stable default_mode = "disable" begin
-
 function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
                      tol::Real = eps(T)) where T <: Real
     m, n = size(A)
@@ -1841,4 +1841,4 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     return v
 end
 
-end
+end # dispatch_doctor

@@ -1,3 +1,4 @@
+@stable default_mode = "disable" begin
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
@@ -12,7 +13,6 @@
 # conditional forecast constraints (only some variables match target values)
 # Uses analytical derivatives from perturbation solution matrices (like find_shocks)
 
-@stable default_mode = "disable" begin
 function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
                                          all_shocks::Vector{Float64},
@@ -1199,7 +1199,6 @@ function find_shocks(::Val{:LagrangeNewton},
 end
 
 
-end # dispatch_doctor
 
 
 
@@ -2019,3 +2018,4 @@ end # dispatch_doctor
 #     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 #     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
 # end
+end # dispatch_doctor

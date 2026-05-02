@@ -1,5 +1,5 @@
-
 @stable default_mode = "disable" begin
+
 
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
@@ -731,9 +731,7 @@ end
     return 𝐒₃, solved
 end
 
-end # dispatch_doctor
 
-@stable default_mode = "disable" begin
 
 # ── Compressed Kronecker & matrix utilities (moved from MacroModelling.jl) ──
 

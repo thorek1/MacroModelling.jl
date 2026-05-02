@@ -1,3 +1,4 @@
+@stable default_mode = "disable" begin
 
 """
     Second_order_indices()
@@ -134,7 +135,7 @@ Create a workspace for nonlinear solvers (Levenberg-Marquardt and Newton).
 - `chol_buffer::LinearCache`: Pre-allocated Cholesky factorization cache
 - `lu_buffer::LinearCache`: Pre-allocated LU factorization cache
 """
-function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
+@unstable function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
                                     chol_buffer::𝒮.LinearCache, lu_buffer::𝒮.LinearCache) where T <: Real
     n = length(func_buffer)
     nonlinear_solver_workspace(
@@ -156,13 +157,13 @@ function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::Abstract
 end
 
 
-function Krylov_workspace(;S::Type = Float64)
+@unstable function Krylov_workspace(;S::Type = Float64)
     krylov_workspace(  GmresWorkspace(0,0,Vector{S}),
                     DqgmresWorkspace(0,0,Vector{S}),
                     BicgstabWorkspace(0,0,Vector{S}))
 end
 
-function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
+@unstable function Sylvester_workspace(;S::Type = Float64, T::Type = Float64)
     sylvester_workspace(
         0, 0,                   # n, m dimensions
         zeros(S,0,0),           # tmp (Krylov)
@@ -190,7 +191,7 @@ end
 Create a workspace for find_shocks conditional forecast with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_find_shocks_buffers!.
 """
-function Find_shocks_workspace(;T::Type = Float64)
+@unstable function Find_shocks_workspace(;T::Type = Float64)
     find_shocks_workspace{T}(
         0,                      # n_exo dimension
         zeros(T,0),             # kron_buffer (n_exo^2)
@@ -207,7 +208,7 @@ function Find_shocks_workspace(;T::Type = Float64)
         zeros(T,0,0))           # kron_I_state_state
 end
 
-function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
+@unstable function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
     empty_dx_prob = 𝒮.LinearProblem(zeros(Float64, 0, 0), zeros(Float64, 0))
     empty_dx_lu_buffer = 𝒮.init(empty_dx_prob,
                                 𝒮.FastLUFactorization(),
@@ -298,7 +299,7 @@ function Higher_order_workspace(;T::Type = Float64, S::Type = Float64)
                         zeros(S,0,0))  # ∂x_third_order
 end
 
-function ensure_higher_order_solution_buffers!(ws::higher_order_workspace{S,G,H}, n::Int, nₑ₋::Int) where {S <: Real, G <: AbstractFloat, H <: Real}
+@unstable function ensure_higher_order_solution_buffers!(ws::higher_order_workspace{S,G,H}, n::Int, nₑ₋::Int) where {S <: Real, G <: AbstractFloat, H <: Real}
     size(ws.𝐒₁) == (n, nₑ₋) || (ws.𝐒₁ = zeros(S, n, nₑ₋))
     size(ws.𝐒₁₋╱𝟏ₑ) == (nₑ₋, nₑ₋) || (ws.𝐒₁₋╱𝟏ₑ = zeros(S, nₑ₋, nₑ₋))
     return ws
@@ -311,7 +312,7 @@ Lazily (re)allocate kron! buffers used by the stochastic-steady-state Newton ite
 on `ws` (a `higher_order_workspace`). `nPast` is `T.nPast_not_future_and_mixed`.
 The 3rd-order-only buffers are only sized when `third_order=true`.
 """
-function ensure_sss_kron_buffers!(ws::higher_order_workspace{S,G,H}, nPast::Int; third_order::Bool=false) where {S <: Real, G <: AbstractFloat, H <: Real}
+@unstable function ensure_sss_kron_buffers!(ws::higher_order_workspace{S,G,H}, nPast::Int; third_order::Bool=false) where {S <: Real, G <: AbstractFloat, H <: Real}
     n_aug = nPast + 1
     length(ws.x_aug_buf) == n_aug || (ws.x_aug_buf = zeros(S, n_aug))
     length(ws.kron_x_aug_xx) == n_aug^2 || (ws.kron_x_aug_xx = zeros(S, n_aug^2))
@@ -330,7 +331,7 @@ Ensure the LinearSolve cache `ws.dx_lu_buffer` is sized for the SSS Newton iter
 linear system `∂x * y = Δx`. If dimensions match, reuse the cache and just rebind
 `A` and `b`; otherwise re-`init` the cache (FastLUFactorization backend).
 """
-function ensure_dx_lu_buffer!(ws::higher_order_workspace, ∂x::AbstractMatrix{Float64}, Δx::AbstractVector{Float64})
+@unstable function ensure_dx_lu_buffer!(ws::higher_order_workspace, ∂x::AbstractMatrix{Float64}, Δx::AbstractVector{Float64})
     cache = ws.dx_lu_buffer
     if size(cache.A) != size(∂x) || length(cache.b) != length(Δx)
         prob = 𝒮.LinearProblem(∂x, Δx)
@@ -351,7 +352,7 @@ Ensure the LinearSolve cache `ws.sss_tmp_lu_buffer` is sized for the SSS common-
 solve `tmp * y = rhs`. If dimensions match, reuse the cache and just rebind `A` and `b`;
 otherwise re-`init` the cache (FastLUFactorization backend).
 """
-function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatrix{Float64}, rhs::AbstractVector{Float64})
+@unstable function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatrix{Float64}, rhs::AbstractVector{Float64})
     cache = ws.sss_tmp_lu_buffer
     if size(cache.A) != size(tmp) || length(cache.b) != length(rhs)
         prob = 𝒮.LinearProblem(tmp, rhs)
@@ -365,7 +366,7 @@ function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatr
     return ws.sss_tmp_lu_buffer
 end
 
-function ensure_sss_pullback_fast_lu_workspace!(ws::higher_order_workspace{T}, tmp::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
+@unstable function ensure_sss_pullback_fast_lu_workspace!(ws::higher_order_workspace{T}, tmp::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
     dims = (size(tmp, 1), size(tmp, 2))
     if ws.fast_lu_dims_sss_pullback != dims
         ws.fast_lu_ws_sss_pullback = FastLapackInterface.LUWs(tmp)
@@ -379,7 +380,7 @@ end
 
 Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+@unstable function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
     empty_qr_factors = zeros(TT, 0, 0)
     empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
     empty_qr_rhs = zeros(TT, 0, 0)
@@ -444,7 +445,7 @@ end
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
+@unstable function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
     empty_lu_factors = zeros(T, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -472,7 +473,7 @@ function Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
                     (0, 0))
 end
 
-function ensure_first_order_fast_qr_workspace!(ws::first_order_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
+@unstable function ensure_first_order_fast_qr_workspace!(ws::first_order_workspace{T}, qr_mat::AbstractMatrix) where {T <: Union{Float32, Float64}}
     if size(ws.fast_qr_factors) != size(qr_mat)
         ws.fast_qr_factors = zeros(T, size(qr_mat, 1), size(qr_mat, 2))
         ws.fast_qr_ws = FastLapackInterface.QRWs(ws.fast_qr_factors)
@@ -492,7 +493,7 @@ Dimensions:
 - `nPfm` = nPast_not_future_and_mixed
 - `nFnpm` = nFuture_not_past_and_mixed
 """
-function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+@unstable function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
     companion_size = n + nMixed
     nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
     qz_seed_size = max(companion_size, 1)
@@ -532,7 +533,7 @@ Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
 `n` is the dimension of the square matrices.
 Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
 """
-function Lyapunov_workspace(n::Int; T::Type = Float64)
+@unstable function Lyapunov_workspace(n::Int; T::Type = Float64)
     lyapunov_workspace{T, T}(
         n,                      # dimension
         zeros(T, 0, 0),         # 𝐂 (doubling)
@@ -564,7 +565,7 @@ end
 
 Ensure the doubling algorithm buffers are allocated in the workspace.
 """
-function ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
+@unstable function ensure_lyapunov_doubling_buffers!(ws::lyapunov_workspace{T}) where T
     n = ws.n
     if size(ws.𝐂, 1) != n
         ws.𝐂 = zeros(T, n, n)
@@ -589,7 +590,7 @@ end
 
 Ensure the Krylov method buffers are allocated in the workspace.
 """
-function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
+@unstable function ensure_lyapunov_krylov_buffers!(ws::lyapunov_workspace{T}) where T
     n = ws.n
     if size(ws.tmp̄, 1) != n
         ws.tmp̄ = zeros(T, n, n)
@@ -609,7 +610,7 @@ end
 Ensure Krylov method buffers and the requested solver workspace are allocated.
 Supported algorithms are `:bicgstab`, `:gmres`, and `:dqgmres`.
 """
-function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+@unstable function ensure_lyapunov_krylov_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
     ensure_lyapunov_krylov_buffers!(ws)
     n = ws.n
     if n == 0
@@ -641,7 +642,7 @@ end
 Ensure vech-space Krylov buffers and solver workspace are allocated for symmetric Lyapunov equations.
 The vech dimension is n(n+1)/2 instead of n².
 """
-function ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
+@unstable function ensure_lyapunov_krylov_vech_solver!(ws::lyapunov_workspace{T}, algorithm::Symbol) where T
     ensure_lyapunov_krylov_buffers!(ws)
     n = ws.n
     if n == 0
@@ -680,7 +681,7 @@ end
 Ensure the doubling algorithm buffers are allocated in the workspace.
 `n` is the row dimension (size of A), `m` is the column dimension (size of B).
 """
-function ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+@unstable function ensure_sylvester_doubling_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
     # Update stored dimensions
     ws.n = n
     ws.m = m
@@ -720,7 +721,7 @@ end
 
 Ensure the Krylov method buffers are allocated in the workspace.
 """
-function ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
+@unstable function ensure_sylvester_krylov_buffers!(ws::sylvester_workspace{T}, n::Int, m::Int) where T
     ws.n = n
     ws.m = m
     
@@ -746,7 +747,7 @@ Only allocates 3rd order buffers if third_order=true.
 Buffer sizes: kron_buffer (n_exo^2), kron_buffer2 (n_exo^2 × n_exo), 
               kron_buffer² (n_exo^3), kron_buffer3 (n_exo^3 × n_exo), kron_buffer4 (n_exo^3 × n_exo^2)
 """
-function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
+@unstable function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
     ws.n_exo = n_exo
     
     n_exo² = n_exo^2
@@ -784,7 +785,7 @@ for the given dimensions. `n_exo` is `T.nExo`; `n_past` is `T.nPast_not_future_a
 The `state_vol` vector has length `n_past+1`. 3rd-order-only and pruning-only buffers
 are sized only when those flags are set.
 """
-function ensure_find_shocks_state_buffers!(ws::find_shocks_workspace{T}, n_exo::Int, n_past::Int;
+@unstable function ensure_find_shocks_state_buffers!(ws::find_shocks_workspace{T}, n_exo::Int, n_past::Int;
                                            third_order::Bool = false,
                                            third_order_pruning::Bool = false) where T
     ws.n_past = n_past
@@ -824,7 +825,7 @@ end
 Create a workspace for inversion filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_inversion_buffers!.
 """
-function Inversion_workspace(;T::Type = Float64)
+@unstable function Inversion_workspace(;T::Type = Float64)
     inversion_workspace{T}(
         0, 0,                   # n_exo, n_past dimensions
         zeros(T, 0),            # kron_buffer (n_exo^2)
@@ -873,7 +874,7 @@ end
 Ensure the inversion workspaces are allocated for the given dimensions.
 Only allocates 3rd order buffers if third_order=true.
 """
-function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
+@unstable function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_past::Int; third_order::Bool = false) where T
     ws.n_exo = n_exo
     ws.n_past = n_past
     
@@ -968,7 +969,7 @@ end
 Ensure observation-dimension-dependent estimation buffers are allocated.
 Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
 """
-function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
+@unstable function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
     if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
        size(ws.Si_buffer) == (n_cond_var, n_exo)
         return ws
@@ -1005,7 +1006,7 @@ end
 Create a workspace for Kalman filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_workspaces!.
 """
-function Kalman_workspace(;T::Type = Float64)
+@unstable function Kalman_workspace(;T::Type = Float64)
     empty_lu_factors = zeros(T, 1, 1)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -1032,7 +1033,7 @@ end
 
 Ensure the Kalman workspace inside `workspaces` is allocated for the given dimensions and return it.
 """
-function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
+@unstable function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states::Int)
     ws = workspaces.kalman
     T = eltype(ws.u)
 
@@ -1085,7 +1086,7 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
 end
 
 
-function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
+@unstable function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
@@ -1341,7 +1342,7 @@ function initialise_constants!(𝓂)
     return 𝓂.constants
 end
 
-function ensure_name_display_constants!(𝓂)
+@unstable function ensure_name_display_constants!(𝓂)
     constants = 𝓂.constants
     # Use model from constants
     T = constants.post_model_macro
@@ -1422,7 +1423,7 @@ function set_up_name_display_cache(T::post_model_macro, calibration_equations_pa
 end
 
 
-function ensure_computational_constants!(constants::constants)
+@unstable function ensure_computational_constants!(constants::constants)
     so = constants.second_order
     if isempty(so.s_in_s⁺)
         # Use timings from constants
@@ -1476,7 +1477,7 @@ function ensure_computational_constants!(constants::constants)
     return constants.second_order
 end
 
-function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
+@unstable function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
     so = ensure_computational_constants!(constants)
 
     if isempty(so.var²_idxs)
@@ -1616,7 +1617,7 @@ function build_first_order_index_cache(T, I_nVars)
     )
 end
 
-function ensure_first_order_constants!(constants::constants)
+@unstable function ensure_first_order_constants!(constants::constants)
     if !constants.post_complete_parameters.initialized
         # Use timings from constants if available
         T = constants.post_model_macro
@@ -1661,7 +1662,7 @@ end
 Ensure the QME doubling workspace has dimension `n`.
 If the workspace is the wrong size, it is reallocated.
 """
-function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
+@unstable function ensure_qme_doubling_workspace!(workspaces::workspaces, n::Int)
     ws = workspaces.qme_doubling
     if size(ws.E, 1) != n
         workspaces.qme_doubling = Qme_doubling_workspace(n)
@@ -1677,7 +1678,7 @@ Only dense intermediate-product temporaries are workspace-backed; gradient accum
 ∇₂, ∇₃, 𝐒₂ and "may be sparse" matrices are freshly allocated via `zero()` inside the
 pullback to preserve their sparse/dense format.
 """
-function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::Type{S}, T, M₂, M₃) where S
+@unstable function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::Type{S}, T, M₂, M₃) where S
     n      = T.nVars
     n₊     = T.nFuture_not_past_and_mixed
     n₋     = T.nPast_not_future_and_mixed
@@ -1737,7 +1738,7 @@ end
 Ensure all first-order perturbation buffers in `first_order_workspace` are allocated with
 the correct dimensions.
 """
-function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
+@unstable function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T, n_dyn::Int, n_comb::Int) where {R <: Real, S <: Real}
     n = T.nVars
     n₊ = T.nFuture_not_past_and_mixed
     n₋ = T.nPast_not_future_and_mixed
@@ -1767,7 +1768,7 @@ function ensure_first_order_workspace_buffers!(ws::first_order_workspace{R,S}, T
     return ws
 end
 
-function ensure_first_order_cotangent_buffer!(ws::first_order_workspace{T}, n::Int) where T <: Real
+@unstable function ensure_first_order_cotangent_buffer!(ws::first_order_workspace{T}, n::Int) where T <: Real
     if length(ws.∂∇₁_vec) != n
         ws.∂∇₁_vec = zeros(T, n)
     end
@@ -1775,7 +1776,7 @@ function ensure_first_order_cotangent_buffer!(ws::first_order_workspace{T}, n::I
     return ws.∂∇₁_vec
 end
 
-function ensure_higher_order_cotangent_buffer!(ws::higher_order_workspace{T}, n::Int) where T <: Real
+@unstable function ensure_higher_order_cotangent_buffer!(ws::higher_order_workspace{T}, n::Int) where T <: Real
     if length(ws.∂∇_vec) != n
         ws.∂∇_vec = zeros(T, n)
     end
@@ -1795,12 +1796,12 @@ Dimensions are:
 
 If the workspace is the wrong size, it will be reallocated.
 """
-function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
+@unstable function ensure_schur_workspace!(workspaces::workspaces, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int)
     workspaces.schur = ensure_schur_workspace!(workspaces.schur, n, nMixed, nPfm, nFnpm)
     return workspaces.schur
 end
 
-function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int) where T
+@unstable function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nPfm::Int, nFnpm::Int) where T
     companion_size = n + nMixed
     if size(ws.D, 1) != companion_size ||
        size(ws.sol) != (n, nPfm) ||
@@ -1820,7 +1821,7 @@ Ensure the Lyapunov workspace for the specified moment order is properly sized.
 If the workspace is the wrong size, it will be reallocated.
 Note: buffers are still lazily allocated when algorithms are actually used.
 """
-function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbol)
+@unstable function ensure_lyapunov_workspace!(workspaces::workspaces, n::Int, order::Symbol)
     if order == :first_order
         ws = workspaces.lyapunov_1st_order
         if ws.n != n
@@ -1861,7 +1862,7 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
     return selector
 end
 
-function ensure_model_structure_constants!(constants::constants, calibration_parameters::Vector{Symbol})
+@unstable function ensure_model_structure_constants!(constants::constants, calibration_parameters::Vector{Symbol})
     T = constants.post_model_macro
     if isempty(constants.post_complete_parameters.SS_and_pars_names)
         SS_and_pars_names = vcat(
@@ -1960,7 +1961,7 @@ function compute_e6(nᵉ::Int)
     return e6
 end
 
-function ensure_moments_constants!(constants::constants)
+@unstable function ensure_moments_constants!(constants::constants)
     so = ensure_computational_constants!(constants)
     to = constants.third_order
     # Use timings from constants
@@ -2008,7 +2009,7 @@ function ensure_moments_constants!(constants::constants)
     return so
 end
 
-function ensure_moments_substate_indices!(𝓂, nˢ::Int)
+@unstable function ensure_moments_substate_indices!(𝓂, nˢ::Int)
     constants = 𝓂.constants
     to = constants.third_order
     if !haskey(to.substate_indices, nˢ)
@@ -2069,7 +2070,7 @@ function ensure_moments_substate_indices!(𝓂, nˢ::Int)
     return to.substate_indices[nˢ]
 end
 
-function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
+@unstable function ensure_moments_dependency_kron_indices!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
     constants = 𝓂.constants
     to = constants.third_order
     key = Tuple(dependencies)
@@ -2348,7 +2349,6 @@ struct CalculationOptions
     verbose::Bool
 end
 
-@stable default_mode = "disable" begin
 """
 $(SIGNATURES)
 

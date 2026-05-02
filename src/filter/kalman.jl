@@ -181,7 +181,7 @@ function run_kalman_iterations(A::Matrix{S},
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter,

@@ -1507,7 +1507,7 @@ function calculate_loglikelihood(::Val{:inversion},
     return -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:first_order}, # algo
                                 ::Val{:inversion}; # filter
@@ -1658,7 +1658,7 @@ function filter_data_with_model(𝓂::ℳ,
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:second_order}, # algo
                                 ::Val{:inversion}; # filter
@@ -1877,7 +1877,7 @@ function filter_data_with_model(𝓂::ℳ,
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_second_order}, # algo
                                 ::Val{:inversion}; # filter
@@ -2149,7 +2149,7 @@ function filter_data_with_model(𝓂::ℳ,
     return variables, shocks, zeros(0,0), decomposition
 end
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:third_order}, # algo
                                 ::Val{:inversion}; # filter
@@ -2463,7 +2463,7 @@ function filter_data_with_model(𝓂::ℳ,
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_third_order}, # algo
                                 ::Val{:inversion}; # filter

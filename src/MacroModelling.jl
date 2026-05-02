@@ -299,7 +299,6 @@ Symbolics.@register_symbolic normcdf(z)
 Symbolics.@register_symbolic pnorm(p)
 Symbolics.@register_symbolic dnorm(p)
 
-end # dispatch_doctor
 
 # ── norminvcdf, norminv & qnorm ──
 # d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
@@ -357,7 +356,6 @@ else
         Symbolics.derivative(normcdf, args, Val{1}())
 end
 
-@stable default_mode = "disable" begin
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
@@ -463,9 +461,8 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-end # dispatch_doctor
 
-function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
+@unstable function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
                                 shock_size::Real,
                                 periods::Int,
@@ -530,7 +527,6 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-@stable default_mode = "disable" begin
 
 
 
@@ -2274,7 +2270,6 @@ end
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
-end # dispatch_doctor
 
 noop_state_update(state::AbstractVector{<:Real}, ::AbstractVector{<:Real}) = state
 noop_state_update(state::AbstractVector{<:AbstractVector{<:Real}}, ::AbstractVector{<:Real}) = state
@@ -2310,7 +2305,7 @@ function pruned_third_order_state_update(state::AbstractVector{T}, shock::Abstra
     return pruned_third_order_state_update(initialize_pruned_state(state, n_states, Val(3)), shock, past_idx, n_states, 𝐒₁, 𝐒₂, 𝐒₃)
 end
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+@unstable function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update
     pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
 
@@ -2394,7 +2389,6 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
 end
 
 
-@stable default_mode = "disable" begin
 
 function get_custom_steady_state_workspace!(𝓂::ℳ, expected_length::Int)
     buffer = 𝓂.workspaces.custom_steady_state

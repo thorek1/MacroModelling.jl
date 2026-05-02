@@ -1,3 +1,4 @@
+@stable default_mode = "disable" begin
 # Available algorithms: 
 # :doubling     - fast, expensive part: B^2
 # :bartels_stewart    - fast, dense matrices only
@@ -9,7 +10,6 @@
 # :speedmapping - slow
 
 # solves: A * X * B + C = X for X
-@stable default_mode = "disable" begin
 @unstable function solve_sylvester_equation(A::M,
                                     B::N,
                                     C::O,
