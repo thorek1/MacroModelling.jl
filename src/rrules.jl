@@ -8725,6 +8725,13 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
+    # Pre-slice 𝐒 to past_not_future_and_mixed_idx — the only rows of state[i+1]
+    # that are ever read downstream (state[i][t⁻] and ∂state[t⁻]). Matches the
+    # primal at lines ~80/219 of src/filter/inversion.jl.
+    n_pnf_local = length(t⁻)
+    𝐒past = 𝐒[t⁻, :]
+    state_past_buf  = zeros(Float64, n_pnf_local)
+    concat_buf_fwd  = zeros(Float64, n_pnf_local + T.nExo)
 
     for i in axes(data_in_deviations,2)
         @views ℒ.mul!(y, 𝐒obs, state[i][t⁻])
@@ -8739,8 +8746,17 @@ function rrule(::typeof(calculate_loglikelihood),
             end
         end
 
-        ℒ.mul!(state[i+1], 𝐒, vcat(state[i][t⁻], x[i]))
-        # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])
+        @inbounds for k in 1:n_pnf_local
+            concat_buf_fwd[k] = state[i][t⁻[k]]
+        end
+        @inbounds for k in eachindex(x[i])
+            concat_buf_fwd[n_pnf_local + k] = x[i][k]
+        end
+        ℒ.mul!(state_past_buf, 𝐒past, concat_buf_fwd)
+        @inbounds for k in 1:n_pnf_local
+            state[i+1][t⁻[k]] = state_past_buf[k]
+        end
+        # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])  (only t⁻ rows are ever read)
     end
 
     llh = -(logabsdets + shocks² + (length(observables_index) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2

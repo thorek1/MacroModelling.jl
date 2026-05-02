@@ -14,25 +14,26 @@
 # overdetermined); the call returns `on_failure_loglikelihood` in that case.
 
 """
-    inversion_missing_state_update_first_order!(state, state_concat, 𝐒,
-                                                t⁻, n_past, x)
+    inversion_missing_state_update_first_order!(state, state_concat, 𝐒past,
+                                                n_past, x)
 
-Apply the first-order state recursion `state ← 𝐒 * vcat(state[t⁻], x)` using
-the preallocated `state_concat` buffer (length `n_past + n_exo`).
+Apply the first-order state recursion `state ← 𝐒past * vcat(state, x)` using
+the preallocated `state_concat` buffer (length `n_past + n_exo`). Both
+`state` and `𝐒past` must already be reduced to the
+`past_not_future_and_mixed_idx` rows (size `n_past`).
 """
 function inversion_missing_state_update_first_order!(state::AbstractVector,
                                                      state_concat::AbstractVector,
-                                                     𝐒::AbstractMatrix,
-                                                     t⁻::Vector{Int},
+                                                     𝐒past::AbstractMatrix,
                                                      n_past::Int,
                                                      x::AbstractVector)
     @inbounds for k in 1:n_past
-        state_concat[k] = state[t⁻[k]]
+        state_concat[k] = state[k]
     end
     @inbounds for k in eachindex(x)
         state_concat[n_past + k] = x[k]
     end
-    ℒ.mul!(state, 𝐒, state_concat)
+    ℒ.mul!(state, 𝐒past, state_concat)
     return state
 end
 
@@ -77,7 +78,12 @@ function calculate_loglikelihood(::Val{:inversion},
 
     # @timeit_debug timer "Inversion filter" begin    
     # first order
-    state = convert(Vector{R}, state[1])
+    # Reduce state to past_not_future_and_mixed_idx — the only rows that are
+    # ever read downstream (matches the higher-order methods at lines 311,
+    # 598, 1316). Pre-slice 𝐒 to the same row set so the per-period state
+    # update touches the minimum number of rows.
+    state = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
+    𝐒past = 𝐒[T.past_not_future_and_mixed_idx, :]
 
     precision_factor = one(R)
 
@@ -129,9 +135,9 @@ function calculate_loglikelihood(::Val{:inversion},
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
     
         for i in 1:warmup_iterations-1
-            copyto!(state_concat, 1, view(state, T.past_not_future_and_mixed_idx), 1, T.nPast_not_future_and_mixed)
+            copyto!(state_concat, 1, state, 1, T.nPast_not_future_and_mixed)
             copyto!(state_concat, T.nPast_not_future_and_mixed + 1, view(warmup_shocks, :, i), 1, T.nExo)
-            ℒ.mul!(state, 𝐒, state_concat)
+            ℒ.mul!(state, 𝐒past, state_concat)
             # state = state_update(state, warmup_shocks[:,i])
         end
 
@@ -202,7 +208,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     # @timeit_debug timer "Loop" begin    
     for i in axes(data_in_deviations,2)
-        @views ℒ.mul!(y, 𝐒obs, state[T.past_not_future_and_mixed_idx])
+        ℒ.mul!(y, 𝐒obs, state)
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
         ℒ.mul!(x, invjac, y)
 
@@ -214,9 +220,9 @@ function calculate_loglikelihood(::Val{:inversion},
         end
 
         # Use pre-allocated state_concat instead of vcat
-        copyto!(state_concat, 1, view(state, T.past_not_future_and_mixed_idx), 1, T.nPast_not_future_and_mixed)
+        copyto!(state_concat, 1, state, 1, T.nPast_not_future_and_mixed)
         copyto!(state_concat, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
-        ℒ.mul!(state, 𝐒, state_concat)
+        ℒ.mul!(state, 𝐒past, state_concat)
         # state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
 
@@ -936,6 +942,9 @@ function calculate_loglikelihood(::Val{:inversion},
 
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
+    # Hoisted: 𝐒ⁱ²ᵉ assembled in-place per period (parity with missing variant).
+    𝐒ⁱ²ᵉ = similar(𝐒²ᵉ)
+
     fill!(init_guess, zero(R))
     
     for i in axes(data_in_deviations,2)
@@ -984,7 +993,8 @@ function calculate_loglikelihood(::Val{:inversion},
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
 
-        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * kron_buffer4sv / 2
+        copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -1380,6 +1390,11 @@ function calculate_loglikelihood(::Val{:inversion},
     kron_kron_aug_state = ws.kron_kron_aug_state
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
+    # Hoisted per-period buffers (parity with missing variant).
+    kron_buffer3sv = zeros(R, T.nExo * (n_past+1)^2, T.nExo)
+    kron_buffer4sv = zeros(R, T.nExo^2 * (n_past+1), T.nExo^2)
+    𝐒ⁱ²ᵉ = similar(𝐒²ᵉ)
+
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
     
@@ -1403,9 +1418,12 @@ function calculate_loglikelihood(::Val{:inversion},
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         copyto!(𝐒ⁱ, 𝐒¹ᵉ)
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², ℒ.kron(kron_buffer_state, state¹⁻_vol), 1/2, 1)
+        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
     
-        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         fill!(init_guess, zero(R))
 
@@ -3126,13 +3144,18 @@ function calculate_loglikelihood_inversion_missing_first_order(
     end
     T = constants.post_model_macro
     ws = workspaces.inversion
-    state = convert(Vector{R}, state[1])
 
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     t⁻ = T.past_not_future_and_mixed_idx
+
+    # Reduce state to past_not_future_and_mixed_idx rows (matches higher-order
+    # methods); pre-slice 𝐒 to the same rows so the per-period state update
+    # only touches the minimum number of rows.
+    state = convert(Vector{R}, state[1][t⁻])
+    𝐒past = 𝐒[t⁻, :]
 
     shocks² = zero(R)
     logabsdets = zero(R)
@@ -3151,11 +3174,11 @@ function calculate_loglikelihood_inversion_missing_first_order(
 
         if m == 0
             fill!(x_buf, zero(R))
-            inversion_missing_state_update_first_order!(state, state_concat, 𝐒, t⁻, n_past, x_buf)
+            inversion_missing_state_update_first_order!(state, state_concat, 𝐒past, n_past, x_buf)
             continue
         end
 
-        ℒ.mul!(y_full, 𝐒obs, view(state, t⁻))
+        ℒ.mul!(y_full, 𝐒obs, state)
         @inbounds for k in 1:m
             ii = idx[k]
             y_full[ii] = data_in_deviations[ii, i] - y_full[ii]
@@ -3196,7 +3219,7 @@ function calculate_loglikelihood_inversion_missing_first_order(
             end
         end
 
-        inversion_missing_state_update_first_order!(state, state_concat, 𝐒, t⁻, n_past, x_buf)
+        inversion_missing_state_update_first_order!(state, state_concat, 𝐒past, n_past, x_buf)
     end
 
     return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
