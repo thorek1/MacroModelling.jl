@@ -83,7 +83,7 @@ end
 Replace timing subscripts (₍₋₁₎, ₍₀₎, ₍₁₎, ₍ₓ₎) with bracket notation and convert ◖/◗ to curly braces.
 Transforms symbols like `Symbol("z◖TFP◗₍₀₎")` into `Expr(:ref, Expr(:curly, :z, :TFP), 0)`.
 """
-function replace_dynamic_symbols(expr)
+@unstable function replace_dynamic_symbols(expr)
     if expr isa Symbol
         str = string(expr)
         # First replace timing subscripts
@@ -106,7 +106,7 @@ Parse a filter term into (base_symbol, pattern_expr).
 - `"k[-1]"` → `(:k, :(k[-1]))` matches exact timing
 - `"eps[x]"` → `(:eps, :(eps[x]))` matches shock at exact timing
 """
-function parse_filter_term(term::Union{Symbol, String})
+@unstable function parse_filter_term(term::Union{Symbol, String})
     term_str = replace(string(term), "{" => "◖", "}" => "◗")
     m = match(r"^(.+)\[(.+)\]$", term_str)
     m === nothing && return (Symbol(term_str), nothing)
