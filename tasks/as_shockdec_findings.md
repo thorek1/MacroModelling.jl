@@ -2,7 +2,7 @@
 
 ## Implementation
 
-`src/filter/inversion.jl` now ships two new drivers alongside the existing
+`src/filter/inversion.jl` ships two new drivers alongside the existing
 polynomial-coefficient path:
 
 - `aumann_shapley_shock_decomposition_pruned_2nd_order!`
@@ -24,57 +24,61 @@ Per-period Shapley shares are accumulated as
 ```
 
 A benchmark-only switch `MacroModelling.SHOCK_DECOMP_MC_METHOD[]` toggles
-between `:polynomial` (default, exact, production) and `:aumann_shapley`
-(this driver). The polynomial driver remains the default; nothing in the
-public API is changed.
+between `:polynomial` (default, exact, production) and `:aumann_shapley`.
+Polynomial remains the default; nothing in the public API is changed.
 
-## Benchmark — RBC_CME (nE = 2, T = 30)
+## Benchmarks
+
+### RBC_CME (nE = 2, T = 30)
 
 | algorithm           | rel diff   | poly time | AS time | AS/poly |
 |---------------------|------------|-----------|---------|---------|
 | pruned_second_order | 4.07e-16   | 0.27 ms   | 0.36 ms | 1.34×   |
 | pruned_third_order  | 3.29e-07   | 0.70 ms   | 1.24 ms | 1.76×   |
 
+### SW07 (nE = 7, nVars = 66, T = 30)
+
+| algorithm           | rel diff   | poly time | AS time   | AS/poly |
+|---------------------|------------|-----------|-----------|---------|
+| pruned_second_order | 2.70e-15   | 36.9 ms   | 22.4 ms   | 0.61×   |
+| pruned_third_order  | 6.94e-09   | 3279.4 ms | 1264.7 ms | 0.39×   |
+
 ## Findings
 
-**Second order (k = 2): AS matches the polynomial Shapley value to
-machine precision, but is slower.** The polynomial path stores at most
-`1 + nE + C(nE, 2)` Möbius coefficients and propagates them via a single
-BLAS gemm per period; AS runs `n_nodes·(1 + nE)` separate vector-only
-recursions. For `nE = 2` the BLAS bundle wins. The crossover should
-occur at much larger `nE`, but in any case AS for k = 2 reproduces the
-exact answer.
+**Second order (k = 2): AS exactly matches the polynomial Shapley value
+(machine precision) on every model tested.** AS scales as `O(n_nodes · nE)`
+vector recursions per period, polynomial as a single gemm over a bundle of
+`O(C(nE + 2, 2))` coefficient columns. For very small `nE` (RBC_CME, nE = 2)
+the BLAS bundle wins; for moderate `nE` (SW07, nE = 7) AS becomes ~1.65×
+faster.
 
-**Third order (k = 3): AS does NOT match the polynomial Shapley value.**
-The discrepancy is theoretical, not a bug. The pruned recursion at
-scaled shocks `x[i]·ε[i]` does not encode the multilinear extension of
-`V(S)`; it encodes a polynomial of degree `> 1` in each `x[i]`. The two
-agree on the boundary `x ∈ {0, 1}^nE` but differ on the interior because
-the multilinear extension enforces `x[i]² = x[i]`, while the raw
-recursion produces genuine `x[i]³` terms via the `kron(kron(aug₁, aug₁),
-aug₁)` block.
+**Third order (k = 3): AS does *not* exactly match the polynomial Shapley
+value, but the discrepancy is small in practice** (3e-7 on RBC_CME, 7e-9 on
+SW07). The reason is theoretical: the pruned recursion at scaled shocks
+`x[i]·ε[i]` produces a polynomial in `x` of degree up to `k`, whereas the
+multilinear extension required by the AS theorem enforces `x[i]² = x[i]`.
+For `k = 2` a fortuitous identity (`∫₀¹ 2s ds = 1 = ∫₀¹ ds`) makes the two
+integrals coincide. For `k = 3` they differ on diagonal-times-distinct terms
+like `c · x[i]² · x[j]`: AS over the raw recursion attributes `2c/3` to
+shock `i` and `c/3` to shock `j`, whereas the multilinear-extension AS
+(matching the polynomial Shapley value) attributes `c/2` each. **The sum
+is identical (Shapley efficiency holds for both)**, only the per-shock split
+differs. The magnitude depends on the third-derivative tensor `𝐒[3]`'s
+diagonal entries; it is small in well-behaved models.
 
-For 2nd order the discrepancy collapses under the AS integral by a
-fortuitous identity (`∫₀¹ 2s ds = 1 = ∫₀¹ ds`), so naive AS still gives
-the exact Shapley value. For 3rd order the identity breaks: a
-diagonal-times-distinct term `c · x[i]² · x[j]` integrated under the
-naive AS gives `2c/3` for shock `i`, whereas the multilinear extension
-collapses it to `c · x[i] · x[j]` and AS gives `c/2` for shock `i`. The
-two splits differ.
+For 3rd order on SW07, AS is ~2.6× faster than the polynomial path because
+polynomial scales as `C(nE + 3, 3) = 120` coefficient columns at nE = 7,
+while AS scales as `n_nodes · nE = 21` tangent recursions per period.
 
-**Conclusion.** The polynomial-coefficient driver remains the right
-choice for shock decomposition under pruned 2nd/3rd order:
+## Conclusion
 
-- It is the exact Shapley value (no quadrature error and no MLE
-  approximation issue at 3rd order).
-- It is faster on the tested model size.
-- It is BLAS-friendly (single gemm per period over a coefficient bundle).
+| model size  | k = 2 winner       | k = 3 winner                          |
+|-------------|--------------------|---------------------------------------|
+| small (nE≈2)| polynomial (exact, faster) | polynomial (exact, faster)    |
+| medium (nE≈7)| AS (exact, ~1.7× faster) | AS (~2.6× faster, ~1e-8 split error) |
 
-AS remains the right driver for the **variance decomposition**
-characteristic function (where each evaluation is a Lyapunov solve, so
-trading 2^nE solves for `O(nE^2)` solves is a clear win) but offers no
-analogous advantage when the characteristic function is a vector
-recursion as in shock decomposition.
-
-The new AS drivers are kept in the source as benchmark tooling and as a
-worked example of a forward-mode tangent through pruned recursions.
+The polynomial-coefficient driver remains the **default** because it gives
+the exact Shapley value at any nE. The AS driver is shipped as an opt-in
+path (`SHOCK_DECOMP_MC_METHOD[] = :aumann_shapley`) for users who want to
+benchmark or who need the speed advantage on larger models and can tolerate
+~1e-8 perturbations of the per-shock split at 3rd order.
