@@ -3261,6 +3261,9 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
     kronstate¹⁻_vol = zeros(R, (n_past+1)^2)
     shock_independent = zeros(R, length(cond_var_idx))
     𝐒ⁱ_full = zeros(R, length(cond_var_idx), n_exo)
+    jacc_v_buf = zeros(R, n_exo, n_exo)
+    init_guess = zeros(R, n_exo)
+    x_zero = zeros(R, n_exo)
 
     shocks² = zero(R)
     logabsdets = zero(R)
@@ -3284,7 +3287,8 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         if m == 0
-            x = zeros(R, n_exo)
+            x = x_zero
+            fill!(x, zero(R))
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i: m=$m > n_exo=$n_exo") end
@@ -3293,7 +3297,7 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(R, n_exo)
+            fill!(init_guess, zero(R))
             x, matched = find_shocks(Val(filter_algorithm),
                                     init_guess, kron_buffer, kron_buffer2, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
@@ -3302,7 +3306,7 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
                 return on_failure_loglikelihood
             end
             if i > presample_periods
-                jacc_v = similar(𝐒ⁱ_v)
+                jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
@@ -3384,6 +3388,9 @@ function calculate_loglikelihood_inversion_missing_second_order(
     kronstate¹⁻_vol = zeros(R, (n_past+1)^2)
     shock_independent = zeros(R, length(cond_var_idx))
     𝐒ⁱ_full = zeros(R, length(cond_var_idx), n_exo)
+    jacc_v_buf = zeros(R, n_exo, n_exo)
+    init_guess = zeros(R, n_exo)
+    x_zero = zeros(R, n_exo)
 
     shocks² = zero(R)
     logabsdets = zero(R)
@@ -3406,7 +3413,8 @@ function calculate_loglikelihood_inversion_missing_second_order(
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         if m == 0
-            x = zeros(R, n_exo)
+            x = x_zero
+            fill!(x, zero(R))
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter (2nd) failed at step $i: m=$m > n_exo=$n_exo") end
@@ -3415,7 +3423,7 @@ function calculate_loglikelihood_inversion_missing_second_order(
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(R, n_exo)
+            fill!(init_guess, zero(R))
             x, matched = find_shocks(Val(filter_algorithm),
                                     init_guess, kron_buffer, kron_buffer2, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
@@ -3424,7 +3432,7 @@ function calculate_loglikelihood_inversion_missing_second_order(
                 return on_failure_loglikelihood
             end
             if i > presample_periods
-                jacc_v = similar(𝐒ⁱ_v)
+                jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
@@ -3533,6 +3541,10 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
     kron_buffer4 = zeros(R, n_exo^3, n_exo^2)
     shock_independent = zeros(R, n_cond)
     𝐒ⁱ_full = zeros(R, n_cond, n_exo)
+    𝐒ⁱ²ᵉ_full = zeros(R, n_cond, n_exo^2)
+    jacc_v_buf = zeros(R, n_exo, n_exo)
+    init_guess = zeros(R, n_exo)
+    x_zero = zeros(R, n_exo)
     aug_state₁  = zeros(R, n_past + 1 + n_exo)
     aug_state₁̂ = zeros(R, n_past + 1 + n_exo)
     aug_state₂  = zeros(R, n_past + 1 + n_exo)
@@ -3572,10 +3584,12 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
-        𝐒ⁱ²ᵉ_full = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * kron_buffer4sv / 2
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
-            x = zeros(R, n_exo)
+            x = x_zero
+            fill!(x, zero(R))
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i: m=$m > n_exo=$n_exo") end
@@ -3585,7 +3599,7 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
             𝐒ⁱ²ᵉ_v  = 𝐒ⁱ²ᵉ_full[idx, :]
             𝐒ⁱ³ᵉ_v  = 𝐒ⁱ³ᵉ[idx, :]
             si_v    = shock_independent[idx]
-            init_guess = zeros(R, n_exo)
+            fill!(init_guess, zero(R))
             x, matched = find_shocks(Val(filter_algorithm),
                                     init_guess, kron_buffer, kron_buffer², kron_buffer2,
                                     kron_buffer3, kron_buffer4, J,
@@ -3597,7 +3611,7 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
             if i > presample_periods
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.kron!(kron_buffer3, kron_buffer2, x)
-                jacc_v = similar(𝐒ⁱ_v)
+                jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 2)
                 ℒ.axpby!(-1, 𝐒ⁱ_v, -1, jacc_v)
@@ -3696,6 +3710,8 @@ function calculate_loglikelihood_inversion_missing_third_order(
     kronstate_vol  = zeros(R, (n_past+1)^2)
     kronstate_vol³ = zeros(R, (n_past+1)^3)
     kron_buffer_state = zeros(R, n_exo * (n_past+1), n_exo)
+    kron_buffer3sv = zeros(R, n_exo * (n_past+1)^2, n_exo)
+    kron_buffer4sv = zeros(R, n_exo^2 * (n_past+1), n_exo^2)
     kron_buffer  = zeros(R, n_exo^2)
     kron_buffer² = zeros(R, n_exo^3)
     kron_buffer2 = zeros(R, n_exo^2, n_exo)
@@ -3703,6 +3719,10 @@ function calculate_loglikelihood_inversion_missing_third_order(
     kron_buffer4 = zeros(R, n_exo^3, n_exo^2)
     shock_independent = zeros(R, n_cond)
     𝐒ⁱ_full = zeros(R, n_cond, n_exo)
+    𝐒ⁱ²ᵉ_full = zeros(R, n_cond, n_exo^2)
+    jacc_v_buf = zeros(R, n_exo, n_exo)
+    init_guess = zeros(R, n_exo)
+    x_zero = zeros(R, n_exo)
     aug_state = zeros(R, n_past + 1 + n_exo)
     kronaug_state = zeros(R, length(aug_state)^2)
     kron_kron_aug_state = zeros(R, length(aug_state)^3)
@@ -3728,12 +3748,16 @@ function calculate_loglikelihood_inversion_missing_third_order(
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         copyto!(𝐒ⁱ_full, 𝐒¹ᵉ)
         ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², ℒ.kron(kron_buffer_state, state¹⁻_vol), 1/2, 1)
+        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
-        𝐒ⁱ²ᵉ_full = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
-            x = zeros(R, n_exo)
+            x = x_zero
+            fill!(x, zero(R))
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter (3rd) failed at step $i: m=$m > n_exo=$n_exo") end
@@ -3743,7 +3767,7 @@ function calculate_loglikelihood_inversion_missing_third_order(
             𝐒ⁱ²ᵉ_v  = 𝐒ⁱ²ᵉ_full[idx, :]
             𝐒ⁱ³ᵉ_v  = 𝐒ⁱ³ᵉ[idx, :]
             si_v    = shock_independent[idx]
-            init_guess = zeros(R, n_exo)
+            fill!(init_guess, zero(R))
             x, matched = find_shocks(Val(filter_algorithm),
                                     init_guess, kron_buffer, kron_buffer², kron_buffer2,
                                     kron_buffer3, kron_buffer4, J,
@@ -3756,7 +3780,7 @@ function calculate_loglikelihood_inversion_missing_third_order(
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.kron!(kron_buffer, x, x)
                 ℒ.kron!(kron_buffer3, J, kron_buffer)
-                jacc_v = similar(𝐒ⁱ_v)
+                jacc_v = view(jacc_v_buf, 1:m, :)
                 copyto!(jacc_v, 𝐒ⁱ_v)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2, 2, 1)
                 ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 1)
