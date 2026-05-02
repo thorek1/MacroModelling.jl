@@ -30,19 +30,20 @@
 # `V(∅) + (variables − V(N))`, matching the layout the public API
 # expects when `marginal_contribution = true`.
 
-function _aug_state(past::AbstractVector, past_idx, include_const::Bool, sck::AbstractVector)
+function _fill_aug_state!(a::AbstractVector, past::AbstractVector, past_idx,
+                          include_const::Bool, sck::AbstractVector)
     n_past = length(past_idx)
-    a = Vector{Float64}(undef, n_past + 1 + length(sck))
     @inbounds for (i, j) in enumerate(past_idx); a[i] = past[j]; end
     @inbounds a[n_past + 1] = include_const ? 1.0 : 0.0
     @inbounds for k in eachindex(sck); a[n_past + 1 + k] = sck[k]; end
     return a
 end
 
-function _aug_tangent(v_past::AbstractVector, past_idx, eps_dir::AbstractVector)
+function _fill_aug_tangent!(a::AbstractVector, v_past::AbstractVector, past_idx,
+                            eps_dir::AbstractVector)
     n_past = length(past_idx)
-    a = zeros(Float64, n_past + 1 + length(eps_dir))
     @inbounds for (i, j) in enumerate(past_idx); a[i] = v_past[j]; end
+    @inbounds a[n_past + 1] = 0.0
     @inbounds for k in eachindex(eps_dir); a[n_past + 1 + k] = eps_dir[k]; end
     return a
 end
@@ -57,7 +58,8 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         nE::Int)
     nVars = T.nVars
     past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
+    n_aug = length(past_idx) + 1 + nE
+    n_kron = n_aug^2
     nT = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(2)
@@ -65,7 +67,6 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
 
     s1 = [copy(initial_state[1]) for _ in 1:n_nodes]
     s2 = [copy(initial_state[2]) for _ in 1:n_nodes]
-    # Separate primal at scale 0 (no shocks active ever) for V(∅).
     s1₀ = copy(initial_state[1]); s2₀ = copy(initial_state[2])
 
     v = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
@@ -77,6 +78,17 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     new_v  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
     new_w  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
 
+    aug1   = Vector{Float64}(undef, n_aug)
+    aug2   = Vector{Float64}(undef, n_aug)
+    aug1₀  = Vector{Float64}(undef, n_aug)
+    aug2₀  = Vector{Float64}(undef, n_aug)
+    ȧ1     = Vector{Float64}(undef, n_aug)
+    ȧ2     = Vector{Float64}(undef, n_aug)
+    kk     = Vector{Float64}(undef, n_kron)
+    kk₀    = Vector{Float64}(undef, n_kron)
+    kdot   = Vector{Float64}(undef, n_kron)
+    kdot2  = Vector{Float64}(undef, n_kron)
+
     full_dir = zeros(nE)
     eps_dir  = zeros(nE)
     zero_dir = zeros(nE)
@@ -85,44 +97,50 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         ε_t = @view shocks[:, t]
 
         # V(∅) primal: recursion under zero shocks.
-        aug1₀ = _aug_state(s1₀, past_idx, true,  zero_dir)
-        aug2₀ = _aug_state(s2₀, past_idx, false, zero_dir)
-        new_s1₀ .= 𝐒[1] * aug1₀
-        new_s2₀ .= 𝐒[1] * aug2₀ .+ 0.5 .* (𝐒[2] * ℒ.kron(aug1₀, aug1₀))
+        _fill_aug_state!(aug1₀, s1₀, past_idx, true,  zero_dir)
+        _fill_aug_state!(aug2₀, s2₀, past_idx, false, zero_dir)
+        ℒ.kron!(kk₀, aug1₀, aug1₀)
+        ℒ.mul!(new_s1₀, 𝐒[1], aug1₀)
+        ℒ.mul!(new_s2₀, 𝐒[1], aug2₀)
+        ℒ.mul!(new_s2₀, 𝐒[2], kk₀, 0.5, 1.0)
+
+        @views fill!(decomposition[:, 1:nE, t], 0.0)
 
         for k in 1:n_nodes
             sk = nodes[k]
+            wk = weights[k]
             full_dir .= sk .* ε_t
-            aug1 = _aug_state(s1[k], past_idx, true,  full_dir)
-            aug2 = _aug_state(s2[k], past_idx, false, zero_dir)
-            kk   = ℒ.kron(aug1, aug1)
-            new_s1[k] = 𝐒[1] * aug1
-            new_s2[k] = 𝐒[1] * aug2 .+ 0.5 .* (𝐒[2] * kk)
+            _fill_aug_state!(aug1, s1[k], past_idx, true,  full_dir)
+            _fill_aug_state!(aug2, s2[k], past_idx, false, zero_dir)
+            ℒ.kron!(kk, aug1, aug1)
+            ℒ.mul!(new_s1[k], 𝐒[1], aug1)
+            ℒ.mul!(new_s2[k], 𝐒[1], aug2)
+            ℒ.mul!(new_s2[k], 𝐒[2], kk, 0.5, 1.0)
 
             for i in 1:nE
                 fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                ȧ1 = _aug_tangent(v[k][i], past_idx, eps_dir)
-                ȧ2 = _aug_tangent(w[k][i], past_idx, zero_dir)
-                kdot = ℒ.kron(ȧ1, aug1) .+ ℒ.kron(aug1, ȧ1)
-                new_v[k][i] = 𝐒[1] * ȧ1
-                new_w[k][i] = 𝐒[1] * ȧ2 .+ 0.5 .* (𝐒[2] * kdot)
-            end
-        end
-
-        @views fill!(decomposition[:, 1:nE, t], 0.0)
-        for k in 1:n_nodes
-            wk = weights[k]
-            for i in 1:nE
+                _fill_aug_tangent!(ȧ1, v[k][i], past_idx, eps_dir)
+                _fill_aug_tangent!(ȧ2, w[k][i], past_idx, zero_dir)
+                ℒ.kron!(kdot,  ȧ1, aug1)
+                ℒ.kron!(kdot2, aug1, ȧ1)
+                kdot .+= kdot2
+                ℒ.mul!(new_v[k][i], 𝐒[1], ȧ1)
+                ℒ.mul!(new_w[k][i], 𝐒[1], ȧ2)
+                ℒ.mul!(new_w[k][i], 𝐒[2], kdot, 0.5, 1.0)
                 @views decomposition[:, i, t] .+= wk .* (new_v[k][i] .+ new_w[k][i])
             end
         end
 
-        v_empty = new_s1₀ .+ new_s2₀
-        sum_phi = zeros(nVars)
-        for i in 1:nE
-            @views sum_phi .+= decomposition[:, i, t]
+        v_empty_1 = new_s1₀
+        v_empty_2 = new_s2₀
+        @inbounds for j in 1:nVars
+            sumφ = 0.0
+            for i in 1:nE
+                sumφ += decomposition[j, i, t]
+            end
+            ve = v_empty_1[j] + v_empty_2[j]
+            decomposition[j, nE + 1, t] = ve + (variables[j, t] - (sumφ + ve))
         end
-        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- (sum_phi .+ v_empty))
 
         for k in 1:n_nodes
             s1[k], new_s1[k] = new_s1[k], s1[k]
@@ -150,7 +168,9 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
         nE::Int)
     nVars = T.nVars
     past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
+    n_aug = length(past_idx) + 1 + nE
+    n_kron2 = n_aug^2
+    n_kron3 = n_aug^3
     nT = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(3)        # exact for degree ≤ 5; need ≥ k − 1 = 2.
@@ -172,6 +192,30 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     new_w  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
     new_u  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
 
+    aug1   = Vector{Float64}(undef, n_aug)
+    aug1̂   = Vector{Float64}(undef, n_aug)
+    aug2   = Vector{Float64}(undef, n_aug)
+    aug3   = Vector{Float64}(undef, n_aug)
+    aug1₀  = Vector{Float64}(undef, n_aug)
+    aug1̂₀  = Vector{Float64}(undef, n_aug)
+    aug2₀  = Vector{Float64}(undef, n_aug)
+    aug3₀  = Vector{Float64}(undef, n_aug)
+    ȧ1     = Vector{Float64}(undef, n_aug)
+    ȧ2     = Vector{Float64}(undef, n_aug)
+    ȧ3     = Vector{Float64}(undef, n_aug)
+
+    k11      = Vector{Float64}(undef, n_kron2)
+    k12̂      = Vector{Float64}(undef, n_kron2)
+    k11_0    = Vector{Float64}(undef, n_kron2)
+    k12̂_0    = Vector{Float64}(undef, n_kron2)
+    k11_dot  = Vector{Float64}(undef, n_kron2)
+    k12̂_dot  = Vector{Float64}(undef, n_kron2)
+    kron_buf2 = Vector{Float64}(undef, n_kron2)
+    k111     = Vector{Float64}(undef, n_kron3)
+    k111_0   = Vector{Float64}(undef, n_kron3)
+    k111_dot = Vector{Float64}(undef, n_kron3)
+    kron_buf3 = Vector{Float64}(undef, n_kron3)
+
     full_dir = zeros(nE)
     eps_dir  = zeros(nE)
     zero_dir = zeros(nE)
@@ -180,65 +224,83 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
         ε_t = @view shocks[:, t]
 
         # V(∅) primal trajectory at scale 0.
-        aug1₀ = _aug_state(s1₀, past_idx, true,  zero_dir)
-        aug1̂₀ = _aug_state(s1₀, past_idx, false, zero_dir)
-        aug2₀ = _aug_state(s2₀, past_idx, false, zero_dir)
-        aug3₀ = _aug_state(s3₀, past_idx, false, zero_dir)
-        k11_0  = ℒ.kron(aug1₀, aug1₀)
-        k12̂_0  = ℒ.kron(aug1̂₀, aug2₀)
-        k111_0 = ℒ.kron(k11_0, aug1₀)
-        new_s1₀ .= 𝐒[1] * aug1₀
-        new_s2₀ .= 𝐒[1] * aug2₀ .+ 0.5 .* (𝐒[2] * k11_0)
-        new_s3₀ .= 𝐒[1] * aug3₀ .+ (𝐒[2] * k12̂_0) .+ (1/6) .* (𝐒[3] * k111_0)
+        _fill_aug_state!(aug1₀, s1₀, past_idx, true,  zero_dir)
+        _fill_aug_state!(aug1̂₀, s1₀, past_idx, false, zero_dir)
+        _fill_aug_state!(aug2₀, s2₀, past_idx, false, zero_dir)
+        _fill_aug_state!(aug3₀, s3₀, past_idx, false, zero_dir)
+        ℒ.kron!(k11_0,  aug1₀, aug1₀)
+        ℒ.kron!(k12̂_0,  aug1̂₀, aug2₀)
+        ℒ.kron!(k111_0, k11_0, aug1₀)
+        ℒ.mul!(new_s1₀, 𝐒[1], aug1₀)
+        ℒ.mul!(new_s2₀, 𝐒[1], aug2₀)
+        ℒ.mul!(new_s2₀, 𝐒[2], k11_0, 0.5, 1.0)
+        ℒ.mul!(new_s3₀, 𝐒[1], aug3₀)
+        ℒ.mul!(new_s3₀, 𝐒[2], k12̂_0, 1.0, 1.0)
+        ℒ.mul!(new_s3₀, 𝐒[3], k111_0, 1/6, 1.0)
+
+        @views fill!(decomposition[:, 1:nE, t], 0.0)
 
         for k in 1:n_nodes
             sk = nodes[k]
+            wk = weights[k]
             full_dir .= sk .* ε_t
 
-            aug1  = _aug_state(s1[k], past_idx, true,  full_dir)
-            aug1̂  = _aug_state(s1[k], past_idx, false, full_dir)
-            aug2  = _aug_state(s2[k], past_idx, false, zero_dir)
-            aug3  = _aug_state(s3[k], past_idx, false, zero_dir)
+            _fill_aug_state!(aug1, s1[k], past_idx, true,  full_dir)
+            _fill_aug_state!(aug1̂, s1[k], past_idx, false, full_dir)
+            _fill_aug_state!(aug2, s2[k], past_idx, false, zero_dir)
+            _fill_aug_state!(aug3, s3[k], past_idx, false, zero_dir)
 
-            k11   = ℒ.kron(aug1, aug1)
-            k12̂   = ℒ.kron(aug1̂, aug2)
-            k111  = ℒ.kron(k11,  aug1)
+            ℒ.kron!(k11,  aug1, aug1)
+            ℒ.kron!(k12̂,  aug1̂, aug2)
+            ℒ.kron!(k111, k11,  aug1)
 
-            new_s1[k] = 𝐒[1] * aug1
-            new_s2[k] = 𝐒[1] * aug2 .+ 0.5 .* (𝐒[2] * k11)
-            new_s3[k] = 𝐒[1] * aug3 .+ (𝐒[2] * k12̂) .+ (1/6) .* (𝐒[3] * k111)
+            ℒ.mul!(new_s1[k], 𝐒[1], aug1)
+            ℒ.mul!(new_s2[k], 𝐒[1], aug2)
+            ℒ.mul!(new_s2[k], 𝐒[2], k11, 0.5, 1.0)
+            ℒ.mul!(new_s3[k], 𝐒[1], aug3)
+            ℒ.mul!(new_s3[k], 𝐒[2], k12̂, 1.0, 1.0)
+            ℒ.mul!(new_s3[k], 𝐒[3], k111, 1/6, 1.0)
 
             for i in 1:nE
                 fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                ȧ1  = _aug_tangent(v[k][i], past_idx, eps_dir)
-                ȧ1̂  = _aug_tangent(v[k][i], past_idx, eps_dir)
-                ȧ2  = _aug_tangent(w[k][i], past_idx, zero_dir)
-                ȧ3  = _aug_tangent(u[k][i], past_idx, zero_dir)
+                # _aug_tangent has no `include_const` flag, so the linear-state
+                # tangent for s1 (`ȧ1`) and the no-const variant `aug1̂`'s
+                # tangent are identical; reuse `ȧ1` for both.
+                _fill_aug_tangent!(ȧ1, v[k][i], past_idx, eps_dir)
+                _fill_aug_tangent!(ȧ2, w[k][i], past_idx, zero_dir)
+                _fill_aug_tangent!(ȧ3, u[k][i], past_idx, zero_dir)
 
-                k11_dot  = ℒ.kron(ȧ1, aug1)  .+ ℒ.kron(aug1, ȧ1)
-                k12̂_dot  = ℒ.kron(ȧ1̂, aug2)  .+ ℒ.kron(aug1̂, ȧ2)
-                k111_dot = ℒ.kron(k11_dot, aug1) .+ ℒ.kron(k11, ȧ1)
+                ℒ.kron!(k11_dot, ȧ1, aug1)
+                ℒ.kron!(kron_buf2, aug1, ȧ1)
+                k11_dot .+= kron_buf2
 
-                new_v[k][i] = 𝐒[1] * ȧ1
-                new_w[k][i] = 𝐒[1] * ȧ2 .+ 0.5 .* (𝐒[2] * k11_dot)
-                new_u[k][i] = 𝐒[1] * ȧ3 .+ (𝐒[2] * k12̂_dot) .+ (1/6) .* (𝐒[3] * k111_dot)
-            end
-        end
+                ℒ.kron!(k12̂_dot, ȧ1, aug2)
+                ℒ.kron!(kron_buf2, aug1̂, ȧ2)
+                k12̂_dot .+= kron_buf2
 
-        @views fill!(decomposition[:, 1:nE, t], 0.0)
-        for k in 1:n_nodes
-            wk = weights[k]
-            for i in 1:nE
+                ℒ.kron!(k111_dot, k11_dot, aug1)
+                ℒ.kron!(kron_buf3, k11, ȧ1)
+                k111_dot .+= kron_buf3
+
+                ℒ.mul!(new_v[k][i], 𝐒[1], ȧ1)
+                ℒ.mul!(new_w[k][i], 𝐒[1], ȧ2)
+                ℒ.mul!(new_w[k][i], 𝐒[2], k11_dot, 0.5, 1.0)
+                ℒ.mul!(new_u[k][i], 𝐒[1], ȧ3)
+                ℒ.mul!(new_u[k][i], 𝐒[2], k12̂_dot, 1.0, 1.0)
+                ℒ.mul!(new_u[k][i], 𝐒[3], k111_dot, 1/6, 1.0)
+
                 @views decomposition[:, i, t] .+= wk .* (new_v[k][i] .+ new_w[k][i] .+ new_u[k][i])
             end
         end
 
-        v_empty = new_s1₀ .+ new_s2₀ .+ new_s3₀
-        sum_phi = zeros(nVars)
-        for i in 1:nE
-            @views sum_phi .+= decomposition[:, i, t]
+        @inbounds for j in 1:nVars
+            sumφ = 0.0
+            for i in 1:nE
+                sumφ += decomposition[j, i, t]
+            end
+            ve = new_s1₀[j] + new_s2₀[j] + new_s3₀[j]
+            decomposition[j, nE + 1, t] = ve + (variables[j, t] - (sumφ + ve))
         end
-        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- (sum_phi .+ v_empty))
 
         for k in 1:n_nodes
             s1[k], new_s1[k] = new_s1[k], s1[k]
