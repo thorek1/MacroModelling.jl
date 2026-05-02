@@ -30,22 +30,57 @@
 # `V(∅) + (variables − V(N))`, matching the layout the public API
 # expects when `marginal_contribution = true`.
 
-function _fill_aug_state!(a::AbstractVector, past::AbstractVector, past_idx,
-                          include_const::Bool, sck::AbstractVector)
+function fill_aug_state!(a::AbstractVector, state::AbstractVector, past_idx,
+                        include_const::Bool, shocks::AbstractVector)
     n_past = length(past_idx)
-    @inbounds for (i, j) in enumerate(past_idx); a[i] = past[j]; end
+    @inbounds for (i, j) in enumerate(past_idx); a[i] = state[j]; end
     @inbounds a[n_past + 1] = include_const ? 1.0 : 0.0
-    @inbounds for k in eachindex(sck); a[n_past + 1 + k] = sck[k]; end
+    @inbounds for k in eachindex(shocks); a[n_past + 1 + k] = shocks[k]; end
     return a
 end
 
-function _fill_aug_tangent!(a::AbstractVector, v_past::AbstractVector, past_idx,
-                            eps_dir::AbstractVector)
+function fill_aug_tangent!(a::AbstractVector, v_past::AbstractVector, past_idx,
+                           eps_dir::AbstractVector)
     n_past = length(past_idx)
     @inbounds for (i, j) in enumerate(past_idx); a[i] = v_past[j]; end
     @inbounds a[n_past + 1] = 0.0
     @inbounds for k in eachindex(eps_dir); a[n_past + 1 + k] = eps_dir[k]; end
     return a
+end
+
+# Pruned 2nd-order state update: new_s1, new_s2 = 𝐒₁·aug1, 𝐒₁·aug2 + ½𝐒₂·(aug1⊗aug1).
+# Fills aug vectors from state, computes kron product, and applies solution matrices in-place.
+function pruned_state_update_2nd_order!(
+        new_s1, new_s2, s1, s2, past_idx, shock_dir, zero_dir,
+        aug1, aug2, kk, 𝐒)
+    fill_aug_state!(aug1, s1, past_idx, true,  shock_dir)
+    fill_aug_state!(aug2, s2, past_idx, false, zero_dir)
+    ℒ.kron!(kk, aug1, aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
+    return nothing
+end
+
+# Pruned 3rd-order state update: extends 2nd-order with new_s3 = 𝐒₁·aug3 + 𝐒₂·(aug1̂⊗aug2) + ⅙𝐒₃·(aug1⊗aug1⊗aug1).
+# aug1̂ is the no-constant variant of aug1 (constant slot = 0).
+function pruned_state_update_3rd_order!(
+        new_s1, new_s2, new_s3, s1, s2, s3, past_idx, shock_dir, zero_dir,
+        aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
+    fill_aug_state!(aug1,  s1, past_idx, true,  shock_dir)
+    fill_aug_state!(aug1̂,  s1, past_idx, false, shock_dir)
+    fill_aug_state!(aug2,  s2, past_idx, false, zero_dir)
+    fill_aug_state!(aug3,  s3, past_idx, false, zero_dir)
+    ℒ.kron!(k11,  aug1, aug1)
+    ℒ.kron!(k12̂,  aug1̂, aug2)
+    ℒ.kron!(k111, k11,  aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
+    ℒ.mul!(new_s3, 𝐒[1], aug3)
+    ℒ.mul!(new_s3, 𝐒[2], k12̂, 1.0, 1.0)
+    ℒ.mul!(new_s3, 𝐒[3], k111, 1/6, 1.0)
+    return nothing
 end
 
 function aumann_shapley_shock_decomposition_pruned_2nd_order!(
@@ -90,12 +125,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
     s1 .= initial_state[1]; s2 .= initial_state[2]
     for t in 1:nT
-        _fill_aug_state!(aug1, s1, past_idx, true,  zero_dir)
-        _fill_aug_state!(aug2, s2, past_idx, false, zero_dir)
-        ℒ.kron!(kk, aug1, aug1)
-        ℒ.mul!(new_s1, 𝐒[1], aug1)
-        ℒ.mul!(new_s2, 𝐒[1], aug2)
-        ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
+        pruned_state_update_2nd_order!(new_s1, new_s2, s1, s2, past_idx, zero_dir, zero_dir, aug1, aug2, kk, 𝐒)
         @inbounds for j in 1:nVars
             decomposition[j, nE + 1, t] = new_s1[j] + new_s2[j]
         end
@@ -114,17 +144,12 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         for t in 1:nT
             ε_t = @view shocks[:, t]
             full_dir .= sk .* ε_t
-            _fill_aug_state!(aug1, s1, past_idx, true,  full_dir)
-            _fill_aug_state!(aug2, s2, past_idx, false, zero_dir)
-            ℒ.kron!(kk, aug1, aug1)
-            ℒ.mul!(new_s1, 𝐒[1], aug1)
-            ℒ.mul!(new_s2, 𝐒[1], aug2)
-            ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
+            pruned_state_update_2nd_order!(new_s1, new_s2, s1, s2, past_idx, full_dir, zero_dir, aug1, aug2, kk, 𝐒)
 
             for i in 1:nE
                 fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                _fill_aug_tangent!(ȧ1, v_i[i], past_idx, eps_dir)
-                _fill_aug_tangent!(ȧ2, w_i[i], past_idx, zero_dir)
+                fill_aug_tangent!(ȧ1, v_i[i], past_idx, eps_dir)
+                fill_aug_tangent!(ȧ2, w_i[i], past_idx, zero_dir)
                 ℒ.kron!(kdot,  ȧ1, aug1)
                 ℒ.kron!(kdot2, aug1, ȧ1)
                 kdot .+= kdot2
@@ -213,19 +238,8 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
     s1 .= initial_state[1]; s2 .= initial_state[2]; s3 .= initial_state[3]
     for t in 1:nT
-        _fill_aug_state!(aug1,  s1, past_idx, true,  zero_dir)
-        _fill_aug_state!(aug1̂,  s1, past_idx, false, zero_dir)
-        _fill_aug_state!(aug2,  s2, past_idx, false, zero_dir)
-        _fill_aug_state!(aug3,  s3, past_idx, false, zero_dir)
-        ℒ.kron!(k11,  aug1, aug1)
-        ℒ.kron!(k12̂,  aug1̂, aug2)
-        ℒ.kron!(k111, k11,  aug1)
-        ℒ.mul!(new_s1, 𝐒[1], aug1)
-        ℒ.mul!(new_s2, 𝐒[1], aug2)
-        ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
-        ℒ.mul!(new_s3, 𝐒[1], aug3)
-        ℒ.mul!(new_s3, 𝐒[2], k12̂, 1.0, 1.0)
-        ℒ.mul!(new_s3, 𝐒[3], k111, 1/6, 1.0)
+        pruned_state_update_3rd_order!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, zero_dir, zero_dir,
+                                       aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
         @inbounds for j in 1:nVars
             decomposition[j, nE + 1, t] = new_s1[j] + new_s2[j] + new_s3[j]
         end
@@ -246,27 +260,14 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
             ε_t = @view shocks[:, t]
             full_dir .= sk .* ε_t
 
-            _fill_aug_state!(aug1,  s1, past_idx, true,  full_dir)
-            _fill_aug_state!(aug1̂,  s1, past_idx, false, full_dir)
-            _fill_aug_state!(aug2,  s2, past_idx, false, zero_dir)
-            _fill_aug_state!(aug3,  s3, past_idx, false, zero_dir)
-
-            ℒ.kron!(k11,  aug1, aug1)
-            ℒ.kron!(k12̂,  aug1̂, aug2)
-            ℒ.kron!(k111, k11,  aug1)
-
-            ℒ.mul!(new_s1, 𝐒[1], aug1)
-            ℒ.mul!(new_s2, 𝐒[1], aug2)
-            ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
-            ℒ.mul!(new_s3, 𝐒[1], aug3)
-            ℒ.mul!(new_s3, 𝐒[2], k12̂, 1.0, 1.0)
-            ℒ.mul!(new_s3, 𝐒[3], k111, 1/6, 1.0)
+            pruned_state_update_3rd_order!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, full_dir, zero_dir,
+                                           aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
 
             for i in 1:nE
                 fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                _fill_aug_tangent!(ȧ1, v_i[i], past_idx, eps_dir)
-                _fill_aug_tangent!(ȧ2, w_i[i], past_idx, zero_dir)
-                _fill_aug_tangent!(ȧ3, u_i[i], past_idx, zero_dir)
+                fill_aug_tangent!(ȧ1, v_i[i], past_idx, eps_dir)
+                fill_aug_tangent!(ȧ2, w_i[i], past_idx, zero_dir)
+                fill_aug_tangent!(ȧ3, u_i[i], past_idx, zero_dir)
 
                 ℒ.kron!(k11_dot, ȧ1, aug1)
                 ℒ.kron!(kron_buf2, aug1, ȧ1)
