@@ -1,0 +1,5 @@
+
+[pip.deps]
+ultranest = ""
+nessai = ""
+dynesty = ""

@@ -512,7 +512,7 @@ end
         shock_idx = 1
     elseif shocks isa Expr
         error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
-    elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
+    else
         shock_history = zeros(𝓂.constants.post_model_macro.nExo, periods)
 
         periods_extended = periods

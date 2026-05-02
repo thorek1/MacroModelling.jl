@@ -26,8 +26,9 @@ function translate_mod_file(path_to_mod_file::AbstractString)
 
     args = [tmp * "/" * basename(path_to_mod_file), "language=julia", "json=compute"]
 
+    current_directory = pwd()
+
     if length(directory) > 0
-        current_directory = pwd()
         cd(directory)
     end
 

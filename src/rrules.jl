@@ -525,18 +525,18 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂SS_and_pars = jac_cache
     qme_ws = 𝓂.workspaces.first_order
     if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
-        rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)
-        rhs_n_cols = size(∂SS_equations_∂parameters, 2)
+        rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)::Int
+        rhs_n_cols = size(∂SS_equations_∂parameters, 2)::Int
 
         if length(qme_ws.nsss_sparse_rhs) != rhs_n_rows
             qme_ws.nsss_sparse_rhs = zeros(eltype(SS_and_pars), rhs_n_rows)
         end
 
-        if size(qme_ws.nsss_jvp_rhs) != (rhs_n_rows, rhs_n_cols)
+        if size(qme_ws.nsss_jvp_rhs, 1) != rhs_n_rows || size(qme_ws.nsss_jvp_rhs, 2) != rhs_n_cols
             qme_ws.nsss_jvp_rhs = zeros(eltype(SS_and_pars), rhs_n_rows, rhs_n_cols)
         end
 
-        if size(qme_ws.nsss_sparse_lu_buffer.A) != (rhs_n_rows, rhs_n_rows)
+        if size(qme_ws.nsss_sparse_lu_buffer.A, 1) != rhs_n_rows || size(qme_ws.nsss_sparse_lu_buffer.A, 2) != rhs_n_rows
             sparse_prob = 𝒮.LinearProblem(∂SS_equations_∂SS_and_pars, qme_ws.nsss_sparse_rhs)
             qme_ws.nsss_sparse_lu_buffer = 𝒮.init(sparse_prob,
                                                   𝒮.LUFactorization(),

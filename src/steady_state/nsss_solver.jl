@@ -1137,6 +1137,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     # (e.g., unit-root variables that cancel in steady state like qlfpr[0] = hqlfpr[0] + qlfpr[-1])
     unmatched_mask = eqs[1,:] .< 0
     n_unmatched = sum(unmatched_mask)
+    unmatched_var_names = similar(unknowns, 0)
 
     if n_unmatched > 0
         unmatched_var_indices = vars[1, unmatched_mask]

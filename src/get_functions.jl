@@ -1701,7 +1701,7 @@ And data, 4×6 Matrix{Float64}:
 
         param_idx = indexin([parameter_derivatives], 𝓂.constants.post_complete_parameters.parameters)
         length_par = 1
-    elseif length(parameter_derivatives) > 1
+    else
         for p in vec(collect(parameter_derivatives))
             @assert p ∈ 𝓂.constants.post_complete_parameters.parameters string(p) * " is not part of the free model parameters."
         end
@@ -1968,9 +1968,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
             silent = silent, 
             algorithm = algorithm)
 
-    if algorithm == :first_order
-        solution_matrix = 𝓂.caches.first_order_solution_matrix
-    end
+    solution_matrix = 𝓂.caches.first_order_solution_matrix
 
     axis1 = [𝓂.constants.post_model_macro.past_not_future_and_mixed; :Volatility; 𝓂.constants.post_model_macro.exo]
 
@@ -3087,6 +3085,24 @@ And data, 4×6 Matrix{Float64}:
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
+    # Initialize variables used across derivative/non-derivative branches
+    # to satisfy JET's definite-assignment analysis
+    SS = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
+    var_means = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
+    st_dev = var_means
+    varrs = var_means
+    covar_dcmp = zeros(0, 0)
+    dcovariance = zeros(0, 0)
+    state_μ = Float64[]
+    autocorr = zeros(0, 0)
+    autocorr_tmp = zeros(0, 0)
+    ŝ_to_ŝ₂ = zeros(0, 0)
+    ŝ_to_y₂ = zeros(0, 0)
+    SS_and_pars = Float64[]
+    _dvariance_full = zeros(0, 0)
+    _n_cov_tuple = 0
+    _cov_pb = nothing
+    axis3 = Symbol[]
 
     if derivatives
         if non_stochastic_steady_state
@@ -3289,6 +3305,8 @@ And data, 4×6 Matrix{Float64}:
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
+
+        var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
 
         if mean && !(variance || standard_deviation || covariance)
             state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
@@ -3696,6 +3714,22 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return ret
     end
+
+    # Initialize variables that are conditionally assigned across algorithm branches
+    # to satisfy JET's definite-assignment analysis. Each is overwritten in the
+    # relevant branch below before it is actually used.
+    nVars = 𝓂.constants.post_model_macro.nVars
+    SS_and_pars = zeros(T, 0)
+    covar_dcmp  = zeros(T, 0, 0)
+    state_μ     = zeros(T, 0)
+    sol         = zeros(T, 0, 0)
+    autocorr_tmp = zeros(T, 0, 0)
+    ŝ_to_ŝ₂    = zeros(T, 0, 0)
+    ŝ_to_y₂    = zeros(T, 0, 0)
+    autocorr    = zeros(T, 0, 0)
+    varrs       = zeros(T, 0)
+    st_dev      = zeros(T, 0)
+    solved      = false
 
     if algorithm == :pruned_third_order
 
