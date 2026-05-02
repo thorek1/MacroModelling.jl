@@ -1,5 +1,11 @@
 @stable default_mode = "disable" begin
 
+# Benchmark-only toggle: when set to :aumann_shapley, the marginal-
+# contribution shock decomposition uses the path-integral driver
+# defined further below instead of the exact polynomial-coefficient
+# driver. Default :polynomial keeps the production behaviour.
+const SHOCK_DECOMP_MC_METHOD = Ref{Symbol}(:polynomial)
+
 # ---------------------------------------------------------------------
 # Polynomial-coefficient marginal-contribution (Shapley) helpers
 # ---------------------------------------------------------------------
@@ -141,6 +147,275 @@ function shapley_shock_decomposition_pruned_3rd_order!(decomposition::AbstractAr
         poly_state₁, new_poly_state₁ = new_poly_state₁, poly_state₁
         poly_state₂, new_poly_state₂ = new_poly_state₂, poly_state₂
         poly_state₃, new_poly_state₃ = new_poly_state₃, poly_state₃
+    end
+
+    return decomposition
+end
+
+
+# ---------------------------------------------------------------------
+# Aumann–Shapley shock decomposition (alternative driver)
+# ---------------------------------------------------------------------
+#
+# Provided for benchmarking against the polynomial-coefficient propagation
+# above. Mathematically computes the same Shapley value via the
+# path-integral identity
+#     φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s·𝟙)/∂xᵢ ds
+#                ≈ Σ_k w_k · ∂Ṽ_t(s_k·𝟙)/∂xᵢ      (Gauss–Legendre)
+# where Ṽ_t is the multilinear extension of `S → ŝ_t(S)[v]`. Because
+# Ṽ_t(s·𝟙) is a univariate polynomial in `s` of degree ≤ k, ⌈k/2⌉
+# Gauss–Legendre nodes integrate the directional derivative exactly.
+#
+# Per period the driver maintains, for every Gauss–Legendre node s_k:
+#   - one primal pruned-state trajectory under shocks scaled by s_k;
+#   - one tangent trajectory per shock direction i = 1..nᵉ giving
+#     ∂ŝ_t/∂xᵢ at x = s_k·𝟙.
+# Each tangent recursion mirrors the primal recursion with derivatives
+# threaded by the chain rule; the shock contribution to the tangent's
+# augmented vector picks up `εᵢ_t · eᵢ` because ∂(xᵢ·εᵢ_t)/∂xᵢ = εᵢ_t.
+
+function _ax₁_2nd!(out_v::AbstractVector, A::AbstractMatrix,
+                   v_past::AbstractVector, eps_dir::AbstractVector, n_past::Int)
+    # out_v = A * [v_past; 0; eps_dir]
+    n_aug = n_past + 1 + length(eps_dir)
+    @inbounds for i in 1:size(A, 1)
+        s = 0.0
+        for k in 1:n_past
+            s += A[i, k] * v_past[k]
+        end
+        # A[i, n_past+1] * 0 = 0
+        base = n_past + 1
+        for k in eachindex(eps_dir)
+            s += A[i, base + k] * eps_dir[k]
+        end
+        out_v[i] = s
+    end
+    return out_v
+end
+
+function _aug_state(past::AbstractVector, past_idx, include_const::Bool, sck::AbstractVector)
+    n_past = length(past_idx)
+    a = Vector{Float64}(undef, n_past + 1 + length(sck))
+    @inbounds for (i, j) in enumerate(past_idx); a[i] = past[j]; end
+    @inbounds a[n_past + 1] = include_const ? 1.0 : 0.0
+    @inbounds for k in eachindex(sck); a[n_past + 1 + k] = sck[k]; end
+    return a
+end
+
+function _aug_tangent(v_past::AbstractVector, past_idx, eps_dir::AbstractVector)
+    n_past = length(past_idx)
+    a = zeros(Float64, n_past + 1 + length(eps_dir))
+    @inbounds for (i, j) in enumerate(past_idx); a[i] = v_past[j]; end
+    @inbounds for k in eachindex(eps_dir); a[n_past + 1 + k] = eps_dir[k]; end
+    return a
+end
+
+function aumann_shapley_shock_decomposition_pruned_2nd_order!(
+        decomposition::AbstractArray,
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int)
+    nVars = T.nVars
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past = length(past_idx)
+    nT = size(decomposition, 3)
+
+    nodes, weights = gausslegendre_unit_interval(2)
+    n_nodes = length(nodes)
+
+    s1 = [copy(initial_state[1]) for _ in 1:n_nodes]
+    s2 = [copy(initial_state[2]) for _ in 1:n_nodes]
+    # Separate primal at scale 0 (no shocks active ever) for V(∅).
+    s1₀ = copy(initial_state[1]); s2₀ = copy(initial_state[2])
+
+    v = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    w = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+
+    new_s1 = [zeros(nVars) for _ in 1:n_nodes]
+    new_s2 = [zeros(nVars) for _ in 1:n_nodes]
+    new_s1₀ = zeros(nVars); new_s2₀ = zeros(nVars)
+    new_v  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    new_w  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+
+    full_dir = zeros(nE)
+    eps_dir  = zeros(nE)
+    zero_dir = zeros(nE)
+
+    for t in 1:nT
+        ε_t = @view shocks[:, t]
+
+        # V(∅) primal: recursion under zero shocks.
+        aug1₀ = _aug_state(s1₀, past_idx, true,  zero_dir)
+        aug2₀ = _aug_state(s2₀, past_idx, false, zero_dir)
+        new_s1₀ .= 𝐒[1] * aug1₀
+        new_s2₀ .= 𝐒[1] * aug2₀ .+ 0.5 .* (𝐒[2] * ℒ.kron(aug1₀, aug1₀))
+
+        for k in 1:n_nodes
+            sk = nodes[k]
+            full_dir .= sk .* ε_t
+            aug1 = _aug_state(s1[k], past_idx, true,  full_dir)
+            aug2 = _aug_state(s2[k], past_idx, false, zero_dir)
+            kk   = ℒ.kron(aug1, aug1)
+            new_s1[k] = 𝐒[1] * aug1
+            new_s2[k] = 𝐒[1] * aug2 .+ 0.5 .* (𝐒[2] * kk)
+
+            for i in 1:nE
+                fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
+                ȧ1 = _aug_tangent(v[k][i], past_idx, eps_dir)
+                ȧ2 = _aug_tangent(w[k][i], past_idx, zero_dir)
+                kdot = ℒ.kron(ȧ1, aug1) .+ ℒ.kron(aug1, ȧ1)
+                new_v[k][i] = 𝐒[1] * ȧ1
+                new_w[k][i] = 𝐒[1] * ȧ2 .+ 0.5 .* (𝐒[2] * kdot)
+            end
+        end
+
+        @views fill!(decomposition[:, 1:nE, t], 0.0)
+        for k in 1:n_nodes
+            wk = weights[k]
+            for i in 1:nE
+                @views decomposition[:, i, t] .+= wk .* (new_v[k][i] .+ new_w[k][i])
+            end
+        end
+
+        v_empty = new_s1₀ .+ new_s2₀
+        sum_phi = zeros(nVars)
+        for i in 1:nE
+            @views sum_phi .+= decomposition[:, i, t]
+        end
+        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- (sum_phi .+ v_empty))
+
+        for k in 1:n_nodes
+            s1[k], new_s1[k] = new_s1[k], s1[k]
+            s2[k], new_s2[k] = new_s2[k], s2[k]
+            for i in 1:nE
+                v[k][i], new_v[k][i] = new_v[k][i], v[k][i]
+                w[k][i], new_w[k][i] = new_w[k][i], w[k][i]
+            end
+        end
+        s1₀, new_s1₀ = new_s1₀, s1₀
+        s2₀, new_s2₀ = new_s2₀, s2₀
+    end
+
+    return decomposition
+end
+
+
+function aumann_shapley_shock_decomposition_pruned_3rd_order!(
+        decomposition::AbstractArray,
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int)
+    nVars = T.nVars
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past = length(past_idx)
+    nT = size(decomposition, 3)
+
+    nodes, weights = gausslegendre_unit_interval(3)        # exact for degree ≤ 5; need ≥ k − 1 = 2.
+    n_nodes = length(nodes)
+
+    s1 = [copy(initial_state[1]) for _ in 1:n_nodes]
+    s2 = [copy(initial_state[2]) for _ in 1:n_nodes]
+    s3 = [copy(initial_state[3]) for _ in 1:n_nodes]
+    s1₀ = copy(initial_state[1]); s2₀ = copy(initial_state[2]); s3₀ = copy(initial_state[3])
+    v  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    w  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    u  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+
+    new_s1 = [zeros(nVars) for _ in 1:n_nodes]
+    new_s2 = [zeros(nVars) for _ in 1:n_nodes]
+    new_s3 = [zeros(nVars) for _ in 1:n_nodes]
+    new_s1₀ = zeros(nVars); new_s2₀ = zeros(nVars); new_s3₀ = zeros(nVars)
+    new_v  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    new_w  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+    new_u  = [[zeros(nVars) for _ in 1:nE] for _ in 1:n_nodes]
+
+    full_dir = zeros(nE)
+    eps_dir  = zeros(nE)
+    zero_dir = zeros(nE)
+
+    for t in 1:nT
+        ε_t = @view shocks[:, t]
+
+        # V(∅) primal trajectory at scale 0.
+        aug1₀ = _aug_state(s1₀, past_idx, true,  zero_dir)
+        aug1̂₀ = _aug_state(s1₀, past_idx, false, zero_dir)
+        aug2₀ = _aug_state(s2₀, past_idx, false, zero_dir)
+        aug3₀ = _aug_state(s3₀, past_idx, false, zero_dir)
+        k11_0  = ℒ.kron(aug1₀, aug1₀)
+        k12̂_0  = ℒ.kron(aug1̂₀, aug2₀)
+        k111_0 = ℒ.kron(k11_0, aug1₀)
+        new_s1₀ .= 𝐒[1] * aug1₀
+        new_s2₀ .= 𝐒[1] * aug2₀ .+ 0.5 .* (𝐒[2] * k11_0)
+        new_s3₀ .= 𝐒[1] * aug3₀ .+ (𝐒[2] * k12̂_0) .+ (1/6) .* (𝐒[3] * k111_0)
+
+        for k in 1:n_nodes
+            sk = nodes[k]
+            full_dir .= sk .* ε_t
+
+            aug1  = _aug_state(s1[k], past_idx, true,  full_dir)
+            aug1̂  = _aug_state(s1[k], past_idx, false, full_dir)
+            aug2  = _aug_state(s2[k], past_idx, false, zero_dir)
+            aug3  = _aug_state(s3[k], past_idx, false, zero_dir)
+
+            k11   = ℒ.kron(aug1, aug1)
+            k12̂   = ℒ.kron(aug1̂, aug2)
+            k111  = ℒ.kron(k11,  aug1)
+
+            new_s1[k] = 𝐒[1] * aug1
+            new_s2[k] = 𝐒[1] * aug2 .+ 0.5 .* (𝐒[2] * k11)
+            new_s3[k] = 𝐒[1] * aug3 .+ (𝐒[2] * k12̂) .+ (1/6) .* (𝐒[3] * k111)
+
+            for i in 1:nE
+                fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
+                ȧ1  = _aug_tangent(v[k][i], past_idx, eps_dir)
+                ȧ1̂  = _aug_tangent(v[k][i], past_idx, eps_dir)
+                ȧ2  = _aug_tangent(w[k][i], past_idx, zero_dir)
+                ȧ3  = _aug_tangent(u[k][i], past_idx, zero_dir)
+
+                k11_dot  = ℒ.kron(ȧ1, aug1)  .+ ℒ.kron(aug1, ȧ1)
+                k12̂_dot  = ℒ.kron(ȧ1̂, aug2)  .+ ℒ.kron(aug1̂, ȧ2)
+                k111_dot = ℒ.kron(k11_dot, aug1) .+ ℒ.kron(k11, ȧ1)
+
+                new_v[k][i] = 𝐒[1] * ȧ1
+                new_w[k][i] = 𝐒[1] * ȧ2 .+ 0.5 .* (𝐒[2] * k11_dot)
+                new_u[k][i] = 𝐒[1] * ȧ3 .+ (𝐒[2] * k12̂_dot) .+ (1/6) .* (𝐒[3] * k111_dot)
+            end
+        end
+
+        @views fill!(decomposition[:, 1:nE, t], 0.0)
+        for k in 1:n_nodes
+            wk = weights[k]
+            for i in 1:nE
+                @views decomposition[:, i, t] .+= wk .* (new_v[k][i] .+ new_w[k][i] .+ new_u[k][i])
+            end
+        end
+
+        v_empty = new_s1₀ .+ new_s2₀ .+ new_s3₀
+        sum_phi = zeros(nVars)
+        for i in 1:nE
+            @views sum_phi .+= decomposition[:, i, t]
+        end
+        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- (sum_phi .+ v_empty))
+
+        for k in 1:n_nodes
+            s1[k], new_s1[k] = new_s1[k], s1[k]
+            s2[k], new_s2[k] = new_s2[k], s2[k]
+            s3[k], new_s3[k] = new_s3[k], s3[k]
+            for i in 1:nE
+                v[k][i], new_v[k][i] = new_v[k][i], v[k][i]
+                w[k][i], new_w[k][i] = new_w[k][i], w[k][i]
+                u[k][i], new_u[k][i] = new_u[k][i], u[k][i]
+            end
+        end
+        s1₀, new_s1₀ = new_s1₀, s1₀
+        s2₀, new_s2₀ = new_s2₀, s2₀
+        s3₀, new_s3₀ = new_s3₀, s3₀
     end
 
     return decomposition
@@ -2255,13 +2530,23 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+        if SHOCK_DECOMP_MC_METHOD[] === :aumann_shapley
+            aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                          variables,
+                                                          shocks,
+                                                          initial_state,
+                                                          𝐒,
+                                                          T,
+                                                          nE)
+        else
+            shapley_shock_decomposition_pruned_2nd_order!(decomposition,
                                                       variables,
                                                       shocks,
                                                       initial_state,
                                                       𝐒,
                                                       T,
                                                       nE)
+        end
         return variables, shocks, zeros(0,0), decomposition
     end
 
@@ -2978,13 +3263,23 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+        if SHOCK_DECOMP_MC_METHOD[] === :aumann_shapley
+            aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                          variables,
+                                                          shocks,
+                                                          initial_state,
+                                                          𝐒,
+                                                          T,
+                                                          nE)
+        else
+            shapley_shock_decomposition_pruned_3rd_order!(decomposition,
                                                       variables,
                                                       shocks,
                                                       initial_state,
                                                       𝐒,
                                                       T,
                                                       nE)
+        end
         return variables, shocks, zeros(0,0), decomposition
     end
 
