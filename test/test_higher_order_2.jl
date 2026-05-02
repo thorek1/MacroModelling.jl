@@ -2,10 +2,10 @@ using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
 using Random
+Random.seed!(1234)
 
 include("functionality_tests.jl")
 
-Random.seed!(18400875)
 plots = true
 # test_higher_order = true
 

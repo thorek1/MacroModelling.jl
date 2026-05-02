@@ -245,6 +245,13 @@ end
                                             opts::CalculationOptions = merge_calculation_options(),
                                             parameter_values::AbstractVector{<:Real} = Float64[],
                                             caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+    # Always make sure the higher-order workspace matches the current eltype
+    # before any cache short-circuit, so downstream consumers (e.g. rrules that
+    # grab buffers from the workspace) never see a stale eltype after a previous
+    # call with a different eltype (e.g. ForwardDiff.Dual).
+    if !(eltype(workspaces.second_order.Ŝ) == S)
+        workspaces.second_order = Higher_order_workspace(T = S)
+    end
     # Cache hit: return cached second-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
        cache_valid_for_parameters(cache.valid_for.second_order_solution, parameter_values)
@@ -252,9 +259,6 @@ end
         if cached isa Matrix{S} && !isempty(cached)
             return cached, true
         end
-    end
-    if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order
@@ -454,6 +458,13 @@ end
                                             opts::CalculationOptions = merge_calculation_options(),
                                             parameter_values::AbstractVector{<:Real} = Float64[],
                                             caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    # Always make sure the higher-order workspace matches the current eltype
+    # before any cache short-circuit, so downstream consumers (e.g. rrules that
+    # grab buffers from the workspace) never see a stale eltype after a previous
+    # call with a different eltype (e.g. ForwardDiff.Dual).
+    if !(eltype(workspaces.third_order.Ŝ) == S)
+        workspaces.third_order = Higher_order_workspace(T = S)
+    end
     # Cache hit: return cached third-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
        cache_valid_for_parameters(cache.valid_for.third_order_solution, parameter_values)
@@ -461,9 +472,6 @@ end
         if cached isa Matrix{S} && !isempty(cached)
             return cached, true
         end
-    end
-    if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
     M₂ = constants.second_order

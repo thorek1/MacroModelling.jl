@@ -3824,9 +3824,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
     end
     if !(correlation == Symbol[])
         if solved
-            diag_C = ℒ.diag(covar_dcmp)
-            s_corr = T[d > 0 ? sqrt(d) : convert(T, NaN) for d in diag_C]
-            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+            corr_full_mat, _, _, _ = covariance_to_correlation(covar_dcmp)
 
             if !isnothing(corr_groups)
                 # Block-grouped correlation: cross-group entries left as zero
