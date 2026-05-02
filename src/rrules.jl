@@ -9118,6 +9118,16 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
         ∂kronstate  = zeros((n_past + 1)^2)
         ∂state¹⁻_vol = zeros(n_past + 1)
         ∂kronIstate = zeros(n_exo * (n_past + 1))
+        # Hoisted per-period pullback buffers (max-size, used via views when m varies)
+        ∂𝐒ⁱ_full_buf       = zeros(length(cond_var_idx), n_exo)
+        ∂shock_independent  = zeros(length(cond_var_idx))
+        jac_v_buf           = zeros(n_exo, n_exo)
+        ∂jac_v_buf          = zeros(n_exo, n_exo)
+        kron_Isv_buf        = zeros(n_exo * (n_past + 1), n_exo)
+        ∂state₂_contrib     = zeros(n_past)
+        ∂kron_sv            = zeros((n_past + 1)^2)
+        kron_sv             = zeros((n_past + 1)^2)
+        ∂kronIstate_local   = zeros(n_exo * (n_past + 1), n_exo)
 
         for t in Tt:-1:1
             aug_state₁ = aug_state₁_seq[t]
@@ -9192,7 +9202,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 end
             end
 
-            ∂shock_independent = zeros(length(cond_var_idx))
+            fill!(∂shock_independent, 0)
 
             if m > 0
                 𝐒ⁱ_v   = 𝐒ⁱ_full_seq[t][idx, :]
@@ -9251,7 +9261,8 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 end
 
                 # Scatter into ∂𝐒ⁱ_full and ∂𝐒ⁱ²ᵉ
-                ∂𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
+                ∂𝐒ⁱ_full = ∂𝐒ⁱ_full_buf
+                fill!(∂𝐒ⁱ_full, 0)
                 @inbounds for j in 1:n_exo
                     for i_local in 1:m
                         ∂𝐒ⁱ_full[idx[i_local], j] = ∂𝐒ⁱ_v_total[i_local, j]
@@ -9270,9 +9281,9 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
 
                 # Propagate ∂𝐒ⁱ_full back through 𝐒ⁱ_full = 𝐒¹ᵉ + 𝐒²⁻ᵉ (I⊗state¹⁻_vol)
                 ∂𝐒¹ᵉ .+= ∂𝐒ⁱ_full
-                kron_Isv = ℒ.kron(J, state¹⁻_vol)
-                ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ_full, kron_Isv', 1, 1)
-                ∂kronIstate_local = 𝐒²⁻ᵉ' * ∂𝐒ⁱ_full
+                ℒ.kron!(kron_Isv_buf, J, state¹⁻_vol)
+                ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ_full, kron_Isv_buf', 1, 1)
+                ℒ.mul!(∂kronIstate_local, 𝐒²⁻ᵉ', ∂𝐒ⁱ_full)
                 @inbounds for p in 1:(n_past + 1)
                     s = 0.0
                     for j in 1:n_exo
@@ -10008,6 +10019,11 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
         ∂aug_state  = zeros(n_past + 1 + n_exo)
         ∂kronstate  = zeros((n_past + 1)^2)
         ∂state¹⁻_vol = zeros(n_past + 1)
+        # Hoisted per-period pullback buffers
+        ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
+        ∂shock_independent = zeros(length(cond_var_idx))
+        kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
+        ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
 
         for t in Tt:-1:1
             aug_state = aug_state_seq[t]
@@ -10070,7 +10086,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 end
             end
 
-            ∂shock_independent = zeros(length(cond_var_idx))
+            fill!(∂shock_independent, 0)
 
             if m > 0
                 𝐒ⁱ_v   = 𝐒ⁱ_full_seq[t][idx, :]
@@ -10112,7 +10128,8 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                     ∂𝐒ⁱ²ᵉ_v_total = ∂𝐒ⁱ²ᵉ_v_kkt
                 end
 
-                ∂𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
+                ∂𝐒ⁱ_full = ∂𝐒ⁱ_full_buf
+                fill!(∂𝐒ⁱ_full, 0)
                 @inbounds for j in 1:n_exo
                     for i_local in 1:m
                         ∂𝐒ⁱ_full[idx[i_local], j] = ∂𝐒ⁱ_v_total[i_local, j]
@@ -10129,9 +10146,9 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 end
 
                 ∂𝐒¹ᵉ .+= ∂𝐒ⁱ_full
-                kron_Isv = ℒ.kron(J, state¹⁻_vol)
-                ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ_full, kron_Isv', 1, 1)
-                ∂kronIstate_local = 𝐒²⁻ᵉ' * ∂𝐒ⁱ_full
+                ℒ.kron!(kron_Isv_buf, J, state¹⁻_vol)
+                ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ_full, kron_Isv_buf', 1, 1)
+                ℒ.mul!(∂kronIstate_local, 𝐒²⁻ᵉ', ∂𝐒ⁱ_full)
                 @inbounds for p in 1:(n_past + 1)
                     s = 0.0
                     for j in 1:n_exo
@@ -10910,6 +10927,10 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
         ∂aug_state₃ = zeros(n_past + 1 + n_exo)
         ∂kronstate  = zeros((n_past + 1)^2)
         ∂state¹⁻_vol = zeros(n_past + 1)
+        # Hoisted per-period pullback buffers
+        ∂𝐒ⁱ_full_buf       = zeros(n_cond, n_exo)
+        ∂𝐒ⁱ²ᵉ_full_buf     = zeros(n_cond, n_exo^2)
+        ∂shock_independent  = zeros(n_cond)
 
         for t in Tt:-1:1
             aug_state₁  = aug_state₁_seq[t]
@@ -11031,7 +11052,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 end
             end
 
-            ∂shock_independent = zeros(n_cond)
+            fill!(∂shock_independent, 0)
 
             if m > 0
                 𝐒ⁱ_v   = 𝐒ⁱ_full_seq[t][idx, :]
@@ -11091,8 +11112,10 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 end
 
                 # Scatter into ∂𝐒ⁱ_full and ∂𝐒ⁱ²ᵉ_full and ∂𝐒ⁱ³ᵉ
-                ∂𝐒ⁱ_full = zeros(n_cond, n_exo)
-                ∂𝐒ⁱ²ᵉ_full = zeros(n_cond, n_exo^2)
+                ∂𝐒ⁱ_full = ∂𝐒ⁱ_full_buf
+                ∂𝐒ⁱ²ᵉ_full = ∂𝐒ⁱ²ᵉ_full_buf
+                fill!(∂𝐒ⁱ_full, 0)
+                fill!(∂𝐒ⁱ²ᵉ_full, 0)
                 @inbounds for j in 1:n_exo
                     for i_local in 1:m
                         ∂𝐒ⁱ_full[idx[i_local], j] = ∂𝐒ⁱ_v_total[i_local, j]
@@ -12054,6 +12077,12 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
         ∂aug_state  = zeros(n_past + 1 + n_exo)
         ∂kronstate  = zeros((n_past + 1)^2)
         ∂state¹⁻_vol = zeros(n_past + 1)
+        # Hoisted per-period pullback buffers
+        ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
+        ∂𝐒ⁱ²ᵉ_full_buf    = zeros(length(cond_var_idx), n_exo^2)
+        ∂shock_independent = zeros(length(cond_var_idx))
+        kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
+        ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
 
         for t in Tt:-1:1
             aug_state   = aug_state_seq[t]
@@ -12135,7 +12164,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                 end
             end
 
-            ∂shock_independent = zeros(n_cond)
+            fill!(∂shock_independent, 0)
 
             if m > 0
                 𝐒ⁱ_v   = 𝐒ⁱ_full_seq[t][idx, :]
@@ -12183,8 +12212,10 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                     ∂𝐒ⁱ³ᵉ_v_total  = ∂𝐒ⁱ³ᵉ_v_kkt
                 end
 
-                ∂𝐒ⁱ_full = zeros(n_cond, n_exo)
-                ∂𝐒ⁱ²ᵉ_full = zeros(n_cond, n_exo^2)
+                ∂𝐒ⁱ_full = ∂𝐒ⁱ_full_buf
+                ∂𝐒ⁱ²ᵉ_full = ∂𝐒ⁱ²ᵉ_full_buf
+                fill!(∂𝐒ⁱ_full, 0)
+                fill!(∂𝐒ⁱ²ᵉ_full, 0)
                 @inbounds for j in 1:n_exo
                     for i_local in 1:m
                         ∂𝐒ⁱ_full[idx[i_local], j] = ∂𝐒ⁱ_v_total[i_local, j]
