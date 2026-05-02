@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 function calculate_loglikelihood(::Val{:kalman},
                                 ::Val,
@@ -181,7 +180,7 @@ function run_kalman_iterations(A::Matrix{S},
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
+@unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter,
@@ -343,4 +342,3 @@ function filter_and_smooth(𝓂::ℳ,
     return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
 end
 
-end # dispatch_doctor

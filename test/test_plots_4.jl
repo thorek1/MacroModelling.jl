@@ -7,6 +7,7 @@ using AxisKeys, SparseArrays
 import Mooncake, FiniteDifferences, Zygote
 import DifferentiationInterface, ADTypes
 import LinearAlgebra as ℒ
+Random.seed!(1234)
 
 include("functionality_tests.jl")
 

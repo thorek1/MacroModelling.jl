@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 get_symbols(ex::Symbol) = [ex]
 
@@ -27,7 +26,6 @@ function get_symbols(ex::Expr)
     return par
 end
 
-end # dispatch_doctor
 
 """
     replace_curly_braces_in_symbols(expr) -> Union{Expr, Symbol, Any}
@@ -115,7 +113,6 @@ function parse_filter_term(term::Union{Symbol, String})
     return (Symbol(m.captures[1]), Meta.parse(term_str))
 end
 
-@stable default_mode = "disable" begin
 
 """
     expr_contains(expr, sym::Symbol, pattern) -> Bool
@@ -1174,4 +1171,3 @@ function get_jump_variables(𝓂::ℳ)::Vector{String}
     𝓂.constants.post_model_macro.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
-end # dispatch_doctor

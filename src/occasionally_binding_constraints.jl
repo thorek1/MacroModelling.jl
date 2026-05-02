@@ -1,3 +1,4 @@
+
 # ── Occasionally Binding Constraints (OBC) ───────────────────────────────────
 #
 # Self-contained OBC functions extracted from MacroModelling.jl.
@@ -898,3 +899,4 @@ function obc_state_update(present_states, present_shocks::Vector{R}, state_updat
 
     return present_states, present_shocks, solved
 end
+
