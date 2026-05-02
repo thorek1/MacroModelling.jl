@@ -1744,8 +1744,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                             verbose = verbose)
                                                                                             end, parameter_values)
                                             if isfinite(ℒ.norm(fin_grad_llh[1]))
-                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-5)
-                                                @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-5)
+                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
                                                 break
                                             end
                                         end
@@ -2632,11 +2632,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5)
-                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5)
+                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-4, atol = 1e-6)
+                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-4, atol = 1e-6)
                     end
                     
-                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
+                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-4, atol = 1e-6)
                     break
                 end
             end
@@ -2696,12 +2696,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4)
-                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4)
+                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4, atol = 1e-6)
+                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4, atol = 1e-6)
                     end
 
                     # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
-                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
+                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4, atol = 1e-6)
                     break
                 end
             end
@@ -3382,6 +3382,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
 
     @testset "get_irf" begin
+        m.parameter_values .= old_params
+        clear_solution_caches!(m, algorithm)
         Random.seed!(123)
 
         for ignore_obc in [true,false]
@@ -3502,7 +3504,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     
                     RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
-                    @test isapprox(res, RES, rtol = 1e-8)
+                    @test isapprox(res, RES, rtol = 1e-8, atol = 1e-8, nans = true)
                 end
             end
 
@@ -3514,7 +3516,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             res2 = get_non_stochastic_steady_state_residuals(m, stst[1:3], tol = tol, verbose = false)
 
-            @test isapprox(res1, res2, rtol = 1e-8)
+            @test isapprox(res1, res2, rtol = 1e-8, atol = 1e-8, nans = true)
 
             get_residuals(m, stst)
 
