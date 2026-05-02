@@ -11344,7 +11344,9 @@ function rrule(::typeof(get_statistics),
     if !(correlation == Symbol[])
         if size(covar_dcmp, 1) > 0
             diag_C_corr = convert(Vector{T}, ℒ.diag(covar_dcmp))
-            s_corr = T[d > 0 ? sqrt(d) : convert(T, NaN) for d in diag_C_corr]
+            max_diag_corr = maximum(d -> d > 0 ? d : zero(T), diag_C_corr; init = zero(T))
+            degenerate_tol_corr = max(sqrt(eps(T)), sqrt(eps(T)) * max_diag_corr)
+            s_corr = T[d > degenerate_tol_corr ? sqrt(d) : convert(T, NaN) for d in diag_C_corr]
             corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
         end
 
