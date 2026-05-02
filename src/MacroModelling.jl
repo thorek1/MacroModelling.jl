@@ -2132,6 +2132,30 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
 end
 
 
+function symmetrise_covariance_upper(covariance::AbstractMatrix{T}) where T <: Real
+    covariance_upper = ℒ.triu(covariance)
+    return covariance_upper + covariance_upper' - ℒ.Diagonal(ℒ.diag(covariance_upper))
+end
+
+
+function covariance_to_correlation(covariance::AbstractMatrix{T}) where T <: Real
+    covariance_symmetric = symmetrise_covariance_upper(covariance)
+    diag_covariance = convert(Vector{T}, ℒ.diag(covariance_symmetric))
+    max_diag = maximum(d -> d > 0 ? d : zero(T), diag_covariance; init = zero(T))
+    degenerate_tol = max(eps(T), eps(T) * max_diag)
+    std_corr = Vector{T}(undef, length(diag_covariance))
+
+    @inbounds for i in eachindex(diag_covariance)
+        diag_entry = diag_covariance[i]
+        std_corr[i] = diag_entry > degenerate_tol ? sqrt(diag_entry) : convert(T, NaN)
+    end
+
+    correlation = covariance_symmetric ./ (std_corr * std_corr')
+
+    return correlation, covariance_symmetric, diag_covariance, std_corr
+end
+
+
 
 
 function parse_shocks_input_to_index(shocks::Expr, constants::constants)

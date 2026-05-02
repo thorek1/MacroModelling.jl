@@ -3823,15 +3823,7 @@ function get_statistics(𝓂::ℳ,
     end
     if !(correlation == Symbol[])
         if solved
-            diag_C = ℒ.diag(covar_dcmp)
-            # Treat variables whose variance is at or below sqrt(eps) (relative to
-            # the largest variance) as degenerate: their `correlation` entries are
-            # 0/0 numerical noise that depends on solver tolerances, so we mark
-            # them as NaN. Tests downstream compare with `nans = true`.
-            max_diag = maximum(d -> d > 0 ? d : zero(T), diag_C; init = zero(T))
-            degenerate_tol = max(sqrt(eps(T)), sqrt(eps(T)) * max_diag)
-            s_corr = T[d > degenerate_tol ? sqrt(d) : convert(T, NaN) for d in diag_C]
-            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+            corr_full_mat, _, _, _ = covariance_to_correlation(covar_dcmp)
 
             if !isnothing(corr_groups)
                 # Block-grouped correlation: cross-group entries left as zero

@@ -11343,11 +11343,7 @@ function rrule(::typeof(get_statistics),
 
     if !(correlation == Symbol[])
         if size(covar_dcmp, 1) > 0
-            diag_C_corr = convert(Vector{T}, ℒ.diag(covar_dcmp))
-            max_diag_corr = maximum(d -> d > 0 ? d : zero(T), diag_C_corr; init = zero(T))
-            degenerate_tol_corr = max(sqrt(eps(T)), sqrt(eps(T)) * max_diag_corr)
-            s_corr = T[d > degenerate_tol_corr ? sqrt(d) : convert(T, NaN) for d in diag_C_corr]
-            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+            corr_full_mat, _, diag_C_corr, s_corr = covariance_to_correlation(covar_dcmp)
         end
 
         if !isnothing(corr_groups)
@@ -11514,8 +11510,10 @@ function rrule(::typeof(get_statistics),
                     isnan(sb) && continue
                     sasb = sa * sb
                     sasb == 0 && continue
-                    corr_ab = covar_dcmp[a, b] / sasb
-                    ∂covar_dcmp[a, b] += g / sasb
+                    corr_ab = corr_full_mat[a, b]
+                    src_a = min(a, b)
+                    src_b = max(a, b)
+                    ∂covar_dcmp[src_a, src_b] += g / sasb
                     ∂covar_dcmp[a, a] += -g * corr_ab / (2 * diag_C_corr[a])
                     ∂covar_dcmp[b, b] += -g * corr_ab / (2 * diag_C_corr[b])
                 end
