@@ -214,10 +214,10 @@ end
         @test size(sh, 2) == n_time
     end
 
-    # AD: first_order and pruned_second_order inversion support missing data; the
-    # remaining higher orders are not yet implemented and must error out clearly
-    # rather than silently zeroing the gradient.
-    for algo in (:first_order, :pruned_second_order)
+    # AD: first_order, pruned_second_order and second_order inversion support
+    # missing data; the remaining higher orders are not yet implemented and must
+    # error out clearly rather than silently zeroing the gradient.
+    for algo in (:first_order, :pruned_second_order, :second_order)
         back_grad = DifferentiationInterface.gradient(
             x -> get_loglikelihood(FS2000, data_nan, x; algorithm = algo, filter = :inversion),
             ADTypes.AutoMooncake(config = nothing),
@@ -233,7 +233,7 @@ end
         @test isapprox(back_grad, fin_grad, rtol = 1e-4)
     end
 
-    for algo in (:second_order, :pruned_third_order, :third_order)
+    for algo in (:pruned_third_order, :third_order)
         @test_throws ArgumentError DifferentiationInterface.gradient(
             x -> get_loglikelihood(FS2000, data_nan, x; algorithm = algo, filter = :inversion),
             ADTypes.AutoMooncake(config = nothing),
