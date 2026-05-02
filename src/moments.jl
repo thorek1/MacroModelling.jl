@@ -1,3 +1,4 @@
+
 """
     sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
                 tol::Real = eps(T)) -> SparseMatrixCSC{T}
@@ -130,7 +131,6 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
     return sparse(coo_I, coo_J, coo_V, m, m)
 end
 
-@stable default_mode = "disable" begin
 
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
@@ -2592,4 +2592,3 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     return v
 end
 
-end

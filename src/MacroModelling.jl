@@ -154,48 +154,58 @@ const ParameterType = Union{Nothing,
 const SteadyStateFunctionType = Union{Nothing, Function, Missing}
 
 using DispatchDoctor
-# @stable default_mode = "disable" begin
 
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
 include("structures.jl")
 include("./steady_state/solver_parameters.jl")
-include("options_and_caches.jl")
+# DispatchDoctor wraps these numerical includes (functions defined inside use
+# @unstable selectively where polymorphism is intentional). Files left outside
+# the wrap (parser/*, nsss_solver.jl, dynare.jl, rrules.jl) do heavy macro/
+# SymPy/file-IO work whose returns cannot be made concrete.
+@stable default_mode = "disable" begin
+    include("options_and_caches.jl")
+end # dispatch_doctor
 include("./steady_state/nsss_solver.jl")
-include("occasionally_binding_constraints.jl")
+@stable default_mode = "disable" begin
+    include("occasionally_binding_constraints.jl")
+end # dispatch_doctor
 include("./parser/macros.jl")
 include("./parser/equation_processing.jl")
 include("./parser/model_setup.jl")
 include("./parser/equation_modification.jl")
-include("get_functions.jl")
+@stable default_mode = "disable" begin
+    include("get_functions.jl")
+end # dispatch_doctor
 include("dynare.jl")
-include("inspect.jl")
-include("aumann_shapley.jl")
-include("moments.jl")
-include("./algorithms/fast_lapack_wrappers.jl")
-include("./perturbation/derivatives.jl")
-include("./perturbation/solution.jl")
-include("./steady_state/stochastic_steady_state.jl")
-include("impulse_response_function.jl")
+@stable default_mode = "disable" begin
+    include("inspect.jl")
+    include("aumann_shapley.jl")
+    include("moments.jl")
+    include("./algorithms/fast_lapack_wrappers.jl")
+    include("./perturbation/derivatives.jl")
+    include("./perturbation/solution.jl")
+    include("./steady_state/stochastic_steady_state.jl")
+    include("impulse_response_function.jl")
+end # dispatch_doctor
 
 # Sentinel for MatrixEquations extension (bartels_stewart algorithm).
 # Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
 const BARTELS_STEWART_AVAILABLE = Ref(false)
 has_bartels_stewart() = BARTELS_STEWART_AVAILABLE[]
 
-include("./algorithms/preconditioner.jl")
-include("./algorithms/sylvester.jl")
-include("./algorithms/lyapunov.jl")
-include("./algorithms/nonlinear_solver.jl")
-include("./algorithms/quadratic_matrix_equation.jl")
+@stable default_mode = "disable" begin
+    include("./algorithms/preconditioner.jl")
+    include("./algorithms/sylvester.jl")
+    include("./algorithms/lyapunov.jl")
+    include("./algorithms/nonlinear_solver.jl")
+    include("./algorithms/quadratic_matrix_equation.jl")
 
-include("./filter/find_shocks.jl")
-include("./filter/inversion.jl")
-include("./filter/kalman.jl")
-
-
-# end # dispatch_doctor
+    include("./filter/find_shocks.jl")
+    include("./filter/inversion.jl")
+    include("./filter/kalman.jl")
+end # dispatch_doctor
 
 
 export @model, @parameters, solve!
@@ -300,7 +310,6 @@ Symbolics.@register_symbolic normcdf(z)
 Symbolics.@register_symbolic pnorm(p)
 Symbolics.@register_symbolic dnorm(p)
 
-end # dispatch_doctor
 
 # ── norminvcdf, norminv & qnorm ──
 # d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
@@ -358,7 +367,6 @@ else
         Symbolics.derivative(normcdf, args, Val{1}())
 end
 
-@stable default_mode = "disable" begin
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
@@ -464,9 +472,8 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-end # dispatch_doctor
 
-function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
+@unstable function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
                                 shock_size::Real,
                                 periods::Int,
@@ -531,7 +538,6 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
-@stable default_mode = "disable" begin
 
 
 
@@ -748,7 +754,7 @@ function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}};
 end
 
 
-function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
+@unstable function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -782,7 +788,7 @@ end
 #                         tol = tol)
 # end
 
-function choose_matrix_format(A::DenseMatrix{S}; 
+@unstable function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -800,7 +806,7 @@ function choose_matrix_format(A::DenseMatrix{S};
     end
 end
 
-function choose_matrix_format(A::AbstractSparseMatrix{S}; 
+@unstable function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
@@ -2003,7 +2009,7 @@ end
 
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
+@unstable function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
     ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     if variables == :all_excluding_auxiliary_and_obc
         return ms.vars_idx_excluding_aux_obc
@@ -2014,7 +2020,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
     return parse_variables_input_to_index(variables, 𝓂.constants)
 end
 
-function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
+@unstable function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, constants::constants)::Union{UnitRange{Int}, Vector{Int}}
     T = constants.post_model_macro
     
 
@@ -2133,6 +2139,30 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
 end
 
 
+function symmetrise_covariance_upper(covariance::AbstractMatrix{T}) where T <: Real
+    covariance_upper = ℒ.triu(covariance)
+    return covariance_upper + covariance_upper' - ℒ.Diagonal(ℒ.diag(covariance_upper))
+end
+
+
+function covariance_to_correlation(covariance::AbstractMatrix{T}) where T <: Real
+    covariance_symmetric = symmetrise_covariance_upper(covariance)
+    diag_covariance = convert(Vector{T}, ℒ.diag(covariance_symmetric))
+    max_diag = maximum(d -> d > 0 ? d : zero(T), diag_covariance; init = zero(T))
+    degenerate_tol = max(eps(T), eps(T) * max_diag)
+    std_corr = Vector{T}(undef, length(diag_covariance))
+
+    @inbounds for i in eachindex(diag_covariance)
+        diag_entry = diag_covariance[i]
+        std_corr[i] = diag_entry > degenerate_tol ? sqrt(diag_entry) : convert(T, NaN)
+    end
+
+    correlation = covariance_symmetric ./ (std_corr * std_corr')
+
+    return correlation, covariance_symmetric, diag_covariance, std_corr
+end
+
+
 
 
 function parse_shocks_input_to_index(shocks::Expr, constants::constants)
@@ -2162,7 +2192,7 @@ function parse_shocks_input_to_index(shocks::BitMatrix, constants::constants)
     return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
 end
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
+@unstable function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, constants::constants)
     T = constants.post_model_macro
     
 
@@ -2275,7 +2305,6 @@ end
 #     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
 # end
 
-end # dispatch_doctor
 
 noop_state_update(state::AbstractVector{<:Real}, ::AbstractVector{<:Real}) = state
 noop_state_update(state::AbstractVector{<:AbstractVector{<:Real}}, ::AbstractVector{<:Real}) = state
@@ -2311,7 +2340,7 @@ function pruned_third_order_state_update(state::AbstractVector{T}, shock::Abstra
     return pruned_third_order_state_update(initialize_pruned_state(state, n_states, Val(3)), shock, past_idx, n_states, 𝐒₁, 𝐒₂, 𝐒₃)
 end
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
+@unstable function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     state_update::Function = noop_state_update
     pruning::Bool = algorithm ∈ [:pruned_second_order, :pruned_third_order]
 
@@ -2395,7 +2424,6 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
 end
 
 
-@stable default_mode = "disable" begin
 
 function get_custom_steady_state_workspace!(𝓂::ℳ, expected_length::Int)
     buffer = 𝓂.workspaces.custom_steady_state
@@ -2531,6 +2559,7 @@ function update_perturbation_counter!(counters::SolveCounters, solved::Bool; est
             end
         end
     end
+    return nothing
 end
 
 """
@@ -2551,6 +2580,7 @@ function update_ss_counter!(counters::SolveCounters, solved::Bool; estimation::B
             counters.ss_solves_failed += 1
         end
     end
+    return nothing
 end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 

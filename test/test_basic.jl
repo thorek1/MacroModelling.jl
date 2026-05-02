@@ -11,6 +11,8 @@ import LinearAlgebra as ℒ
 using DelimitedFiles
 using Dates
 
+Random.seed!(1234)
+
 include("functionality_tests.jl")
 
     plots = false

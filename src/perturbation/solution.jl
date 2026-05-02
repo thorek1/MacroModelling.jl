@@ -1,5 +1,4 @@
 
-@stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         constants::constants,
@@ -236,7 +235,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
 end
 
 
-function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+@unstable function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             constants::constants,
@@ -246,6 +245,13 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             opts::CalculationOptions = merge_calculation_options(),
                                             parameter_values::AbstractVector{<:Real} = Float64[],
                                             caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+    # Always make sure the higher-order workspace matches the current eltype
+    # before any cache short-circuit, so downstream consumers (e.g. rrules that
+    # grab buffers from the workspace) never see a stale eltype after a previous
+    # call with a different eltype (e.g. ForwardDiff.Dual).
+    if !(eltype(workspaces.second_order.Ŝ) == S)
+        workspaces.second_order = Higher_order_workspace(T = S)
+    end
     # Cache hit: return cached second-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
        cache_valid_for_parameters(cache.valid_for.second_order_solution, parameter_values)
@@ -253,9 +259,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
         if cached isa Matrix{S} && !isempty(cached)
             return cached, true
         end
-    end
-    if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order
@@ -443,7 +446,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 end
 
 
-function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+@unstable function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
@@ -455,6 +458,13 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             opts::CalculationOptions = merge_calculation_options(),
                                             parameter_values::AbstractVector{<:Real} = Float64[],
                                             caching::Bool = true)::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    # Always make sure the higher-order workspace matches the current eltype
+    # before any cache short-circuit, so downstream consumers (e.g. rrules that
+    # grab buffers from the workspace) never see a stale eltype after a previous
+    # call with a different eltype (e.g. ForwardDiff.Dual).
+    if !(eltype(workspaces.third_order.Ŝ) == S)
+        workspaces.third_order = Higher_order_workspace(T = S)
+    end
     # Cache hit: return cached third-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
        cache_valid_for_parameters(cache.valid_for.third_order_solution, parameter_values)
@@ -462,9 +472,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         if cached isa Matrix{S} && !isempty(cached)
             return cached, true
         end
-    end
-    if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
     end
     ℂ = workspaces.third_order
     M₂ = constants.second_order
@@ -731,7 +738,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     return 𝐒₃, solved
 end
 
-end # dispatch_doctor
 
 
 # ── Compressed Kronecker & matrix utilities (moved from MacroModelling.jl) ──
@@ -961,7 +967,7 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     return to
 end
 
-function mat_mult_kron(A::AbstractSparseMatrix{R},
+@unstable function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
                         D::AbstractMatrix{S};
@@ -1111,7 +1117,7 @@ end
 
 
 
-function mat_mult_kron(A::DenseMatrix{R},
+@unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
                         D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
@@ -1165,7 +1171,7 @@ function mat_mult_kron(A::DenseMatrix{R},
     # end
 end
 
-function mat_mult_kron(A::AbstractSparseMatrix{R},
+@unstable function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T};
                         sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
@@ -1309,7 +1315,7 @@ end
 
 
 
-function mat_mult_kron(A::DenseMatrix{R},
+@unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T}) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
@@ -2409,4 +2415,5 @@ function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
     end
     return nothing
 end
+
 

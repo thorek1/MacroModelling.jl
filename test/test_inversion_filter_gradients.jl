@@ -182,35 +182,13 @@ end
     end
 
     # --- (d) warmup_iterations > 0 (first_order only, per implementation) ---
-    # ForwardDiff now works thanks to the LU-based logabsdet rewrite of the
-    # warmup inversion path; Zygote remains unsupported because the inversion
-    # rrule explicitly asserts `warmup_iterations == 0`.
     @testset "Gali :first_order (warmup_iterations=2)" begin
         let algo = :first_order
             data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
-            f       = make_llh_closure(GALI, data, base_params, p_subset, algo;
-                                       warmup_iterations = 2)
-            θ       = base_params[p_subset]
-            llh_val = f(θ)
-            @test isfinite(llh_val)
-            if isfinite(llh_val)
-                fd_grad = first(FiniteDifferences.grad(FDM, f, θ))
-                if all(isfinite, fd_grad)
-                    @testset "ForwardDiff vs FiniteDifferences (warmup)" begin
-                        try
-                            fdiff_grad = ForwardDiff.gradient(f, θ)
-                            @test all(isfinite, fdiff_grad)
-                            @test isapprox(fdiff_grad, fd_grad; rtol = RTOL)
-                        catch e
-                            @info "ForwardDiff (warmup) threw" exception = e
-                            @test false
-                        end
-                    end
-                end
-            end
+            compare_gradients("Gali :$algo (warmup_iterations=2)",
+                              GALI, data, base_params, p_subset, algo;
+                              warmup_iterations = 2)
         end
-        # Zygote pull-back path explicitly asserts warmup_iterations == 0.
-        @test_skip "Zygote: AssertionError 'Warmup iterations not yet implemented for reverse-mode AD'"
     end
 
     # --- (e) presample_periods > 0 — exercise across all 5 algorithms -------
