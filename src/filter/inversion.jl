@@ -1,170 +1,21 @@
 @stable default_mode = "disable" begin
 
-# Benchmark-only toggle: when set to :aumann_shapley, the marginal-
-# contribution shock decomposition uses the path-integral driver
-# defined further below instead of the exact polynomial-coefficient
-# driver. Default :polynomial keeps the production behaviour.
-const SHOCK_DECOMP_MC_METHOD = Ref{Symbol}(:polynomial)
-
 # ---------------------------------------------------------------------
-# Polynomial-coefficient marginal-contribution (Shapley) helpers
+# Aumann–Shapley shock decomposition (marginal-contribution driver)
 # ---------------------------------------------------------------------
 #
-# These helpers replace the historical 2^nᵉ exhaustive coalition
-# propagation. The pruned-state value V(S) is a polynomial of total
-# degree ≤ k in the binary indicator vector `1_S`, so it is fully
-# captured by its `Σ_{j≤k} C(nᵉ, j)` monomial coefficients (rather than
-# its 2^nᵉ coalition values). See `src/polynomial_coalition.jl` for the
-# `MonomialIndex` / `PolyState` primitives.
-#
-# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Shapley
-# attributions and `decomposition[:, nᵉ+1, :]` with the residual
-# `V(∅) + (variables − V(N))`, matching the layout the public API
-# expects when `marginal_contribution = true`.
-
-function shapley_shock_decomposition_pruned_2nd_order!(decomposition::AbstractArray,
-                                                  variables::AbstractMatrix,
-                                                  shocks::AbstractMatrix,
-                                                  initial_state,
-                                                  𝐒,
-                                                  T,
-                                                  nE::Int)
-    nVars = T.nVars
-    past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
-    n_aug = n_past + 1 + nE
-    nT = size(decomposition, 3)
-
-    idx = MonomialIndex(nE, 2)
-
-    poly_state₁     = PolyState(nVars, idx)
-    poly_state₂     = PolyState(nVars, idx)
-    new_poly_state₁ = PolyState(nVars, idx)
-    new_poly_state₂ = PolyState(nVars, idx)
-
-    aug₁_buf       = PolyState(n_aug,     idx)
-    aug₂_buf       = PolyState(n_aug,     idx)
-    kron_aug₁_buf  = PolyState(n_aug^2,   idx)
-    coal_path_poly = PolyState(nVars,     idx)
-
-    poly_constant!(poly_state₁, initial_state[1])
-    poly_constant!(poly_state₂, initial_state[2])
-
-    sck = zeros(nE)
-
-    for t in 1:nT
-        @views sck .= shocks[:, t]
-
-        poly_aug₁!(aug₁_buf, poly_state₁, past_idx, true,  sck)
-        poly_aug₁!(aug₂_buf, poly_state₂, past_idx, false, zero(sck))
-        poly_kron!(kron_aug₁_buf, aug₁_buf, aug₁_buf; truncate_to = 2)
-
-        poly_apply!(new_poly_state₁, 𝐒[1], aug₁_buf)
-        poly_apply!(new_poly_state₂, 𝐒[1], aug₂_buf)
-        poly_apply!(new_poly_state₂, 𝐒[2], kron_aug₁_buf; α = 0.5, β = 1.0)
-
-        coal_path_poly.coefs .= new_poly_state₁.coefs .+ new_poly_state₂.coefs
-
-        @views shapley_from_poly!(decomposition[:, 1:nE, t], coal_path_poly)
-        v_empty = poly_value_at_empty(coal_path_poly)
-        v_full  = poly_value_at_full(coal_path_poly)
-        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- v_full)
-
-        poly_state₁, new_poly_state₁ = new_poly_state₁, poly_state₁
-        poly_state₂, new_poly_state₂ = new_poly_state₂, poly_state₂
-    end
-
-    return decomposition
-end
-
-function shapley_shock_decomposition_pruned_3rd_order!(decomposition::AbstractArray,
-                                                  variables::AbstractMatrix,
-                                                  shocks::AbstractMatrix,
-                                                  initial_state,
-                                                  𝐒,
-                                                  T,
-                                                  nE::Int)
-    nVars = T.nVars
-    past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
-    n_aug = n_past + 1 + nE
-    nT = size(decomposition, 3)
-
-    idx = MonomialIndex(nE, 3)
-
-    poly_state₁     = PolyState(nVars, idx)
-    poly_state₂     = PolyState(nVars, idx)
-    poly_state₃     = PolyState(nVars, idx)
-    new_poly_state₁ = PolyState(nVars, idx)
-    new_poly_state₂ = PolyState(nVars, idx)
-    new_poly_state₃ = PolyState(nVars, idx)
-
-    aug₁_buf       = PolyState(n_aug,     idx)
-    aug₁̂_buf       = PolyState(n_aug,     idx)
-    aug₂_buf       = PolyState(n_aug,     idx)
-    aug₃_buf       = PolyState(n_aug,     idx)
-    kron_aug₁_buf  = PolyState(n_aug^2,   idx)
-    kron_₁̂_₂_buf   = PolyState(n_aug^2,   idx)
-    kron_kron_buf  = PolyState(n_aug^3,   idx)
-    coal_path_poly = PolyState(nVars,     idx)
-
-    poly_constant!(poly_state₁, initial_state[1])
-    poly_constant!(poly_state₂, initial_state[2])
-    poly_constant!(poly_state₃, initial_state[3])
-
-    sck = zeros(nE)
-
-    for t in 1:nT
-        @views sck .= shocks[:, t]
-
-        poly_aug₁!(aug₁_buf, poly_state₁, past_idx, true,  sck)
-        poly_aug₁!(aug₁̂_buf, poly_state₁, past_idx, false, sck)
-        poly_aug₁!(aug₂_buf, poly_state₂, past_idx, false, zero(sck))
-        poly_aug₁!(aug₃_buf, poly_state₃, past_idx, false, zero(sck))
-
-        poly_kron!(kron_aug₁_buf, aug₁_buf, aug₁_buf;  truncate_to = 3)
-        poly_kron!(kron_₁̂_₂_buf,  aug₁̂_buf, aug₂_buf;  truncate_to = 3)
-        poly_kron!(kron_kron_buf, kron_aug₁_buf, aug₁_buf; truncate_to = 3)
-
-        poly_apply!(new_poly_state₁, 𝐒[1], aug₁_buf)
-
-        poly_apply!(new_poly_state₂, 𝐒[1], aug₂_buf)
-        poly_apply!(new_poly_state₂, 𝐒[2], kron_aug₁_buf; α = 0.5, β = 1.0)
-
-        poly_apply!(new_poly_state₃, 𝐒[1], aug₃_buf)
-        poly_apply!(new_poly_state₃, 𝐒[2], kron_₁̂_₂_buf;  α = 1.0,    β = 1.0)
-        poly_apply!(new_poly_state₃, 𝐒[3], kron_kron_buf; α = 1/6,    β = 1.0)
-
-        coal_path_poly.coefs .= new_poly_state₁.coefs .+
-                                new_poly_state₂.coefs .+
-                                new_poly_state₃.coefs
-
-        @views shapley_from_poly!(decomposition[:, 1:nE, t], coal_path_poly)
-        v_empty = poly_value_at_empty(coal_path_poly)
-        v_full  = poly_value_at_full(coal_path_poly)
-        @views decomposition[:, nE + 1, t] .= v_empty .+ (variables[:, t] .- v_full)
-
-        poly_state₁, new_poly_state₁ = new_poly_state₁, poly_state₁
-        poly_state₂, new_poly_state₂ = new_poly_state₂, poly_state₂
-        poly_state₃, new_poly_state₃ = new_poly_state₃, poly_state₃
-    end
-
-    return decomposition
-end
-
-
-# ---------------------------------------------------------------------
-# Aumann–Shapley shock decomposition (alternative driver)
-# ---------------------------------------------------------------------
-#
-# Provided for benchmarking against the polynomial-coefficient propagation
-# above. Mathematically computes the same Shapley value via the
-# path-integral identity
+# Computes per-period Shapley shares for the inversion-filter shock
+# decomposition under pruned 2nd / 3rd order solutions via the path-
+# integral identity
 #     φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s·𝟙)/∂xᵢ ds
 #                ≈ Σ_k w_k · ∂Ṽ_t(s_k·𝟙)/∂xᵢ      (Gauss–Legendre)
-# where Ṽ_t is the multilinear extension of `S → ŝ_t(S)[v]`. Because
+# where Ṽ_t is the polynomial extension of `S → ŝ_t(S)[v]`. Because
 # Ṽ_t(s·𝟙) is a univariate polynomial in `s` of degree ≤ k, ⌈k/2⌉
-# Gauss–Legendre nodes integrate the directional derivative exactly.
+# Gauss–Legendre nodes integrate the directional derivative exactly
+# at 2nd order; at 3rd order the driver introduces a small split-only
+# perturbation (≈1e-8 on tested medium-nE models) relative to the
+# multilinear-extension Shapley value, while preserving Shapley
+# efficiency exactly.
 #
 # Per period the driver maintains, for every Gauss–Legendre node s_k:
 #   - one primal pruned-state trajectory under shocks scaled by s_k;
@@ -173,25 +24,12 @@ end
 # Each tangent recursion mirrors the primal recursion with derivatives
 # threaded by the chain rule; the shock contribution to the tangent's
 # augmented vector picks up `εᵢ_t · eᵢ` because ∂(xᵢ·εᵢ_t)/∂xᵢ = εᵢ_t.
-
-function _ax₁_2nd!(out_v::AbstractVector, A::AbstractMatrix,
-                   v_past::AbstractVector, eps_dir::AbstractVector, n_past::Int)
-    # out_v = A * [v_past; 0; eps_dir]
-    n_aug = n_past + 1 + length(eps_dir)
-    @inbounds for i in 1:size(A, 1)
-        s = 0.0
-        for k in 1:n_past
-            s += A[i, k] * v_past[k]
-        end
-        # A[i, n_past+1] * 0 = 0
-        base = n_past + 1
-        for k in eachindex(eps_dir)
-            s += A[i, base + k] * eps_dir[k]
-        end
-        out_v[i] = s
-    end
-    return out_v
-end
+# A separate s = 0 primal trajectory is propagated to obtain V(∅).
+#
+# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Shapley
+# attributions and `decomposition[:, nᵉ+1, :]` with the residual
+# `V(∅) + (variables − V(N))`, matching the layout the public API
+# expects when `marginal_contribution = true`.
 
 function _aug_state(past::AbstractVector, past_idx, include_const::Bool, sck::AbstractVector)
     n_past = length(past_idx)
@@ -2530,23 +2368,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        if SHOCK_DECOMP_MC_METHOD[] === :aumann_shapley
-            aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
-                                                          variables,
-                                                          shocks,
-                                                          initial_state,
-                                                          𝐒,
-                                                          T,
-                                                          nE)
-        else
-            shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+        aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
                                                       variables,
                                                       shocks,
                                                       initial_state,
                                                       𝐒,
                                                       T,
                                                       nE)
-        end
         return variables, shocks, zeros(0,0), decomposition
     end
 
@@ -3263,23 +3091,13 @@ function filter_data_with_model(𝓂::ℳ,
 
     if marginal_contribution
         nE = 𝓂.constants.post_model_macro.nExo
-        if SHOCK_DECOMP_MC_METHOD[] === :aumann_shapley
-            aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
-                                                          variables,
-                                                          shocks,
-                                                          initial_state,
-                                                          𝐒,
-                                                          T,
-                                                          nE)
-        else
-            shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+        aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
                                                       variables,
                                                       shocks,
                                                       initial_state,
                                                       𝐒,
                                                       T,
                                                       nE)
-        end
         return variables, shocks, zeros(0,0), decomposition
     end
 

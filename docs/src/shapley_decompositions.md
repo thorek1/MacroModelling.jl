@@ -5,9 +5,8 @@ implemented in MacroModelling.jl for pruned higher-order solutions:
 
 - **`get_variance_decomposition(..., marginal_contribution = true)`** — Aumann–Shapley
   path-integral driver in `src/aumann_shapley.jl` and `src/moments.jl`.
-- **`get_shock_decomposition(..., marginal_contribution = true)`** — direct
-  polynomial-coefficient state propagation in `src/polynomial_coalition.jl` and
-  `src/filter/inversion.jl`.
+- **`get_shock_decomposition(..., marginal_contribution = true)`** — Aumann–Shapley
+  forward-tangent driver in `src/filter/inversion.jl`.
 
 Both produce the (same) Shapley value but exploit different structural facts.
 
@@ -190,9 +189,9 @@ axiomatic sense.
 
 ---
 
-## 4. Shock decomposition: direct polynomial-coefficient propagation
+## 4. Shock decomposition: Aumann–Shapley forward tangents
 
-### Why the polynomial coefficients are visible here
+### Why AS is also the right tool here
 
 Per period `t`, given a fixed historical shock sequence `{ε₁, …, ε_T}`, the
 pruned-state recursion is deterministic:
@@ -200,94 +199,77 @@ pruned-state recursion is deterministic:
 ŝ_{t+1} = 𝐒₁ · ŝ_t  +  𝐒₂ · (ŝ_t ⊗ ŝ_t) / 2  +  𝐒₃ · (ŝ_t ⊗ ŝ_t ⊗ ŝ_t) / 6  +  …
 ```
 A coalition `S` corresponds to keeping each `εⱼ` if `j ∈ S` and zeroing it
-otherwise. So `V_t(S)` equals `ŝ_t(S)` evaluated under coalition `S`.
+otherwise. So `V_t(S)` equals `ŝ_t(S)` evaluated under coalition `S`, and is
+a polynomial of degree `≤ k` in `1_S`.
 
-The polynomial-in-`1_S` structure comes directly from the recursion:
+We could either (a) propagate every Möbius coefficient `c_T` directly through
+the recursion via wide Kronecker bundles, or (b) compute the AS path integral
+along the diagonal `x = s · 𝟙` using forward-mode tangents through the
+ordinary pruned recursion. The Kronecker-bundle approach is BLAS-friendly but
+its bundle width grows as `Σ_{j ≤ k} C(nᵉ, j)` — at SW07 (`nᵉ = 7, k = 3`)
+that is 120 columns. The forward-tangent AS approach instead carries
+`n_nodes · nᵉ` plain vector recursions per period — at SW07 that is 21
+vectors. For models beyond very small `nᵉ` the AS path is faster.
 
-- `𝐒₁ · ŝ_t` is linear — the `εⱼ`-component carries indicator `1_{j∈S}` (degree 1).
-- `𝐒₂ · (ŝ_t ⊗ ŝ_t)` is quadratic — a term involving `εⱼ εₖ` carries
-  `1_{j∈S} · 1_{k∈S}` (degree 2).
-- `𝐒₃ · (ŝ_t ⊗ ŝ_t ⊗ ŝ_t)` adds degree 3.
+### The trick: scaled-shock primal + per-direction tangents
 
-After pruning at order `k`, the highest-degree monomial in `1_S` that can
-appear in `ŝ_t` is `k`. **The Kronecker structure of the recursion is the
-polynomial structure**: the coefficients `c_T` are not hidden behind a solve,
-they are literally being computed as part of the time recursion.
+The same identity from §3 applies:
+```
+φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s · 𝟙)/∂xᵢ ds  ≈  Σ_k w_k · ∂Ṽ_t(s_k · 𝟙)/∂xᵢ
+```
+For each Gauss–Legendre node `s_k` we run two recursions:
 
-### The trick: stop tracking states, track polynomials of states
+1. A **primal** trajectory under shocks scaled by `s_k`: `ŝ_t(s_k)` evolves
+   with effective shock vector `s_k · ε_t`.
+2. For each shock direction `i = 1, …, nᵉ`, a **tangent** trajectory
+   `v_t = ∂ŝ_t / ∂xᵢ` evaluated at `x = s_k · 𝟙`. The tangent recursion is
+   the chain-rule lift of the primal:
+```
+ȧ₁_t = [v_t[past_idx]; 0; εᵢ_t · eᵢ]
+v_{t+1} = 𝐒₁ · ȧ₁_t  +  𝐒₂ · (ȧ₁_t ⊗ a₁_t  +  a₁_t ⊗ ȧ₁_t) / 2  +  …
+```
+(the only non-trivial step is recognising that `∂(xᵢ · εᵢ_t)/∂xᵢ = εᵢ_t`,
+so the tangent's shock slot is `εᵢ_t · eᵢ`, *not* `s_k · εᵢ_t · eᵢ`).
 
-Instead of running the recursion `2ⁿᵉ` times (one per coalition), or even once
-per Möbius monomial, carry **one polynomial-valued state vector** through time.
-Each "state" `ŝ_t` becomes a polynomial in `1_S` whose coefficients are
-state-shaped vectors.
+A separate `s = 0` primal trajectory provides `V_t(∅)` for the residual
+column.
 
-The data structure is `PolyState`:
+### Per-period Shapley accumulation
 
-- `coefs::Matrix` — one column per Möbius monomial `T`, each column a
-  state-sized vector.
-- A shared `MonomialIndex(nᵉ, k)` that enumerates the at most
-  `Σ_{j ≤ k} C(nᵉ, j)` monomials of size `≤ k`. SW07 at `k = 3`: 64 monomials.
-
-Two operations:
-
-1. **`poly_apply!(out, S, p)`** — apply a constant matrix to a polynomial.
-   By linearity,
-   `(S · p)(x) = Σ_T (S · p.coefs[:, T]) · ∏_{i∈T} xᵢ`
-   so this is `out.coefs += S * p.coefs`: one BLAS `gemm` of size
-   `(state-dim × #monomials)`.
-
-2. **`poly_kron!(out, p, q; truncate_to = k)`** — Kronecker product of two
-   polynomials.
-   `(p ⊗ q)(x) = Σ_T Σ_{T'} (p.coefs[:, T] ⊗ q.coefs[:, T']) · ∏_{i ∈ T ∪ T'} xᵢ`
-   The trick: any product term whose combined monomial has degree `> k` cannot
-   contribute to `V` at any binary `1_S` (`V` is degree `≤ k` by pruning), so
-   it is dropped. This caps the per-step work at `O(#monomials²)`.
-
-### What the per-period algorithm looks like (second order)
-
-```julia
-poly_kron!(kron_aug₁, aug₁, aug₁; truncate_to = 2)         # (ε⊗ε) polynomial
-poly_apply!(new₁, 𝐒[1], aug₁)                              # linear part propagates
-poly_apply!(new₂, 𝐒[1], aug₂)                              # 2nd-order linear-in-state piece
-poly_apply!(new₂, 𝐒[2], kron_aug₁; α = 0.5, β = 1.0)       # quadratic piece
-shapley_from_poly!(decomposition[:, 1:nE, t], path_poly)   # equal-share aggregation
+```
+φᵢ(v, t) ≈ Σ_k w_k · v_{k,i,t}[v]   (plus higher-order tangents at k = 3)
 ```
 
-Each line is one matrix-multiply of `(state-dim × #monomials)`. Compared to:
+Two Gauss–Legendre nodes suffice at second order (the integrand is degree
+`≤ 1` in `s`); three nodes at third order (degree `≤ 2`).
 
-- Naive coalition enumeration: `2ⁿᵉ` independent state-recursion runs per
-  period.
-- Möbius-coefficient enumeration via separate runs: `#monomials` separate
-  recursion runs per period.
+### Cost picture
 
-…polynomial propagation does the same work as one recursion *per matrix-
-multiply size*, just on a wider matrix. There are zero solves anywhere, and
-you get every Möbius coefficient *exactly* — no quadrature, no Lyapunov
-tolerance, just BLAS.
+| Per period           | Polynomial bundle (alternative) | Forward-tangent AS (this driver) |
+|----------------------|---------------------------------|----------------------------------|
+| Primal work          | One gemm of width `C(nᵉ+k, k)`  | `n_nodes` plain recursions       |
+| Tangent work         | folded into the bundle          | `n_nodes · nᵉ` plain recursions  |
+| Memory               | `state × C(nᵉ+k, k)` bundle     | `state × n_nodes · (nᵉ + 1)`     |
 
-### Picturing it
+For SW07 (`nᵉ = 7, k = 3`) the forward-tangent driver runs ~2.6× faster than
+the polynomial bundle.
 
-A standard shock decomposition carries a state vector through time, doing
-matrix-multiplies and (for higher orders) Kroneckered products at each step.
-The polynomial-coefficient version carries a **bundle of state vectors** —
-one per monomial — through time, doing the same matrix-multiplies on the
-bundle, with the Kronecker step combining bundles-of-bundles while throwing
-away the high-degree pieces that pruning guarantees cannot matter.
+### Exactness caveat at third order
 
-At the end of period `t`, look at the bundle. The column for monomial
-`T = {1, 3}` is the part of the state that exists *only* because shocks 1
-and 3 cooperated (it contains, say, products `ε₁ · ε₃` from `𝐒₂`, or higher
-products that involve both). Multiply out by `ŝ_to_y` to obtain the same
-column for the observable.
+At second order, AS via the scaled-shock primal produces the *exact* Shapley
+value (matches the multilinear-extension answer to machine precision; verified
+to `≤ 3·10⁻¹⁵` on RBC_CME and SW07). The reason is a fortuitous integral
+identity: `∫₀¹ 2s ds = 1 = ∫₀¹ 1 ds`, so the diagonal Kronecker term
+`x[i]² · ε[i]²` (from the recursion) and the multilinear-extension term
+`x[i] · ε[i]²` integrate to the same value under `∫ ∂/∂x[i]`.
 
-### Final aggregation: `shapley_from_poly!`
-
-For each variable `v` and each monomial `T` in the bundle:
-```
-φᵢ(v) += coefs[v, T] / |T|     for every i ∈ T
-```
-This is exactly the Owen formula from §2, applied directly to the
-coefficients the recursion just computed.
+At third order this identity breaks for diagonal-times-distinct mixed terms
+like `c · x[i]² · x[j]`: AS via the scaled-shock primal attributes `2c/3` to
+shock `i` and `c/3` to shock `j`, while the multilinear-extension Shapley
+value would attribute `c/2` each. **Shapley efficiency holds exactly for both
+splits** (the totals match), only the per-shock allocation differs by an
+amount controlled by the magnitude of `𝐒₃`'s diagonal entries — empirically
+≈ 10⁻⁸ relative on SW07.
 
 ### How to interpret the output
 
@@ -298,17 +280,15 @@ the Shapley rule.
 
 Concretely, at period `t`:
 
-- **Linear parts** (contributions like `α · εᵢ_τ` for some past τ ≤ t) are
+- **Linear parts** (contributions like `α · εᵢ_τ` for past `τ ≤ t`) are
   fully credited to shock `i`.
-- **Quadratic parts** like `β · εᵢ_τ · εⱼ_σ` are split 50/50 between `i` and
-  `j`.
-- **Cubic parts** with three distinct shocks are split three ways.
-- **Squared-of-same-shock terms** `γ · εᵢ_τ²` go entirely to shock `i` (the
-  monomial `{i}` already contains only one player).
+- **Quadratic cross-shock parts** like `β · εᵢ_τ · εⱼ_σ` are split 50/50 between
+  `i` and `j`.
+- **Cubic three-distinct-shock parts** are split three ways.
+- **Squared-of-same-shock terms** `γ · εᵢ_τ²` go entirely to shock `i`.
 
 Row sums (sum over shocks at fixed `t`) reproduce the model variable's value
-at `t` exactly, matching the per-shock contributions of a linear shock
-decomposition — Shapley efficiency.
+at `t` — Shapley efficiency.
 
 ---
 
@@ -317,24 +297,19 @@ decomposition — Shapley efficiency.
 |  | Variance decomposition | Shock decomposition |
 |---|---|---|
 | What `V(S)` is | Unconditional variance with shocks-outside-`S` = 0 | Per-period state value with shocks-outside-`S` = 0 |
-| Cost of one `V` evaluation | One Lyapunov solve | Effectively one matrix-multiply per period |
-| Are `c_T` directly readable? | No — emerge only after solve | **Yes — they ARE the Kronecker structure** |
-| Therefore Shapley via | **Aumann–Shapley path integral** + Gauss–Legendre quadrature | **Direct polynomial propagation** + equal-share aggregation |
-| Solves needed | `n_nodes · nᵉ` Lyapunov solves with shared `A` | **Zero solves** |
-| Quadrature error | Zero (integrand is polynomial of degree `≤ k − 1`) | N/A |
-| Speedup vs naive enumeration (SW07) | ~5× (k=2), ~6× (k=3) | ~5× (k=2), ~10× (k=3) — and exact |
-
-Both are the right algorithm for their setting. AS pays for indirect access to
-`V` through Lyapunov solves by integrating cleverly; polynomial propagation
-exploits the fact that the Möbius coefficients are *literally being computed*
-by the recursion already, so it only needs to remember them.
+| Cost of one `V` evaluation | One Lyapunov solve | One vector recursion per period |
+| Driver | **Aumann–Shapley path integral** + Lyapunov solves at each Gauss–Legendre node | **Aumann–Shapley path integral** + forward tangents at each Gauss–Legendre node |
+| Solves needed | `n_nodes · nᵉ` Lyapunov solves with shared `A` | Zero solves (just `(n_nodes · (nᵉ + 1)) × T` plain matrix-vector products) |
+| Quadrature error | Zero (integrand is polynomial of degree `≤ k − 1` in the diagonal-path parameter) | Zero at `k = 2`; ≈10⁻⁸ split-only perturbation at `k = 3` from the V-vs-MLE diagonal-kron mismatch |
 
 The unifying mental model:
 
 > *In pruned k-th-order perturbation, `V` is a low-degree polynomial in
-> coalition indicators. Shapley = equal-share splitting of the polynomial's
-> coefficients. The two algorithms are the two clean ways of extracting that
-> splitting given the cost structure of `V` in their domain.*
+> coalition indicators. The Aumann–Shapley path integral collapses the
+> 2ⁿᵉ-coalition definition of Shapley to a handful of derivative
+> evaluations along the diagonal. Variance decomposition uses the integral
+> via Lyapunov-solve characteristic functions; shock decomposition uses it
+> via forward-mode tangent recursions through the pruned state.*
 
 ---
 
