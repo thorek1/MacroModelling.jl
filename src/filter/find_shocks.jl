@@ -12,7 +12,6 @@
 # conditional forecast constraints (only some variables match target values)
 # Uses analytical derivatives from perturbation solution matrices (like find_shocks)
 
-@stable default_mode = "disable" begin
 function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
                                          all_shocks::Vector{Float64},
@@ -1199,7 +1198,6 @@ function find_shocks(::Val{:LagrangeNewton},
 end
 
 
-end # dispatch_doctor
 
 
 

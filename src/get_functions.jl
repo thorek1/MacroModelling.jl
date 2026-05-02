@@ -1,3 +1,4 @@
+
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
@@ -76,8 +77,8 @@ And data, 4×2×40 Array{Float64, 3}:
   (:z)  -0.00366442   8.67362e-19
 ```
 """
-function get_shock_decomposition(𝓂::ℳ,
-                                data::KeyedArray;
+@unstable function get_shock_decomposition(𝓂::ℳ,
+                                data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -124,9 +125,9 @@ function get_shock_decomposition(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
-        data_in_deviations = missing_data_to_nan(data)
+        data_in_deviations = data
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -213,8 +214,8 @@ And data, 1×40 Matrix{Float64}:
   (:eps_z₍ₓ₎)    0.0603617    0.614652   -0.519048    0.711454       -0.873774     1.27918    -0.929701    -0.2255
 ```
 """
-function get_estimated_shocks(𝓂::ℳ,
-                            data::KeyedArray;
+@unstable function get_estimated_shocks(𝓂::ℳ,
+                            data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -261,9 +262,9 @@ function get_estimated_shocks(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
-        data_in_deviations = missing_data_to_nan(data)
+        data_in_deviations = data
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -344,8 +345,8 @@ And data, 4×40 Matrix{Float64}:
   (:z)   -0.00109471   -0.00208056    4.43613e-5   -0.0123318        0.0162992     0.000445065     0.00119089     0.00863586
 ```
 """
-function get_estimated_variables(𝓂::ℳ,
-                                data::KeyedArray;
+@unstable function get_estimated_variables(𝓂::ℳ,
+                                data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -393,9 +394,9 @@ function get_estimated_variables(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
-        data_in_deviations = missing_data_to_nan(data)
+        data_in_deviations = data
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -479,8 +480,8 @@ And data, 5×40 Matrix{Float64}:
   (:eps_z₍ₓ₎)    0.12649      0.532556     -0.301549      1.0568     …    -0.746981       0.907104       0.808914       0.788261
 ```
 """
-function get_model_estimates(𝓂::ℳ,
-                             data::KeyedArray;
+@unstable function get_model_estimates(𝓂::ℳ,
+                             data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -595,8 +596,8 @@ And data, 4×40 Matrix{Float64}:
   (:z)    0.00961766    0.000723136    5.43714e-5     4.0881e-6          3.08006e-10     3.29272e-10     2.32831e-10
 ```
 """
-function get_estimated_variable_standard_deviations(𝓂::ℳ,
-                                                    data::KeyedArray;
+@unstable function get_estimated_variable_standard_deviations(𝓂::ℳ,
+                                                    data::KeyedArray{Float64};
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
@@ -636,9 +637,9 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
-        data_in_deviations = missing_data_to_nan(data) .- NSSS[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
-        data_in_deviations = missing_data_to_nan(data)
+        data_in_deviations = data
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
@@ -756,7 +757,7 @@ And data, 9×42 Matrix{Float64}:
 # shocks[1,1] = .05
 ```
 """
-function get_conditional_forecast(𝓂::ℳ,
+@unstable function get_conditional_forecast(𝓂::ℳ,
                                 conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                 shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
                                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
@@ -1258,7 +1259,7 @@ function irf_forward_simulate!(::Val{:third_order},
 end
 
 
-function get_irf(𝓂::ℳ,
+@unstable function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
@@ -1411,7 +1412,7 @@ And data, 4×40×1 Array{Float64, 3}:
   (:z)    0.01          0.002             2.74878e-29     5.49756e-30
 ```
 """
-function get_irf(𝓂::ℳ; 
+@unstable function get_irf(𝓂::ℳ; 
                 periods::Int = DEFAULT_PERIODS, 
                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
@@ -1541,7 +1542,7 @@ end
 """
 See [`get_irf`](@ref)
 """
-get_irfs = get_irf
+@unstable get_irfs = get_irf
 
 """
 See [`get_irf`](@ref)
@@ -1571,17 +1572,17 @@ simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, l
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulation(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
+@unstable get_simulation(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulations(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
+@unstable get_simulations(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `generalised_irf = true`.
 """
-get_girf(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., generalised_irf = true)
+@unstable get_girf(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., generalised_irf = true)
 
 
 
@@ -1645,7 +1646,7 @@ And data, 4×6 Matrix{Float64}:
   (:z)   0.0              0.0       0.0      0.0       0.0        0.0
 ```
 """
-function get_steady_state(𝓂::ℳ; 
+@unstable function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
@@ -1829,13 +1830,13 @@ end
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = false`.
 """
-get_non_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = false)
+@unstable get_non_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = false)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+@unstable get_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
 
 """
@@ -1875,7 +1876,7 @@ get_SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 """
 See [`get_steady_state`](@ref)
 """
-get_ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
+@unstable get_ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
@@ -1937,7 +1938,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
   (:eps_z₍ₓ₎)       0.00674687   0.0620937   0.0688406   0.01
 ```
 """
-function get_solution(𝓂::ℳ; 
+@unstable function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
                         steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -2056,22 +2057,22 @@ end
 """
 Wrapper for [`get_solution`](@ref) with `algorithm = :first_order`.
 """
-get_first_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :first_order)
+@unstable get_first_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :first_order)
 
 """
 Wrapper for [`get_solution`](@ref) with `algorithm = :second_order`.
 """
-get_second_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :second_order)
+@unstable get_second_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :second_order)
 
 """
 Wrapper for [`get_solution`](@ref) with `algorithm = :third_order`.
 """
-get_third_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :third_order)
+@unstable get_third_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :third_order)
 
 """
 See [`get_solution`](@ref)
 """
-get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
+@unstable get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 
 
 
@@ -2123,7 +2124,7 @@ get_solution(RBC, RBC.parameter_values)
   0.0 0.19999999999999998 0.01], true)
 ```
 """
-function get_solution(𝓂::ℳ, 
+@unstable function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -2327,7 +2328,7 @@ And data, 7×2×21 Array{Float64, 3}:
   (:z_delta)   1.0           0.0
 ```
 """
-function get_conditional_variance_decomposition(𝓂::ℳ; 
+@unstable function get_conditional_variance_decomposition(𝓂::ℳ; 
                                                 periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = DEFAULT_CONDITIONAL_VARIANCE_PERIODS,
                                                 parameters::ParameterType = nothing,
                                                 steady_state_function::SteadyStateFunctionType = missing,  
@@ -2423,13 +2424,13 @@ end
 """
 See [`get_conditional_variance_decomposition`](@ref)
 """
-get_fevd = get_conditional_variance_decomposition
+@unstable get_fevd = get_conditional_variance_decomposition
 
 
 """
 See [`get_conditional_variance_decomposition`](@ref)
 """
-get_forecast_error_variance_decomposition = get_conditional_variance_decomposition
+@unstable get_forecast_error_variance_decomposition = get_conditional_variance_decomposition
 
 
 """
@@ -2501,7 +2502,7 @@ And data, 7×2 Matrix{Float64}:
   (:z_delta)   1.0           0.0
 ```
 """
-function get_variance_decomposition(𝓂::ℳ; 
+@unstable function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
                                     steady_state_function::SteadyStateFunctionType = missing,
                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -2639,7 +2640,7 @@ end
 """
 See [`get_variance_decomposition`](@ref)
 """
-get_var_decomp = get_variance_decomposition
+@unstable get_var_decomp = get_variance_decomposition
 
 
 
@@ -2697,7 +2698,7 @@ And data, 4×4 Matrix{Float64}:
   (:z)   0.314562   0.296104   0.965726   1.0
 ```
 """
-function get_correlation(𝓂::ℳ; 
+@unstable function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
                         steady_state_function::SteadyStateFunctionType = missing,  
                         algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -2759,7 +2760,7 @@ end
 """
 See [`get_correlation`](@ref)
 """
-get_corr = get_correlation
+@unstable get_corr = get_correlation
 
 
 """
@@ -2824,7 +2825,7 @@ And data, 4×5 Matrix{Float64}:
   (:z)    0.2         0.04        0.008       0.0016      0.00032
 ```
 """
-function get_autocorrelation(𝓂::ℳ; 
+@unstable function get_autocorrelation(𝓂::ℳ; 
                             autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,  
@@ -2904,7 +2905,7 @@ end
 """
 See [`get_autocorrelation`](@ref)
 """
-get_autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
+@unstable get_autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 """
@@ -2993,7 +2994,7 @@ And data, 4×6 Matrix{Float64}:
   (:z)   0.0102062              1.02062      0.0        0.0        0.0
 ```
 """
-function get_moments(𝓂::ℳ; 
+@unstable function get_moments(𝓂::ℳ; 
                     parameters::ParameterType = nothing,
                     steady_state_function::SteadyStateFunctionType = missing,  
                     non_stochastic_steady_state::Bool = DEFAULT_NON_STOCHASTIC_STEADY_STATE_FLAG, 
@@ -3464,13 +3465,13 @@ end
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[:variance]
+@unstable get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[:variance]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-get_var = get_variance
+@unstable get_var = get_variance
 
 
 """
@@ -3482,18 +3483,18 @@ var = get_variance
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[:standard_deviation]
+@unstable get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[:standard_deviation]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_std =  get_standard_deviation
+@unstable get_std =  get_standard_deviation
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_stdev =  get_standard_deviation
+@unstable get_stdev =  get_standard_deviation
 
 
 """
@@ -3510,13 +3511,13 @@ std =  get_standard_deviation
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, derivatives = false`.
 """
-get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true, derivatives = false)[:covariance]
+@unstable get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true, derivatives = false)[:covariance]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-get_cov = get_covariance
+@unstable get_cov = get_covariance
 
 
 """
@@ -3528,7 +3529,7 @@ cov = get_covariance
 """
 Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
-get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[:mean]
+@unstable get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[:mean]
 
 
 # """
@@ -3609,7 +3610,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :correlation => [1.0 0.999812; 0.999812 1.0]
 ```
 """
-function get_statistics(𝓂::ℳ,
+@unstable function get_statistics(𝓂::ℳ,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
@@ -3823,9 +3824,7 @@ function get_statistics(𝓂::ℳ,
     end
     if !(correlation == Symbol[])
         if solved
-            diag_C = ℒ.diag(covar_dcmp)
-            s_corr = T[d > 0 ? sqrt(d) : convert(T, NaN) for d in diag_C]
-            corr_full_mat = covar_dcmp ./ (s_corr * s_corr')
+            corr_full_mat, _, _, _ = covariance_to_correlation(covar_dcmp)
 
             if !isnothing(corr_groups)
                 # Block-grouped correlation: cross-group entries left as zero
@@ -3916,8 +3915,8 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 58.24780188977981
 ```
 """
-function get_loglikelihood(𝓂::ℳ, 
-                            data::KeyedArray, 
+@unstable function get_loglikelihood(𝓂::ℳ, 
+                            data::KeyedArray{T}, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -3933,7 +3932,7 @@ function get_loglikelihood(𝓂::ℳ,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {S <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64, Union{Missing, Float64}}, S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -3998,8 +3997,13 @@ function get_loglikelihood(𝓂::ℳ,
 
     dt = collect(data(observables))
 
+    # Convert missing → NaN for downstream filter code
+    if eltype(dt) >: Missing
+        dt = coalesce.(dt, NaN)
+    end
+
     # prepare data
-    data_in_deviations = missing_data_to_nan(dt) .- SS_and_pars[obs_indices]
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 
@@ -4042,7 +4046,7 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4065,7 +4069,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4088,7 +4092,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4111,7 +4115,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4133,7 +4137,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
+@unstable function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
@@ -4234,7 +4238,7 @@ And data, 5-element Vector{Float64}:
  (:CalibrationEquation₁)  8.160392850342646e-8
 ```
 """
-function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
+@unstable function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                                                     values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
@@ -4302,7 +4306,7 @@ end
 """
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
-get_residuals = get_non_stochastic_steady_state_residuals
+@unstable get_residuals = get_non_stochastic_steady_state_residuals
 
 """
 See [`get_non_stochastic_steady_state_residuals`](@ref)

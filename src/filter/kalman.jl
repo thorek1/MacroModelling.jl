@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 # ---------------------------------------------------------------------------
 # Missing-value support helpers
@@ -390,8 +389,8 @@ function run_kalman_iterations_missing(A::Matrix{S},
 end
 
 
-function filter_data_with_model(𝓂::ℳ,
-    data_in_deviations::KeyedArray,
+@unstable function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter,
     warmup_iterations::Int = 0,
@@ -613,4 +612,3 @@ function filter_and_smooth(𝓂::ℳ,
     return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
 end
 
-end # dispatch_doctor

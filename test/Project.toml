@@ -1,0 +1,10 @@
+[deps]
+ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
+AxisKeys = "94b1ba4f-4ee9-5380-92f1-94cde586c3c5"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+MacroModelling = "687ffad2-3618-405e-ac50-e0f7b9c75e44"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"

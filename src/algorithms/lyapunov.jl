@@ -11,7 +11,6 @@
 # :speedmapping - slow and very precise
 
 # solves: A * X * A' + C = X
-@stable default_mode = "disable" begin
 
 # Pack upper triangle of a symmetric matrix into a vech vector (in-place).
 function vech!(vech_vector::AbstractVector, symmetric_matrix::AbstractMatrix)
@@ -59,7 +58,7 @@ function is_approx_symmetric(C::AbstractMatrix;
     return max_abs == 0 ? true : max_asym ≤ rtol * max_abs
 end
 
-function solve_lyapunov_equation(A::AbstractMatrix{T},
+@unstable function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::AbstractMatrix{T},
                                 workspace::lyapunov_workspace;
                                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
@@ -852,4 +851,3 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 end
 
 
-end # dispatch_doctor

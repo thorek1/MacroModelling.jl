@@ -1,4 +1,3 @@
-@stable default_mode = "disable" begin
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
@@ -38,14 +37,18 @@ function calculate_hessian(parameters::Vector{M},
                             hessian_funcs::hessian_functions,
                             workspaces::workspaces;
                             caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
-    # Cache hit: return cached hessian if valid for current parameters
-    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.hessian, parameters) && caches_obj.hessian isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.hessian)
-        return caches_obj.hessian
-    end
-
+    # Always make sure the higher-order workspace matches the eltype expected by
+    # downstream consumers (e.g. rrules that grab buffers from it). A previous
+    # call with a different eltype (e.g. ForwardDiff.Dual) may have replaced the
+    # workspace; the cache short-circuit below would otherwise leave it stale.
     S = promote_type(M, N)
     if eltype(workspaces.second_order.Ŝ) != S
         workspaces.second_order = Higher_order_workspace(T = S)
+    end
+
+    # Cache hit: return cached hessian if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.hessian, parameters) && caches_obj.hessian isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.hessian)
+        return caches_obj.hessian
     end
 
     if eltype(caches_obj.hessian) != M
@@ -76,14 +79,18 @@ function calculate_third_order_derivatives(parameters::Vector{M},
                                             third_order_derivatives_funcs::third_order_derivatives_functions,
                                             workspaces::workspaces;
                                             caching::Bool = true)::SparseMatrixCSC{M, Int} where {M,N}
-    # Cache hit: return cached third order derivatives if valid for current parameters
-    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.third_order_derivatives, parameters) && caches_obj.third_order_derivatives isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.third_order_derivatives)
-        return caches_obj.third_order_derivatives
-    end
-
+    # Always make sure the third-order workspace matches the eltype expected by
+    # downstream consumers (e.g. rrules that grab buffers from it). A previous
+    # call with a different eltype (e.g. ForwardDiff.Dual) may have replaced the
+    # workspace; the cache short-circuit below would otherwise leave it stale.
     S = promote_type(M, N)
     if eltype(workspaces.third_order.Ŝ) != S
         workspaces.third_order = Higher_order_workspace(T = S)
+    end
+
+    # Cache hit: return cached third order derivatives if valid for current parameters
+    if caching && M === Float64 && cache_valid_for_parameters(caches_obj.valid_for.third_order_derivatives, parameters) && caches_obj.third_order_derivatives isa SparseMatrixCSC{M, Int} && !isempty(caches_obj.third_order_derivatives)
+        return caches_obj.third_order_derivatives
     end
 
     if eltype(caches_obj.third_order_derivatives) != M
@@ -107,4 +114,3 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     return third_buffer
 end
 
-end # dispatch_doctor
