@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # ── Occasionally Binding Constraints (OBC) ───────────────────────────────────
 #
@@ -900,3 +902,5 @@ end
     return present_states, present_shocks, solved
 end
 
+
+end # @stable

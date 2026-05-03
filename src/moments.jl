@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 """
     sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
@@ -1840,3 +1842,5 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     return v
 end
 
+
+end # @stable
