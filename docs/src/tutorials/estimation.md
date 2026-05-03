@@ -100,7 +100,7 @@ Next the parameter priors are defined using the Turing package. The `@model` mac
 
 ```@repl tutorial_2
 import Turing
-import Turing: NUTS, sample, logpdf, replacenames
+import Turing: NUTS, sample, logpdf
 import ADTypes: AutoMooncake
 import Mooncake
 
@@ -143,12 +143,10 @@ chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, i
 
 In order to understand the posterior distribution and the sequence of samples they are plotted:
 
-```@repl tutorial_2; setup = :(using HDF5; using MCMCChainsStorage; chain_NUTS = h5open("../assets/chain_NUTS.h5", "r") do f read(f, Chains) end)
+```@repl tutorial_2
 using StatsPlots
 
-chain_NUTS_rn = replacenames(chain_NUTS, Dict(["parameters[$i]" for i in 1:length(FS2000.parameters)] .=> FS2000.parameters))
-
-plot(chain_NUTS_rn);
+plot(chain_NUTS);
 ```
 
 ![NUTS chain](../assets/FS2000_chain_NUTS.png)
@@ -156,12 +154,12 @@ plot(chain_NUTS_rn);
 Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.
 
 ```@repl tutorial_2
-using ComponentArrays, MCMCChains
+using ComponentArrays
 import DynamicPPL: logjoint
 
-parameter_mean = mean(chain_NUTS)
+parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
 
-pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));
+pars = ComponentArray([parameter_mean], Axis(:parameters));
 
 logjoint(FS2000_loglikelihood, pars)
 
@@ -178,8 +176,10 @@ par2 = :gam;
 paridx1 = indexin([par1], FS2000.parameters)[1];
 paridx2 = indexin([par2], FS2000.parameters)[1];
 
-par_range1 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx1]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx1]")]), length = granularity));
-par_range2 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx2]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx2]")]), length = granularity));
+parameter_samples = chain_NUTS[:parameters, stack = true]
+
+par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));
+par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));
 
 p = surface(par_range1, par_range2, 
             (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
@@ -187,13 +187,13 @@ p = surface(par_range1, par_range2,
             colorbar=false,
             color=:inferno);
 
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray([reduce(hcat, get(chain_NUTS, :parameters)[1])[s,:]], Axis(:parameters))) for s in 1:length(chain_NUTS)];
+joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));
 
-scatter3d!(vec(collect(chain_NUTS[Symbol("parameters[$paridx1]")])),
-            vec(collect(chain_NUTS[Symbol("parameters[$paridx2]")])),
+scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
+            vec(collect(parameter_samples[:, :, paridx2])),
             joint_loglikelihood,
             mc = :viridis, 
-            marker_z = collect(1:length(chain_NUTS)), 
+            marker_z = collect(1:length(joint_loglikelihood)), 
             msw = 0,
             legend = false, 
             colorbar = false, 

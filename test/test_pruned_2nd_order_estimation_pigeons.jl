@@ -2,7 +2,7 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-using Random, DelimitedFiles, MCMCChains, AxisKeys
+using Random, DelimitedFiles, AxisKeys
 import DynamicPPL
 
 include("test_helpers.jl")
@@ -102,7 +102,7 @@ pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
             seed = PIGEONS_SEED,
             multithreaded = false)
 
-samps = MCMCChains.Chains(pt)
+samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
 
 
-println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
+println("Mean variable values (pruned second order): $(parameter_means(samps))")

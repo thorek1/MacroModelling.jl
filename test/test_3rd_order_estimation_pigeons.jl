@@ -2,8 +2,10 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-using Random, DelimitedFiles, MCMCChains, AxisKeys
+using Random, DelimitedFiles, AxisKeys
 import DynamicPPL
+
+include("test_helpers.jl")
 
 # estimate highly nonlinear model
 
@@ -114,7 +116,7 @@ pt = @time Pigeons.pigeons(target = Caldara_lp,
             seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
-samps = MCMCChains.Chains(pt)
+samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
 
 
-println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
+println("Mean variable values (Pigeons): $(parameter_means(samps))")
