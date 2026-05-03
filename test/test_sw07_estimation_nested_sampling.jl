@@ -3,6 +3,9 @@ using MacroModelling
 import Turing
 using PythonCall
 using DelimitedFiles, AxisKeys
+using FlexiChains
+using FlexiChains: Parameter, FlexiChain
+using DataStructures: OrderedDict
 
 include("test_helpers.jl")
 
@@ -208,7 +211,13 @@ function summarize_posterior_matrix(label::String, posterior_matrix::Matrix{Floa
         println("  $name: $(sum(col) / length(col))")
     end
 
-    posterior_chain = flexichain_from_matrix(posterior_matrix, param_names)
+    n_iters, _ = size(posterior_matrix)
+    symbol_names = Symbol.(collect(param_names))
+    chain_data = OrderedDict{FlexiChains.ParameterOrExtra{Symbol}, Matrix{eltype(posterior_matrix)}}()
+    for (column, name) in pairs(symbol_names)
+        chain_data[Parameter(name)] = reshape(collect(@view posterior_matrix[:, column]), n_iters, 1)
+    end
+    posterior_chain = FlexiChain{Symbol}(n_iters, 1, chain_data)
     posterior_summary = FlexiChains.summarystats(posterior_chain)
     println("$label FlexiChains summary:")
     show(stdout, MIME"text/plain"(), posterior_summary)

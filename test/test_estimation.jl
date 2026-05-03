@@ -12,6 +12,7 @@ import LinearAlgebra as ℒ
 using Random, DelimitedFiles, AxisKeys
 import StatsPlots
 
+using FlexiChains
 include("test_helpers.jl")
 
 include("../models/FS2000.jl")
@@ -62,21 +63,21 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
-println("Mean variable values (Mooncake): $(parameter_means(samps))")
+println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = FS2000_custom_steady_state_function!)
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
-println("Mean variable values (Mooncake + custom steady state): $(parameter_means(samps))")
+println("Mean variable values (Mooncake + custom steady state): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = nothing)
 
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
-println("Mean variable values (ForwardDiff): $(parameter_means(samps))")
+println("Mean variable values (ForwardDiff): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
-sample_nuts = parameter_means(samps)
+sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
 
 
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
