@@ -3064,7 +3064,21 @@ And data, 4×6 Matrix{Float64}:
 
     NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    @assert solution_error < tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
+    if solution_error >= tol.nsss.acceptance_tol
+        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $(tol.nsss.acceptance_tol)" maxlog = DEFAULT_MAXLOG
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        inf_val = Inf * sum(abs2, 𝓂.parameter_values)
+        var_idx_fail = parse_variables_input_to_index(variables, 𝓂) |> sort
+        axis1_fail = 𝓂.constants.post_model_macro.var[var_idx_fail]
+        inf_arr = KeyedArray(fill(inf_val, length(var_idx_fail)); Variables = axis1_fail)
+        ret = Dict{Symbol,KeyedArray}()
+        if non_stochastic_steady_state; ret[:non_stochastic_steady_state] = inf_arr; end
+        if mean; ret[:mean] = inf_arr; end
+        if standard_deviation; ret[:standard_deviation] = inf_arr; end
+        if variance; ret[:variance] = inf_arr; end
+        if covariance; ret[:covariance] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, Variables2 = axis1_fail); end
+        return ret
+    end
 
     if length_par * length(NSSS) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -3263,7 +3277,10 @@ And data, 4×6 Matrix{Float64}:
             (mean_result, mean_pb) = rrule(calculate_mean, 𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
             state_μ = mean_result[1]
             
-            @assert mean_result[2] "Mean not found."
+            if !mean_result[2]
+                @warn "Mean not found." maxlog = DEFAULT_MAXLOG
+                state_μ = fill(NaN, length(state_μ))
+            end
 
             n_mean = length(state_μ)
             np_mean = length(𝓂.parameter_values)
@@ -3760,14 +3777,14 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 
     SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
-    if !(variance == Symbol[])
+    if solved && !(variance == Symbol[])
         varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
         if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
     end
 
-    if !(autocorrelation == Symbol[])
+    if solved && !(autocorrelation == Symbol[])
         if algorithm == :pruned_second_order
             ŝ_to_ŝ₂ⁱ = zero(ŝ_to_ŝ₂)
             ŝ_to_ŝ₂ⁱ += ℒ.diagm(ones(size(ŝ_to_ŝ₂,1)))
@@ -3789,7 +3806,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
         end
     end
 
-    if !(standard_deviation == Symbol[])
+    if solved && !(standard_deviation == Symbol[])
         st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
     end
         
