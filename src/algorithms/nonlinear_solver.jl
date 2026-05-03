@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 function levenberg_marquardt(
     fnj::function_and_jacobian,
@@ -684,3 +686,5 @@ end
 #     return x
 # end
 
+
+end # @stable

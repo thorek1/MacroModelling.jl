@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # Old way (≤v0.1.42): Q = qr(A)  — allocates a new QR factorisation object each call
 @unstable function factorize_qr!(qr_mat::AbstractMatrix,
@@ -224,3 +226,5 @@ function detect_unit_roots(α::AbstractVector, β::AbstractVector, tol::Float64)
     return false
 end
 
+
+end # @stable

@@ -161,51 +161,37 @@ include("default_options.jl")
 include("common_docstrings.jl")
 include("structures.jl")
 include("./steady_state/solver_parameters.jl")
-# DispatchDoctor wraps these numerical includes (functions defined inside use
-# @unstable selectively where polymorphism is intentional). Files left outside
-# the wrap (parser/*, nsss_solver.jl, dynare.jl, rrules.jl) do heavy macro/
-# SymPy/file-IO work whose returns cannot be made concrete.
-@stable default_mode = "disable" begin
-    include("options_and_caches.jl")
-end # dispatch_doctor
+include("options_and_caches.jl")
 include("./steady_state/nsss_solver.jl")
-@stable default_mode = "disable" begin
-    include("occasionally_binding_constraints.jl")
-end # dispatch_doctor
+include("occasionally_binding_constraints.jl")
 include("./parser/macros.jl")
 include("./parser/equation_processing.jl")
 include("./parser/model_setup.jl")
 include("./parser/equation_modification.jl")
-@stable default_mode = "disable" begin
-    include("get_functions.jl")
-end # dispatch_doctor
+include("get_functions.jl")
 include("dynare.jl")
-@stable default_mode = "disable" begin
-    include("inspect.jl")
-    include("moments.jl")
-    include("./algorithms/fast_lapack_wrappers.jl")
-    include("./perturbation/derivatives.jl")
-    include("./perturbation/solution.jl")
-    include("./steady_state/stochastic_steady_state.jl")
-    include("impulse_response_function.jl")
-end # dispatch_doctor
+include("inspect.jl")
+include("moments.jl")
+include("./algorithms/fast_lapack_wrappers.jl")
+include("./perturbation/derivatives.jl")
+include("./perturbation/solution.jl")
+include("./steady_state/stochastic_steady_state.jl")
+include("impulse_response_function.jl")
 
 # Sentinel for MatrixEquations extension (bartels_stewart algorithm).
 # Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
 const BARTELS_STEWART_AVAILABLE = Ref(false)
 has_bartels_stewart() = BARTELS_STEWART_AVAILABLE[]
 
-@stable default_mode = "disable" begin
-    include("./algorithms/preconditioner.jl")
-    include("./algorithms/sylvester.jl")
-    include("./algorithms/lyapunov.jl")
-    include("./algorithms/nonlinear_solver.jl")
-    include("./algorithms/quadratic_matrix_equation.jl")
+include("./algorithms/preconditioner.jl")
+include("./algorithms/sylvester.jl")
+include("./algorithms/lyapunov.jl")
+include("./algorithms/nonlinear_solver.jl")
+include("./algorithms/quadratic_matrix_equation.jl")
 
-    include("./filter/find_shocks.jl")
-    include("./filter/inversion.jl")
-    include("./filter/kalman.jl")
-end # dispatch_doctor
+include("./filter/find_shocks.jl")
+include("./filter/inversion.jl")
+include("./filter/kalman.jl")
 
 
 export @model, @parameters, solve!
@@ -513,7 +499,7 @@ end
         shock_idx = 1
     elseif shocks isa Expr
         error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
-    elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
+    else
         shock_history = zeros(𝓂.constants.post_model_macro.nExo, periods)
 
         periods_extended = periods

@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # ── Occasionally Binding Constraints (OBC) ───────────────────────────────────
 #
@@ -856,7 +858,7 @@ end
 
 # ── OBC state update (per-period NLopt solver) ───────────────────────────────
 
-function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function, 𝓂, algorithm) where R <: Float64
+@unstable function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function, 𝓂, algorithm) where R <: Float64
     unconditional_forecast_horizon = 𝓂.constants.post_model_macro.max_obc_horizon
 
     reference_ss = 𝓂.caches.non_stochastic_steady_state
@@ -900,3 +902,5 @@ function obc_state_update(present_states, present_shocks::Vector{R}, state_updat
     return present_states, present_shocks, solved
 end
 
+
+end # @stable

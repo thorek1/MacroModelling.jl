@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # ---------------------------------------------------------------------------
 # Missing-value support helpers (inversion filter)
@@ -3826,3 +3828,5 @@ function calculate_loglikelihood_inversion_missing_third_order(
 
     return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 end
+
+end # @stable

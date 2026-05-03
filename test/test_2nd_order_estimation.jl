@@ -9,7 +9,10 @@ import FiniteDifferences
 import Turing: NUTS, sample
 import Optim, LineSearches
 import LinearAlgebra as ℒ
-using Random, DelimitedFiles, MCMCChains, AxisKeys
+using Random, DelimitedFiles, AxisKeys
+
+using FlexiChains
+include("test_helpers.jl")
 
 include("../models/FS2000.jl")
 
@@ -57,9 +60,9 @@ n_samples = 1000
 samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
-println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
-sample_nuts = mean(samps).nt.mean
+sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
 
 @testset "Mooncake vs FiniteDifferences gradient (2nd order)" begin
     back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x, algorithm = :second_order), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
@@ -126,10 +129,10 @@ end
 #             n_rounds = 6,
 #             multithreaded = false)
 
-# samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+# samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
 
 
-# println(mean(samps).nt.mean)
+# println(collect(values(FlexiChains.mean(samps); parameters_only = true)))
 
 
 # Random.seed!(30)
@@ -234,7 +237,7 @@ end
 # 1
 # @testset "Estimation results" begin
 #     @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
-#     @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+#     @test isapprox(collect(values(FlexiChains.mean(samps); parameters_only = true)), [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 # end
 
 

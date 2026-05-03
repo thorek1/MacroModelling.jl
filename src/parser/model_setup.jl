@@ -316,7 +316,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
                 continue
             end
             
-            if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that euation only
+            if isempty(soll) || isequal(soll, SPyPyC.Sym{PythonCall.Core.Py}[0]) # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve_for)
                 ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for) # replace euler constant as it is not translated to julia properly
                 # refresh symbol set since the equation was rewritten
@@ -1057,15 +1057,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     function prepare_sensitivity_buffer(derivative_sensitivities)
         transposed = derivative_sensitivities isa SparseMatrixCSC ? sparse(transpose(derivative_sensitivities)) : permutedims(derivative_sensitivities)
-        lennz = nnz(transposed)
+        local nz_count = nnz(transposed)
 
-        if (lennz / length(transposed) > density_threshold) || (length(transposed) < min_length)
-            return convert(Matrix, transposed), zeros(Float64, size(transposed)), lennz
+        if (nz_count / length(transposed) > density_threshold) || (length(transposed) < min_length)
+            return convert(Matrix, transposed), zeros(Float64, size(transposed)), nz_count
         end
 
-        buffer = similar(transposed, Float64)
-        buffer.nzval .= 0
-        return transposed, buffer, lennz
+        local buf = similar(transposed, Float64)
+        buf.nzval .= 0
+        return transposed, buf, nz_count
     end
 
 

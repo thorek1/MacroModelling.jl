@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # ---------------------------------------------------------------------------
 # Missing-value support helpers
@@ -612,3 +614,5 @@ function filter_and_smooth(𝓂::ℳ,
     return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
 end
 
+
+end # @stable

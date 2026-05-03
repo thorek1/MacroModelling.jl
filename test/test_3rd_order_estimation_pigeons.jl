@@ -5,6 +5,8 @@ import Pigeons
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
+include("test_helpers.jl")
+
 # estimate highly nonlinear model
 
 # load data

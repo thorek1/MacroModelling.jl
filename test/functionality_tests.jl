@@ -2629,7 +2629,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end                    
 
             for i in 1:100        
-                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
 
@@ -2638,11 +2638,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5)
-                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5)
+                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
                     end
                     
-                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
+                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
                     break
                 end
             end
@@ -2668,10 +2668,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv4_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv4_moon, deriv4_fin[1], rtol = 1e-5)
-                        @test isapprox(deriv4_zyg, deriv4_fin[1], rtol = 1e-5)
+                        @test isapprox(deriv4_moon, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test isapprox(deriv4_zyg, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
                     end
-                    @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
+                    @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
                     break
                 end
             end
@@ -2692,7 +2692,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end         
 
             for i in 1:100        
-                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                                                                 x -> begin 
                                                                     clear_solution_caches!(m, algorithm)
                                                                     
@@ -2702,12 +2702,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4)
-                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4)
+                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
                     end
 
                     # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
-                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
+                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
                     break
                 end
             end

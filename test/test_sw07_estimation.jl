@@ -8,7 +8,10 @@ import FiniteDifferences
 import Turing
 import Turing: NUTS
 import LinearAlgebra as ℒ
-using Random, DelimitedFiles, MCMCChains, AxisKeys
+using Random, DelimitedFiles, AxisKeys
+
+using FlexiChains
+include("test_helpers.jl")
 
 # load data
 dat, header = readdlm("data/usmodel.csv", ',', header = true)
@@ -124,7 +127,7 @@ samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; con
                             progress = true)
 
 println(samps)
-println("Mean variable values (linear): $(mean(samps).nt.mean)")
+println("Mean variable values (linear): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 linear)" begin
     back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007_linear, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values)
@@ -176,7 +179,7 @@ samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; con
                             progress = true)
 
 println(samps)
-println("Mean variable values (nonlinear): $(mean(samps).nt.mean)")
+println("Mean variable values (nonlinear): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 nonlinear)" begin
     back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007.parameter_values)

@@ -5,6 +5,8 @@ import Pigeons
 using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
+include("test_helpers.jl")
+
 include("../models/FS2000.jl")
 
 # load data
