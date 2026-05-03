@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
@@ -49,17 +51,15 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     var²_idxs = so.var²_idxs
     shockvar_idxs = sparse(ℒ.kron(so.e_in_s⁺, so.s_in_s)).nzind
 
-    if third_order
-        var_vol³_idxs = to.var_vol³_idxs
-        shock_idxs2 = to.shock_idxs2
-        shock_idxs3 = to.shock_idxs3
-        shock³_idxs = to.shock³_idxs
-        shockvar1_idxs = to.shockvar1_idxs
-        shockvar2_idxs = to.shockvar2_idxs
-        shockvar3_idxs = to.shockvar3_idxs
-        shockvar³2_idxs = to.shockvar³2_idxs
-        shockvar³_idxs = to.shockvar³_idxs
-    end
+    var_vol³_idxs = to.var_vol³_idxs
+    shock_idxs2 = to.shock_idxs2
+    shock_idxs3 = to.shock_idxs3
+    shock³_idxs = to.shock³_idxs
+    shockvar1_idxs = to.shockvar1_idxs
+    shockvar2_idxs = to.shockvar2_idxs
+    shockvar3_idxs = to.shockvar3_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs = to.shockvar³_idxs
 
     fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)
 
@@ -135,7 +135,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         end
 
         𝐒ⁱ³ᵉ = nothing
-    elseif third_order
+    else # third_order
         # Third order (pruned or non-pruned)
         II = sparse(ℒ.I(n_exo^2))
 
@@ -2017,3 +2017,5 @@ end
 #     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 #     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
 # end
+
+end # @stable

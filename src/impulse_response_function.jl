@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 @unstable function compute_irf_responses(𝓂::ℳ,
                                 state_update::Function,
@@ -112,6 +114,7 @@ function irf(state_update::Function,
         shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_history = zeros(T.nExo, periods)
     end
 
     var_idx = parse_variables_input_to_index(variables, constants) |> sort
@@ -254,6 +257,7 @@ end
         shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_history = zeros(T.nExo, periods)
     end
 
     var_idx = parse_variables_input_to_index(variables, constants) |> sort
@@ -385,6 +389,7 @@ function girf(state_update::Function,
         shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_history = zeros(T.nExo, periods)
     end
 
     var_idx = parse_variables_input_to_index(variables, constants) |> sort
@@ -422,13 +427,16 @@ function girf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
 
+            initial_state₁ = initial_state_copy
+            initial_state₂ = initial_state_copy
+
             if pruning
                 initial_state_copy² = state_update(initial_state_copy², baseline_noise)
                 
-                if any(!isfinite, [x for v in initial_state_copy² for x in v]) continue end
-
                 initial_state₁ = deepcopy(initial_state_copy²)
                 initial_state₂ = deepcopy(initial_state_copy²)
+
+                if any(!isfinite, [x for v in initial_state_copy² for x in v]) continue end
 
                 Y₁[:,1] = initial_state_copy² |> sum
                 Y₂[:,1] = initial_state_copy² |> sum
@@ -569,6 +577,7 @@ function girf(state_update::Function,
         shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_history = zeros(T.nExo, periods)
     end
 
     var_idx = parse_variables_input_to_index(variables, constants) |> sort
@@ -611,13 +620,17 @@ function girf(state_update::Function,
                 shock_history[ii, 1] = negative_shock ? -shock_size : shock_size
             end
 
+            initial_state₁ = initial_state_copy
+            initial_state₂ = initial_state_copy
+
             # --- period 1 ---
             if pruning
                 initial_state_copy², _, solved = obc_state_update(initial_state_copy², baseline_noise, state_update)
-                if !solved continue end
 
                 initial_state₁ = deepcopy(initial_state_copy²)
                 initial_state₂ = deepcopy(initial_state_copy²)
+
+                if !solved continue end
 
                 Y₁[:, 1] = initial_state_copy² |> sum
                 Y₂[:, 1] = initial_state_copy² |> sum
@@ -707,3 +720,5 @@ function girf(state_update::Function,
     return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
 end
 
+
+end # @stable

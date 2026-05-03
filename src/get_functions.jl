@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 """
 $(SIGNATURES)
@@ -1588,7 +1590,7 @@ get_IRF = get_irf
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
+@unstable simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
@@ -1722,7 +1724,7 @@ And data, 4×6 Matrix{Float64}:
 
         param_idx = indexin([parameter_derivatives], 𝓂.constants.post_complete_parameters.parameters)
         length_par = 1
-    elseif length(parameter_derivatives) > 1
+    else
         for p in vec(collect(parameter_derivatives))
             @assert p ∈ 𝓂.constants.post_complete_parameters.parameters string(p) * " is not part of the free model parameters."
         end
@@ -1863,36 +1865,36 @@ Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+@unstable get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+@unstable SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+@unstable sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
 
 
 """
 See [`get_steady_state`](@ref)
 """
-SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
+@unstable SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-steady_state(args...; kwargs...) = get_steady_state(args...; kwargs...)
+@unstable steady_state(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
+@unstable get_SS(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
@@ -1902,7 +1904,7 @@ See [`get_steady_state`](@ref)
 """
 See [`get_steady_state`](@ref)
 """
-ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
+@unstable ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 
 
@@ -1989,9 +1991,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
             silent = silent, 
             algorithm = algorithm)
 
-    if algorithm == :first_order
-        solution_matrix = 𝓂.caches.first_order_solution_matrix
-    end
+    solution_matrix = 𝓂.caches.first_order_solution_matrix
 
     axis1 = [𝓂.constants.post_model_macro.past_not_future_and_mixed; :Volatility; 𝓂.constants.post_model_macro.exo]
 
@@ -3114,7 +3114,7 @@ See [`get_autocorrelation`](@ref)
 """
 See [`get_autocorrelation`](@ref)
 """
-autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
+@unstable autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 
@@ -3269,7 +3269,21 @@ And data, 4×6 Matrix{Float64}:
 
     NSSS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    @assert solution_error < tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
+    if solution_error >= tol.nsss.acceptance_tol
+        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $(tol.nsss.acceptance_tol)" maxlog = DEFAULT_MAXLOG
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        inf_val = Inf * sum(abs2, 𝓂.parameter_values)
+        var_idx_fail = parse_variables_input_to_index(variables, 𝓂) |> sort
+        axis1_fail = 𝓂.constants.post_model_macro.var[var_idx_fail]
+        inf_arr = KeyedArray(fill(inf_val, length(var_idx_fail)); Variables = axis1_fail)
+        ret = Dict{Symbol,KeyedArray}()
+        if non_stochastic_steady_state; ret[:non_stochastic_steady_state] = inf_arr; end
+        if mean; ret[:mean] = inf_arr; end
+        if standard_deviation; ret[:standard_deviation] = inf_arr; end
+        if variance; ret[:variance] = inf_arr; end
+        if covariance; ret[:covariance] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, Variables2 = axis1_fail); end
+        return ret
+    end
 
     if length_par * length(NSSS) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
@@ -3290,6 +3304,24 @@ And data, 4×6 Matrix{Float64}:
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     axis2 = 𝓂.constants.post_complete_parameters.exo_axis_plain
 
+    # Initialize variables used across derivative/non-derivative branches
+    # to satisfy JET's definite-assignment analysis
+    SS = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
+    var_means = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
+    st_dev = var_means
+    varrs = var_means
+    covar_dcmp = zeros(0, 0)
+    dcovariance = zeros(0, 0)
+    state_μ = Float64[]
+    autocorr = zeros(0, 0)
+    autocorr_tmp = zeros(0, 0)
+    ŝ_to_ŝ₂ = zeros(0, 0)
+    ŝ_to_y₂ = zeros(0, 0)
+    SS_and_pars = Float64[]
+    _dvariance_full = zeros(0, 0)
+    _n_cov_tuple = 0
+    _cov_pb = nothing
+    axis3 = Symbol[]
 
     if derivatives
         if non_stochastic_steady_state
@@ -3450,7 +3482,10 @@ And data, 4×6 Matrix{Float64}:
             (mean_result, mean_pb) = rrule(calculate_mean, 𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
             state_μ = mean_result[1]
             
-            @assert mean_result[2] "Mean not found."
+            if !mean_result[2]
+                @warn "Mean not found." maxlog = DEFAULT_MAXLOG
+                state_μ = fill(NaN, length(state_μ))
+            end
 
             n_mean = length(state_μ)
             np_mean = length(𝓂.parameter_values)
@@ -3492,6 +3527,8 @@ And data, 4×6 Matrix{Float64}:
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
+
+        var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
 
         if mean && !(variance || standard_deviation || covariance)
             state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
@@ -3680,7 +3717,7 @@ Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_ste
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-var = get_variance
+@unstable var = get_variance
 
 
 """
@@ -3703,13 +3740,13 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-stdev =  get_standard_deviation
+@unstable stdev =  get_standard_deviation
 
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-std =  get_standard_deviation
+@unstable std =  get_standard_deviation
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, derivatives = false`.
@@ -3726,7 +3763,7 @@ Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_s
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-cov = get_covariance
+@unstable cov = get_covariance
 
 
 """
@@ -3900,6 +3937,22 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
         return ret
     end
 
+    # Initialize variables that are conditionally assigned across algorithm branches
+    # to satisfy JET's definite-assignment analysis. Each is overwritten in the
+    # relevant branch below before it is actually used.
+    nVars = 𝓂.constants.post_model_macro.nVars
+    SS_and_pars = zeros(T, 0)
+    covar_dcmp  = zeros(T, 0, 0)
+    state_μ     = zeros(T, 0)
+    sol         = zeros(T, 0, 0)
+    autocorr_tmp = zeros(T, 0, 0)
+    ŝ_to_ŝ₂    = zeros(T, 0, 0)
+    ŝ_to_y₂    = zeros(T, 0, 0)
+    autocorr    = zeros(T, 0, 0)
+    varrs       = zeros(T, 0)
+    st_dev      = zeros(T, 0)
+    solved      = false
+
     if algorithm == :pruned_third_order
 
         if !(autocorrelation == Symbol[])
@@ -3929,14 +3982,14 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 
     SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]
 
-    if !(variance == Symbol[])
+    if solved && !(variance == Symbol[])
         varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
         if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
     end
 
-    if !(autocorrelation == Symbol[])
+    if solved && !(autocorrelation == Symbol[])
         if algorithm == :pruned_second_order
             ŝ_to_ŝ₂ⁱ = zero(ŝ_to_ŝ₂)
             ŝ_to_ŝ₂ⁱ += ℒ.diagm(ones(size(ŝ_to_ŝ₂,1)))
@@ -3958,7 +4011,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
         end
     end
 
-    if !(standard_deviation == Symbol[])
+    if solved && !(standard_deviation == Symbol[])
         st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
     end
         
@@ -4510,3 +4563,5 @@ See [`get_non_stochastic_steady_state_residuals`](@ref)
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
 check_residuals = get_non_stochastic_steady_state_residuals
+
+end # @stable

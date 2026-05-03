@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Available algorithms: 
 # :doubling     - fast, expensive part: B^2
 # :bartels_stewart    - fast, dense matrices only
@@ -1590,3 +1592,5 @@ end
 #     return 𝐂, soll.maps, reached_tol
 # end
 
+
+end # @stable

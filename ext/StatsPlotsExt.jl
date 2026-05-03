@@ -1656,7 +1656,7 @@ function plot_model_estimates!(𝓂::ℳ,
         last_combined = combined_x_axis[end]
 
         if required_last_x > last_combined
-            xs = deepcopy(combined_x_axis)
+            xs = collect(combined_x_axis)
 
             next_x = last_combined
             while next_x < required_last_x

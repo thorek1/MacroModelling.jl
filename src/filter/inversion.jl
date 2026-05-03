@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 # ---------------------------------------------------------------------
 # Aumann–Shapley shock decomposition (marginal-contribution driver)
@@ -3226,3 +3228,5 @@ end
     return variables, shocks, zeros(0,0), decomposition
 end
 
+
+end # @stable

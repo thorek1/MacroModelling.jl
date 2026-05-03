@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 
 function calculate_first_order_solution(∇₁::Matrix{R},
@@ -320,6 +322,9 @@ end
 
     qme_ws = workspaces.first_order
 
+    lu_handle = nothing
+    ∇₁₊𝐒₁➕∇₁₀lu = nothing
+
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
             factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
@@ -483,7 +488,7 @@ end
     ∇₂ = ∇₂ * M₂.𝐔∇₂
 
     # Expand compressed second-order solution to full space
-    𝐒₂ = sparse(𝐒₂ * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
+    𝐒₂ = (sparse(𝐒₂) * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
 
     # inspired by Levintal
 
@@ -536,6 +541,9 @@ end
     # @timeit_debug timer "Invert matrix" begin
 
     qme_ws = workspaces.first_order
+
+    lu_handle = nothing
+    ∇₁₊𝐒₁➕∇₁₀lu = nothing
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
@@ -919,13 +927,13 @@ function create_third_order_auxiliary_matrices(constants::constants, ∇₃_col_
     𝐏₁ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2)))])
     𝐏₂ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(3,1,2)))])
 
-    ∇₃_col_indices_extended = findnz(sparse(ones(Int,length(∇₃_col_indices)),∇₃_col_indices,ones(Int,length(∇₃_col_indices)),1,size(𝐔∇₃,1)) * 𝐔∇₃)[2]
+    ∇₃_col_indices_extended = Set{Int}(findnz(sparse(ones(Int,length(∇₃_col_indices)),∇₃_col_indices,ones(Int,length(∇₃_col_indices)),1,size(𝐔∇₃,1)) * 𝐔∇₃)[2])
 
     nonnull_columns = Set{Int}()
     for i in 1:n̄ 
         for j in i:n̄ 
             for k in j:n̄ 
-                if n̄^2 * (i - 1)  + n̄ * (j - 1) + k in ∇₃_col_indices_extended
+                if (n̄^2 * (i - 1)  + n̄ * (j - 1) + k) ∈ ∇₃_col_indices_extended
                     push!(nonnull_columns,i)
                     push!(nonnull_columns,j)
                     push!(nonnull_columns,k)
@@ -2417,3 +2425,5 @@ function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
 end
 
 
+
+end # @stable

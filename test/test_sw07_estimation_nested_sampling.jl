@@ -1,9 +1,13 @@
 using Test
 using MacroModelling
 import Turing
-using MCMCChains
 using PythonCall
 using DelimitedFiles, AxisKeys
+using FlexiChains
+using FlexiChains: Parameter, FlexiChain
+using DataStructures: OrderedDict
+
+include("test_helpers.jl")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration switches
@@ -207,9 +211,15 @@ function summarize_posterior_matrix(label::String, posterior_matrix::Matrix{Floa
         println("  $name: $(sum(col) / length(col))")
     end
 
-    posterior_chain = MCMCChains.Chains(posterior_matrix, param_names)
-    posterior_summary = MCMCChains.summarize(posterior_chain; sections = [:parameters])
-    println("$label MCMCChains summary:")
+    n_iters, _ = size(posterior_matrix)
+    symbol_names = Symbol.(collect(param_names))
+    chain_data = OrderedDict{FlexiChains.ParameterOrExtra{Symbol}, Matrix{eltype(posterior_matrix)}}()
+    for (column, name) in pairs(symbol_names)
+        chain_data[Parameter(name)] = reshape(collect(@view posterior_matrix[:, column]), n_iters, 1)
+    end
+    posterior_chain = FlexiChain{Symbol}(n_iters, 1, chain_data)
+    posterior_summary = FlexiChains.summarystats(posterior_chain)
+    println("$label FlexiChains summary:")
     show(stdout, MIME"text/plain"(), posterior_summary)
     println()
     return n_posterior, posterior_summary
@@ -325,7 +335,7 @@ if USE_NESSAI
 
     nessai_log_evidence = pyconvert(Float64, nessai_fs.logZ)
     nessai_posterior_samples = nessai_fs.posterior_samples
-    nessai_n_posterior, nessai_mcmcchains_summary = summarize_posterior_matrix(
+    nessai_n_posterior, nessai_posterior_summary = summarize_posterior_matrix(
         "nessai",
         posterior_matrix_from_named_samples(nessai_posterior_samples),
     )
@@ -335,7 +345,7 @@ if USE_NESSAI
     @testset "nessai SW07 linear estimation" begin
         @test isfinite(nessai_log_evidence)
         @test nessai_n_posterior > 0
-        @test !isnothing(nessai_mcmcchains_summary)
+        @test !isnothing(nessai_posterior_summary)
         @test !isnothing(nessai_fs)
     end
 
@@ -384,7 +394,7 @@ if USE_DYNESTY
     dynesty_results.summary()
     dynesty_log_evidence = pyconvert(Vector{Float64}, dynesty_results.logz)[end]
     dynesty_posterior_matrix = pyconvert(Matrix{Float64}, dynesty_results.samples_equal())
-    dynesty_n_posterior, dynesty_mcmcchains_summary = summarize_posterior_matrix(
+    dynesty_n_posterior, dynesty_posterior_summary = summarize_posterior_matrix(
         "dynesty dynamic",
         dynesty_posterior_matrix,
     )
@@ -394,7 +404,7 @@ if USE_DYNESTY
     @testset "dynesty dynamic SW07 linear estimation" begin
         @test isfinite(dynesty_log_evidence)
         @test dynesty_n_posterior > 0
-        @test !isnothing(dynesty_mcmcchains_summary)
+        @test !isnothing(dynesty_posterior_summary)
         @test !isnothing(dynesty_sampler)
         @test !isnothing(dynesty_results)
     end
@@ -447,7 +457,7 @@ if USE_ULTRANEST
     ultranest_posterior_matrix = pyconvert(Matrix{Float64}, ultranest_result["samples"])
     @assert size(ultranest_posterior_matrix, 2) == length(param_names) "UltraNest samples have $(size(ultranest_posterior_matrix, 2)) columns but expected $(length(param_names))"
 
-    ultranest_n_posterior, ultranest_mcmcchains_summary = summarize_posterior_matrix(
+    ultranest_n_posterior, ultranest_posterior_summary = summarize_posterior_matrix(
         "UltraNest",
         ultranest_posterior_matrix,
     )
@@ -457,7 +467,7 @@ if USE_ULTRANEST
     @testset "UltraNest SW07 linear estimation" begin
         @test isfinite(ultranest_log_evidence)
         @test ultranest_n_posterior > 0
-        @test !isnothing(ultranest_mcmcchains_summary)
+        @test !isnothing(ultranest_posterior_summary)
         @test !isnothing(ultranest_result)
     end
 
