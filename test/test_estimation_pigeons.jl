@@ -1,7 +1,7 @@
 using MacroModelling
 using Test
 import Turing, Pigeons
-using Random, DelimitedFiles, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 import StatsPlots
 
@@ -75,11 +75,11 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
             seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
-samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
+samps = MCMCChains.Chains(pt)
 
-println("Mean variable values (Pigeons): $(parameter_means(samps))")
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
-sample_pigeons = parameter_means(samps)
+sample_pigeons = mean(samps).nt.mean
 
 @testset "Pigeons Estimation results" begin
     @test isapprox(sample_pigeons[1:9], [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)

@@ -2,7 +2,7 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-using Random, DelimitedFiles, AxisKeys
+using Random, DelimitedFiles, MCMCChains, AxisKeys
 import DynamicPPL
 
 include("test_helpers.jl")
@@ -116,7 +116,7 @@ pt = @time Pigeons.pigeons(target = Caldara_lp,
             seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
-samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
+samps = MCMCChains.Chains(pt)
 
 
-println("Mean variable values (Pigeons): $(parameter_means(samps))")
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
