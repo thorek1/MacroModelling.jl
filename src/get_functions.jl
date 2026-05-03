@@ -1567,7 +1567,7 @@ get_IRF = get_irf
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
+@unstable simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
@@ -2911,7 +2911,7 @@ See [`get_autocorrelation`](@ref)
 """
 See [`get_autocorrelation`](@ref)
 """
-autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
+@unstable autocorr(args...; kwargs...) = get_autocorrelation(args...; kwargs...)
 
 
 
@@ -3477,7 +3477,7 @@ Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_ste
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-var = get_variance
+@unstable var = get_variance
 
 
 """
@@ -3500,13 +3500,13 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-stdev =  get_standard_deviation
+@unstable stdev =  get_standard_deviation
 
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-std =  get_standard_deviation
+@unstable std =  get_standard_deviation
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, derivatives = false`.
@@ -3523,7 +3523,7 @@ Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_s
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-cov = get_covariance
+@unstable cov = get_covariance
 
 
 """
