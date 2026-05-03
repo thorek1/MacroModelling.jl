@@ -79,3 +79,6 @@ estimation_results
 juliaup.sh.julia_repl/
 tasks/_repl_cmd.jl
 .julia_repl
+tasks/
+test/dynare_comparison/_dynare_work/
+test/dynare_comparison/output*
