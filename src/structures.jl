@@ -527,6 +527,18 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     # Stable primal solution cache for AD/rrule pullbacks
     P::Matrix{G}
     
+    # Doubling power cache (for AD: reuse A^(2^k), B^(2^k) sequences across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)) ; 𝐁_pow[k] = B^(2^(k-1)). Only valid when pow_iters > 0
+    # AND a caller acknowledges the current pow_stamp.
+    # Fields are AbstractMatrix so the cache can hold dense Matrix or sparse SparseMatrixCSC entries
+    # (the doubling overloads dispatched by Sylvester preserve the sparsity of A and B across squaring).
+    𝐀_pow::Vector{AbstractMatrix{G}}
+    𝐁_pow::Vector{AbstractMatrix{G}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow / 𝐁_pow
+    pow_stamp::UInt64         # bumped on each AD capture session (0 = invalid)
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store materialised transposes (for adjoint use)
+
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
     Ã_fd::Matrix{H}    # Temporary for ForwardDiff partials of A
@@ -738,6 +750,16 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     P̃::Matrix{R}       # For lyapunov equation partials
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
+
+    # Doubling power cache (for AD: reuse A^(2^k) sequence across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)). Valid only when pow_iters > 0 AND caller knows
+    # pow_stamp. Slot type is AbstractMatrix so dense and sparse iterations
+    # share the same storage (sparse-aware capture).
+    𝐀_pow::Vector{AbstractMatrix{T}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow
+    pow_stamp::UInt64         # bumped on each AD capture session (0 = invalid)
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow stores materialised transposes (for adjoint use)
 
     # FastLapackInterface Schur workspace for unit-root deflation (lazily resized)
     schur_ws::FastLapackInterface.SchurWs{T}

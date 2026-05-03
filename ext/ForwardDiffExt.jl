@@ -8,6 +8,7 @@ module ForwardDiffExt
 #   3. Compute partials using implicit differentiation or chain rule
 #   4. Reconstruct Dual numbers by combining values and partials
 
+# Toggle for benchmarking: when false, the FD wrappers do NOT enable doubling-power
 import MacroModelling
 import MacroModelling:
     # Types
@@ -594,6 +595,11 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
 
     initial_guess = zeros(eltype(X), size(X, 1), size(X, 2))
 
+    prev_capture = sylv_ws.pow_capture
+    sylv_ws.pow_iters = 0
+    sylv_ws.pow_capture = true
+    sylv_ws.pow_transposed = false
+
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
         p .= ℱ.partials.(∇₁, i)
@@ -626,6 +632,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
 
         @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
     end
+    sylv_ws.pow_capture = prev_capture
 
     x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
             ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -719,6 +726,12 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
     end
     X̃ = qme_ws.X̃
 
+    sws = qme_ws.sylvester
+    prev_capture = sws.pow_capture
+    sws.pow_iters = 0
+    sws.pow_capture = true
+    sws.pow_transposed = false
+
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
         dA = ℱ.partials.(A, i)
@@ -737,6 +750,7 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
 
         X̃[:,i] = vec(dX)
     end
+    sws.pow_capture = prev_capture
     
     return reshape(map(X, eachrow(X̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -768,12 +782,20 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
         ℱ.value.(initial_guess)
     end
 
+    # Capture A^(2^k), B^(2^k) sequence from primal so the partial-loop solves can replay them.
+    prev_capture = 𝕊ℂ.pow_capture
+    𝕊ℂ.pow_iters = 0
+    𝕊ℂ.pow_capture = true
+    𝕊ℂ.pow_transposed = false
+
     P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 𝕊ℂ,
                                         sylvester_algorithm = sylvester_algorithm, 
                                         preconditioner = preconditioner,
                                         tol = tol, 
                                         verbose = verbose, 
                                         initial_guess = initial_guess_value)
+
+    𝕊ℂ.pow_capture = false
 
     if size(𝕊ℂ.P) != size(P̂)
         𝕊ℂ.P = zeros(eltype(P̂), size(P̂)...)
@@ -830,6 +852,7 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
 
         P̃[:,i] = vec(P)
     end
+    𝕊ℂ.pow_capture = prev_capture
     
     return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -862,12 +885,20 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
         ℱ.value.(initial_guess)
     end
 
+    # Capture A^(2^k) sequence from primal so the partial-loop solves can replay them.
+    prev_capture = workspace.pow_capture
+    workspace.pow_iters = 0
+    workspace.pow_capture = true
+    workspace.pow_transposed = false
+
     P̂, solved = solve_lyapunov_equation(Â, Ĉ, workspace;
                                         lyapunov_algorithm = lyapunov_algorithm,
                                         initial_guess = initial_guess_value,
                                         tol = tol,
                                         verbose = verbose,
                                         has_unit_roots = has_unit_roots)
+
+    workspace.pow_capture = false
 
     if size(workspace.P) != size(P̂)
         workspace.P = zeros(eltype(P̂), size(P̂)...)
@@ -917,6 +948,7 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
 
         P̃[:,i] = vec(P)
     end
+    workspace.pow_capture = prev_capture
     
     return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag

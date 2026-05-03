@@ -331,6 +331,12 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
     𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
+
     # ℒ.rmul!(𝐂, -1)
 
     max_iter = 500
@@ -345,6 +351,13 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         droptol!(𝐀, eps())
         droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
@@ -408,6 +421,12 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐂¹ = 𝕊ℂ.𝐂¹
     𝐂B = 𝕊ℂ.𝐂B
     
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
+
     # 𝐂  = A * initial_guess * B + C - initial_guess
     ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
@@ -433,6 +452,13 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         droptol!(𝐀, eps())
         droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             copyto!(𝐂B, 𝐂¹)
@@ -498,6 +524,12 @@ function solve_sylvester_equation(  A::Matrix{T},
     𝐂  = 𝕊ℂ.𝐂_dbl
     𝐂¹ = 𝕊ℂ.𝐂¹
     𝐂B = 𝕊ℂ.𝐂B
+
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
     
     # 𝐂  = A * initial_guess * B + C - initial_guess
     ℒ.mul!(𝐂B, initial_guess, B)
@@ -536,6 +568,13 @@ function solve_sylvester_equation(  A::Matrix{T},
         # @timeit_debug timer "droptol B" begin
         droptol!(𝐁, eps())
         # end # timeit_debug
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             copyto!(𝐂B, 𝐂¹)
@@ -598,6 +637,12 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐂  = 𝕊ℂ.𝐂_dbl
     𝐂¹ = 𝕊ℂ.𝐂¹
     𝐂B = 𝕊ℂ.𝐂B
+
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
     
     # 𝐂  = A * initial_guess * B + C - initial_guess
     ℒ.mul!(𝐂B, initial_guess, B)
@@ -622,6 +667,13 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             copyto!(𝐂B, 𝐂¹)
@@ -684,6 +736,12 @@ function solve_sylvester_equation(  A::Matrix{T},
     𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
 
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
+
     max_iter = 500
 
     iters = max_iter
@@ -703,6 +761,13 @@ function solve_sylvester_equation(  A::Matrix{T},
 
         # droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             𝐂B = 𝕊ℂ.𝐂B
@@ -768,6 +833,12 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
 
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
+
     max_iter = 500
 
     iters = max_iter
@@ -787,6 +858,13 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
         droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             𝐂B = 𝕊ℂ.𝐂B
@@ -851,6 +929,12 @@ function solve_sylvester_equation(  A::Matrix{T},
     𝐂  = A * initial_guess * B + C - initial_guess
     𝐂¹ = similar(𝐂)
 
+    if 𝕊ℂ.pow_capture
+        cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+        cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+        𝕊ℂ.pow_iters = 1
+    end
+
     max_iter = 500
 
     iters = max_iter
@@ -870,6 +954,13 @@ function solve_sylvester_equation(  A::Matrix{T},
 
         # droptol!(𝐀, eps())
         droptol!(𝐁, eps())
+
+        if 𝕊ℂ.pow_capture
+            target_k = i + 1
+            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = target_k
+        end
 
         if i % 2 == 0
             𝐂B = 𝕊ℂ.𝐂B
@@ -939,7 +1030,15 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     
     copyto!(𝐀, A)
     copyto!(𝐁, B)
-    
+
+    if 𝕊ℂ.pow_capture
+        if 𝕊ℂ.pow_iters < 1
+            cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
+            cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
+            𝕊ℂ.pow_iters = 1
+        end
+    end
+
     # 𝐂  = A * initial_guess * B + C - initial_guess
     ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
@@ -960,16 +1059,42 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
         # end # timeit_debug
 
-        # @timeit_debug timer "Square A" begin
-        ℒ.mul!(𝐀¹,𝐀,𝐀)
-        copy!(𝐀,𝐀¹)
-        # end # timeit_debug
-        # @timeit_debug timer "Square B" begin
-        ℒ.mul!(𝐁¹,𝐁,𝐁)
-        copy!(𝐁,𝐁¹)
-        # end # timeit_debug
-        # 𝐀 = 𝐀^2
-        # 𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA) && !issparse(cachedA)
+                copyto!(𝐀, cachedA)
+            else
+                𝐀 = Matrix{eltype(𝐀)}(cachedA)
+                𝕊ℂ.𝐀 = 𝐀
+                𝐀¹ = 𝕊ℂ.𝐀¹
+            end
+            if size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB) && !issparse(cachedB)
+                copyto!(𝐁, cachedB)
+            else
+                𝐁 = Matrix{eltype(𝐁)}(cachedB)
+                𝕊ℂ.𝐁 = 𝐁
+                𝐁¹ = 𝕊ℂ.𝐁¹
+            end
+        else
+            # @timeit_debug timer "Square A" begin
+            ℒ.mul!(𝐀¹,𝐀,𝐀)
+            copy!(𝐀,𝐀¹)
+            # end # timeit_debug
+            # @timeit_debug timer "Square B" begin
+            ℒ.mul!(𝐁¹,𝐁,𝐁)
+            copy!(𝐁,𝐁¹)
+            # end # timeit_debug
+            # 𝐀 = 𝐀^2
+            # 𝐁 = 𝐁^2
+
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
+        end
 
         # droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
@@ -1014,6 +1139,13 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
+
+
+# Adjoint Sylvester via cached doubling powers.
+# Solves: X = A' · X · B' + ∂P  using cached A^(2^k), B^(2^k) (transposed on the fly).
+
+
+
 
 
 function solve_sylvester_equation(A::DenseMatrix{T},

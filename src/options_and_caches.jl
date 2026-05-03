@@ -1,9 +1,75 @@
 @stable default_mode = "disable" begin
 
 
-"""
-    Second_order_indices()
+# ============================================================================
+# Doubling power-cache helpers
+# ============================================================================
+# These are shared by the Lyapunov and Sylvester `:doubling` solvers and their
+# adjoint helpers. Capture is gated by `workspace.pow_capture`; the rrule
+# wrapper is responsible for setting/clearing the flag and bumping the stamp.
+# Slot type is AbstractMatrix so the same vector can hold dense or sparse
+# A^(2^k) / B^(2^k) entries (sparse-aware).
 
+const _DOUBLING_POW_STAMP = Ref(UInt64(0))
+
+"""
+    next_pow_stamp!() -> UInt64
+
+Generate a fresh, non-zero stamp for the doubling power cache. Each AD pullback
+session bumps this so cached entries cannot be confused with a previous A.
+"""
+function next_pow_stamp!()
+    _DOUBLING_POW_STAMP[] += UInt64(1)
+    return _DOUBLING_POW_STAMP[]
+end
+
+"""
+    cache_set!(vec, k, M)
+
+Place `M` into slot `k` of the doubling power cache vector. If the slot does
+not yet exist, the vector is extended by one (sequential extension).
+The slot is reused in-place when its concrete type and shape match `M`,
+otherwise it is replaced with `copy(M)` to preserve the input's concrete type.
+"""
+@inline _materialize_transpose(M::AbstractSparseMatrix) = SparseMatrixCSC(M')
+@inline _materialize_transpose(M::AbstractMatrix) = permutedims(M)
+
+@inline function cache_set!(vec::Vector{<:AbstractMatrix}, k::Int, M::AbstractMatrix, transposed::Bool = false)
+    if transposed
+        Mt = _materialize_transpose(M)
+        if length(vec) < k
+            push!(vec, Mt)
+        else
+            slot = vec[k]
+            if typeof(slot) === typeof(Mt) && size(slot) == size(Mt)
+                copyto!(slot, Mt)
+            else
+                vec[k] = Mt
+            end
+        end
+    else
+        if length(vec) < k
+            push!(vec, copy(M))
+        else
+            slot = vec[k]
+            if typeof(slot) === typeof(M) && size(slot) == size(M)
+                copyto!(slot, M)
+            else
+                vec[k] = copy(M)
+            end
+        end
+    end
+    return nothing
+end
+
+
+
+
+
+
+
+
+"""
 Create an empty `second_order_indices` struct with all fields initialized to empty/zero values.
 These will be lazily populated by various ensure_*! functions as needed.
 
@@ -179,7 +245,13 @@ end
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
         zeros(S,0,0),           # P (stable primal cache)
-        # ForwardDiff partials buffers
+        # Doubling power cache
+        Vector{AbstractMatrix{S}}(),    # 𝐀_pow
+        Vector{AbstractMatrix{S}}(),    # 𝐁_pow
+        0,                      # pow_iters
+        UInt64(0),              # pow_stamp
+        false,                  # pow_capture
+        false,                  # pow_transposed
         zeros(T,0,0),           # P̃
         zeros(T,0,0),           # Ã_fd
         zeros(T,0,0),           # B̃_fd
@@ -557,6 +629,12 @@ Buffers are initialized to 0-dimensional objects and resized on-demand when the 
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
         zeros(T, 0, 0),         # C̃_fd
+        # Doubling power cache (sparse-aware)
+        Vector{AbstractMatrix{T}}(),  # 𝐀_pow
+        0,                      # pow_iters
+        UInt64(0),              # pow_stamp
+        false,                  # pow_capture
+        false,                  # pow_transposed
         FastLapackInterface.SchurWs(zeros(T, 1, 1))  # schur_ws (lazily resized by gees!)
     )
 end
