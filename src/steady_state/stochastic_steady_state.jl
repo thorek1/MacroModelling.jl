@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 @unstable function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
@@ -556,3 +558,5 @@ end
     return x, isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
 end
 
+
+end # @stable

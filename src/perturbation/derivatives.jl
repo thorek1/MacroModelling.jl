@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
@@ -114,3 +116,5 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     return third_buffer
 end
 
+
+end # @stable

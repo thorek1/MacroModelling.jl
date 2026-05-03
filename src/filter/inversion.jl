@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
@@ -2876,3 +2878,5 @@ end
     return variables, shocks, zeros(0,0), decomposition
 end
 
+
+end # @stable

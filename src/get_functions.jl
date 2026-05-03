@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 """
 $(SIGNATURES)
@@ -4358,3 +4360,5 @@ See [`get_non_stochastic_steady_state_residuals`](@ref)
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
 check_residuals = get_non_stochastic_steady_state_residuals
+
+end # @stable
