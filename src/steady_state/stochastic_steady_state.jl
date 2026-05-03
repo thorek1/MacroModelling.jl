@@ -76,7 +76,7 @@
             constants)
     end
 
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
 
@@ -152,7 +152,7 @@ end
             ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -166,7 +166,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     so = 𝓂.constants.second_order
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
@@ -209,7 +209,7 @@ end
             ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -223,7 +223,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates +
             𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
@@ -330,8 +330,8 @@ end
             ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
-            𝐒̂₃ = sparse(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
         end
     end
@@ -345,7 +345,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -424,8 +424,8 @@ end
             ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = sparse(𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
-            𝐒̂₃ = sparse(𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
         end
     end
@@ -439,7 +439,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed

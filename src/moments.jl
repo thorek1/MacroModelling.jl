@@ -478,7 +478,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
         if solved2
-            𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+            𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -767,7 +767,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -1137,7 +1137,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
-    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
