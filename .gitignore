@@ -79,3 +79,4 @@ estimation_results
 juliaup.sh.julia_repl/
 tasks/_repl_cmd.jl
 .julia_repl
+test/dynare_comparison/output_thread_sweep*
