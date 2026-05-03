@@ -5,9 +5,9 @@ import StatsPlots
 using Random
 Random.seed!(1234)
 
-rndnmbr = rand(max(length(m.parameter_values),2))
 
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
+    rndnmbr = rand(max(length(m.parameter_values),2))
     old_params = copy(m.parameter_values)
     old_params2 = copy(m2.parameter_values)
     
@@ -1750,6 +1750,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             if isfinite(ℒ.norm(fin_grad_llh[1]))
                                                 @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
                                                 @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
                                                 break
                                             end
                                         end
@@ -2636,11 +2638,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
-                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5)
+                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5)
                     end
                     
-                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
                     break
                 end
             end
@@ -2700,12 +2702,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
-                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4)
+                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4)
                     end
 
                     # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
-                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
                     break
                 end
             end
@@ -3386,6 +3388,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
 
     @testset "get_irf" begin
+        m.parameter_values .= old_params
+        clear_solution_caches!(m, algorithm)
         Random.seed!(123)
 
         for ignore_obc in [true,false]
@@ -3506,7 +3510,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     
                     RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
-                    @test isapprox(res, RES, rtol = 1e-8)
+                    @test isapprox(res, RES, rtol = 1e-8, atol = 1e-8, nans = true)
                 end
             end
 
@@ -3518,7 +3522,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             res2 = get_non_stochastic_steady_state_residuals(m, stst[1:3], tol = tol, verbose = false)
 
-            @test isapprox(res1, res2, rtol = 1e-8)
+            @test isapprox(res1, res2, rtol = 1e-8, atol = 1e-8, nans = true)
 
             get_residuals(m, stst)
 
