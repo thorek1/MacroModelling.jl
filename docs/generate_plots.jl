@@ -2916,14 +2916,10 @@ using StatsPlots
 using CSV, DataFrames, AxisKeys
 import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf, replacenames
+import Turing: NUTS, sample, logpdf
 import ADTypes: AutoZygote
 # import Zygote
-import MCMCChains: Chains
-
-using HDF5
-
-using MCMCChainsStorage
+using Serialization
 
 @model FS2000 begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
@@ -3012,30 +3008,31 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 # chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 
-# h5open("docs/src/assets/chain_NUTS.h5", "w") do f
-#   write(f, chain_NUTS)
+# open("docs/src/assets/chain_NUTS.jls", "w") do io
+#     serialize(io, chain_NUTS)
 # end
 
-chain_NUTS = h5open("docs/src/assets/chain_NUTS.h5", "r") do f read(f, Chains) end
-
-
-chain_NUTS_rn = replacenames(chain_NUTS, Dict(["parameters[$i]" for i in 1:length(FS2000.parameters)] .=> FS2000.parameters))
-
-chain_NUTS = replacenames(chain_NUTS, Dict(FS2000.parameters .=> ["parameters[$i]" for i in 1:length(FS2000.parameters)]))
+chain_path = "docs/src/assets/chain_NUTS.jls"
+chain_NUTS = if isfile(chain_path)
+    open(deserialize, chain_path)
+else
+    n_samples = 100
+    sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
+end
 
 # ensure output directory exists and save the chain plot as PNG
-p = plot(chain_NUTS_rn)
+p = plot(chain_NUTS)
 savefig(p, joinpath("./docs/src/assets", "FS2000_chain_NUTS.png"))
 
 # ![NUTS chain](../assets/FS2000_chain_NUTS.png)
 
 
-using ComponentArrays, MCMCChains
+using ComponentArrays
 import DynamicPPL: logjoint
 
-parameter_mean = mean(chain_NUTS)
+parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
 
-pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));
+pars = ComponentArray([parameter_mean], Axis(:parameters));
 
 logjoint(FS2000_loglikelihood, pars)
 
@@ -3052,8 +3049,10 @@ par2 = :gam;
 paridx1 = indexin([par1], FS2000.parameters)[1];
 paridx2 = indexin([par2], FS2000.parameters)[1];
 
-par_range1 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx1]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx1]")]), length = granularity));
-par_range2 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx2]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx2]")]), length = granularity));
+parameter_samples = chain_NUTS[:parameters, stack = true]
+
+par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));
+par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));
 
 p = surface(par_range1, par_range2, 
             (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
@@ -3061,13 +3060,13 @@ p = surface(par_range1, par_range2,
             colorbar=false,
             color=:inferno);
 
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray([reduce(hcat, get(chain_NUTS, :parameters)[1])[s,:]], Axis(:parameters))) for s in 1:length(chain_NUTS)];
+joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));
 
-scatter3d!(vec(collect(chain_NUTS[Symbol("parameters[$paridx1]")])),
-            vec(collect(chain_NUTS[Symbol("parameters[$paridx2]")])),
+scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
+            vec(collect(parameter_samples[:, :, paridx2])),
             joint_loglikelihood,
             mc = :viridis, 
-            marker_z = collect(1:length(chain_NUTS)), 
+            marker_z = collect(1:length(joint_loglikelihood)), 
             msw = 0,
             legend = false, 
             colorbar = false, 

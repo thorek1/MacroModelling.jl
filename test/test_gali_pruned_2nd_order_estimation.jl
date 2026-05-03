@@ -8,7 +8,7 @@ import ADTypes: AutoZygote, AutoForwardDiff
 import FiniteDifferences
 import Turing: NUTS, sample
 import LinearAlgebra as ℒ
-using Random, MCMCChains, AxisKeys
+using Random, AxisKeys
 
 include("test_helpers.jl")
 
@@ -125,9 +125,9 @@ samps = @time sample(gali_model,
                      progress = true,
                      initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
 
-println("Mean estimated values (ForwardDiff): $(mean(samps).nt.mean)")
+println("Mean estimated values (ForwardDiff): $(parameter_means(samps))")
 
-sample_means = mean(samps).nt.mean
+sample_means = parameter_means(samps)
 
 @testset "Gali pruned 2nd order estimation results" begin
     @test length(sample_means) == 6

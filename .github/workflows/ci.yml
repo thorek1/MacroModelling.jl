@@ -177,6 +177,18 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
+      - name: Remove MCMCChains from non-pigeons runs
+        if: contains(matrix.test_set, 'pigeons') == false
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"MCMCChains"//g' \
+            -e '/^\[targets\]/,$ s/"MCMCChains",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
       - name: Restrict DynamicPPL to 0.35 for pigeons runs
         if: contains(matrix.test_set, 'pigeons')
         shell: bash
@@ -195,6 +207,18 @@ jobs:
             -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
             -e '/^\[compat\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
             -e '/^\[extras\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove FlexiChains from pigeons runs
+        if: contains(matrix.test_set, 'pigeons')
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"FlexiChains"//g' \
+            -e '/^\[targets\]/,$ s/"FlexiChains",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^FlexiChains[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^FlexiChains[[:space:]]*=.*$//g' \
             Project.toml
           rm -f Project.toml.bak
 

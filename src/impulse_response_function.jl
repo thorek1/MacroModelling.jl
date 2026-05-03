@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 
 @unstable function compute_irf_responses(𝓂::ℳ,
                                 state_update::Function,
@@ -718,3 +720,5 @@ function girf(state_update::Function,
     return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
 end
 
+
+end # @stable

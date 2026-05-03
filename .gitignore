@@ -82,3 +82,4 @@ tasks/_repl_cmd.jl
 tasks/
 test/dynare_comparison/_dynare_work/
 test/dynare_comparison/output*
+test/dynare_comparison/output_thread_sweep*
