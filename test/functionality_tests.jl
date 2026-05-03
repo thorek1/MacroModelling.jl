@@ -5,6 +5,23 @@ import StatsPlots
 using Random
 Random.seed!(1234)
 
+# Diagnostic wrapper: prints achieved atol/rtol when isapprox fails
+function check_isapprox(a, b; kwargs...)
+    result = isapprox(a, b; kwargs...)
+    if !result
+        d = a .- b
+        frobenius_diff = ℒ.norm(d)
+        maxnorm = max(ℒ.norm(a), ℒ.norm(b))
+        eff_rtol = maxnorm > 0 ? frobenius_diff / maxnorm : Inf
+        max_abs = maximum(abs.(d))
+        safe_denom = max.(abs.(a), abs.(b), eps())
+        max_rel = maximum(abs.(d) ./ safe_denom)
+        has_nan = any(isnan, a) || any(isnan, b)
+        has_inf = any(isinf, a) || any(isinf, b)
+        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(a))\n", color=:yellow)
+    end
+    return result
+end
 
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
     rndnmbr = rand(max(length(m.parameter_values),2))
@@ -1506,7 +1523,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
-                                    @test isapprox(estim1, estim2, rtol = 1e-8)
+                                    @test check_isapprox(estim1, estim2, rtol = 1e-8)
 
                                     clear_solution_caches!(m, algorithm)
 
@@ -1531,7 +1548,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
-                                    @test isapprox(estim1, estim2, rtol = 1e-8)
+                                    @test check_isapprox(estim1, estim2, rtol = 1e-8)
 
                                     for levels in [true, false]
                                         clear_solution_caches!(m, algorithm)
@@ -1559,7 +1576,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
-                                        @test isapprox(estim1, estim2, rtol = 1e-8)
+                                        @test check_isapprox(estim1, estim2, rtol = 1e-8)
 
                                         
                                         clear_solution_caches!(m, algorithm)
@@ -1587,7 +1604,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
-                                        @test isapprox(estim1, estim2, rtol = 1e-8)
+                                        @test check_isapprox(estim1, estim2, rtol = 1e-8)
                                     end
                                 end
                             end
@@ -1679,7 +1696,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 verbose = verbose)
-                            @test isapprox(estim1,estim2)
+                            @test check_isapprox(estim1,estim2)
                         end
                     end
                 end
@@ -1748,10 +1765,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                             verbose = verbose)
                                                                                             end, parameter_values)
                                             if isfinite(ℒ.norm(fin_grad_llh[1]))
-                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
-                                                @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
-                                                @test isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
-                                                @test isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test check_isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test check_isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test check_isapprox(fin_grad_llh[1], moon_grad_llh, rtol = 1e-4, atol = 1e-6)
+                                                @test check_isapprox(fin_grad_llh[1], zyg_grad_llh, rtol = 1e-4, atol = 1e-6)
                                                 break
                                             end
                                         end
@@ -1773,7 +1790,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
-                                            @test isapprox(llh, LLH, rtol = 1e-8)
+                                            @test check_isapprox(llh, LLH, rtol = 1e-8)
 
                                                 clear_solution_caches!(m, algorithm)
                                         
@@ -1799,8 +1816,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                                                 verbose = verbose), parameter_values)[1]
                 
-                                                @test isapprox(MOON_grad_llh, moon_grad_llh, rtol = 1e-6)
-                                                @test isapprox(ZYG_grad_llh, zyg_grad_llh, rtol = 1e-6)
+                                                @test check_isapprox(MOON_grad_llh, moon_grad_llh, rtol = 1e-6)
+                                                @test check_isapprox(ZYG_grad_llh, zyg_grad_llh, rtol = 1e-6)
                                         end
                                     end
                                 end
@@ -1939,7 +1956,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
-                                        @test isapprox(cond_fcst, cond_fcst_lvl)
+                                        @test check_isapprox(cond_fcst, cond_fcst_lvl)
 
                                         clear_solution_caches!(m, algorithm)
                                     
@@ -1970,7 +1987,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
                                                                                 
-                                        @test isapprox(cond_fcst, cond_fcst_lvl)
+                                        @test check_isapprox(cond_fcst, cond_fcst_lvl)
                                     end
                                 # end
                             end
@@ -2089,7 +2106,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         verbose = verbose)
                                                                         
-                                @test isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
 
                                 clear_solution_caches!(m, algorithm)
                                                                         
@@ -2099,7 +2116,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                                         verbose = verbose)
 
-                                @test isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8)
 
                             end
 
@@ -2114,7 +2131,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm,
                                                 verbose = verbose)
 
-                                @test isapprox(corrl, CORRL, rtol = 1e-5)
+                                @test check_isapprox(corrl, CORRL, rtol = 1e-5)
 
                                 clear_solution_caches!(m, algorithm)
                                 
@@ -2126,7 +2143,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                 verbose = verbose)
 
-                                @test isapprox(autocorr_, AUTOCORR, rtol = 1e-8)
+                                @test check_isapprox(autocorr_, AUTOCORR, rtol = 1e-8)
                             end
                         end
                     end
@@ -2170,7 +2187,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             sylvester_algorithm = sylvester_algorithm,
                                             verbose = verbose)
-                        @test isapprox(sol, SOL)#, rtol = eps(Float32))
+                        @test check_isapprox(sol, SOL)#, rtol = eps(Float32))
                     end
                 end
             end
@@ -2228,10 +2245,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
                 end
 
-                @test isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
-                @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
+                @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
+                @test check_isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
                 
-                @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
+                @test check_isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
 
             for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -2242,7 +2259,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             sylvester_algorithm = sylvester_algorithm)
 
-                        @test isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-8)
+                        @test check_isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-8)
 
                             clear_solution_caches!(m, algorithm)
 
@@ -2254,7 +2271,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm)[i], parameter_values))
                             end
 
-                            @test isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
+                            @test check_isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
 
                             clear_solution_caches!(m, algorithm)
 
@@ -2276,8 +2293,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm)[i], parameter_values)[1])
                             end
 
-                            @test isapprox(DERIV_SOL_moon, DERIV_SOL, rtol = 1e-8)
-                            @test isapprox(DERIV_SOL_zyg, DERIV_SOL, rtol = 1e-8)
+                            @test check_isapprox(DERIV_SOL_moon, DERIV_SOL, rtol = 1e-8)
+                            @test check_isapprox(DERIV_SOL_zyg, DERIV_SOL, rtol = 1e-8)
                     end
                 end
             end
@@ -2372,7 +2389,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,1,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin[1]))
-                            @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
                             break
                         end
                     end
@@ -2390,8 +2407,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,1,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg[1]))
-                                @test isapprox(deriv_moon, deriv_fin_zyg[1], rtol = 1e-5)
-                            @test isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
+                                @test check_isapprox(deriv_moon, deriv_fin_zyg[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
                             break
                         end
                     end
@@ -2409,7 +2426,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_last[1]))
-                            @test isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
                             break
                         end
                     end
@@ -2428,8 +2445,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
-                                @test isapprox(deriv_moon_last, deriv_fin_zyg_last[1], rtol = 1e-5)
-                            @test isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                                @test check_isapprox(deriv_moon_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
                             break
                         end
                     end
@@ -2443,12 +2460,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             initial_state = initial_state,
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
-                            @test isapprox(irf_, IRF_, rtol = 1e-8)
+                            @test check_isapprox(irf_, IRF_, rtol = 1e-8)
 
                             DERIV_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state, tol = tol,
                                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)[:,1,1], parameter_values)
 
-                            @test isapprox(deriv_for, DERIV_for, rtol = 1e-8)
+                            @test check_isapprox(deriv_for, DERIV_for, rtol = 1e-8)
                         end
                     end
                     for variables in vars
@@ -2533,15 +2550,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 # println("standard_deviation: $(ℒ.norm(stats[:standard_deviation] - STATS[:standard_deviation]) / max(ℒ.norm(stats[:standard_deviation]), ℒ.norm(STATS[:standard_deviation])))")
                                 # println("covariance: $(ℒ.norm(stats[:covariance] - STATS[:covariance]) / max(ℒ.norm(stats[:covariance]), ℒ.norm(STATS[:covariance])))")
                                 # println("autocorrelation (qme: $quadratic_matrix_equation_algorithm, sylv: $sylvester_algorithm, lyap: $lyapunov_algorithm, tol: $tol): $(ℒ.norm(stats[:autocorrelation] - STATS[:autocorrelation]) / max(ℒ.norm(stats[:autocorrelation]), ℒ.norm(STATS[:autocorrelation])))")
-                                @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
-                                @test isapprox(stats[:mean], STATS[:mean], rtol = 1e-8)
-                                @test isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-8)
-                                @test isapprox(stats[:variance], STATS[:variance], rtol = 1e-8)
-                                @test isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-8, atol = 1e-8)
-                                @test isapprox(stats[:correlation], STATS[:correlation], rtol = 1e-8, atol = 1e-8, nans = true)
-                                @test isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-8, atol = 1e-8, nans = true)
+                                @test check_isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
+                                @test check_isapprox(stats[:mean], STATS[:mean], rtol = 1e-8)
+                                @test check_isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-8)
+                                @test check_isapprox(stats[:variance], STATS[:variance], rtol = 1e-8)
+                                @test check_isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-8, atol = 1e-8)
+                                @test check_isapprox(stats[:correlation], STATS[:correlation], rtol = 1e-8, atol = 1e-8, nans = true)
+                                @test check_isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-8, atol = 1e-8, nans = true)
                             else
-                                @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
+                                @test check_isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-8)
                             end
                         end
                     end
@@ -2573,10 +2590,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
                     # ℒ.norm(deriv1 - deriv1_zyg) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg))
             
-                    @test isapprox(deriv1_moon, deriv1_fin[1], rtol = 1e-5)
-                    @test isapprox(deriv1_zyg, deriv1_fin[1], rtol = 1e-5)
+                    @test check_isapprox(deriv1_moon, deriv1_fin[1], rtol = 1e-5)
+                    @test check_isapprox(deriv1_zyg, deriv1_fin[1], rtol = 1e-5)
             
-                    @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-5)
+                    @test check_isapprox(deriv1, deriv1_fin[1], rtol = 1e-5)
                     break
                 end
             end
@@ -2607,11 +2624,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv2_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv2_moon, deriv2_fin[1], rtol = 1e-5)
-                        @test isapprox(deriv2_zyg, deriv2_fin[1], rtol = 1e-5)
+                        @test check_isapprox(deriv2_moon, deriv2_fin[1], rtol = 1e-5)
+                        @test check_isapprox(deriv2_zyg, deriv2_fin[1], rtol = 1e-5)
                     end
                     
-                    @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-5)
+                    @test check_isapprox(deriv2, deriv2_fin[1], rtol = 1e-5)
                     break
                 end
             end                            
@@ -2638,11 +2655,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               
                 if isfinite(ℒ.norm(deriv3_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
-                        @test isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test check_isapprox(deriv3_moon, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test check_isapprox(deriv3_zyg, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
                     end
                     
-                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
+                    @test check_isapprox(deriv3, deriv3_fin[1], rtol = 1e-5, atol = 1e-8)
                     break
                 end
             end
@@ -2668,10 +2685,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv4_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv4_moon, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
-                        @test isapprox(deriv4_zyg, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test check_isapprox(deriv4_moon, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
+                        @test check_isapprox(deriv4_zyg, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
                     end
-                    @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
+                    @test check_isapprox(deriv4, deriv4_fin[1], rtol = 1e-5, atol = 1e-8)
                     break
                 end
             end
@@ -2702,12 +2719,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 end, old_params)
                 if isfinite(ℒ.norm(deriv5_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
-                        @test isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                        @test check_isapprox(deriv5_moon, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                        @test check_isapprox(deriv5_zyg, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
                     end
 
                     # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
-                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
+                    @test check_isapprox(deriv5, deriv5_fin[1], rtol = 1e-4, atol = 1e-8)
                     break
                 end
             end
@@ -2733,10 +2750,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv6_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv6_moon, deriv6_fin[1], rtol = 1e-4)
-                        @test isapprox(deriv6_zyg, deriv6_fin[1], rtol = 1e-4)
+                        @test check_isapprox(deriv6_moon, deriv6_fin[1], rtol = 1e-4)
+                        @test check_isapprox(deriv6_zyg, deriv6_fin[1], rtol = 1e-4)
                     end
-                    @test isapprox(deriv6, deriv6_fin[1], rtol = 1e-4)
+                    @test check_isapprox(deriv6, deriv6_fin[1], rtol = 1e-4)
                     break
                 end
             end
@@ -2775,10 +2792,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             end, old_params)
                 if isfinite(ℒ.norm(deriv7_fin[1]))
                     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        @test isapprox(deriv7_moon, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
-                        @test isapprox(deriv7_zyg, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
+                        @test check_isapprox(deriv7_moon, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
+                        @test check_isapprox(deriv7_zyg, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
                     end
-                    @test isapprox(deriv7, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
+                    @test check_isapprox(deriv7, deriv7_fin[1], rtol = 1e-4, atol = 1e-8, nans = true)
                     break
                 end
             end
@@ -2843,7 +2860,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
-                            @test isapprox(deriv1, DERIV1, rtol = 1e-8)
+                            @test check_isapprox(deriv1, DERIV1, rtol = 1e-8)
                             
                             DERIV1_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                             tol = tol,
@@ -2857,8 +2874,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)[1]
-                            @test isapprox(DERIV1_moon, DERIV1, rtol = 1e-8)
-                            @test isapprox(DERIV1_zyg, DERIV1, rtol = 1e-8)
+                            @test check_isapprox(DERIV1_moon, DERIV1, rtol = 1e-8)
+                            @test check_isapprox(DERIV1_zyg, DERIV1, rtol = 1e-8)
                         
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -2870,7 +2887,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             mean = :all_excluding_obc)[:mean], old_params)
-                            @test isapprox(deriv2, DERIV2, rtol = 1e-8)
+                            @test check_isapprox(deriv2, DERIV2, rtol = 1e-8)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
@@ -2887,8 +2904,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 mean = :all_excluding_obc)[:mean], old_params)[1]
-                                @test isapprox(DERIV2_moon, DERIV2, rtol = 1e-8)
-                                @test isapprox(DERIV2_zyg, DERIV2, rtol = 1e-8)
+                                @test check_isapprox(DERIV2_moon, DERIV2, rtol = 1e-8)
+                                @test check_isapprox(DERIV2_zyg, DERIV2, rtol = 1e-8)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2899,7 +2916,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
-                            @test isapprox(deriv3, DERIV3, rtol = 1e-8)
+                            @test check_isapprox(deriv3, DERIV3, rtol = 1e-8)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
@@ -2916,8 +2933,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)[1]
-                                @test isapprox(DERIV3_moon, DERIV3, rtol = 1e-6)
-                                @test isapprox(DERIV3_zyg, DERIV3, rtol = 1e-6)
+                                @test check_isapprox(DERIV3_moon, DERIV3, rtol = 1e-6)
+                                @test check_isapprox(DERIV3_zyg, DERIV3, rtol = 1e-6)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2928,7 +2945,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             variance = :all_excluding_obc)[:variance], old_params)
-                            @test isapprox(deriv4, DERIV4, rtol = 1e-8)
+                            @test check_isapprox(deriv4, DERIV4, rtol = 1e-8)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
@@ -2945,8 +2962,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 variance = :all_excluding_obc)[:variance], old_params)[1]
-                                @test isapprox(DERIV4_moon, DERIV4, rtol = 1e-8)
-                                @test isapprox(DERIV4_zyg, DERIV4, rtol = 1e-8)
+                                @test check_isapprox(DERIV4_moon, DERIV4, rtol = 1e-8)
+                                @test check_isapprox(DERIV4_zyg, DERIV4, rtol = 1e-8)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2958,7 +2975,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = :all_excluding_obc)[:covariance], old_params)
                             # println(ℒ.norm(deriv5 - DERIV5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))                      
-							@test isapprox(deriv5, DERIV5, rtol = 1e-4)
+							@test check_isapprox(deriv5, DERIV5, rtol = 1e-4)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
@@ -2975,8 +2992,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 covariance = :all_excluding_obc)[:covariance], old_params)[1]
-                                @test isapprox(DERIV5_moon, DERIV5, rtol = 1e-4)
-                                @test isapprox(DERIV5_zyg, DERIV5, rtol = 1e-4)
+                                @test check_isapprox(DERIV5_moon, DERIV5, rtol = 1e-4)
+                                @test check_isapprox(DERIV5_zyg, DERIV5, rtol = 1e-4)
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2987,7 +3004,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)
-                            @test isapprox(deriv6, DERIV6, rtol = 1e-4)
+                            @test check_isapprox(deriv6, DERIV6, rtol = 1e-4)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                 clear_solution_caches!(m, algorithm)
@@ -3004,8 +3021,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)[1]
-                                @test isapprox(DERIV6_moon, DERIV6, rtol = 1e-4)
-                                @test isapprox(DERIV6_zyg, DERIV6, rtol = 1e-4)
+                                @test check_isapprox(DERIV6_moon, DERIV6, rtol = 1e-4)
+                                @test check_isapprox(DERIV6_zyg, DERIV6, rtol = 1e-4)
                             end
                             end
                         end
@@ -3037,8 +3054,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 covariance = m.constants.post_model_macro.var[4:5])
             
             # Check that within-group covariances match
-            @test isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6)
-            @test isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6)
+            @test check_isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6)
+            @test check_isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6)
             
             # Check that cross-group covariances are zero
             @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
@@ -3081,10 +3098,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             @test size(stats_corr[:correlation]) == (length(vars_corr), length(vars_corr))
             # Diagonal must be 1 (or NaN for degenerate variables, but selected vars should be non-degenerate)
             for i in 1:length(vars_corr)
-                @test isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6)
+                @test check_isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6)
             end
             # Symmetric
-            @test isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6)
+            @test check_isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6)
             # All entries in [-1, 1]
             @test all(-1 - 1e-6 .<= stats_corr[:correlation] .<= 1 + 1e-6)
 
@@ -3096,7 +3113,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             cov_full = stats_combo[:covariance] + stats_combo[:covariance]' - ℒ.Diagonal(stats_combo[:covariance])
             sd = stats_combo[:standard_deviation]
             expected_corr = cov_full ./ (sd * sd')
-            @test isapprox(stats_combo[:correlation], expected_corr, rtol = 1e-6, atol = 1e-8, nans = true)
+            @test check_isapprox(stats_combo[:correlation], expected_corr, rtol = 1e-6, atol = 1e-8, nans = true)
 
             # Grouped correlation: cross-group entries are zero, within-group preserved
             if length(vars_corr) >= 4
@@ -3109,8 +3126,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                               correlation = vars_corr[1:2])
                 stats_block2 = get_statistics(m, old_params, algorithm = algorithm,
                                               correlation = vars_corr[3:4])
-                @test isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6)
-                @test isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6)
+                @test check_isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6)
+                @test check_isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6)
                 # Cross-group entries are zero
                 @test all(stats_grouped_corr[:correlation][1:2, 3:4] .== 0)
                 @test all(stats_grouped_corr[:correlation][3:4, 1:2] .== 0)
@@ -3231,7 +3248,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-                            @test isapprox([v for (k,v) in moms], [v for (k,v) in MOMS], rtol = 1e-8)
+                            @test check_isapprox([v for (k,v) in moms], [v for (k,v) in MOMS], rtol = 1e-8)
                         end
                     end
                 end
@@ -3266,7 +3283,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                     lyapunov_algorithm = :doubling,
                                     sylvester_algorithm = :doubling)
 
-                @test isapprox([v for (k,v) in moms_d], [v for (k,v) in MOMS_d], rtol = 1e-8)
+                @test check_isapprox([v for (k,v) in moms_d], [v for (k,v) in MOMS_d], rtol = 1e-8)
         end
 
         # FD parity for get_moments derivative columns (rrule-based VJP Jacobians)
@@ -3286,7 +3303,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             algorithm = algorithm, non_stochastic_steady_state = true, standard_deviation = false, derivatives = false)[:non_stochastic_steady_state])
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test isapprox(nsss_jac, fd[1], rtol = 1e-5)
+                    @test check_isapprox(nsss_jac, fd[1], rtol = 1e-5)
                     break
                 end
             end
@@ -3307,7 +3324,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, variance = true, derivatives = false)[:variance])
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test isapprox(var_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(var_jac, fd[1], rtol = 1e-4)
                     break
                 end
             end
@@ -3328,7 +3345,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = true, variance = false, derivatives = false)[:standard_deviation])
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test isapprox(std_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(std_jac, fd[1], rtol = 1e-4)
                     break
                 end
             end
@@ -3355,7 +3372,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             derivatives = false)[:covariance]))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test isapprox(cov_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(cov_jac, fd[1], rtol = 1e-4)
                     break
                 end
             end
@@ -3377,7 +3394,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, mean = true, derivatives = false)[:mean])
                         end, old_params)
                     if isfinite(ℒ.norm(fd[1]))
-                        @test isapprox(mean_jac, fd[1], rtol = 1e-4)
+                        @test check_isapprox(mean_jac, fd[1], rtol = 1e-4)
                         break
                     end
                 end
@@ -3465,7 +3482,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 # lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
-                                @test isapprox(irf_, IRF_, rtol = 1e-6)
+                                @test check_isapprox(irf_, IRF_, rtol = 1e-6)
                             end
                         # end
                     end
@@ -3510,7 +3527,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     
                     RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
-                    @test isapprox(res, RES, rtol = 1e-8, atol = 1e-8, nans = true)
+                    @test check_isapprox(res, RES, rtol = 1e-8, atol = 1e-8, nans = true)
                 end
             end
 
@@ -3522,7 +3539,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             res2 = get_non_stochastic_steady_state_residuals(m, stst[1:3], tol = tol, verbose = false)
 
-            @test isapprox(res1, res2, rtol = 1e-8, atol = 1e-8, nans = true)
+            @test check_isapprox(res1, res2, rtol = 1e-8, atol = 1e-8, nans = true)
 
             get_residuals(m, stst)
 
@@ -3592,7 +3609,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             algorithm = algorithm, 
                                                             stochastic = stochastic, 
                                                             derivatives = derivatives)
-                                    @test isapprox(NSSS, nsss, rtol = 1e-8)
+                                    @test check_isapprox(NSSS, nsss, rtol = 1e-8)
                                 end
                             end
                         end
@@ -3632,7 +3649,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             algorithm = algorithm, stochastic = false, derivatives = false, return_variables_only = true))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test isapprox(nsss_jac, fd[1], rtol = 1e-5)
+                    @test check_isapprox(nsss_jac, fd[1], rtol = 1e-5)
                     break
                 end
             end
@@ -3654,7 +3671,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 algorithm = algorithm, stochastic = true, derivatives = false, return_variables_only = true))
                         end, old_params)
                     if isfinite(ℒ.norm(fd[1]))
-                        @test isapprox(sss_jac, fd[1], rtol = 1e-4)
+                        @test check_isapprox(sss_jac, fd[1], rtol = 1e-4)
                         break
                     end
                 end
@@ -3688,7 +3705,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     if algorithm == :first_order
         lvl_irfs  = get_irf(m, old_params, verbose = true, levels = true, variables = :all)
         new_sub_lvl_irfs  = get_irf(m, old_params, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true, variables = :all)
-        @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
+        @test check_isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
     end
 
 end
