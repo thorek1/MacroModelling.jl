@@ -1,5 +1,4 @@
 using Dates
-using Statistics
 using FlexiChains
 using FlexiChains: Parameter, Extra, FlexiChain
 using DataStructures: OrderedDict
@@ -22,7 +21,7 @@ function quarterly_dates(start_date::Date, len::Int)
 end
 
 function parameter_means(chain)
-    return collect(values(mean(chain); parameters_only = true))
+    return collect(values(FlexiChains.mean(chain); parameters_only = true))
 end
 
 function flexichain_from_matrix(samples::AbstractMatrix{<:Real}, names::AbstractVector; extra_names::AbstractSet{Symbol} = Set{Symbol}())
