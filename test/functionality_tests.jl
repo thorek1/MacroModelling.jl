@@ -42,7 +42,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 Tuple(m.constants.post_complete_parameters.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
                 m.constants.post_complete_parameters.parameters .=> old_params, 
                 (string(m.constants.post_complete_parameters.parameters[1]) => old_params[1] * 1.0001), 
-                Tuple(string.(m.constants.post_complete_parameters.parameters[1:2]) .=> old_params[1:2] .* exp.(rndnmbr[1:2]*1e-4)), 
+                Tuple(string.(m.constants.post_complete_parameters.parameters[1:2]) .=> old_params[1:2] .* exp.(-rndnmbr[1:2]*1e-4)), 
                 old_params]
                 
     
@@ -51,7 +51,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 Tuple(m2.constants.post_complete_parameters.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
                 m2.constants.post_complete_parameters.parameters .=> old_params2, 
                 (string(m2.constants.post_complete_parameters.parameters[1]) => old_params2[1] * 1.0001), 
-                Tuple(string.(m2.constants.post_complete_parameters.parameters[1:2]) .=> old_params2[1:2] .* exp.(rndnmbr[1:2]*1e-4)), 
+                Tuple(string.(m2.constants.post_complete_parameters.parameters[1:2]) .=> old_params2[1:2] .* exp.(-rndnmbr[1:2]*1e-4)), 
                 old_params2]
 
     param_derivs = [:all, 
@@ -1722,7 +1722,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for presample_periods in [0, 3]
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
-                        for parameter_values in [old_params, old_params .* exp.(rndnmbr[1:length(old_params)]*1e-4)]
+                        for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                                 llh = get_loglikelihood(m, data_in_levels, parameter_values,
                                                         algorithm = algorithm,
@@ -2195,7 +2195,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     end
 
     @testset "get_solution with parameter input" begin
-        for parameter_values in [old_params, old_params .* exp.(rndnmbr[1:length(old_params)]*1e-4)]
+        for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
             get_first_order_solution(m, parameter_values)
 
             get_perturbation_solution(m, parameter_values)
@@ -2344,7 +2344,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     @testset "get_irf with parameter input" begin
         if algorithm == :first_order
-            for parameter_values in [old_params, old_params .* exp.(rndnmbr[1:length(old_params)]*1e-4)]
+            for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
                 for levels in [true,false]
                     for negative_shock in [true,false]
                         for periods in [1,10]
@@ -2482,7 +2482,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     
     @testset "get_statistics" begin
-        for parameter_values in [old_params, old_params .* exp.(rndnmbr[1:length(old_params)]*1e-4)]
+        for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
             for non_stochastic_steady_state in (Symbol[], vars...)
                 for mean in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
                     for standard_deviation in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
@@ -2512,7 +2512,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         
         
 
-        for parameter_values in [old_params, old_params .* exp.(rndnmbr[1:length(old_params)]*1e-4)]
+        for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
             clear_solution_caches!(m, algorithm)
 
             stats = get_statistics(m, parameter_values, algorithm = algorithm,
