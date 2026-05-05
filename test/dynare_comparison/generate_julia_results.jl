@@ -642,10 +642,15 @@ function main(args = ARGS)
         @info "Restricting Phase 1 to selected models" only_models
     end
 
+    # Runtime tracking (wall-clock time post-startup for each model)
+    model_runtimes = Vector{Pair{String, Float64}}()
+    total_start = time()
+
     # Phase 1a: First-order exports for all models
     for mname in MODEL_FILES
         keep(mname) || continue
         @info "Processing model (first order): $mname"
+        model_start = time()
         include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, mname)
@@ -653,6 +658,9 @@ function main(args = ARGS)
         Base.invokelatest(export_model, model, outdir;
                          include_moments = !(mname in SKIP_MOMENTS_MODELS),
                          benchmark_only = mname in BENCHMARK_ONLY_MODELS)
+        elapsed = time() - model_start
+        push!(model_runtimes, mname => elapsed)
+        @info "  Wall-clock time for $mname: $(round(elapsed, digits=3)) s"
     end
 
     # Phase 1b: Second-order exports for selected models
@@ -661,11 +669,15 @@ function main(args = ARGS)
         dir_name = "$(mname)_pruned_2nd"
         @info "Processing model (pruned order 2): $mname → $dir_name"
 
+        model_start = time()
         include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
         Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 2)
+        elapsed = time() - model_start
+        push!(model_runtimes, dir_name => elapsed)
+        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s"
     end
 
     # Phase 1c: Third-order exports for selected models
@@ -674,13 +686,28 @@ function main(args = ARGS)
         dir_name = "$(mname)_pruned_3rd"
         @info "Processing model (pruned order 3): $mname → $dir_name"
 
+        model_start = time()
         include(joinpath(MODELS_DIR, "$mname.jl"))
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
         Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 3)
+        elapsed = time() - model_start
+        push!(model_runtimes, dir_name => elapsed)
+        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s"
     end
 
+    total_elapsed = time() - total_start
+
+    # Write runtime summary
+    open(joinpath(output_root, "runtime_julia.csv"), "w") do io
+        println(io, "model,elapsed_seconds")
+        for (name, t) in model_runtimes
+            println(io, "$name,$t")
+        end
+        println(io, "TOTAL,$total_elapsed")
+    end
+    @info "Total wall-clock time (post-startup): $(round(total_elapsed, digits=3)) s"
     @info "Phase 1 complete. Results in $output_root"
 end
 

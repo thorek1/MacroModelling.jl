@@ -76,6 +76,11 @@ echo "Linked BLAS: ${OCTAVE_LINKED_BLAS:-unknown}"
 echo "Linked LAPACK: ${OCTAVE_LINKED_LAPACK:-unknown}"
 echo "Dynare version: $DYNARE_VERSION_OUTPUT"
 
+# Runtime CSV header
+RUNTIME_CSV="$OUTPUT_DIR/runtime_dynare.csv"
+echo "model,elapsed_seconds" > "$RUNTIME_CSV"
+TOTAL_START=$(date +%s%N)
+
 # Process each model
 for model_dir in "$OUTPUT_DIR"/*/; do
     model_name=$(basename "$model_dir")
@@ -102,14 +107,22 @@ for model_dir in "$OUTPUT_DIR"/*/; do
     # Add nograph to stoch_simul to avoid graphics toolkit errors in headless mode
     sed -i 's/stoch_simul(/stoch_simul(nograph, /' "$workdir/${dynare_stub}.mod"
 
+    MODEL_START=$(date +%s%N)
+
     (
         cd "$workdir"
         octave --no-gui --eval "
             addpath('$DYNARE_MATLAB');
             model_name = '$model_name';
             output_dir = 'dynare_output';
+            total_tic = tic;
             dynare $dynare_stub noclearall;
             extract_dynare_results;
+            elapsed = toc(total_tic);
+            fid = fopen(fullfile('dynare_output', 'runtime_seconds.csv'), 'w');
+            fprintf(fid, '%.6f\n', elapsed);
+            fclose(fid);
+            fprintf('Wall-clock time for %s (post-startup): %.3f s\n', model_name, elapsed);
         "
 
         # Copy results to the mounted output directory
@@ -122,8 +135,16 @@ for model_dir in "$OUTPUT_DIR"/*/; do
         fi
     )
 
+    MODEL_END=$(date +%s%N)
+    MODEL_ELAPSED=$(echo "scale=6; ($MODEL_END - $MODEL_START) / 1000000000" | bc)
+    echo "$model_name,$MODEL_ELAPSED" >> "$RUNTIME_CSV"
+    echo "Done: $model_name (wall-clock: ${MODEL_ELAPSED} s)"
+
     rm -rf "$workdir"
-    echo "Done: $model_name"
 done
 
+TOTAL_END=$(date +%s%N)
+TOTAL_ELAPSED=$(echo "scale=6; ($TOTAL_END - $TOTAL_START) / 1000000000" | bc)
+echo "TOTAL,$TOTAL_ELAPSED" >> "$RUNTIME_CSV"
+echo "Total wall-clock time (post-startup): ${TOTAL_ELAPSED} s"
 echo "Phase 2 complete."
