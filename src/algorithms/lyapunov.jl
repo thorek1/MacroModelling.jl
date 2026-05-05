@@ -240,14 +240,23 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
-        𝐀 = 𝐀^2
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if issparse(cached) && size(𝐀) == size(cached) && eltype(𝐀) == eltype(cached)
+                𝐀 = cached
+            else
+                𝐀 = convert(typeof(𝐀), cached)
+            end
+        else
+            𝐀 = 𝐀^2
 
-        droptol!(𝐀, eps())
+            droptol!(𝐀, eps())
 
-        if workspace.pow_capture
-            target_k = i + 1
-            cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
-            workspace.pow_iters = target_k
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -303,15 +312,24 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
-        ℒ.mul!(𝐀², 𝐀, 𝐀)
-        copyto!(𝐀, 𝐀²)
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if typeof(cached) === typeof(𝐀) && size(cached) == size(𝐀)
+                copyto!(𝐀, cached)
+            else
+                copyto!(𝐀, convert(typeof(𝐀), cached))
+            end
+        else
+            ℒ.mul!(𝐀², 𝐀, 𝐀)
+            copyto!(𝐀, 𝐀²)
 
-        # droptol!(𝐀, eps())
+            # droptol!(𝐀, eps())
 
-        if workspace.pow_capture
-            target_k = i + 1
-            cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
-            workspace.pow_iters = target_k
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -369,18 +387,27 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         ℒ.mul!(𝐂A, 𝐂, 𝐀')
         ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
-        # 𝐀 *= 𝐀
-        𝐀 = 𝐀^2 # faster than A *= A
-        # copyto!(𝐂A,𝐀)
-        # 𝐀 = sparse(𝐀 * 𝐂A)
-        # 𝐀 = sparse(𝐂A * 𝐀) # faster than sparse-dense matmul but slower than sparse sparse matmul
-        
-        droptol!(𝐀, eps())
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if issparse(cached) && size(𝐀) == size(cached) && eltype(𝐀) == eltype(cached)
+                𝐀 = cached
+            else
+                𝐀 = convert(typeof(𝐀), cached)
+            end
+        else
+            # 𝐀 *= 𝐀
+            𝐀 = 𝐀^2 # faster than A *= A
+            # copyto!(𝐂A,𝐀)
+            # 𝐀 = sparse(𝐀 * 𝐂A)
+            # 𝐀 = sparse(𝐂A * 𝐀) # faster than sparse-dense matmul but slower than sparse sparse matmul
+            
+            droptol!(𝐀, eps())
 
-        if workspace.pow_capture
-            target_k = i + 1
-            cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
-            workspace.pow_iters = target_k
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0

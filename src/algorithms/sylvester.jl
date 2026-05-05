@@ -346,17 +346,32 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        𝐀 = 𝐀^2
-        𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if issparse(cachedA) && size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA)
+                𝐀 = cachedA
+            else
+                𝐀 = convert(typeof(𝐀), cachedA)
+            end
+            if issparse(cachedB) && size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB)
+                𝐁 = cachedB
+            else
+                𝐁 = convert(typeof(𝐁), cachedB)
+            end
+        else
+            𝐀 = 𝐀^2
+            𝐁 = 𝐁^2
 
-        droptol!(𝐀, eps())
-        droptol!(𝐁, eps())
+            droptol!(𝐀, eps())
+            droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -443,21 +458,36 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        ℒ.mul!(𝐀¹,𝐀,𝐀)
-        copy!(𝐀,𝐀¹)
-        ℒ.mul!(𝐁¹,𝐁,𝐁)
-        copy!(𝐁,𝐁¹)
-        # 𝐀 = 𝐀^2
-        # 𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if issparse(cachedA) && size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA)
+                𝐀 = cachedA
+            else
+                𝐀 = convert(typeof(𝐀), cachedA)
+            end
+            if issparse(cachedB) && size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB)
+                𝐁 = cachedB
+            else
+                𝐁 = convert(typeof(𝐁), cachedB)
+            end
+        else
+            ℒ.mul!(𝐀¹,𝐀,𝐀)
+            copy!(𝐀,𝐀¹)
+            ℒ.mul!(𝐁¹,𝐁,𝐁)
+            copy!(𝐁,𝐁¹)
+            # 𝐀 = 𝐀^2
+            # 𝐁 = 𝐁^2
 
-        droptol!(𝐀, eps())
-        droptol!(𝐁, eps())
+            droptol!(𝐀, eps())
+            droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -551,29 +581,44 @@ function solve_sylvester_equation(  A::Matrix{T},
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
         # end # timeit_debug
 
-        # @timeit_debug timer "Square A" begin
-        ℒ.mul!(𝐀¹,𝐀,𝐀)
-        copy!(𝐀,𝐀¹)
-        # end # timeit_debug
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA) && !issparse(cachedA)
+                copyto!(𝐀, cachedA)
+            else
+                copyto!(𝐀, convert(typeof(𝐀), cachedA))
+            end
+            if issparse(cachedB) && size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB)
+                𝐁 = cachedB
+            else
+                𝐁 = convert(typeof(𝐁), cachedB)
+            end
+        else
+            # @timeit_debug timer "Square A" begin
+            ℒ.mul!(𝐀¹,𝐀,𝐀)
+            copy!(𝐀,𝐀¹)
+            # end # timeit_debug
 
-        # 𝐀 = 𝐀^2
-        # @timeit_debug timer "Square B" begin
-        𝐁 = 𝐁^2
-        # ℒ.mul!(𝐁¹,𝐁,𝐁)
-        # copy!(𝐁,𝐁¹)
-        # end # timeit_debug
+            # 𝐀 = 𝐀^2
+            # @timeit_debug timer "Square B" begin
+            𝐁 = 𝐁^2
+            # ℒ.mul!(𝐁¹,𝐁,𝐁)
+            # copy!(𝐁,𝐁¹)
+            # end # timeit_debug
 
 
-        # droptol!(𝐀, eps())
-        # @timeit_debug timer "droptol B" begin
-        droptol!(𝐁, eps())
-        # end # timeit_debug
+            # droptol!(𝐀, eps())
+            # @timeit_debug timer "droptol B" begin
+            droptol!(𝐁, eps())
+            # end # timeit_debug
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -660,19 +705,34 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        𝐀 = 𝐀^2
-        ℒ.mul!(𝐁¹,𝐁,𝐁)
-        copy!(𝐁,𝐁¹)
-        # 𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if issparse(cachedA) && size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA)
+                𝐀 = cachedA
+            else
+                𝐀 = convert(typeof(𝐀), cachedA)
+            end
+            if size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB) && !issparse(cachedB)
+                copyto!(𝐁, cachedB)
+            else
+                copyto!(𝐁, convert(typeof(𝐁), cachedB))
+            end
+        else
+            𝐀 = 𝐀^2
+            ℒ.mul!(𝐁¹,𝐁,𝐁)
+            copy!(𝐁,𝐁¹)
+            # 𝐁 = 𝐁^2
 
-        droptol!(𝐀, eps())
-        # droptol!(𝐁, eps())
+            droptol!(𝐀, eps())
+            # droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -752,21 +812,36 @@ function solve_sylvester_equation(  A::Matrix{T},
         # ℒ.axpy!(1, 𝐂, 𝐂¹)
         𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        ℒ.mul!(𝐀¹,𝐀,𝐀)
-        copy!(𝐀,𝐀¹)
-        # 𝐀 = 𝐀^2
-        ℒ.mul!(𝐁¹,𝐁,𝐁)
-        copy!(𝐁,𝐁¹)
-        # 𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA) && !issparse(cachedA)
+                copyto!(𝐀, cachedA)
+            else
+                copyto!(𝐀, convert(typeof(𝐀), cachedA))
+            end
+            if size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB) && !issparse(cachedB)
+                copyto!(𝐁, cachedB)
+            else
+                copyto!(𝐁, convert(typeof(𝐁), cachedB))
+            end
+        else
+            ℒ.mul!(𝐀¹,𝐀,𝐀)
+            copy!(𝐀,𝐀¹)
+            # 𝐀 = 𝐀^2
+            ℒ.mul!(𝐁¹,𝐁,𝐁)
+            copy!(𝐁,𝐁¹)
+            # 𝐁 = 𝐁^2
 
-        # droptol!(𝐀, eps())
-        # droptol!(𝐁, eps())
+            # droptol!(𝐀, eps())
+            # droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -849,21 +924,36 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         # ℒ.axpy!(1, 𝐂, 𝐂¹)
         𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        # ℒ.mul!(𝐀¹,𝐀,𝐀)
-        # copy!(𝐀,𝐀¹)
-        𝐀 = 𝐀^2
-        ℒ.mul!(𝐁¹,𝐁,𝐁)
-        copy!(𝐁,𝐁¹)
-        # 𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if issparse(cachedA) && size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA)
+                𝐀 = cachedA
+            else
+                𝐀 = convert(typeof(𝐀), cachedA)
+            end
+            if size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB) && !issparse(cachedB)
+                copyto!(𝐁, cachedB)
+            else
+                copyto!(𝐁, convert(typeof(𝐁), cachedB))
+            end
+        else
+            # ℒ.mul!(𝐀¹,𝐀,𝐀)
+            # copy!(𝐀,𝐀¹)
+            𝐀 = 𝐀^2
+            ℒ.mul!(𝐁¹,𝐁,𝐁)
+            copy!(𝐁,𝐁¹)
+            # 𝐁 = 𝐁^2
 
-        droptol!(𝐀, eps())
-        # droptol!(𝐁, eps())
+            droptol!(𝐀, eps())
+            # droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
@@ -945,21 +1035,36 @@ function solve_sylvester_equation(  A::Matrix{T},
         # ℒ.axpy!(1, 𝐂, 𝐂¹)
         𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-        ℒ.mul!(𝐀¹,𝐀,𝐀)
-        copy!(𝐀,𝐀¹)
-        # 𝐀 = 𝐀^2
-        # ℒ.mul!(𝐁¹,𝐁,𝐁)
-        # copy!(𝐁,𝐁¹)
-        𝐁 = 𝐁^2
+        if 𝕊ℂ.pow_iters >= i + 1
+            cachedA = 𝕊ℂ.𝐀_pow[i + 1]
+            cachedB = 𝕊ℂ.𝐁_pow[i + 1]
+            if size(𝐀) == size(cachedA) && eltype(𝐀) == eltype(cachedA) && !issparse(cachedA)
+                copyto!(𝐀, cachedA)
+            else
+                copyto!(𝐀, convert(typeof(𝐀), cachedA))
+            end
+            if issparse(cachedB) && size(𝐁) == size(cachedB) && eltype(𝐁) == eltype(cachedB)
+                𝐁 = cachedB
+            else
+                𝐁 = convert(typeof(𝐁), cachedB)
+            end
+        else
+            ℒ.mul!(𝐀¹,𝐀,𝐀)
+            copy!(𝐀,𝐀¹)
+            # 𝐀 = 𝐀^2
+            # ℒ.mul!(𝐁¹,𝐁,𝐁)
+            # copy!(𝐁,𝐁¹)
+            𝐁 = 𝐁^2
 
-        # droptol!(𝐀, eps())
-        droptol!(𝐁, eps())
+            # droptol!(𝐀, eps())
+            droptol!(𝐁, eps())
 
-        if 𝕊ℂ.pow_capture
-            target_k = i + 1
-            cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
-            cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
-            𝕊ℂ.pow_iters = target_k
+            if 𝕊ℂ.pow_capture
+                target_k = i + 1
+                cache_set!(𝕊ℂ.𝐀_pow, target_k, 𝐀, 𝕊ℂ.pow_transposed)
+                cache_set!(𝕊ℂ.𝐁_pow, target_k, 𝐁, 𝕊ℂ.pow_transposed)
+                𝕊ℂ.pow_iters = target_k
+            end
         end
 
         if i % 2 == 0
