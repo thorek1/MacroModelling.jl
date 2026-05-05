@@ -3072,12 +3072,14 @@ And data, 4×6 Matrix{Float64}:
         inf_val = Inf * sum(abs2, 𝓂.parameter_values)
         var_idx_fail = parse_variables_input_to_index(variables, 𝓂) |> sort
         axis1_fail = 𝓂.constants.post_model_macro.var[var_idx_fail]
-        inf_arr = KeyedArray(fill(inf_val, length(var_idx_fail)); Variables = axis1_fail)
         ret = Dict{Symbol,KeyedArray}()
-        if non_stochastic_steady_state; ret[:non_stochastic_steady_state] = inf_arr; end
-        if mean; ret[:mean] = inf_arr; end
-        if standard_deviation; ret[:standard_deviation] = inf_arr; end
-        if variance; ret[:variance] = inf_arr; end
+        if non_stochastic_steady_state
+            axis1_nsss_fail = [axis1_fail..., 𝓂.equations.calibration_parameters...]
+            ret[:non_stochastic_steady_state] = KeyedArray(fill(inf_val, length(axis1_nsss_fail)); Variables = axis1_nsss_fail)
+        end
+        if mean; ret[:mean] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
+        if standard_deviation; ret[:standard_deviation] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
+        if variance; ret[:variance] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
         if covariance; ret[:covariance] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, Variables2 = axis1_fail); end
         return ret
     end
