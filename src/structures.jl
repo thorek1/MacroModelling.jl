@@ -528,14 +528,12 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     P::Matrix{G}
     
     # Doubling power cache (for AD: reuse A^(2^k), B^(2^k) sequences across forward/pullback)
-    # 𝐀_pow[k] = A^(2^(k-1)) ; 𝐁_pow[k] = B^(2^(k-1)). Only valid when pow_iters > 0
-    # AND a caller acknowledges the current pow_stamp.
+    # 𝐀_pow[k] = A^(2^(k-1)) ; 𝐁_pow[k] = B^(2^(k-1)). Only valid when pow_iters > 0.
     # Fields are AbstractMatrix so the cache can hold dense Matrix or sparse SparseMatrixCSC entries
     # (the doubling overloads dispatched by Sylvester preserve the sparsity of A and B across squaring).
     𝐀_pow::Vector{AbstractMatrix{G}}
     𝐁_pow::Vector{AbstractMatrix{G}}
     pow_iters::Int            # number of valid entries in 𝐀_pow / 𝐁_pow
-    pow_stamp::UInt64         # bumped on each AD capture session (0 = invalid)
     pow_capture::Bool         # true while solver should populate the cache
     pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store materialised transposes (for adjoint use)
 
@@ -752,12 +750,11 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
 
     # Doubling power cache (for AD: reuse A^(2^k) sequence across forward/pullback)
-    # 𝐀_pow[k] = A^(2^(k-1)). Valid only when pow_iters > 0 AND caller knows
-    # pow_stamp. Slot type is AbstractMatrix so dense and sparse iterations
+    # 𝐀_pow[k] = A^(2^(k-1)). Valid only when pow_iters > 0.
+    # Slot type is AbstractMatrix so dense and sparse iterations
     # share the same storage (sparse-aware capture).
     𝐀_pow::Vector{AbstractMatrix{T}}
     pow_iters::Int            # number of valid entries in 𝐀_pow
-    pow_stamp::UInt64         # bumped on each AD capture session (0 = invalid)
     pow_capture::Bool         # true while solver should populate the cache
     pow_transposed::Bool      # true when 𝐀_pow stores materialised transposes (for adjoint use)
 

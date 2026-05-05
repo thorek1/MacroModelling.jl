@@ -5827,10 +5827,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # Doubling power-cache: enable capture so the pullback's adjoint solve can
     # reuse A^(2^k), B^(2^k) from this forward pass.
     cache_eligible_2nd = opts.sylvester_algorithm² == :doubling
-    cache_session_stamp_2nd = UInt64(0)
     if cache_eligible_2nd
-        cache_session_stamp_2nd = next_pow_stamp!()
-        ℂ.sylvester_workspace.pow_stamp = cache_session_stamp_2nd
         ℂ.sylvester_workspace.pow_iters = 0
         ℂ.sylvester_workspace.pow_capture = true
         ℂ.sylvester_workspace.pow_transposed = true
@@ -5926,7 +5923,6 @@ function rrule(::typeof(calculate_second_order_solution),
         
         ws = ℂ.sylvester_workspace
         cache_valid = cache_eligible_2nd &&
-                      ws.pow_stamp == cache_session_stamp_2nd &&
                       ws.pow_iters >= 1 &&
                       ws.pow_transposed
         saved_capture = ws.pow_capture
@@ -7781,10 +7777,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
     cache_eligible_3rd = opts.sylvester_algorithm³ == :doubling
-    cache_session_stamp_3rd = UInt64(0)
     if cache_eligible_3rd
-        cache_session_stamp_3rd = next_pow_stamp!()
-        ℂ.sylvester_workspace.pow_stamp = cache_session_stamp_3rd
         ℂ.sylvester_workspace.pow_iters = 0
         ℂ.sylvester_workspace.pow_capture = true
         ℂ.sylvester_workspace.pow_transposed = true
@@ -7868,7 +7861,6 @@ function rrule(::typeof(calculate_third_order_solution),
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
         ws = ℂ.sylvester_workspace
         cache_valid = cache_eligible_3rd &&
-                      ws.pow_stamp == cache_session_stamp_3rd &&
                       ws.pow_iters >= 1 &&
                       ws.pow_transposed
         saved_capture = ws.pow_capture
@@ -8166,11 +8158,8 @@ function rrule(::typeof(solve_sylvester_equation),
     # The solver overloads populate 𝕊ℂ.𝐀_pow / 𝐁_pow during forward iteration so
     # the pullback can skip squaring. With pow_transposed=true, powers are stored
     # in transposed form directly, saving a post-hoc transpose pass.
-    cache_session_stamp = UInt64(0)
     cache_eligible = sylvester_algorithm == :doubling
     if cache_eligible
-        cache_session_stamp = next_pow_stamp!()
-        𝕊ℂ.pow_stamp = cache_session_stamp
         𝕊ℂ.pow_iters = 0
         𝕊ℂ.pow_capture = true
         𝕊ℂ.pow_transposed = true
@@ -8202,7 +8191,6 @@ function rrule(::typeof(solve_sylvester_equation),
         if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
 
         cache_valid = cache_eligible &&
-                      𝕊ℂ.pow_stamp == cache_session_stamp &&
                       𝕊ℂ.pow_iters >= 1 &&
                       𝕊ℂ.pow_transposed
         saved_capture = 𝕊ℂ.pow_capture
@@ -8246,10 +8234,7 @@ function rrule(::typeof(solve_lyapunov_equation),
 
     # Enable doubling-power capture for the :doubling algorithm path.
     # With pow_transposed=true, powers are stored in transposed form directly.
-    cache_session_stamp = UInt64(0)
     if lyapunov_algorithm == :doubling
-        cache_session_stamp = next_pow_stamp!()
-        workspace.pow_stamp = cache_session_stamp
         workspace.pow_iters = 0
         workspace.pow_capture = true
         workspace.pow_transposed = true
@@ -8279,10 +8264,9 @@ function rrule(::typeof(solve_lyapunov_equation),
 
         # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space.
         # Prefer the forward dense doubling solver in replay mode against the
-        # transposed power cache when the forward pass populated workspace.𝐀_pow
-        # under our stamp; otherwise fall back to the legacy solver call.
+        # transposed power cache when the forward pass populated workspace.𝐀_pow;
+        # otherwise fall back to the legacy solver call.
         cache_valid = lyapunov_algorithm == :doubling &&
-                      workspace.pow_stamp == cache_session_stamp &&
                       workspace.pow_iters >= 1 &&
                       workspace.pow_transposed
         saved_capture = workspace.pow_capture

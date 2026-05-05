@@ -10,18 +10,7 @@
 # Slot type is AbstractMatrix so the same vector can hold dense or sparse
 # A^(2^k) / B^(2^k) entries (sparse-aware).
 
-const _DOUBLING_POW_STAMP = Ref(UInt64(0))
 
-"""
-    next_pow_stamp!() -> UInt64
-
-Generate a fresh, non-zero stamp for the doubling power cache. Each AD pullback
-session bumps this so cached entries cannot be confused with a previous A.
-"""
-function next_pow_stamp!()
-    _DOUBLING_POW_STAMP[] += UInt64(1)
-    return _DOUBLING_POW_STAMP[]
-end
 
 """
     cache_set!(vec, k, M)
@@ -249,7 +238,6 @@ end
         Vector{AbstractMatrix{S}}(),    # 𝐀_pow
         Vector{AbstractMatrix{S}}(),    # 𝐁_pow
         0,                      # pow_iters
-        UInt64(0),              # pow_stamp
         false,                  # pow_capture
         false,                  # pow_transposed
         zeros(T,0,0),           # P̃
@@ -632,7 +620,6 @@ Buffers are initialized to 0-dimensional objects and resized on-demand when the 
         # Doubling power cache (sparse-aware)
         Vector{AbstractMatrix{T}}(),  # 𝐀_pow
         0,                      # pow_iters
-        UInt64(0),              # pow_stamp
         false,                  # pow_capture
         false,                  # pow_transposed
         FastLapackInterface.SchurWs(zeros(T, 1, 1))  # schur_ws (lazily resized by gees!)
