@@ -13,6 +13,7 @@ const RTOL = 1e-6
 const ATOL = 1e-6
 const DEFAULT_OUTPUT_ROOT = joinpath(@__DIR__, "output")
 const BENCHMARK_ONLY_MODELS = Set(["FRBUS", "NAWM"])
+const N_BENCH_RUNS = 500
 const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 
 function print_usage()
@@ -74,6 +75,23 @@ function read_bench(dir, name)
     end
     legacy = joinpath(dir, key * ".csv")
     return isfile(legacy) ? read_vector(legacy)[1] : NaN
+end
+
+function load_runtime_csv(path)
+    runtimes = Dict{String, Float64}()
+    isfile(path) || return runtimes
+    for line in eachline(path)
+        stripped = strip(line)
+        isempty(stripped) && continue
+        stripped == "model,elapsed_seconds" && continue
+        parts = split(stripped, ',', limit = 2)
+        length(parts) == 2 || continue
+        name = strip(parts[1])
+        val = tryparse(Float64, strip(parts[2]))
+        val === nothing && continue
+        runtimes[name] = val
+    end
+    return runtimes
 end
 
 function read_key_value_metadata(path)
@@ -897,6 +915,143 @@ function main(args = ARGS)
             td = isnan(td_time) ? "N/A" : format_time(td_time)
             ts = isnan(ts_time) ? "N/A" : format_time(ts_time)
             println(rpad(mname, 50), rpad(td, 15), ts)
+        end
+    end
+
+    # ── Full Solution Pipeline Summary ──
+    # Consolidated table showing total solve time per model across all available
+    # pipeline components, with component breakdown.
+    println("\n", "="^100)
+    println("  Full Solution Pipeline Summary: MacroModelling vs Dynare (all components combined)")
+    println("="^100)
+    println(rpad("Model", 40), rpad("Order", 7), rpad("MacroModelling", 18), rpad("Dynare", 18), rpad("Speedup", 10), "Components (MacroModelling)")
+    println("-"^140)
+
+    all_jl_components = [
+        "benchmark_jacobian",
+        "benchmark_first_order_solve",
+        "benchmark_hessian",
+        "benchmark_second_order_solve",
+        "benchmark_third_order_derivatives",
+        "benchmark_third_order_solve",
+    ]
+    component_short_names = Dict(
+        "benchmark_jacobian" => "Jac",
+        "benchmark_first_order_solve" => "FO",
+        "benchmark_hessian" => "Hess",
+        "benchmark_second_order_solve" => "SO",
+        "benchmark_third_order_derivatives" => "3rdD",
+        "benchmark_third_order_solve" => "3rdS",
+        "benchmark_k_order_pert" => "k_order",
+    )
+
+    for mname in sort(model_dirs)
+        jl_dir = joinpath(output_root, mname, "julia")
+        dy_dir = joinpath(output_root, mname, "dynare")
+
+        # Determine model order from available benchmarks
+        has_3rd = has_bench(jl_dir, "benchmark_third_order_derivatives")
+        has_2nd = has_bench(jl_dir, "benchmark_hessian")
+        order_str = has_3rd ? "3rd" : has_2nd ? "2nd" : "1st"
+
+        # Sum all available Julia components
+        jl_total = 0.0
+        jl_parts = String[]
+        for comp in all_jl_components
+            val = read_bench(jl_dir, comp)
+            if !isnan(val)
+                jl_total += val
+                push!(jl_parts, "$(component_short_names[comp])=$(format_time(val))")
+            end
+        end
+        jl_total = jl_total > 0.0 ? jl_total : NaN
+
+        # Sum Dynare components — for order 3, Dynare uses bundled k_order_pert
+        # which includes FO solve + Hessian + SO solve + 3rd-order in one call.
+        # We use: Jacobian + k_order_pert when available, otherwise sum components.
+        dy_has_korder = has_bench(dy_dir, "benchmark_k_order_pert")
+        dy_total = 0.0
+        if dy_has_korder
+            # k_order_pert bundles everything except Jacobian
+            dy_jac = read_bench(dy_dir, "benchmark_jacobian")
+            dy_korder = read_bench(dy_dir, "benchmark_k_order_pert")
+            dy_total = (isnan(dy_jac) ? 0.0 : dy_jac) + (isnan(dy_korder) ? 0.0 : dy_korder)
+        else
+            for comp in ["benchmark_jacobian", "benchmark_first_order_solve",
+                         "benchmark_hessian", "benchmark_second_order_solve"]
+                val = read_bench(dy_dir, comp)
+                if !isnan(val)
+                    dy_total += val
+                end
+            end
+        end
+        dy_total = dy_total > 0.0 ? dy_total : NaN
+
+        jl_str = isnan(jl_total) ? "N/A" : format_time(jl_total)
+        dy_str = isnan(dy_total) ? "N/A" : format_time(dy_total)
+        speedup_str = (!isnan(jl_total) && !isnan(dy_total) && jl_total > 0) ?
+            string(round(dy_total / jl_total, digits=1), "x") : "N/A"
+        parts_str = join(jl_parts, ", ")
+
+        println(rpad(mname, 40), rpad(order_str, 7), rpad(jl_str, 18), rpad(dy_str, 18), rpad(speedup_str, 10), parts_str)
+    end
+
+    println("="^140)
+    println("  Note: MacroModelling timings are summed from individually measured components.")
+    println("  Dynare order≥3 uses bundled k_order_pert (Jacobian measured separately).")
+    println("  All timings are median of $(N_BENCH_RUNS) runs.")
+
+    # ── Wall-Clock Timing Comparison (includes compilation) ──
+    # Shows total elapsed time per model including JIT compilation (Julia) and
+    # interpreter startup (Dynare/MATLAB). This highlights compilation overhead.
+    jl_runtime_path = joinpath(output_root, "runtime_julia.csv")
+    dy_runtime_path = joinpath(output_root, "runtime_dynare.csv")
+
+    if isfile(jl_runtime_path) || isfile(dy_runtime_path)
+        jl_runtimes = load_runtime_csv(jl_runtime_path)
+        dy_runtimes = load_runtime_csv(dy_runtime_path)
+
+        # Collect all model names from both sides
+        all_runtime_models = sort(union(
+            filter(k -> k != "TOTAL", collect(keys(jl_runtimes))),
+            filter(k -> k != "TOTAL", collect(keys(dy_runtimes)))
+        ))
+
+        if !isempty(all_runtime_models)
+            println("\n", "="^100)
+            println("  Wall-Clock Timing Comparison (includes compilation/startup overhead)")
+            println("="^100)
+            println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 18), "Speedup")
+            println("-"^100)
+
+            jl_sum = 0.0
+            dy_sum = 0.0
+            for mname in all_runtime_models
+                jl_t = get(jl_runtimes, mname, NaN)
+                dy_t = get(dy_runtimes, mname, NaN)
+                if !isnan(jl_t); jl_sum += jl_t; end
+                if !isnan(dy_t); dy_sum += dy_t; end
+                jl_str = isnan(jl_t) ? "N/A" : format_time(jl_t)
+                dy_str = isnan(dy_t) ? "N/A" : format_time(dy_t)
+                speedup_str = (!isnan(jl_t) && !isnan(dy_t) && jl_t > 0) ?
+                    string(round(dy_t / jl_t, digits=2), "x") : "N/A"
+                println(rpad(mname, 50), rpad(jl_str, 18), rpad(dy_str, 18), speedup_str)
+            end
+
+            # Total row
+            println("-"^100)
+            jl_total_rt = get(jl_runtimes, "TOTAL", jl_sum)
+            dy_total_rt = get(dy_runtimes, "TOTAL", dy_sum)
+            jl_str = jl_total_rt > 0 ? format_time(jl_total_rt) : "N/A"
+            dy_str = dy_total_rt > 0 ? format_time(dy_total_rt) : "N/A"
+            speedup_str = (jl_total_rt > 0 && dy_total_rt > 0) ?
+                string(round(dy_total_rt / jl_total_rt, digits=2), "x") : "N/A"
+            println(rpad("TOTAL", 50), rpad(jl_str, 18), rpad(dy_str, 18), speedup_str)
+
+            println("="^100)
+            println("  Note: Wall-clock times include JIT compilation (Julia) and full model")
+            println("  processing including stoch_simul (Dynare). These show end-to-end cost")
+            println("  including compilation overhead, not steady-state performance.")
         end
     end
 
