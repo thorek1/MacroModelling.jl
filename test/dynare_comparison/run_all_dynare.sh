@@ -136,7 +136,7 @@ for model_dir in "$OUTPUT_DIR"/*/; do
     )
 
     MODEL_END=$(date +%s%N)
-    MODEL_ELAPSED=$(echo "scale=6; ($MODEL_END - $MODEL_START) / 1000000000" | bc)
+    MODEL_ELAPSED=$(awk "BEGIN {printf \"%.6f\", ($MODEL_END - $MODEL_START) / 1000000000}")
     echo "$model_name,$MODEL_ELAPSED" >> "$RUNTIME_CSV"
     echo "Done: $model_name (wall-clock: ${MODEL_ELAPSED} s)"
 
@@ -144,7 +144,7 @@ for model_dir in "$OUTPUT_DIR"/*/; do
 done
 
 TOTAL_END=$(date +%s%N)
-TOTAL_ELAPSED=$(echo "scale=6; ($TOTAL_END - $TOTAL_START) / 1000000000" | bc)
+TOTAL_ELAPSED=$(awk "BEGIN {printf \"%.6f\", ($TOTAL_END - $TOTAL_START) / 1000000000}")
 echo "TOTAL,$TOTAL_ELAPSED" >> "$RUNTIME_CSV"
 echo "Total wall-clock time (post-startup): ${TOTAL_ELAPSED} s"
 echo "Phase 2 complete."
