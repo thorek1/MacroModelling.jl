@@ -559,8 +559,8 @@ for entry_idx = 1:numel(model_entries)
         benchmark_only_mode = entry.benchmark_only;
         dynare $dynareStub noclearall;
         extract_dynare_results;
-        elapsed_model = toc(model_tic);
-        fprintf('[%s] OK: %s in %.1f s\n', datestr(now, 'HH:MM:SS'), entry.name, elapsed_model);
+        elapsed_model = toc(model_tic) - bench_elapsed_total;
+        fprintf('[%s] OK: %s in %.1f s (excl. %.1f s benchmarks)\n', datestr(now, 'HH:MM:SS'), entry.name, elapsed_model, bench_elapsed_total);
         fprintf(status_fid, '%s,ok,\n', entry.name);
         fprintf(runtime_fid, '%s,%.6f\n', entry.name, elapsed_model);
     catch ME
