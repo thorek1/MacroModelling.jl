@@ -599,6 +599,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
     sylv_ws.pow_iters = 0
     sylv_ws.pow_capture = true
     sylv_ws.pow_transposed = false
+    sylv_cache_captured = false
 
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
@@ -628,6 +629,11 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
                                                 tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
     
+        if !sylv_cache_captured
+            sylv_ws.pow_capture = false  # captured A^(2^k) on first solve; reuse for subsequent
+            sylv_cache_captured = true
+        end
+
         # initial_guess = dX
 
         @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
@@ -732,6 +738,7 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
     sws.pow_iters = 0
     sws.pow_capture = true
     sws.pow_transposed = false
+    qme_sylv_cache_captured = false
 
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
@@ -746,6 +753,11 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
         dX, slvd = solve_sylvester_equation(AA, -X, -CC, qme_ws.sylvester,
                             sylvester_algorithm = :doubling,
                             tol = tol.sylvester)
+
+        if !qme_sylv_cache_captured
+            sws.pow_capture = false  # captured A^(2^k) on first solve; reuse for subsequent
+            qme_sylv_cache_captured = true
+        end
 
         solved = Bool(solved) && Bool(slvd)
 
