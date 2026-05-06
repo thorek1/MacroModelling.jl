@@ -321,15 +321,15 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     # Ownership: returns owned sparse storage created locally in this method.
     # guess_provided = true
     
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
     
     𝐀  = copy(A)
     𝐁  = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+    𝐂  = copy(C) # - initial_guess #copy(C)
 
     if 𝕊ℂ.pow_capture
         cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
@@ -392,7 +392,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
 
-    𝐂 += initial_guess
+    # 𝐂 += initial_guess
 
     𝐂_res = A * 𝐂 * B
     𝐂_res += C
@@ -418,10 +418,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
@@ -435,7 +435,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐂  = 𝕊ℂ.𝐂_dbl
     𝐂¹ = 𝕊ℂ.𝐂¹
     𝐂B = 𝕊ℂ.𝐂B
-    
+
     if 𝕊ℂ.pow_capture
         cache_set!(𝕊ℂ.𝐀_pow, 1, A, 𝕊ℂ.pow_transposed)
         cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
@@ -443,10 +443,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     end
 
     # 𝐂  = A * initial_guess * B + C - initial_guess
-    ℒ.mul!(𝐂B, initial_guess, B)
+    fill!(𝐂B, 0)
+    # ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
-    ℒ.axpy!(-1, initial_guess, 𝐂)
+    # ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -504,7 +505,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         copy!(𝐂,𝐂¹)
     end
 
-    ℒ.axpy!(1, initial_guess, 𝐂)
+    # ℒ.axpy!(1, initial_guess, 𝐂)
 
     ℒ.mul!(𝐂B, 𝐂, B)
     ℒ.mul!(𝐂¹, A, 𝐂B)
@@ -536,10 +537,10 @@ function solve_sylvester_equation(  A::Matrix{T},
 
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
     # Use workspace for dense matrices A and C
     n = size(A, 1)
     m = size(B, 2)
@@ -562,10 +563,11 @@ function solve_sylvester_equation(  A::Matrix{T},
     end
     
     # 𝐂  = A * initial_guess * B + C - initial_guess
-    ℒ.mul!(𝐂B, initial_guess, B)
+    fill!(𝐂B, 0)
+    # ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
-    ℒ.axpy!(-1, initial_guess, 𝐂)
+    # ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -637,7 +639,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         # end # timeit_debug
     end
 
-    ℒ.axpy!(1, initial_guess, 𝐂)
+    # ℒ.axpy!(1, initial_guess, 𝐂)
 
     ℒ.mul!(𝐂B, 𝐂, B)
     ℒ.mul!(𝐂¹, A, 𝐂B)
@@ -663,10 +665,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
 
     𝐀  = copy(A)    
 
@@ -690,10 +692,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     end
     
     # 𝐂  = A * initial_guess * B + C - initial_guess
-    ℒ.mul!(𝐂B, initial_guess, B)
+    fill!(𝐂B, 0)
+    # ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
-    ℒ.axpy!(-1, initial_guess, 𝐂)
+    # ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -749,7 +752,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         copy!(𝐂,𝐂¹)
     end
 
-    ℒ.axpy!(1, initial_guess, 𝐂)
+    # ℒ.axpy!(1, initial_guess, 𝐂)
 
     ℒ.mul!(𝐂B, 𝐂, B)
     ℒ.mul!(𝐂¹, A, 𝐂B)
@@ -776,10 +779,10 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
 
     # Use workspace for dense A and B buffers
     n = size(A, 1)
@@ -793,7 +796,7 @@ function solve_sylvester_equation(  A::Matrix{T},
     copyto!(𝐀, A)
     copyto!(𝐁, B)
     
-    𝐂  = A * initial_guess * B + C - initial_guess
+    𝐂  = copy(C) # - initial_guess #copy(C)
     𝐂¹ = similar(𝐂)
 
     if 𝕊ℂ.pow_capture
@@ -860,7 +863,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝐂 = 𝐂¹
     end
 
-    𝐂 += initial_guess
+    # 𝐂 += initial_guess
 
     𝐂B = 𝕊ℂ.𝐂B
     𝐂_tmp = 𝕊ℂ.𝐂_dbl
@@ -889,10 +892,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
 
     𝐀  = copy(A)    
 
@@ -905,7 +908,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     𝐁¹ = 𝕊ℂ.𝐁¹
     copyto!(𝐁, B)
     
-    𝐂  = A * initial_guess * B + C - initial_guess
+    𝐂  = copy(C) # - initial_guess
     𝐂¹ = similar(𝐂)
 
     if 𝕊ℂ.pow_capture
@@ -972,7 +975,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         𝐂 = 𝐂¹
     end
 
-    𝐂 += initial_guess
+    # 𝐂 += initial_guess
 
     𝐂B = 𝕊ℂ.𝐂B
     𝐂_tmp = 𝕊ℂ.𝐂_dbl
@@ -1001,10 +1004,10 @@ function solve_sylvester_equation(  A::Matrix{T},
     # Ownership: returns owned dense storage created locally in this method.
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
     # Use workspace for dense A buffers
     n = size(A, 1)
     m = size(B, 2)
@@ -1016,7 +1019,7 @@ function solve_sylvester_equation(  A::Matrix{T},
     
     𝐁  = copy(B)
     
-    𝐂  = A * initial_guess * B + C - initial_guess
+    𝐂  = copy(C)# - initial_guess
     𝐂¹ = similar(𝐂)
 
     if 𝕊ℂ.pow_capture
@@ -1083,7 +1086,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝐂 = 𝐂¹
     end
 
-    𝐂 += initial_guess
+    # 𝐂 += initial_guess
 
     𝐂B = 𝕊ℂ.𝐂B
     𝐂_tmp = 𝕊ℂ.𝐂_dbl
@@ -1114,10 +1117,10 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     
     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+    # if length(initial_guess) == 0
+    #     # guess_provided = false
+    #     initial_guess = zero(C)
+    # end
     
     # Ensure workspaces are allocated
     n = size(A, 1)
@@ -1145,10 +1148,11 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     end
 
     # 𝐂  = A * initial_guess * B + C - initial_guess
-    ℒ.mul!(𝐂B, initial_guess, B)
+    fill!(𝐂B, 0)
+    # ℒ.mul!(𝐂B, initial_guess, B)
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
-    ℒ.axpy!(-1, initial_guess, 𝐂)
+    # ℒ.axpy!(-1, initial_guess, 𝐂)
 
     max_iter = 500
 
@@ -1233,7 +1237,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
-    ℒ.axpy!(1, initial_guess, 𝐂)
+    # ℒ.axpy!(1, initial_guess, 𝐂)
 
     ℒ.mul!(𝐂B, 𝐂, B)
     ℒ.mul!(𝐂¹, A, 𝐂B)
