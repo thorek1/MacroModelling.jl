@@ -235,6 +235,25 @@ The package contains the following models in the `models` folder:
 - [Smets and Wouters (2003)](https://onlinelibrary.wiley.com/doi/10.1162/154247603770383415) `SW03.jl`
 - [Smets and Wouters (2007)](https://www.aeaweb.org/articles?id=10.1257/aer.97.3.586) `SW07.jl`
 
+## Performance
+
+`MacroModelling.jl` is benchmarked against [Dynare](https://www.dynare.org) across a range of models and perturbation orders. The figures below are median times over 500 repeated solves (i.e. after Julia has compiled the relevant functions). Full platform-by-platform tables are in the [speed benchmark documentation](https://thorek1.github.io/MacroModelling.jl/stable/speed/).
+
+| Component | Speedup vs Dynare (Linux/macOS) | Speedup vs Dynare (Windows) |
+|---|---|---|
+| Jacobian | 14.8–617× | 0.1–20× |
+| First-order solve | 1.8–17.5× | 1.1–7× |
+| Hessian | 525–1338× | 22–66× |
+| Second-order solve | 3.6–16× | 4.8–22× |
+| Third-order (bundled) | 33–76× | 80–116× |
+
+**First compile**: on the first call in a fresh Julia session, `MacroModelling.jl` is significantly slower than Dynare because Julia compiles all functions just-in-time. For a medium-sized model such as `Smets_Wouters_2007`, a cold-start solve may take tens of seconds, while Dynare finishes in a few seconds. As more functions are precompiled (e.g. via `PackageCompiler` or by warming up in the same session), this gap shrinks.
+
+**When MacroModelling.jl has clear benefits**:
+- **Estimation**: gradient-based samplers (NUTS, HMC) call the solver thousands of times per chain — the per-solve speedup of 2–600× compounds into dramatically shorter sampling runs.
+- **Exploring parameter values**: after the initial compile, re-solving with different parameters is near-instant because the compiled native code is reused.
+- **Iterating on a model**: modifying equations and re-solving repeatedly within the same session avoids repeated JIT overhead.
+
 ## Comparison with other packages
 
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[IRIS](https://iris.igpmn.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)|
