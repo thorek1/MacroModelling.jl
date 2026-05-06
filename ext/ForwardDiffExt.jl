@@ -628,7 +628,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
                                                 tol = opts.tol.first_order.ad.sylvester,
                                                 verbose = opts.verbose)
     
-        initial_guess = dX
+        # initial_guess = dX
 
         @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
     end
