@@ -3316,7 +3316,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3337,7 +3337,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3362,7 +3362,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         vec(collect(get_moments(m,
