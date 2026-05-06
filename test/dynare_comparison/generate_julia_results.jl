@@ -60,6 +60,7 @@ const SECOND_ORDER_MODELS = [
 # Models to also test at pruned 3rd order
 const THIRD_ORDER_MODELS = [
     "Gali_2015_chapter_3_nonlinear",
+    "Smets_Wouters_2007",
     "Caldara_et_al_2012",
 ]
 
