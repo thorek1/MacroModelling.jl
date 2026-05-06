@@ -247,7 +247,26 @@ The package contains the following models in the `models` folder:
 | Second-order solve | 3.6–16× | 4.8–22× |
 | Third-order (bundled) | 33–76× | 80–116× |
 
-**First compile**: on the first call in a fresh Julia session, `MacroModelling.jl` is significantly slower than Dynare because Julia compiles all functions just-in-time. For a medium-sized model such as `Smets_Wouters_2007`, a cold-start solve may take tens of seconds, while Dynare finishes in a few seconds. As more functions are precompiled (e.g. via `PackageCompiler` or by warming up in the same session), this gap shrinks.
+**First compile**: on the first call in a fresh Julia session, `MacroModelling.jl` is significantly slower than Dynare because Julia compiles all functions just-in-time. The table below shows wall-clock time for a single run of each model (no repeated benchmark loops), measured in a sequential script where models appear in execution order. The first model at each perturbation order (`FS2000` for first-order, `FS2000_pruned_2nd` for second-order, `Gali_2015_chapter_3_nonlinear_pruned_3rd` for third-order) pays the full JIT compilation cost; subsequent models at the same order are much faster as the compiled code is already cached.
+
+| Model | MacroModelling.jl | Dynare | Speedup |
+|---|---:|---:|---:|
+| FS2000 *(1st order — first compile)* | 178.3 s | 0.9 s | 0.01× |
+| Gali_2015_chapter_3_nonlinear | 3.7 s | 0.9 s | 0.24× |
+| Smets_Wouters_2007 | 17.1 s | 1.1 s | 0.06× |
+| Smets_Wouters_2003 | 9.7 s | 1.1 s | 0.11× |
+| NAWM_EAUS_2008 | 45.5 s | 3.2 s | 0.07× |
+| GNSS_2010 | 6.8 s | 1.2 s | 0.18× |
+| QUEST3_2009 | 9.9 s | 1.6 s | 0.16× |
+| FRBUS | 43.9 s | 80.7 s | **1.84×** |
+| FS2000_pruned_2nd *(2nd order — first compile)* | 11.2 s | 2.2 s | 0.20× |
+| Gali_2015_chapter_3_nonlinear_pruned_2nd | 2.5 s | 2.9 s | **1.19×** |
+| Smets_Wouters_2007_pruned_2nd | 16.0 s | 15.0 s | 0.94× |
+| Gali_2015_chapter_3_nonlinear_pruned_3rd *(3rd order — first compile)* | 20.7 s | 4.1 s | 0.20× |
+| Caldara_et_al_2012_pruned_3rd | 8.8 s | 2.9 s | 0.33× |
+| **TOTAL** | **373.9 s** | **117.9 s** | **0.32×** |
+
+The large first-order entry (`FS2000` at 178 s) dominates the total; all models that follow in the same Julia session benefit from the already-compiled solver code. Once functions are precompiled (e.g. via `PackageCompiler` or by keeping a warm session), the first-compile overhead disappears and the per-solve speedups shown in the table above apply.
 
 **When MacroModelling.jl has clear benefits**:
 - **Estimation**: gradient-based samplers (NUTS, HMC) call the solver thousands of times per chain — the per-solve speedup of 2–600× compounds into dramatically shorter sampling runs.
