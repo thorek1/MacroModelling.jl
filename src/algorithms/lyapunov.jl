@@ -233,7 +233,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         workspace.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -305,7 +305,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         workspace.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -378,7 +378,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         workspace.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -467,7 +467,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         end
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 

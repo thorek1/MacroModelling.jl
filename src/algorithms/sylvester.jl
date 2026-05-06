@@ -339,7 +339,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
 
     # ℒ.rmul!(𝐂, -1)
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -449,7 +449,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -569,7 +569,7 @@ function solve_sylvester_equation(  A::Matrix{T},
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -698,7 +698,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -805,7 +805,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝕊ℂ.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -917,7 +917,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         𝕊ℂ.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -1028,7 +1028,7 @@ function solve_sylvester_equation(  A::Matrix{T},
         𝕊ℂ.pow_iters = 1
     end
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 
@@ -1154,7 +1154,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
 
-    max_iter = 500
+    max_iter = 50
 
     iters = max_iter
 

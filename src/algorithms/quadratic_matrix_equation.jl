@@ -338,7 +338,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100,
+                                        max_iter::Int = 50,
                                         caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
