@@ -316,6 +316,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns owned sparse storage created locally in this method.
@@ -338,9 +339,6 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     end
 
     # ℒ.rmul!(𝐂, -1)
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -413,6 +411,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012    
     # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
@@ -448,9 +447,6 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -529,6 +525,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
@@ -568,9 +565,6 @@ function solve_sylvester_equation(  A::Matrix{T},
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
-
-    max_iter = 50
-
     iters = max_iter
 
     # end # timeit_debug
@@ -661,6 +655,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
@@ -697,9 +692,6 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -775,6 +767,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
@@ -804,9 +797,6 @@ function solve_sylvester_equation(  A::Matrix{T},
         cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
         𝕊ℂ.pow_iters = 1
     end
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -888,6 +878,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
@@ -916,9 +907,6 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
         cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
         𝕊ℂ.pow_iters = 1
     end
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -999,6 +987,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns owned dense storage created locally in this method.
@@ -1027,9 +1016,6 @@ function solve_sylvester_equation(  A::Matrix{T},
         cache_set!(𝕊ℂ.𝐁_pow, 1, B, 𝕊ℂ.pow_transposed)
         𝕊ℂ.pow_iters = 1
     end
-
-    max_iter = 50
-
     iters = max_iter
 
     for i in 1:max_iter
@@ -1110,6 +1096,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     # timer::TimerOutput = TimerOutput(),
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns workspace-backed dense buffer 𝕊ℂ.𝐂_dbl.
@@ -1153,9 +1140,6 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     ℒ.mul!(𝐂, A, 𝐂B)
     ℒ.axpy!(1, C, 𝐂)
     # ℒ.axpy!(-1, initial_guess, 𝐂)
-
-    max_iter = 50
-
     iters = max_iter
 
     # end # timeit_debug

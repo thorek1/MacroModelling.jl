@@ -8,7 +8,6 @@ module ForwardDiffExt
 #   3. Compute partials using implicit differentiation or chain rule
 #   4. Reconstruct Dual numbers by combining values and partials
 
-# Toggle for benchmarking: when false, the FD wrappers do NOT enable doubling-power
 import MacroModelling
 import MacroModelling:
     # Types
