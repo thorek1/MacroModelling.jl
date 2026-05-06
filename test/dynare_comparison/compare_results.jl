@@ -16,6 +16,31 @@ const BENCHMARK_ONLY_MODELS = Set(["FRBUS", "NAWM"])
 const N_BENCH_RUNS = 500
 const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 
+# Execution order from generate_julia_results.jl — first entry at each order
+# pays the JIT compilation cost for that order's functions.
+const EXECUTION_ORDER = [
+    "FS2000",
+    "Gali_2015_chapter_3_nonlinear",
+    "Smets_Wouters_2007",
+    "Smets_Wouters_2003",
+    "NAWM_EAUS_2008",
+    "GNSS_2010",
+    "QUEST3_2009",
+    "FRBUS",
+    "FS2000_pruned_2nd",
+    "Gali_2015_chapter_3_nonlinear_pruned_2nd",
+    "Smets_Wouters_2007_pruned_2nd",
+    "Gali_2015_chapter_3_nonlinear_pruned_3rd",
+    "Caldara_et_al_2012_pruned_3rd",
+]
+
+"""Sort model names by their position in EXECUTION_ORDER; unknowns go last (alphabetically)."""
+function sort_by_execution_order(names)
+    order_map = Dict(n => i for (i, n) in enumerate(EXECUTION_ORDER))
+    sentinel = length(EXECUTION_ORDER) + 1
+    sort(names; by = n -> (get(order_map, n, sentinel), n))
+end
+
 function print_usage()
     println("Usage: julia --project=. compare_results.jl [--output-root=PATH | PATH]")
 end
@@ -659,7 +684,7 @@ function main(args = ARGS)
     print_environment_summary(output_root)
 
     benchmark_only_dirs = filter(is_benchmark_only_model_dir, model_dirs)
-    for mname in sort(benchmark_only_dirs)
+    for mname in sort_by_execution_order(benchmark_only_dirs)
         @info "Skipping correctness comparison for benchmark-only model: $mname"
     end
 
@@ -667,7 +692,7 @@ function main(args = ARGS)
     try
         if !isempty(comparison_model_dirs)
             @testset "Dynare Comparison" begin
-                for mname in sort(comparison_model_dirs)
+                for mname in sort_by_execution_order(comparison_model_dirs)
                     julia_dir = joinpath(output_root, mname, "julia")
                     dynare_dir = joinpath(output_root, mname, "dynare")
 
@@ -778,7 +803,7 @@ function main(args = ARGS)
         end
         println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
-        for mname in sort(model_dirs)
+        for mname in sort_by_execution_order(model_dirs)
             jl_time = read_bench(joinpath(output_root, mname, "julia"), jl_file)
             dy_time = read_bench(joinpath(output_root, mname, "dynare"), dy_file)
             jl_str = isnan(jl_time) ? "N/A" : format_time(jl_time)
@@ -801,7 +826,7 @@ function main(args = ARGS)
     println("\n--- First-Order Total (sum of direct Jacobian + solve medians) ---")
     println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
     println("-"^100)
-    for mname in sort(model_dirs)
+    for mname in sort_by_execution_order(model_dirs)
         jl_dir = joinpath(output_root, mname, "julia")
         dy_dir = joinpath(output_root, mname, "dynare")
         jl_time = sum_bench_components(jl_dir, ["benchmark_jacobian.csv", "benchmark_first_order_solve.csv"])
@@ -827,7 +852,7 @@ function main(args = ARGS)
         println("\n--- Second-Order Total (Hessian + Second-Order Solve) ---")
         println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
-        for mname in sort(dy_decomposable_ho_models)
+        for mname in sort_by_execution_order(dy_decomposable_ho_models)
             jl_dir = joinpath(output_root, mname, "julia")
             dy_dir = joinpath(output_root, mname, "dynare")
             jl_time = sum_bench_components(jl_dir, ["benchmark_hessian.csv", "benchmark_second_order_solve.csv"])
@@ -847,7 +872,7 @@ function main(args = ARGS)
         println("    MacroModelling sums directly measured solve-stack components; Dynare reports direct bundled k_order_pert")
         println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
-        for mname in sort(k_order_models)
+        for mname in sort_by_execution_order(k_order_models)
             jl_dir = joinpath(output_root, mname, "julia")
             dy_dir = joinpath(output_root, mname, "dynare")
 
@@ -877,7 +902,7 @@ function main(args = ARGS)
         println("\n--- Comparable Direct Components Total (Jacobian + FO + Hessian + SO) ---")
         println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 12), "Speedup")
         println("-"^100)
-        for mname in sort(dy_decomposable_ho_models)
+        for mname in sort_by_execution_order(dy_decomposable_ho_models)
             jl_dir = joinpath(output_root, mname, "julia")
             dy_dir = joinpath(output_root, mname, "dynare")
 
@@ -909,7 +934,7 @@ function main(args = ARGS)
         println("\n--- Third-Order Components (MacroModelling only — Dynare k_order_pert is bundled) ---")
         println(rpad("Model", 50), rpad("3rd Derivs", 15), "3rd Solve")
         println("-"^100)
-        for mname in sort(to_models)
+        for mname in sort_by_execution_order(to_models)
             td_time = read_bench(joinpath(output_root, mname, "julia"), "benchmark_third_order_derivatives.csv")
             ts_time = read_bench(joinpath(output_root, mname, "julia"), "benchmark_third_order_solve.csv")
             td = isnan(td_time) ? "N/A" : format_time(td_time)
@@ -945,7 +970,7 @@ function main(args = ARGS)
         "benchmark_k_order_pert" => "k_order",
     )
 
-    for mname in sort(model_dirs)
+    for mname in sort_by_execution_order(model_dirs)
         jl_dir = joinpath(output_root, mname, "julia")
         dy_dir = joinpath(output_root, mname, "dynare")
 
@@ -1012,11 +1037,11 @@ function main(args = ARGS)
         jl_runtimes = load_runtime_csv(jl_runtime_path)
         dy_runtimes = load_runtime_csv(dy_runtime_path)
 
-        # Collect all model names from both sides
-        all_runtime_models = sort(union(
+        # Collect all model names from both sides, in execution order
+        all_runtime_models = sort_by_execution_order(collect(union(
             filter(k -> k != "TOTAL", collect(keys(jl_runtimes))),
             filter(k -> k != "TOTAL", collect(keys(dy_runtimes)))
-        ))
+        )))
 
         if !isempty(all_runtime_models)
             println("\n", "="^100)
