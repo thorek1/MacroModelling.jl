@@ -137,14 +137,26 @@ for model_dir in "$OUTPUT_DIR"/*/; do
 
     MODEL_END=$(date +%s%N)
     MODEL_ELAPSED=$(awk "BEGIN {printf \"%.6f\", ($MODEL_END - $MODEL_START) / 1000000000}")
-    echo "$model_name,$MODEL_ELAPSED" >> "$RUNTIME_CSV"
-    echo "Done: $model_name (wall-clock: ${MODEL_ELAPSED} s)"
+
+    # Subtract benchmark loop time to get warmup-only elapsed
+    BENCH_ELAPSED_FILE="$dynare_out_dir/bench_elapsed_seconds.csv"
+    if [ -f "$BENCH_ELAPSED_FILE" ]; then
+        BENCH_ELAPSED=$(cat "$BENCH_ELAPSED_FILE")
+        WARMUP_ELAPSED=$(awk "BEGIN {printf \"%.6f\", $MODEL_ELAPSED - $BENCH_ELAPSED}")
+    else
+        WARMUP_ELAPSED="$MODEL_ELAPSED"
+        BENCH_ELAPSED="0"
+    fi
+    echo "$model_name,$WARMUP_ELAPSED" >> "$RUNTIME_CSV"
+    echo "Done: $model_name (warmup: ${WARMUP_ELAPSED} s, bench: ${BENCH_ELAPSED} s, total: ${MODEL_ELAPSED} s)"
 
     rm -rf "$workdir"
 done
 
 TOTAL_END=$(date +%s%N)
 TOTAL_ELAPSED=$(awk "BEGIN {printf \"%.6f\", ($TOTAL_END - $TOTAL_START) / 1000000000}")
-echo "TOTAL,$TOTAL_ELAPSED" >> "$RUNTIME_CSV"
-echo "Total wall-clock time (post-startup): ${TOTAL_ELAPSED} s"
+# Sum warmup times from runtime CSV for accurate total (excludes benchmarks)
+WARMUP_TOTAL=$(awk -F',' 'NR>1 && $1!="TOTAL" {sum+=$2} END {printf "%.6f", sum}' "$RUNTIME_CSV")
+echo "TOTAL,$WARMUP_TOTAL" >> "$RUNTIME_CSV"
+echo "Total wall-clock time (warmup only): ${WARMUP_TOTAL} s"
 echo "Phase 2 complete."

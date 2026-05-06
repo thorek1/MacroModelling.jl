@@ -1001,9 +1001,10 @@ function main(args = ARGS)
     println("  Dynare order≥3 uses bundled k_order_pert (Jacobian measured separately).")
     println("  All timings are median of $(N_BENCH_RUNS) runs.")
 
-    # ── Wall-Clock Timing Comparison (includes compilation) ──
-    # Shows total elapsed time per model including JIT compilation (Julia) and
-    # interpreter startup (Dynare/MATLAB). This highlights compilation overhead.
+    # ── Wall-Clock Timing Comparison (single-run, includes compilation) ──
+    # Shows total elapsed time per model for a single run including JIT
+    # compilation (Julia) and interpreter startup (Dynare/MATLAB), but excluding
+    # the repeated benchmark loops.  This highlights compilation overhead.
     jl_runtime_path = joinpath(output_root, "runtime_julia.csv")
     dy_runtime_path = joinpath(output_root, "runtime_dynare.csv")
 
@@ -1019,7 +1020,7 @@ function main(args = ARGS)
 
         if !isempty(all_runtime_models)
             println("\n", "="^100)
-            println("  Wall-Clock Timing Comparison (includes compilation/startup overhead)")
+            println("  Wall-Clock Timing Comparison (single run, includes compilation/startup overhead)")
             println("="^100)
             println(rpad("Model", 50), rpad("MacroModelling", 18), rpad("Dynare", 18), "Speedup")
             println("-"^100)
@@ -1049,9 +1050,10 @@ function main(args = ARGS)
             println(rpad("TOTAL", 50), rpad(jl_str, 18), rpad(dy_str, 18), speedup_str)
 
             println("="^100)
-            println("  Note: Wall-clock times include JIT compilation (Julia) and full model")
-            println("  processing including stoch_simul (Dynare). These show end-to-end cost")
-            println("  including compilation overhead, not steady-state performance.")
+            println("  Note: Wall-clock times measure a single run including JIT compilation (Julia)")
+            println("  and full model processing including stoch_simul (Dynare). Benchmark loop")
+            println("  iterations ($(N_BENCH_RUNS) runs) are excluded. This shows the one-shot cost of")
+            println("  producing results once, highlighting compilation overhead.")
         end
     end
 

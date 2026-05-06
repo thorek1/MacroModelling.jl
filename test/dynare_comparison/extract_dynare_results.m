@@ -213,6 +213,7 @@ end % if ~benchmark_only_mode
 % Decomposes the solution pipeline into individually timed components.
 % For all models: Jacobian, first-order solve, [Hessian, second-order solve]
 % For k_order models (order 3): also export bundled k_order_pert as an additional direct reference.
+bench_section_tic = tic;
 n_bench = 500;
 
 exo_ss = oo_.exo_steady_state;
@@ -335,5 +336,11 @@ for bi = 1:numel(bench_keys)
     fprintf(bench_fid, '%s,%.16g\n', bench_keys{bi}, bench_values(bi));
 end
 fclose(bench_fid);
+
+% Write elapsed time spent on benchmark loops (for wall-clock subtraction)
+bench_elapsed_total = toc(bench_section_tic);
+bench_elapsed_fid = fopen(fullfile(output_dir, 'bench_elapsed_seconds.csv'), 'w');
+fprintf(bench_elapsed_fid, '%.6f\n', bench_elapsed_total);
+fclose(bench_elapsed_fid);
 
 disp(['Results extracted to: ' output_dir]);

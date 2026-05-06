@@ -540,11 +540,13 @@ function export_model(model, outdir; include_moments = true, benchmark_only = fa
 
         # ── Benchmarks ──
         bench = Dict{String, Float64}()
+        bench_start = time()
         benchmark_first_order(model, bench)
+        bench_elapsed = time() - bench_start
         write_benchmarks(julia_dir, bench)
 
         @info "Exported Julia benchmark-only results for $(model.model_name) → $outdir"
-        return
+        return bench_elapsed
     end
 
     orig = original_vars(model)
@@ -569,10 +571,13 @@ function export_model(model, outdir; include_moments = true, benchmark_only = fa
 
     # ── Benchmarks ──
     bench = Dict{String, Float64}()
+    bench_start = time()
     benchmark_first_order(model, bench)
+    bench_elapsed = time() - bench_start
     write_benchmarks(julia_dir, bench)
 
     @info "Exported Julia results for $(model.model_name) → $outdir"
+    return bench_elapsed
 end
 
 # ─────────────────────────────────────────────
@@ -608,14 +613,17 @@ function export_higher_order_model(model, outdir, dir_name, order)
 
     # ── Benchmarks ──
     bench = Dict{String, Float64}()
+    bench_start = time()
     benchmark_first_order(model, bench)
     benchmark_second_order(model, bench)
     if order >= 3
         benchmark_third_order(model, bench)
     end
+    bench_elapsed = time() - bench_start
     write_benchmarks(julia_dir, bench)
 
     @info "Exported Julia higher-order results (order=$order) for $(model.model_name) → $outdir"
+    return bench_elapsed
 end
 
 # ─────────────────────────────────────────────
@@ -655,12 +663,12 @@ function main(args = ARGS)
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, mname)
         mkpath(outdir)
-        Base.invokelatest(export_model, model, outdir;
+        bench_elapsed = Base.invokelatest(export_model, model, outdir;
                          include_moments = !(mname in SKIP_MOMENTS_MODELS),
                          benchmark_only = mname in BENCHMARK_ONLY_MODELS)
-        elapsed = time() - model_start
+        elapsed = time() - model_start - bench_elapsed
         push!(model_runtimes, mname => elapsed)
-        @info "  Wall-clock time for $mname: $(round(elapsed, digits=3)) s"
+        @info "  Wall-clock time for $mname: $(round(elapsed, digits=3)) s (excl. $(round(bench_elapsed, digits=3)) s benchmarks)"
     end
 
     # Phase 1b: Second-order exports for selected models
@@ -674,10 +682,10 @@ function main(args = ARGS)
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
-        Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 2)
-        elapsed = time() - model_start
+        bench_elapsed = Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 2)
+        elapsed = time() - model_start - bench_elapsed
         push!(model_runtimes, dir_name => elapsed)
-        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s"
+        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s (excl. $(round(bench_elapsed, digits=3)) s benchmarks)"
     end
 
     # Phase 1c: Third-order exports for selected models
@@ -691,23 +699,22 @@ function main(args = ARGS)
         model = Base.invokelatest(getfield, Main, Symbol(mname))
         outdir = joinpath(output_root, dir_name)
         mkpath(outdir)
-        Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 3)
-        elapsed = time() - model_start
+        bench_elapsed = Base.invokelatest(export_higher_order_model, model, outdir, dir_name, 3)
+        elapsed = time() - model_start - bench_elapsed
         push!(model_runtimes, dir_name => elapsed)
-        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s"
+        @info "  Wall-clock time for $dir_name: $(round(elapsed, digits=3)) s (excl. $(round(bench_elapsed, digits=3)) s benchmarks)"
     end
 
-    total_elapsed = time() - total_start
-
-    # Write runtime summary
+    # Write runtime summary (warmup-only times, excluding benchmark loops)
+    warmup_total = sum(t for (_, t) in model_runtimes)
     open(joinpath(output_root, "runtime_julia.csv"), "w") do io
         println(io, "model,elapsed_seconds")
         for (name, t) in model_runtimes
             println(io, "$name,$t")
         end
-        println(io, "TOTAL,$total_elapsed")
+        println(io, "TOTAL,$warmup_total")
     end
-    @info "Total wall-clock time (post-startup): $(round(total_elapsed, digits=3)) s"
+    @info "Total wall-clock time (warmup only, excl. benchmarks): $(round(warmup_total, digits=3)) s"
     @info "Phase 1 complete. Results in $output_root"
 end
 
