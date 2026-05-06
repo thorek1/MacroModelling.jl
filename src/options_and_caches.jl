@@ -19,21 +19,40 @@ Place `M` into slot `k` of the doubling power cache vector. If the slot does
 not yet exist, the vector is extended by one (sequential extension).
 The slot is reused in-place when its concrete type and shape match `M`,
 otherwise it is replaced with `copy(M)` to preserve the input's concrete type.
-"""
-@inline _materialize_transpose(M::AbstractSparseMatrix) = SparseMatrixCSC(M')
-@inline _materialize_transpose(M::AbstractMatrix) = permutedims(M)
 
+When `transposed=true`, dense matrices are stored as `copy(M)'` (an `Adjoint`
+wrapping a sequential copy of the data). This avoids the expensive element
+rearrangement of `permutedims` — the solver dispatch handles `Adjoint` matrices
+natively. Subsequent writes to the same slot reuse the existing parent buffer
+(zero allocation after the first write). Sparse matrices are still materialised
+as `SparseMatrixCSC(M')` since CSC format is required for efficient sparse ops.
+"""
 @inline function cache_set!(vec::Vector{<:AbstractMatrix}, k::Int, M::AbstractMatrix, transposed::Bool = false)
     if transposed
-        Mt = _materialize_transpose(M)
-        if length(vec) < k
-            push!(vec, Mt)
-        else
-            slot = vec[k]
-            if typeof(slot) === typeof(Mt) && size(slot) == size(Mt)
-                copyto!(slot, Mt)
+        if M isa AbstractSparseMatrix
+            Mt = SparseMatrixCSC(M')
+            if length(vec) < k
+                push!(vec, Mt)
             else
-                vec[k] = Mt
+                slot = vec[k]
+                if typeof(slot) === typeof(Mt) && size(slot) == size(Mt)
+                    copyto!(slot, Mt)
+                else
+                    vec[k] = Mt
+                end
+            end
+        else
+            # Dense: store as Adjoint view — sequential copy + zero-cost wrapper.
+            # On subsequent writes, reuse the parent buffer to avoid allocation.
+            if length(vec) < k
+                push!(vec, copy(M)')
+            else
+                slot = vec[k]
+                if slot isa ℒ.Adjoint && typeof(parent(slot)) === typeof(M) && size(parent(slot)) == size(M)
+                    copyto!(parent(slot), M)
+                else
+                    vec[k] = copy(M)'
+                end
             end
         end
     else

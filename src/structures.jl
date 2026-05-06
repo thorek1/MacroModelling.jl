@@ -535,7 +535,7 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     𝐁_pow::Vector{AbstractMatrix{G}}
     pow_iters::Int            # number of valid entries in 𝐀_pow / 𝐁_pow
     pow_capture::Bool         # true while solver should populate the cache
-    pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store materialised transposes (for adjoint use)
+    pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store transposes as Adjoint views (for adjoint use)
 
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
@@ -756,7 +756,7 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     𝐀_pow::Vector{AbstractMatrix{T}}
     pow_iters::Int            # number of valid entries in 𝐀_pow
     pow_capture::Bool         # true while solver should populate the cache
-    pow_transposed::Bool      # true when 𝐀_pow stores materialised transposes (for adjoint use)
+    pow_transposed::Bool      # true when 𝐀_pow stores transposes as Adjoint views (for adjoint use)
 
     # FastLapackInterface Schur workspace for unit-root deflation (lazily resized)
     schur_ws::FastLapackInterface.SchurWs{T}
