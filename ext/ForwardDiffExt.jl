@@ -633,6 +633,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
         @views copyto!(X̃[:,i],dX[:,T.past_not_future_and_mixed_idx])
     end
     sylv_ws.pow_capture = prev_capture
+    sylv_ws.pow_iters = 0
 
     x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
             ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -751,6 +752,7 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
         X̃[:,i] = vec(dX)
     end
     sws.pow_capture = prev_capture
+    sws.pow_iters = 0
     
     return reshape(map(X, eachrow(X̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -853,6 +855,7 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
         P̃[:,i] = vec(P)
     end
     𝕊ℂ.pow_capture = prev_capture
+    𝕊ℂ.pow_iters = 0
     
     return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
@@ -949,6 +952,7 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
         P̃[:,i] = vec(P)
     end
     workspace.pow_capture = prev_capture
+    workspace.pow_iters = 0
     
     return reshape(map(P̂_stable, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
