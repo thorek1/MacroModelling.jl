@@ -338,7 +338,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100,
+                                        max_iter::Int = 50,
                                         caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
     idx_constants = ensure_first_order_constants!(constants)
@@ -351,10 +351,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     guess_provided = true
     n = size(A, 1)
 
-    if length(initial_guess) == 0
-        guess_provided = false
-        initial_guess = zero(A)
-    end
+    # if length(initial_guess) == 0
+    #     guess_provided = false
+    #     initial_guess = zero(A)
+    # end
 
     # Extract workspaces
     E = workspace.E
@@ -376,7 +376,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     copy!(F, A)
     copy!(B̄, B)
 
-    ℒ.mul!(B̄, A, initial_guess, 1, 1)
+    # ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
     workspace.fast_lu_ws_qme_a,
     workspace.fast_lu_dims_qme_a,
@@ -399,7 +399,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # X = -E - initial_guess (in-place)
     copy!(X, E)
     ℒ.rmul!(X, -1)
-    ℒ.axpy!(-1, initial_guess, X)
+    # ℒ.axpy!(-1, initial_guess, X)
     # Y = -F (in-place)
     copy!(Y, F)
     ℒ.rmul!(Y, -1)
@@ -538,7 +538,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
     # end # timeit_debug
 
-    ℒ.axpy!(1, initial_guess, X_new)
+    # ℒ.axpy!(1, initial_guess, X_new)
 
     # Compute residual to verify solution quality
     # AXX = A * X_new^2 (use temp1 for X^2)

@@ -1,9 +1,83 @@
 @stable default_mode = "disable" begin
 
 
-"""
-    Second_order_indices()
+# ============================================================================
+# Doubling power-cache helpers
+# ============================================================================
+# These are shared by the Lyapunov and Sylvester `:doubling` solvers and their
+# adjoint helpers. Capture is gated by `workspace.pow_capture`; the rrule
+# wrapper is responsible for setting/clearing the flag and bumping the stamp.
+# Slot type is AbstractMatrix so the same vector can hold dense or sparse
+# A^(2^k) / B^(2^k) entries (sparse-aware).
 
+
+
+"""
+    cache_set!(vec, k, M)
+
+Place `M` into slot `k` of the doubling power cache vector. If the slot does
+not yet exist, the vector is extended by one (sequential extension).
+The slot is reused in-place when its concrete type and shape match `M`,
+otherwise it is replaced with `copy(M)` to preserve the input's concrete type.
+
+When `transposed=true`, dense matrices are stored as `copy(M)'` (an `Adjoint`
+wrapping a sequential copy of the data). This avoids the expensive element
+rearrangement of `permutedims` — the solver dispatch handles `Adjoint` matrices
+natively. Subsequent writes to the same slot reuse the existing parent buffer
+(zero allocation after the first write). Sparse matrices are still materialised
+as `SparseMatrixCSC(M')` since CSC format is required for efficient sparse ops.
+"""
+@inline function cache_set!(vec::Vector{<:AbstractMatrix}, k::Int, M::AbstractMatrix, transposed::Bool = false)
+    if transposed
+        if M isa AbstractSparseMatrix
+            Mt = SparseMatrixCSC(M')
+            if length(vec) < k
+                push!(vec, Mt)
+            else
+                slot = vec[k]
+                if typeof(slot) === typeof(Mt) && size(slot) == size(Mt)
+                    copyto!(slot, Mt)
+                else
+                    vec[k] = Mt
+                end
+            end
+        else
+            # Dense: store as Adjoint view — sequential copy + zero-cost wrapper.
+            # On subsequent writes, reuse the parent buffer to avoid allocation.
+            if length(vec) < k
+                push!(vec, copy(M)')
+            else
+                slot = vec[k]
+                if slot isa ℒ.Adjoint && typeof(parent(slot)) === typeof(M) && size(parent(slot)) == size(M)
+                    copyto!(parent(slot), M)
+                else
+                    vec[k] = copy(M)'
+                end
+            end
+        end
+    else
+        if length(vec) < k
+            push!(vec, copy(M))
+        else
+            slot = vec[k]
+            if typeof(slot) === typeof(M) && size(slot) == size(M)
+                copyto!(slot, M)
+            else
+                vec[k] = copy(M)
+            end
+        end
+    end
+    return nothing
+end
+
+
+
+
+
+
+
+
+"""
 Create an empty `second_order_indices` struct with all fields initialized to empty/zero values.
 These will be lazily populated by various ensure_*! functions as needed.
 
@@ -179,7 +253,12 @@ end
         zeros(S,0,0),           # 𝐂B (doubling)
         Krylov_workspace(S = S),
         zeros(S,0,0),           # P (stable primal cache)
-        # ForwardDiff partials buffers
+        # Doubling power cache
+        Vector{AbstractMatrix{S}}(),    # 𝐀_pow
+        Vector{AbstractMatrix{S}}(),    # 𝐁_pow
+        0,                      # pow_iters
+        false,                  # pow_capture
+        false,                  # pow_transposed
         zeros(T,0,0),           # P̃
         zeros(T,0,0),           # Ã_fd
         zeros(T,0,0),           # B̃_fd
@@ -557,6 +636,11 @@ Buffers are initialized to 0-dimensional objects and resized on-demand when the 
         zeros(T, 0, 0),         # P̃
         zeros(T, 0, 0),         # Ã_fd
         zeros(T, 0, 0),         # C̃_fd
+        # Doubling power cache (sparse-aware)
+        Vector{AbstractMatrix{T}}(),  # 𝐀_pow
+        0,                      # pow_iters
+        false,                  # pow_capture
+        false,                  # pow_transposed
         FastLapackInterface.SchurWs(zeros(T, 1, 1))  # schur_ws (lazily resized by gees!)
     )
 end

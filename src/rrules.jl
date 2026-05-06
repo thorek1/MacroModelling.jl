@@ -5824,12 +5824,23 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
+    # Doubling power-cache: enable capture so the pullback's adjoint solve can
+    # reuse A^(2^k), B^(2^k) from this forward pass.
+    cache_eligible_2nd = opts.sylvester_algorithm² == :doubling
+    if cache_eligible_2nd
+        ℂ.sylvester_workspace.pow_iters = 0
+        ℂ.sylvester_workspace.pow_capture = true
+        ℂ.sylvester_workspace.pow_transposed = true
+    end
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess,
-                                            sylvester_algorithm = opts.sylvester_algorithm²,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.second_order.ad.sylvester,
-                                            verbose = opts.verbose)
+                                        initial_guess = initial_guess,
+                                        sylvester_algorithm = opts.sylvester_algorithm²,
+                                        preconditioner = opts.sylvester_preconditioner,
+                                        tol = opts.tol.second_order.ad.sylvester,
+                                        verbose = opts.verbose)
+    ℂ.sylvester_workspace.pow_capture = false
+    pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
+    ℂ.sylvester_workspace.pow_iters = 0
     𝐒₂_stable = copy(𝐒₂)
 
     # end # timeit_debug
@@ -5912,11 +5923,22 @@ function rrule(::typeof(calculate_second_order_solution),
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
-                                                sylvester_algorithm = opts.sylvester_algorithm²,
-                                                preconditioner = opts.sylvester_preconditioner,
-                                                tol = opts.tol.second_order.ad.sylvester,
-                                                verbose = opts.verbose)
+        ws = ℂ.sylvester_workspace
+        cache_valid = cache_eligible_2nd &&
+                      pow_iters_captured_2nd >= 1 &&
+                      ws.pow_transposed
+        saved_capture = ws.pow_capture
+        if cache_valid
+            ws.pow_iters = pow_iters_captured_2nd
+            ws.pow_capture = false
+        end
+        ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
+                                              sylvester_algorithm = opts.sylvester_algorithm²,
+                                              preconditioner = opts.sylvester_preconditioner,
+                                              tol = opts.tol.second_order.ad.sylvester,
+                                              verbose = opts.verbose)
+        ws.pow_capture = saved_capture
+        ws.pow_iters = 0
 
         if !solved
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -7758,12 +7780,21 @@ function rrule(::typeof(calculate_third_order_solution),
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
+    cache_eligible_3rd = opts.sylvester_algorithm³ == :doubling
+    if cache_eligible_3rd
+        ℂ.sylvester_workspace.pow_iters = 0
+        ℂ.sylvester_workspace.pow_capture = true
+        ℂ.sylvester_workspace.pow_transposed = true
+    end
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess_sylv,
-                                            sylvester_algorithm = opts.sylvester_algorithm³,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.third_order.ad.sylvester,
-                                            verbose = opts.verbose)
+                                        initial_guess = initial_guess_sylv,
+                                        sylvester_algorithm = opts.sylvester_algorithm³,
+                                        preconditioner = opts.sylvester_preconditioner,
+                                        tol = opts.tol.third_order.ad.sylvester,
+                                        verbose = opts.verbose)
+    ℂ.sylvester_workspace.pow_capture = false
+    pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
+    ℂ.sylvester_workspace.pow_iters = 0
 
     𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
@@ -7834,11 +7865,22 @@ function rrule(::typeof(calculate_third_order_solution),
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
-                                                  sylvester_algorithm = opts.sylvester_algorithm³,
-                                                  preconditioner = opts.sylvester_preconditioner,
-                                                  tol = opts.tol.third_order.ad.sylvester,
-                                                  verbose = opts.verbose)
+        ws = ℂ.sylvester_workspace
+        cache_valid = cache_eligible_3rd &&
+                      pow_iters_captured_3rd >= 1 &&
+                      ws.pow_transposed
+        saved_capture = ws.pow_capture
+        if cache_valid
+            ws.pow_iters = pow_iters_captured_3rd
+            ws.pow_capture = false
+        end
+        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
+                                              sylvester_algorithm = opts.sylvester_algorithm³,
+                                              preconditioner = opts.sylvester_preconditioner,
+                                              tol = opts.tol.third_order.ad.sylvester,
+                                              verbose = opts.verbose)
+        ws.pow_capture = saved_capture
+        ws.pow_iters = 0
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
@@ -8118,12 +8160,27 @@ function rrule(::typeof(solve_sylvester_equation),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
+    # Enable doubling-power capture only for the dense-dense :doubling path
+    # (the dense-dense overload of solve_sylvester_equation populates 𝐀_pow/𝐁_pow).
+    # Enable doubling-power capture for the :doubling algorithm path.
+    # The solver overloads populate 𝕊ℂ.𝐀_pow / 𝐁_pow during forward iteration so
+    # the pullback can skip squaring. With pow_transposed=true, powers are stored
+    # in transposed form directly, saving a post-hoc transpose pass.
+    cache_eligible = sylvester_algorithm == :doubling
+    if cache_eligible
+        𝕊ℂ.pow_iters = 0
+        𝕊ℂ.pow_capture = true
+        𝕊ℂ.pow_transposed = true
+    end
     P, solved = solve_sylvester_equation(A, B, C, 𝕊ℂ,
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        preconditioner = preconditioner,
-                                        tol = tol, 
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    preconditioner = preconditioner,
+                                    tol = tol,
+                                    verbose = verbose,
+                                    initial_guess = initial_guess)
+    𝕊ℂ.pow_capture = false
+    pow_iters_captured = 𝕊ℂ.pow_iters
+    𝕊ℂ.pow_iters = 0
 
     if size(𝕊ℂ.P) != size(P)
         𝕊ℂ.P = zeros(eltype(P), size(P)...)
@@ -8133,23 +8190,41 @@ function rrule(::typeof(solve_sylvester_equation),
 
     ensure_sylvester_doubling_buffers!(𝕊ℂ, size(A, 1), size(B, 1))
 
+    # Precompute transposes once outside the pullback closure: needed for both
+    # the matmul forming ∂A/∂B (every call) and the fallback adjoint solve
+    # (when the doubling power cache is unavailable).
+    At = A'
+    Bt = B'
+
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
-                                            sylvester_algorithm = sylvester_algorithm, 
+        cache_valid = cache_eligible &&
+                      pow_iters_captured >= 1 &&
+                      𝕊ℂ.pow_transposed
+        saved_capture = 𝕊ℂ.pow_capture
+        if cache_valid
+            𝕊ℂ.pow_iters = pow_iters_captured
+            𝕊ℂ.pow_capture = false
+        end
+        ∂C, slvd = solve_sylvester_equation(At, Bt, ∂P[1], 𝕊ℂ,
+                                            sylvester_algorithm = sylvester_algorithm,
                                             preconditioner = preconditioner,
-                                            tol = tol, 
+                                            tol = tol,
                                             verbose = verbose)
+        𝕊ℂ.pow_capture = saved_capture
+        𝕊ℂ.pow_iters = 0
 
         solved = solved && slvd
 
         # ∂C is n×m, B' is m×m, P_cached is n×m, A is n×n
         # Intermediate products are n×m and m×n — not n×n or m×m,
         # so workspace buffers 𝐀 (n×n) / 𝐁 (m×m) are wrong shape when n ≠ m.
-        ∂A = (∂C * B') * P_cached'
-        ∂B = (P_cached' * A') * ∂C
+        ∂A = (∂C * Bt) * P_cached'
+        ∂B = (P_cached' * At) * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
@@ -8171,12 +8246,22 @@ function rrule(::typeof(solve_lyapunov_equation),
                 verbose::Bool = false,
                 has_unit_roots::Bool = false)
 
+    # Enable doubling-power capture for the :doubling algorithm path.
+    # With pow_transposed=true, powers are stored in transposed form directly.
+    if lyapunov_algorithm == :doubling
+        workspace.pow_iters = 0
+        workspace.pow_capture = true
+        workspace.pow_transposed = true
+    end
     P, solved = solve_lyapunov_equation(A, C, workspace,
-                                        initial_guess = initial_guess,
-                                        lyapunov_algorithm = lyapunov_algorithm,
-                                        tol = tol,
-                                        verbose = verbose,
-                                        has_unit_roots = has_unit_roots)
+                            initial_guess = initial_guess,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            tol = tol,
+                            verbose = verbose,
+                            has_unit_roots = has_unit_roots)
+    workspace.pow_capture = false
+    pow_iters_captured = workspace.pow_iters
+    workspace.pow_iters = 0
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
@@ -8184,18 +8269,35 @@ function rrule(::typeof(solve_lyapunov_equation),
     P_cached = workspace.P
     ensure_lyapunov_doubling_buffers!(workspace)
     A_dense = collect(A)
+    # Precompute Aᵀ once outside the pullback closure: needed by the matmul
+    # forming ∂A (every call) and by the fallback adjoint solve.
+    At = A_dense'
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        if ℒ.norm(∂P[1]) < tol.rtol
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
-        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
-        # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
-        # (the dispatcher's choose_matrix_format would convert back to sparse)
-        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
-        ∂C = ∂C_result
-        slvd = adj_tol < tol.acceptance_tol
+        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space.
+        # Prefer the forward dense doubling solver in replay mode against the
+        # transposed power cache when the forward pass populated workspace.𝐀_pow;
+        # otherwise fall back to the legacy solver call.
+        cache_valid = lyapunov_algorithm == :doubling &&
+                      pow_iters_captured >= 1 &&
+                      workspace.pow_transposed
+        saved_capture = workspace.pow_capture
+        if cache_valid
+            workspace.pow_iters = pow_iters_captured
+            workspace.pow_capture = false
+        end
+        ∂C, slvd = solve_lyapunov_equation(At, Matrix{Float64}(∂P[1]), workspace,
+                                           lyapunov_algorithm = lyapunov_algorithm,
+                                           tol = tol,
+                                           verbose = verbose)
+        workspace.pow_capture = saved_capture
+        workspace.pow_iters = 0
     
         solved = solved && slvd
 
