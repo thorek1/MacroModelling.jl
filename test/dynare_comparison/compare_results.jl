@@ -29,9 +29,10 @@ const EXECUTION_ORDER = [
     "FRBUS",
     "FS2000_pruned_2nd",
     "Gali_2015_chapter_3_nonlinear_pruned_2nd",
+    "Smets_Wouters_2003_pruned_2nd",
     "Smets_Wouters_2007_pruned_2nd",
     "Gali_2015_chapter_3_nonlinear_pruned_3rd",
-    "Smets_Wouters_2007_pruned_3rd",
+    "Smets_Wouters_2003_pruned_3rd",
     "Caldara_et_al_2012_pruned_3rd",
 ]
 

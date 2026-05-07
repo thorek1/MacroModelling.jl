@@ -54,13 +54,14 @@ const MODEL_FILES = [
 const SECOND_ORDER_MODELS = [
     "FS2000",
     "Gali_2015_chapter_3_nonlinear",
+    "Smets_Wouters_2003",
     "Smets_Wouters_2007",
 ]
 
 # Models to also test at pruned 3rd order
 const THIRD_ORDER_MODELS = [
     "Gali_2015_chapter_3_nonlinear",
-    "Smets_Wouters_2007",
+    "Smets_Wouters_2003",
     "Caldara_et_al_2012",
 ]
 
