@@ -20,19 +20,27 @@ const _BENCH_CACHE = Dict{String, Dict{String, Float64}}()
 # pays the JIT compilation cost for that order's functions.
 const EXECUTION_ORDER = [
     "FS2000",
+    "Ascari_Sbordone_2014",
     "Gali_2015_chapter_3_nonlinear",
+    "Caldara_et_al_2012",
     "Smets_Wouters_2007",
     "Smets_Wouters_2003",
-    "NAWM_EAUS_2008",
     "GNSS_2010",
+    "NAWM_EAUS_2008",
     "QUEST3_2009",
     "FRBUS",
+
     "FS2000_pruned_2nd",
+    "Ascari_Sbordone_2014_pruned_2nd",
     "Gali_2015_chapter_3_nonlinear_pruned_2nd",
+    "Caldara_et_al_2012_pruned_2nd",
     "Smets_Wouters_2003_pruned_2nd",
     "Smets_Wouters_2007_pruned_2nd",
+    "GNSS_2010_pruned_2nd",
+    
+    "FS2000_pruned_3rd",
+    "Ascari_Sbordone_2014_pruned_3rd",
     "Gali_2015_chapter_3_nonlinear_pruned_3rd",
-    "Smets_Wouters_2003_pruned_3rd",
     "Caldara_et_al_2012_pruned_3rd",
 ]
 

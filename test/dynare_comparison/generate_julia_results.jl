@@ -41,11 +41,13 @@ const MODELS_DIR = joinpath(@__DIR__, "..", "..", "models")
 # Models to test (first order)
 const MODEL_FILES = [
     "FS2000",
+    "Ascari_Sbordone_2014",
     "Gali_2015_chapter_3_nonlinear",
+    "Caldara_et_al_2012",
     "Smets_Wouters_2007",
     "Smets_Wouters_2003",
-    "NAWM_EAUS_2008",
     "GNSS_2010",
+    "NAWM_EAUS_2008",
     "QUEST3_2009",
     "FRBUS",
 ]
@@ -53,15 +55,19 @@ const MODEL_FILES = [
 # Models to also test at pruned 2nd order
 const SECOND_ORDER_MODELS = [
     "FS2000",
+    "Ascari_Sbordone_2014",
     "Gali_2015_chapter_3_nonlinear",
+    "Caldara_et_al_2012",
     "Smets_Wouters_2003",
     "Smets_Wouters_2007",
+    "GNSS_2010",
 ]
 
 # Models to also test at pruned 3rd order
 const THIRD_ORDER_MODELS = [
+    "FS2000",
+    "Ascari_Sbordone_2014",
     "Gali_2015_chapter_3_nonlinear",
-    "Smets_Wouters_2003",
     "Caldara_et_al_2012",
 ]
 
