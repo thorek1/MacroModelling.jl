@@ -3183,6 +3183,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             cov(m, algorithm = algorithm)
 
+            get_correlation(m, algorithm = algorithm)
+
+            get_corr(m, algorithm = algorithm)
+
+            corr(m, algorithm = algorithm)
+
             
             get_mean(m, algorithm = algorithm)
         end
@@ -3196,6 +3202,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            correlation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             parameter_derivatives = parameter_derivatives,
                             derivatives = true)
         end
@@ -3209,6 +3216,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            correlation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             derivatives = true)
         end
 
@@ -3400,6 +3408,33 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
                 m.parameter_values .= old_params
             end
+
+            # Correlation derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_corr = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, correlation = true,
+                                  tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
+                                  derivatives = true)
+            corr_ka = collect(mom_corr[:correlation])
+            n_cr = size(corr_ka, 1)
+            corr_jac = reshape(corr_ka[:, :, 2:end], n_cr * n_cr, :)
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        vec(collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, correlation = true,
+                            tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
+                            derivatives = false)[:correlation]))
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test check_isapprox(corr_jac, fd[1], rtol = 1e-4)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
         end
     end
 

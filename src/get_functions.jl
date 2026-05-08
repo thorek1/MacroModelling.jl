@@ -2887,7 +2887,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. The `KeyedArray` type is provided by the `AxisKeys` package.
+- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. Covariance and correlation matrices are returned as 2D `KeyedArray`s (or 3D when `derivatives = true`). The `KeyedArray` type is provided by the `AxisKeys` package.
 
 # Examples
 ```jldoctest part1
@@ -2921,10 +2921,7 @@ And data, 4×6 Matrix{Float64}:
   (:k)  47.3903           0.0       0.0  -1304.95    555.264   1445.93
   (:q)   6.88406          0.0       0.0    -94.7805   66.8912   105.02
   (:z)   0.0              0.0       0.0      0.0       0.0        0.0
-```
 
-
-```jldoctest part1
 moments[:standard_deviation]
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
@@ -2936,6 +2933,18 @@ And data, 4×6 Matrix{Float64}:
   (:k)   0.264677              26.4677      -5.74194    2.99332    6.30323
   (:q)   0.0739325              7.39325     -0.974722   0.726551   1.08
   (:z)   0.0102062              1.02062      0.0        0.0        0.0
+
+get_moments(RBC, non_stochastic_steady_state = false, standard_deviation = false, correlation = true, derivatives = false)[:correlation]
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0
 ```
 """
 @unstable function get_moments(𝓂::ℳ; 
