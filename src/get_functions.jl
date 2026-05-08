@@ -3992,7 +3992,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 58.24780188977981
 ```
 """
-@unstable function get_loglikelihood(𝓂::ℳ, 
+function get_loglikelihood(𝓂::ℳ, 
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 

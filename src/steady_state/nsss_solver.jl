@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Non-stochastic steady state (NSSS) solver
 # 
 # This file contains:
@@ -2649,3 +2651,5 @@ function solve_nsss_wrapper(
 
     return SS_and_pars, (1.0, 0)
 end
+
+end # @stable
