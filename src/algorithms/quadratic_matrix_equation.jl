@@ -210,8 +210,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                             E,
                                             schur_ws_local.fast_qz_ws,
                                             schur_ws_local.fast_qz_dims,
-                                            schur_ws_local.eigenselect;
-                                            use_fastlapack_schur = use_fastlapack_schur)
+                                            schur_ws_local.eigenselect)
 
     if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -236,8 +235,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     solved_Z₁₁,
     Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
                         schur_ws_local.fast_lu_ws_z11,
-                        schur_ws_local.fast_lu_dims_z11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_z11)
     
     if !solved_Z₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -250,8 +248,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     solved_S₁₁,
     Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
                         schur_ws_local.fast_lu_ws_s11,
-                        schur_ws_local.fast_lu_dims_s11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_s11)
     
     if !solved_S₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -383,8 +380,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     solved_B,
     B̂ = factorize_lu!(B̄,
                        workspace.fast_lu_ws_qme_a,
-                       workspace.fast_lu_dims_qme_a;
-                       use_fastlapack_lu = use_fastlapack_lu)
+                       workspace.fast_lu_dims_qme_a)
 
     if !solved_B
         return A, 0, 1.0
@@ -433,8 +429,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         solved_EI,
         fEI = factorize_lu!(temp1,
                             workspace.fast_lu_ws_qme_a,
-                            workspace.fast_lu_dims_qme_a;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_a)
 
         if !solved_EI
             return A, iter, 1.0
@@ -468,8 +463,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         solved_FI,
         fFI = factorize_lu!(temp2,
                             workspace.fast_lu_ws_qme_b,
-                            workspace.fast_lu_dims_qme_b;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_b)
         
         if !solved_FI
             return A, iter, 1.0

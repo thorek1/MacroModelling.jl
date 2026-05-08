@@ -846,7 +846,7 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
     use_fastlapack_tmp_pb = solved_tmp_pb_lu
     if !solved_tmp_pb_lu
         tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu =
-            factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims; use_fastlapack_lu = false)
+            factorize_lu_julia!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
         @assert solved_tmp_pb_lu "Could not factorize preserved stochastic steady-state pullback matrix."
         use_fastlapack_tmp_pb = false
     end
@@ -5448,8 +5448,7 @@ function rrule(::typeof(calculate_first_order_solution),
     #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
     # Current code reuses QR workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;                 # Q = qr(∇₀_present)
-                        use_fastlapack_qr = use_fastlapack_qr)
+    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
 
     qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
@@ -5521,8 +5520,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # Old way (≤v0.1.42): Ā̂₀ᵤ = lu(Ā₀ᵤ)
     qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
-                                                                                       qme_ws.fast_lu_dims_a0u;
-                                                                                       use_fastlapack_lu = use_fastlapack_lu)
+                                                                                       qme_ws.fast_lu_dims_a0u)
 
     if !solved_Ā₀ᵤ
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -5570,8 +5568,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # Old way (≤v0.1.42): C = lu(∇₀)
     qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
-                                                                                         qme_ws.fast_lu_dims_nabla0;
-                                                                                         use_fastlapack_lu = use_fastlapack_lu)
+                                                                                         qme_ws.fast_lu_dims_nabla0)
 
     if !solved_∇₀
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
