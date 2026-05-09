@@ -448,7 +448,7 @@ function MacroModelling.get_NSSS_and_parameters(𝓂::ℳ,
                 end
             end
         else
-            qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
+            qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(Val(:FastLapack), ∂SS_equations_∂SS_and_pars,
                                                                                                      qme_ws.fast_lu_ws_nsss,
                                                                                                      qme_ws.fast_lu_dims_nsss)
 
@@ -564,10 +564,9 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
     copyto!(AXB, B)
     ℒ.mul!(AXB, A, X, 1, 1)
 
-    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_AXB, AXBfact = factorize_lu!(AXB,
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_AXB, AXBfact = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), AXB,
                                                                                                  qme_ws.fast_lu_ws_nabla0,
-                                                                                                 qme_ws.fast_lu_dims_nabla0;
-                                                                                                 use_fastlapack_lu = use_fastlapack_lu)
+                                                                                                 qme_ws.fast_lu_dims_nabla0)
 
     if !solved_AXB
         return ∇₁, qme_sol, false
