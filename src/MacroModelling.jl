@@ -2438,6 +2438,7 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
         try 
             𝓂.functions.NSSS_custom(output, parameter_values)
         catch
+            fill!(output, S(NaN))
         end
         return output
     elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
