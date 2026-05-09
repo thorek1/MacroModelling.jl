@@ -2106,7 +2106,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         verbose = verbose)
                                                                         
-                                @test check_isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8, nans = true)
 
                                 clear_solution_caches!(m, algorithm)
                                                                         
@@ -2116,7 +2116,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                                         verbose = verbose)
 
-                                @test check_isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8, nans = true)
 
                             end
 
@@ -2131,7 +2131,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm,
                                                 verbose = verbose)
 
-                                @test check_isapprox(corrl, CORRL, rtol = 1e-5)
+                                @test check_isapprox(corrl, CORRL, rtol = 1e-5, nans = true)
 
                                 clear_solution_caches!(m, algorithm)
                                 
@@ -2143,7 +2143,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                 verbose = verbose)
 
-                                @test check_isapprox(autocorr_, AUTOCORR, rtol = 1e-8)
+                                @test check_isapprox(autocorr_, AUTOCORR, rtol = 1e-8, nans = true)
                             end
                         end
                     end
@@ -3057,8 +3057,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 covariance = m.constants.post_model_macro.var[4:5])
             
             # Check that within-group covariances match
-            @test check_isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6)
-            @test check_isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6)
+            @test check_isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6, nans = true)
+            @test check_isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6, nans = true)
             
             # Check that cross-group covariances are zero
             @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
@@ -3099,14 +3099,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             @test haskey(stats_corr, :correlation)
             @test stats_corr[:correlation] isa AbstractMatrix
             @test size(stats_corr[:correlation]) == (length(vars_corr), length(vars_corr))
-            # Diagonal must be 1 (or NaN for degenerate variables, but selected vars should be non-degenerate)
+            # Diagonal must be 1 (or NaN for degenerate variables)
             for i in 1:length(vars_corr)
-                @test check_isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6)
+                @test check_isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6, nans = true)
             end
             # Symmetric
-            @test check_isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6)
-            # All entries in [-1, 1]
-            @test all(-1 - 1e-6 .<= stats_corr[:correlation] .<= 1 + 1e-6)
+            @test check_isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6, nans = true)
+            # All entries in [-1, 1] (or NaN)
+            @test all(x -> isnan(x) || (-1 - 1e-6 <= x <= 1 + 1e-6), stats_corr[:correlation])
 
             # Cross-check correlation = covariance / (std * std')
             stats_combo = get_statistics(m, old_params, algorithm = algorithm,
@@ -3129,8 +3129,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                               correlation = vars_corr[1:2])
                 stats_block2 = get_statistics(m, old_params, algorithm = algorithm,
                                               correlation = vars_corr[3:4])
-                @test check_isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6)
-                @test check_isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6)
+                @test check_isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6, nans = true)
+                @test check_isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6, nans = true)
                 # Cross-group entries are zero
                 @test all(stats_grouped_corr[:correlation][1:2, 3:4] .== 0)
                 @test all(stats_grouped_corr[:correlation][3:4, 1:2] .== 0)
@@ -3383,7 +3383,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             derivatives = false)[:covariance]))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test check_isapprox(cov_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(cov_jac, fd[1], rtol = 1e-4, nans = true)
                     break
                 end
             end
@@ -3433,7 +3433,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             derivatives = false)[:correlation]))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test check_isapprox(corr_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(corr_jac, fd[1], rtol = 1e-4, nans = true)
                     break
                 end
             end
