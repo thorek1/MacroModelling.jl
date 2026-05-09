@@ -561,7 +561,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         JVP = qme_ws.nsss_jvp_rhs
     else
         # Old way (≤v0.1.42): nsss_lu = lu(∂SS/∂SS_and_pars)
-        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∂SS_equations_∂SS_and_pars,
+        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(Val(:FastLapack), ∂SS_equations_∂SS_and_pars,
                                                                                                  qme_ws.fast_lu_ws_nsss,
                                                                                                  qme_ws.fast_lu_dims_nsss)
 
@@ -5760,7 +5760,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
