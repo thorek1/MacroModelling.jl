@@ -83,7 +83,7 @@ These will be lazily populated by various ensure_*! functions as needed.
 
 See [`second_order_indices`](@ref) for field documentation.
 """
-function Second_order_indices()
+@unstable function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_bool = spzeros(Bool, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
@@ -148,7 +148,7 @@ These will be lazily populated by various ensure_*! functions as needed.
 
 See [`third_order_indices`](@ref) for field documentation.
 """
-function Third_order_indices()
+@unstable function Third_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return third_order_indices(
@@ -210,7 +210,7 @@ Create a workspace for nonlinear solvers (Levenberg-Marquardt and Newton).
 - `chol_buffer::LinearCache`: Pre-allocated Cholesky factorization cache
 - `lu_buffer::LinearCache`: Pre-allocated LU factorization cache
 """
-function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
+@unstable function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::AbstractMatrix{T}, 
                                     chol_buffer::𝒮.LinearCache, lu_buffer::𝒮.LinearCache) where T <: Real
     n = length(func_buffer)
     nonlinear_solver_workspace(
@@ -232,13 +232,13 @@ function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::Abstract
 end
 
 
-function Krylov_workspace(;S::Type{ST} = Float64) where {ST <: AbstractFloat}
+@unstable function Krylov_workspace(;S::Type{ST} = Float64) where {ST <: AbstractFloat}
     krylov_workspace(  GmresWorkspace(0,0,Vector{ST}),
                     DqgmresWorkspace(0,0,Vector{ST}),
                     BicgstabWorkspace(0,0,Vector{ST}))
 end
 
-function Sylvester_workspace(;S::Type{ST} = Float64, T::Type{TT} = Float64) where {ST <: AbstractFloat, TT <: Real}
+@unstable function Sylvester_workspace(;S::Type{ST} = Float64, T::Type{TT} = Float64) where {ST <: AbstractFloat, TT <: Real}
     sylvester_workspace(
         0, 0,                   # n, m dimensions
         zeros(S,0,0),           # tmp (Krylov)
@@ -271,7 +271,7 @@ end
 Create a workspace for find_shocks conditional forecast with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_find_shocks_buffers!.
 """
-function Find_shocks_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+@unstable function Find_shocks_workspace(;T::Type{TT} = Float64) where {TT <: Real}
     find_shocks_workspace{TT}(
         0,                      # n_exo dimension
         zeros(TT,0),             # kron_buffer (n_exo^2)
@@ -460,7 +460,7 @@ end
 
 Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+@unstable function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
     empty_qr_factors = zeros(TT, 0, 0)
     empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
     empty_qr_rhs = zeros(TT, 0, 0)
@@ -525,7 +525,7 @@ end
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_doubling_workspace(n::Int; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+@unstable function Qme_doubling_workspace(n::Int; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
     empty_lu_factors = zeros(TT, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -573,7 +573,7 @@ Dimensions:
 - `nPfm` = nPast_not_future_and_mixed
 - `nFnpm` = nFuture_not_past_and_mixed
 """
-function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type{TT} = Float64) where {TT <: Real}
+@unstable function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type{TT} = Float64) where {TT <: Real}
     companion_size = n + nMixed
     nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
     qz_seed_size = max(companion_size, 1)
@@ -613,7 +613,7 @@ Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
 `n` is the dimension of the square matrices.
 Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
 """
-function Lyapunov_workspace(n::Int; T::Type{TT} = Float64) where {TT <: Real}
+@unstable function Lyapunov_workspace(n::Int; T::Type{TT} = Float64) where {TT <: Real}
     lyapunov_workspace{T, T}(
         n,                      # dimension
         zeros(T, 0, 0),         # 𝐂 (doubling)
@@ -910,7 +910,7 @@ end
 Create a workspace for inversion filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_inversion_buffers!.
 """
-function Inversion_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+@unstable function Inversion_workspace(;T::Type{TT} = Float64) where {TT <: Real}
     inversion_workspace{TT}(
         0, 0,                   # n_exo, n_past dimensions
         zeros(TT, 0),            # kron_buffer (n_exo^2)
@@ -1091,7 +1091,7 @@ end
 Create a workspace for Kalman filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_workspaces!.
 """
-function Kalman_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+@unstable function Kalman_workspace(;T::Type{TT} = Float64) where {TT <: Real}
     empty_lu_factors = zeros(TT, 1, 1)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -1171,7 +1171,7 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
 end
 
 
-function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
+@unstable function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
     workspaces(Higher_order_workspace(T = T, S = S),
                 Higher_order_workspace(T = T, S = S),
                 Float64[],
@@ -1202,7 +1202,7 @@ function fresh_workspaces(orig::workspaces)
     return ws
 end
 
-function Constants(model_struct; T::Type = Float64, S::Type = Float64)
+@unstable function Constants(model_struct; T::Type = Float64, S::Type = Float64)
     constants( model_struct,
             post_parameters_macro(
                 Symbol[],
