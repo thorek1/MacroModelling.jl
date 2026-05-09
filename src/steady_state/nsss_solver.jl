@@ -1,4 +1,4 @@
-@stable default_mode = "error" begin
+@stable default_mode = "disable" begin
 
 # Non-stochastic steady state (NSSS) solver
 # 
