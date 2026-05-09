@@ -858,7 +858,7 @@ end
 
 # ── OBC state update (per-period NLopt solver) ───────────────────────────────
 
-@unstable function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function, 𝓂, algorithm) where R <: Float64
+function obc_state_update(present_states::S, present_shocks::Vector{R}, state_update::F, 𝓂::ℳ, algorithm::Symbol) where {S, R <: Float64, F}
     unconditional_forecast_horizon = 𝓂.constants.post_model_macro.max_obc_horizon
 
     reference_ss = 𝓂.caches.non_stochastic_steady_state
