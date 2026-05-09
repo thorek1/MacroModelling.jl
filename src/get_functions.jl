@@ -2698,64 +2698,7 @@ And data, 4×4 Matrix{Float64}:
   (:z)   0.314562   0.296104   0.965726   1.0
 ```
 """
-@unstable function get_correlation(𝓂::ℳ; 
-                        parameters::ParameterType = nothing,
-                        steady_state_function::SteadyStateFunctionType = missing,  
-                        algorithm::Symbol = DEFAULT_ALGORITHM,
-                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
-                        verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = Tolerances(),
-                        caching::Bool = DEFAULT_CACHING,
-                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
-    # @nospecialize # reduce compile time                    
-
-    if !caching; invalidate_cache_validity!(𝓂); end
-    orig_ws = 𝓂.workspaces
-    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
-
-    opts = merge_calculation_options(tol = tol, verbose = verbose,
-                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                        lyapunov_algorithm = lyapunov_algorithm)
-
-    @assert algorithm ∈ [:first_order, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
-
-    solve!(𝓂, 
-            parameters = parameters,
-            steady_state_function = steady_state_function, 
-            opts = opts, 
-            algorithm = algorithm)
-
-    if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
-    elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-    else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-        if !solved
-            @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
-        end
-    end
-
-    covar_dcmp[abs.(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
-
-    std = sqrt.(max.(ℒ.diag(covar_dcmp),eps(Float64)))
-    
-    corr = covar_dcmp ./ (std * std')
-    
-    axis1 = 𝓂.constants.post_model_macro.var
-
-    ensure_name_display_constants!(𝓂)
-    axis1 = 𝓂.constants.post_complete_parameters.var_axis
-
-    if !use_workspaces; 𝓂.workspaces = orig_ws; end
-
-    KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
-end
+@unstable get_correlation(args...; kwargs...) = get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, correlation = true, derivatives = false)[:correlation]
 
 """
 See [`get_correlation`](@ref)
@@ -2918,7 +2861,7 @@ See [`get_autocorrelation`](@ref)
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, covariance matrix, and correlation matrix. Derivatives of the moments can also be provided by setting `derivatives` to `true`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -2932,6 +2875,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- `correlation` [Default: `false`, Type: `Bool`]: switch to return correlation matrix of endogenous variables
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
@@ -2943,7 +2887,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. The `KeyedArray` type is provided by the `AxisKeys` package.
+- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. Covariance and correlation matrices are returned as 2D `KeyedArray`s (or 3D when `derivatives = true`). The `KeyedArray` type is provided by the `AxisKeys` package.
 
 # Examples
 ```jldoctest part1
@@ -2993,6 +2937,21 @@ And data, 4×6 Matrix{Float64}:
   (:q)   0.0739325              7.39325     -0.974722   0.726551   1.08
   (:z)   0.0102062              1.02062      0.0        0.0        0.0
 ```
+
+Correlation matrix (returned when `correlation = true`):
+```jldoctest part1
+get_moments(RBC, non_stochastic_steady_state = false, standard_deviation = false, correlation = true, derivatives = false)[:correlation]
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0
+```
 """
 @unstable function get_moments(𝓂::ℳ; 
                     parameters::ParameterType = nothing,
@@ -3002,6 +2961,7 @@ And data, 4×6 Matrix{Float64}:
                     standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
                     variance::Bool = DEFAULT_VARIANCE_FLAG, 
                     covariance::Bool = DEFAULT_COVARIANCE_FLAG, 
+                    correlation::Bool = DEFAULT_CORRELATION_FLAG,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                     derivatives::Bool = DEFAULT_DERIVATIVES_FLAG,
                     parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
@@ -3033,7 +2993,7 @@ And data, 4×6 Matrix{Float64}:
             opts = opts, 
             silent = silent)
 
-    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
+    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance), ("Correlation", correlation)]
         if condition
             @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`."
         end
@@ -3081,6 +3041,7 @@ And data, 4×6 Matrix{Float64}:
         if standard_deviation; ret[:standard_deviation] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
         if variance; ret[:variance] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
         if covariance; ret[:covariance] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, Variables2 = axis1_fail); end
+        if correlation; ret[:correlation] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1_fail); end
         return ret
     end
 
@@ -3088,11 +3049,11 @@ And data, 4×6 Matrix{Float64}:
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
     end 
 
-    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean && !covariance)
+    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean && !covariance && !correlation)
         derivatives = false
     end
 
-    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean || covariance)
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean || covariance || correlation)
         derivatives = true
     end
 
@@ -3165,14 +3126,14 @@ And data, 4×6 Matrix{Float64}:
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        # Hoist covariance rrule call for shared use across variance/std_dev/covariance
-        if variance || standard_deviation || covariance
+        # Hoist covariance rrule call for shared use across variance/std_dev/covariance/correlation
+        if variance || standard_deviation || covariance || correlation
             if algorithm == :pruned_second_order
                 _cov_result, _cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 _n_cov_tuple = 15
             elseif algorithm == :pruned_third_order
-                _cov_obs = covariance ? :full_covar : variables
+                _cov_obs = (covariance || correlation) ? :full_covar : variables
                 _cov_result, _cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, _cov_obs, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 _n_cov_tuple = 4
@@ -3247,14 +3208,7 @@ And data, 4×6 Matrix{Float64}:
         end
 
 
-        if covariance
-            axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
-        
-            if any(x -> contains(string(x), "◖"), axis3)
-                axis3_decomposed = decompose_name.(axis3)
-                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
-            end
-
+        if covariance || correlation
             # Compute full covariance Jacobian via VJP from hoisted rrule
             _np_cov2 = length(𝓂.parameter_values)
             _nv_cov2 = size(covar_dcmp, 1)
@@ -3268,6 +3222,15 @@ And data, 4×6 Matrix{Float64}:
                 if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
             dcovariance = dcovariance[:, param_idx]
+        end
+
+        if covariance
+            axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
+        
+            if any(x -> contains(string(x), "◖"), axis3)
+                axis3_decomposed = decompose_name.(axis3)
+                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
+            end
         end
 
         if mean && algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -3418,6 +3381,30 @@ And data, 4×6 Matrix{Float64}:
                 end
             end
         end
+
+        if correlation
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+
+                if mean && algorithm == :first_order
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                end
+
+                if !solved
+                    @warn "Could not find covariance matrix."
+                end
+            end
+        end
     end
 
     
@@ -3493,6 +3480,56 @@ And data, 4×6 Matrix{Float64}:
         else
             # push!(ret,KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
             ret[:covariance] = KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
+        end
+    end
+    if correlation
+        axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+
+        if any(x -> contains(string(x), "◖"), axis1)
+            axis1_decomposed = decompose_name.(axis1)
+            axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        end
+
+        corr_full_mat, covar_sym, diag_cov, std_corr = covariance_to_correlation(covar_dcmp)
+
+        if derivatives
+            n_full_vars = size(covar_dcmp, 1)
+            n_reduced_vars = length(var_idx)
+            n_params = length(param_idx)
+
+            corr_with_derivs = zeros(n_reduced_vars, n_reduced_vars, 1 + n_params)
+            corr_with_derivs[:, :, 1] = corr_full_mat[var_idx, var_idx]
+
+            for p in 1:n_params
+                dΣ_full = reshape(dcovariance[:, p], n_full_vars, n_full_vars)
+                for (ri, i) in enumerate(var_idx)
+                    for (rj, j) in enumerate(var_idx)
+                        σi = std_corr[i]
+                        σj = std_corr[j]
+                        if !isfinite(σi) || !isfinite(σj) || diag_cov[i] <= 0 || diag_cov[j] <= 0
+                            corr_with_derivs[ri, rj, p+1] = NaN
+                        else
+                            # dC[i,j]/dθ = dΣ[i,j]/(σi*σj) - C[i,j]*(dΣ[i,i]/(2*Σ[i,i]) + dΣ[j,j]/(2*Σ[j,j]))
+                            corr_with_derivs[ri, rj, p+1] = dΣ_full[i,j] / (σi * σj) - corr_full_mat[i,j] * (dΣ_full[i,i] / (2 * diag_cov[i]) + dΣ_full[j,j] / (2 * diag_cov[j]))
+                        end
+                    end
+                end
+            end
+
+            axis_corr = vcat(:Correlation, 𝓂.constants.post_complete_parameters.parameters[param_idx])
+
+            if any(x -> contains(string(x), "◖"), axis_corr)
+                axis_corr_decomposed = decompose_name.(axis_corr)
+                axis_corr = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis_corr_decomposed]
+            end
+
+            ret[:correlation] = KeyedArray(corr_with_derivs;
+                Variables = axis1,
+                𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1,
+                Correlation_and_∂correlation∂parameter = axis_corr
+            )
+        else
+            ret[:correlation] = KeyedArray(corr_full_mat[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
         end
     end
 
