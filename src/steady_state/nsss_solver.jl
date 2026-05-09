@@ -1749,7 +1749,7 @@ function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, i
         cached_parameters = pars[end]
         squared_distance = 0.0
         cached_parameters_norm_squared = 0.0
-        for i in eachindex(initial_parameters)
+        @turbo for i in eachindex(initial_parameters)
             ci = cached_parameters[i]
             d = ci - initial_parameters[i]
             squared_distance += d * d
