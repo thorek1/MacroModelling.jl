@@ -2210,39 +2210,42 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             sol = get_solution(m, parameter_values, algorithm = algorithm)
 
+            # Helper to extract element i in flattened order: 1→SS, 2→sol_mats[1], 3→sol_mats[2], ...
+            _sol_el(s, i) = i == 1 ? s[1] : s[2][i-1]
+
             deriv_sol = nothing
             deriv_sol_zyg = nothing
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values))
+                for i in 1:length(sol[2])
+                    push!(deriv_sol, ForwardDiff.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_fin = []
-                for i in 1:length(sol)-2
+                for i in 1:length(sol[2])
                     push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
-                                                                get_solution(m, x, algorithm = algorithm)[i]
+                                                                _sol_el(get_solution(m, x, algorithm = algorithm), i)
                                                             end, parameter_values)[1])
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_moon = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
+                for i in 1:length(sol[2])
+                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_zyg = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
+                for i in 1:length(sol[2])
+                    push!(deriv_sol_zyg, Zygote.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
                 end
 
                 @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
@@ -2259,16 +2262,16 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             sylvester_algorithm = sylvester_algorithm)
 
-                        @test check_isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-8)
+                        @test check_isapprox(vcat([sol[1]], sol[2]), vcat([SOL[1]], SOL[2]), rtol = 1e-8)
 
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL, ForwardDiff.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], parameter_values))
+                                                sylvester_algorithm = sylvester_algorithm), i), parameter_values))
                             end
 
                             @test check_isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
@@ -2276,21 +2279,21 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL_moon = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
+                                                sylvester_algorithm = sylvester_algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
                             end
 
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL_zyg = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL_zyg, Zygote.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], parameter_values)[1])
+                                                sylvester_algorithm = sylvester_algorithm), i), parameter_values)[1])
                             end
 
                             @test check_isapprox(DERIV_SOL_moon, DERIV_SOL, rtol = 1e-8)

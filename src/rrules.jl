@@ -11794,15 +11794,8 @@ function rrule(::typeof(get_solution),
     zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
 
     # ── Check parameter bounds ──
-    if length(𝓂.constants.post_parameters_macro.bounds) > 0
-        for (k, v) in 𝓂.constants.post_parameters_macro.bounds
-            if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                idx = indexin([k], 𝓂.constants.post_complete_parameters.parameters)[1]
-                if min(max(parameters[idx], v[1]), v[2]) != parameters[idx]
-                    return -Inf, zero_pullback
-                end
-            end
-        end
+    if check_bounds(parameters, 𝓂)
+        return _get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S), zero_pullback
     end
 
     # ── Step 1: NSSS ──
@@ -11816,13 +11809,7 @@ function rrule(::typeof(get_solution),
     solution_error = nsss_out[2][1]
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
-        if algorithm in [:second_order, :pruned_second_order]
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
-        elseif algorithm in [:third_order, :pruned_third_order]
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), spzeros(nVar, 2), false)
-        else
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), false)
-        end
+        result = _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
         return result, zero_pullback
     end
 
@@ -11850,13 +11837,7 @@ function rrule(::typeof(get_solution),
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
-        if algorithm in [:second_order, :pruned_second_order]
-            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), false)
-        elseif algorithm in [:third_order, :pruned_third_order]
-            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), spzeros(nVar, 2), false)
-        else
-            result = (SS_and_pars[1:nVar], 𝐒₁, false)
-        end
+        result = _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
         return result, zero_pullback
     end
 
@@ -11885,8 +11866,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, solved)
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, true)
+        # Return: (NSSS, [𝐒₁, 𝐒₂], solved)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw], true)
 
         pullback_2nd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -11896,9 +11877,22 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
-            ∂𝐒₂_ext = Δ[3]
-            # Δ[4] is ∂solved — not differentiable
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            # Δ[3] is ∂solved — not differentiable
+
+            # Extract per-matrix cotangents defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[2])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))
@@ -12004,8 +11998,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
-        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, 𝐒₃, solved)
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, 𝐒₃_raw, true)
+        # Return: (NSSS, [𝐒₁, 𝐒₂, 𝐒₃], solved)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw, 𝐒₃_raw], true)
 
         pullback_3rd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -12015,10 +12009,28 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
-            ∂𝐒₂_ext = Δ[3]
-            ∂𝐒₃_ext = Δ[4]
-            # Δ[5] is ∂solved — not differentiable
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            # Δ[3] is ∂solved — not differentiable
+
+            # Extract per-matrix cotangents defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[2])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₃_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[3])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))
@@ -12096,7 +12108,7 @@ function rrule(::typeof(get_solution),
 
     else
         # ── First order ──
-        result = (SS_and_pars[1:nVar], 𝐒₁, true)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁], true)
 
         pullback_1st = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -12106,8 +12118,16 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
             # Δ[3] is ∂solved — not differentiable
+
+            # Extract ∂𝐒₁ defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))

@@ -2094,7 +2094,7 @@ Function to use when differentiating IRFs with respect to parameters.
 - $VERBOSE®
 
 # Returns
-- `Tuple` consisting of a `Vector` containing the NSSS, followed by a `Matrix` containing the first order solution matrix. In case of higher order solutions, `SparseMatrixCSC` represent the higher order solution matrices. The last element is a `Bool` indicating the correctness of the solution provided.
+- `Tuple{Vector, Vector{AbstractMatrix}, Bool}` consisting of a `Vector` containing the NSSS, a `Vector` of solution matrices (one `Matrix` for first order, two for second order, three for third order), and a `Bool` indicating the correctness of the solution provided.
 
 # Examples
 ```jldoctest
@@ -2117,14 +2117,37 @@ end
 
 get_solution(RBC, RBC.parameter_values)
 # output
-([5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0], 
+([5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0], AbstractMatrix{Float64}[
  [0.09579643002421227 0.1349373930517757 0.006746869652588215; 
   0.9568351489231555 1.241874201151121 0.06209371005755664; 
   0.07263157894736819 1.376811594202897 0.06884057971014486; 
-  0.0 0.19999999999999998 0.01], true)
+  0.0 0.19999999999999998 0.01]], true)
 ```
 """
-@unstable function get_solution(𝓂::ℳ, 
+
+# Construct a failure return value for get_solution with uniform tuple type.
+# When 𝐒₁ is provided, it is included as the first solution matrix placeholder.
+function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}) where S <: Real
+    placeholder = zeros(S, nVar, 2)
+    if algorithm in [:second_order, :pruned_second_order]
+        return SS, AbstractMatrix{S}[placeholder, zeros(S, nVar, 2)], false
+    elseif algorithm in [:third_order, :pruned_third_order]
+        return SS, AbstractMatrix{S}[placeholder, zeros(S, nVar, 2), zeros(S, nVar, 2)], false
+    else
+        return SS, AbstractMatrix{S}[placeholder], false
+    end
+end
+
+function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}, 𝐒₁::AbstractMatrix{S}) where S <: Real
+    if algorithm in [:second_order, :pruned_second_order]
+        return SS, AbstractMatrix{S}[𝐒₁, zeros(S, nVar, 2)], false
+    elseif algorithm in [:third_order, :pruned_third_order]
+        return SS, AbstractMatrix{S}[𝐒₁, zeros(S, nVar, 2), zeros(S, nVar, 2)], false
+    else
+        return SS, AbstractMatrix{S}[𝐒₁], false
+    end
+end
+function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -2133,7 +2156,7 @@ get_solution(RBC, RBC.parameter_values)
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         caching::Bool = DEFAULT_CACHING,
-                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::Tuple{Vector{S}, Vector{AbstractMatrix{S}}, Bool} where S <: Real
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -2149,34 +2172,24 @@ get_solution(RBC, RBC.parameter_values)
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
+    nVar = length(𝓂.constants.post_model_macro.var)
+
     solve!(𝓂, 
            opts = opts, 
            steady_state_function = steady_state_function,
            algorithm = algorithm)
 
     
-    if length(𝓂.constants.post_parameters_macro.bounds) > 0
-        for (k,v) in 𝓂.constants.post_parameters_macro.bounds
-            if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                if min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
-                    if !use_workspaces; 𝓂.workspaces = orig_ws; end
-                    return -Inf
-                end
-            end
-        end
+    if check_bounds(parameters, 𝓂)
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return _get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S)
     end
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        if algorithm in [:second_order, :pruned_second_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm in [:third_order, :pruned_third_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        else
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), false
-        end
+        return _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
@@ -2193,13 +2206,7 @@ get_solution(RBC, RBC.parameter_values)
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        if algorithm in [:second_order, :pruned_second_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm in [:third_order, :pruned_third_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        else
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, false
-        end
+        return _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
     end
 
     if algorithm in [:second_order, :pruned_second_order]
@@ -2212,7 +2219,7 @@ get_solution(RBC, RBC.parameter_values)
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂], true
     elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
     
@@ -2235,10 +2242,10 @@ get_solution(RBC, RBC.parameter_values)
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂, 𝐒₃], true
     else
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁], true
     end
 end
 
