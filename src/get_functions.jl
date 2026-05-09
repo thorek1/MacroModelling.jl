@@ -2706,7 +2706,7 @@ And data, 4×4 Matrix{Float64}:
   (:z)   0.314562   0.296104   0.965726   1.0
 ```
 """
-@unstable get_correlation(args...; kwargs...) = get_moments(args...; derivatives = false, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, correlation = true)[:correlation]
+@unstable get_correlation(args...; kwargs...) = get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, correlation = true, derivatives = get(kwargs, :derivatives, false))[:correlation]
 
 """
 See [`get_correlation`](@ref)
@@ -3549,7 +3549,7 @@ end
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-@unstable get_variance(args...; kwargs...) =  get_moments(args...; derivatives = true, kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[:variance]
+@unstable get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, derivatives = get(kwargs, :derivatives, true))[:variance]
 
 
 """
@@ -3567,7 +3567,7 @@ Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_ste
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-@unstable get_standard_deviation(args...; kwargs...) =  get_moments(args...; derivatives = true, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[:standard_deviation]
+@unstable get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false, derivatives = get(kwargs, :derivatives, true))[:standard_deviation]
 
 
 """
@@ -3595,7 +3595,7 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, derivatives = false`.
 """
-@unstable get_covariance(args...; kwargs...) =  get_moments(args...; derivatives = false, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[:covariance]
+@unstable get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true, derivatives = get(kwargs, :derivatives, false))[:covariance]
 
 
 """
@@ -3613,7 +3613,7 @@ Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_s
 """
 Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
-@unstable get_mean(args...; kwargs...) =  get_moments(args...; derivatives = true, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[:mean]
+@unstable get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true, derivatives = get(kwargs, :derivatives, true))[:mean]
 
 
 # """
