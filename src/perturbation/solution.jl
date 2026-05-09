@@ -2398,7 +2398,7 @@ function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
     n = size(sol, 1)
     n == 0 && return nothing
     ImA = similar(sol)
-    @inbounds for j in 1:n, i in 1:n
+    @turbo for j in 1:n, i in 1:n
         ImA[i, j] = ifelse(i == j, one(R), zero(R)) - sol[i, j]
     end
     F = ℒ.lu!(ImA; check = false)

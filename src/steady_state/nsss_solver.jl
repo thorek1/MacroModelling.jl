@@ -1735,7 +1735,7 @@ function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, i
     closest_solution = cache[end]
 
     target_parameters_norm_squared = 0.0
-    @inbounds for i in eachindex(initial_parameters)
+    @turbo for i in eachindex(initial_parameters)
         pi = initial_parameters[i]
         target_parameters_norm_squared += pi * pi
     end
@@ -1773,7 +1773,7 @@ function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, i
         if (closest_solution[end] isa Vector{Float64}) && (length(closest_solution[end]) == length(initial_parameters))
             cached_parameters = closest_solution[end]
             current_best = 0.0
-            @inbounds for i in eachindex(initial_parameters)
+            @turbo for i in eachindex(initial_parameters)
                 d = cached_parameters[i] - initial_parameters[i]
                 current_best += d * d
             end
@@ -2594,8 +2594,9 @@ function solve_nsss_wrapper(
         
         # Interpolate parameters between target and cached solution
         if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
-            @inbounds for i in eachindex(initial_parameters)
-                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_solution_init[end][i]
+            closest_params = closest_solution_init[end]
+            @turbo for i in eachindex(initial_parameters)
+                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_params[i]
             end
             parameters = scaled_parameters
         else
