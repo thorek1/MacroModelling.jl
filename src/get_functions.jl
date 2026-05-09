@@ -996,7 +996,7 @@ And data, 9×42 Matrix{Float64}:
             shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
         elseif length(free_shock_idx) == length(cond_var_idx)
             CC_lu_ws = FastLapackInterface.LUWs(CC)
-            CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+            CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(Val(:FastLapack), CC, CC_lu_ws, size(CC))
 
             @assert ok "Numerical stabiltiy issues for restrictions in period 1."
 
@@ -1030,7 +1030,7 @@ And data, 9×42 Matrix{Float64}:
                 shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
             elseif length(free_shock_idx) == length(cond_var_idx)
                 CC_lu_ws = FastLapackInterface.LUWs(CC)
-                CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+                CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(Val(:FastLapack), CC, CC_lu_ws, size(CC))
 
                 @assert ok "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
 

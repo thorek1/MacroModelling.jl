@@ -561,7 +561,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         JVP = qme_ws.nsss_jvp_rhs
     else
         # Old way (≤v0.1.42): nsss_lu = lu(∂SS/∂SS_and_pars)
-        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
+        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∂SS_equations_∂SS_and_pars,
                                                                                                  qme_ws.fast_lu_ws_nsss,
                                                                                                  qme_ws.fast_lu_dims_nsss)
 
@@ -840,13 +840,13 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
 
     SSSstates = collect(tmp_sol.u)
     tmp_pb_lu_ws, tmp_pb_lu_dims = ensure_sss_pullback_fast_lu_workspace!(𝓂.workspaces.second_order, tmp_for_pullback)
-    tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu = factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
+    tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu = factorize_lu!(Val(:FastLapack), tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
     𝓂.workspaces.second_order.fast_lu_ws_sss_pullback = tmp_pb_lu_ws
     𝓂.workspaces.second_order.fast_lu_dims_sss_pullback = tmp_pb_lu_dims
     use_fastlapack_tmp_pb = solved_tmp_pb_lu
     if !solved_tmp_pb_lu
         tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu =
-            factorize_lu_julia!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
+            factorize_lu!(Val(:Julia), tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
         @assert solved_tmp_pb_lu "Could not factorize preserved stochastic steady-state pullback matrix."
         use_fastlapack_tmp_pb = false
     end
@@ -5448,7 +5448,7 @@ function rrule(::typeof(calculate_first_order_solution),
     #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
     # Current code reuses QR workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
+    Q = factorize_qr!((use_fastlapack_qr ? Val(:FastLapack) : Val(:Julia)), ∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
 
     qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
@@ -5518,7 +5518,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
     # Old way (≤v0.1.42): Ā̂₀ᵤ = lu(Ā₀ᵤ)
-    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
                                                                                        qme_ws.fast_lu_dims_a0u)
 
@@ -5566,7 +5566,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
     # Old way (≤v0.1.42): C = lu(∇₀)
     # Old way (≤v0.1.42): C = lu(∇₀)
-    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
                                                                                          qme_ws.fast_lu_dims_nabla0)
 
@@ -5760,7 +5760,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
@@ -7696,7 +7696,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -8562,7 +8562,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     if T.nExo == length(observables_index)
         lu_ws = FastLapackInterface.LUWs(jac)
-        lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+        lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
         if !ok
             if opts.verbose println("Inversion filter failed") end
@@ -10931,7 +10931,7 @@ function rrule(::typeof(calculate_loglikelihood),
         ℒ.mul!(F, CP[t], C')  # F = CP[t] * C' = C * P * C'
 
         # Old way (≤v0.1.42): luF = lu(F)
-        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
                                                                                            kalman_ws.fast_lu_ws_f,
                                                                                            kalman_ws.fast_lu_dims_f)
 

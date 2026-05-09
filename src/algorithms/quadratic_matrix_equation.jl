@@ -206,7 +206,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_qz_dims,
     schdcmp,
     schur_ok,
-    has_ur = factorize_generalized_schur!(D,
+    has_ur = factorize_generalized_schur!((use_fastlapack_schur ? Val(:FastLapack) : Val(:Julia)), D,
                                             E,
                                             schur_ws_local.fast_qz_ws,
                                             schur_ws_local.fast_qz_dims,
@@ -233,7 +233,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_z11,
     schur_ws_local.fast_lu_dims_z11,
     solved_Z₁₁,
-    Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
+    Ẑ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.Z₁₁,
                         schur_ws_local.fast_lu_ws_z11,
                         schur_ws_local.fast_lu_dims_z11)
     
@@ -246,7 +246,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_s11,
     schur_ws_local.fast_lu_dims_s11,
     solved_S₁₁,
-    Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
+    Ŝ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.S₁₁,
                         schur_ws_local.fast_lu_ws_s11,
                         schur_ws_local.fast_lu_dims_s11)
     
@@ -378,7 +378,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     workspace.fast_lu_ws_qme_a,
     workspace.fast_lu_dims_qme_a,
     solved_B,
-    B̂ = factorize_lu!(B̄,
+    B̂ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), B̄,
                        workspace.fast_lu_ws_qme_a,
                        workspace.fast_lu_dims_qme_a)
 
@@ -427,7 +427,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_a,
         workspace.fast_lu_dims_qme_a,
         solved_EI,
-        fEI = factorize_lu!(temp1,
+        fEI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp1,
                             workspace.fast_lu_ws_qme_a,
                             workspace.fast_lu_dims_qme_a)
 
@@ -461,7 +461,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_b,
         workspace.fast_lu_dims_qme_b,
         solved_FI,
-        fFI = factorize_lu!(temp2,
+        fFI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp2,
                             workspace.fast_lu_ws_qme_b,
                             workspace.fast_lu_dims_qme_b)
         

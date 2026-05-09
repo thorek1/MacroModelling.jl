@@ -58,7 +58,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
     # Current code reuses QR/ORM workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
+    Q = factorize_qr!((use_fastlapack_qr ? Val(:FastLapack) : Val(:Julia)), ∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
 
     qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
@@ -136,7 +136,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
                                                                                        qme_ws.fast_lu_dims_a0u)
 
@@ -188,7 +188,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)                 # ∇₀ = ∇₊ * M + ∇₀
 
     # Old way (≤v0.1.42): C = lu(∇₀)
-    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
                                                                                          qme_ws.fast_lu_dims_nabla0)
 
@@ -324,7 +324,7 @@ end
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
@@ -544,7 +544,7 @@ end
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
