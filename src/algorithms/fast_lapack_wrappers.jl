@@ -1,8 +1,10 @@
 @stable default_mode = "disable" begin
 
 
-# Fast path (Float32/Float64): in-place QR via LAPACK geqrf!, returns the factored matrix
-function factorize_qr!(qr_mat::AbstractMatrix,
+# ─── QR factorization ─────────────────────────────────────────────────────────
+
+function factorize_qr!(::Val{:FastLapack},
+                       qr_mat::AbstractMatrix,
                        qr_factors::AbstractMatrix{R},
                        qr_ws::FastLapackInterface.QRWs{R}) where {R <: Union{Float32, Float64}}
     copyto!(qr_factors, qr_mat)
@@ -10,8 +12,8 @@ function factorize_qr!(qr_mat::AbstractMatrix,
     return qr_factors
 end
 
-# Fallback (non-LAPACK element types): uses Julia's qr!, returns QRCompactWY
-function factorize_qr!(qr_mat::AbstractMatrix,
+function factorize_qr!(::Val{:Julia},
+                       qr_mat::AbstractMatrix,
                        qr_factors::AbstractMatrix{R},
                        qr_ws) where {R <: AbstractFloat}
     copyto!(qr_factors, qr_mat)
@@ -49,9 +51,11 @@ function apply_qr_transpose_left!(dest::AbstractMatrix{R},
     return qr_orm_ws, qr_orm_dims
 end
 
-# Fast path (Float32/Float64): in-place LU via LAPACK getrf!, returns Nothing for 4th element
-function factorize_lu!(A::AbstractMatrix{R},
-                       lu_ws::FastLapackInterface.LUWs,
+# ─── LU factorization ──────────────────────────────────────────────────────────
+
+function factorize_lu!(::Val{:FastLapack},
+                       A::AbstractMatrix{R},
+                       lu_ws,
                        lu_dims::NTuple{2, Int}) where {R <: Union{Float32, Float64}}
     dims = (size(A, 1), size(A, 2))
     if lu_dims != dims
@@ -62,18 +66,10 @@ function factorize_lu!(A::AbstractMatrix{R},
     return lu_ws, lu_dims, info == 0, nothing
 end
 
-# Fallback (non-LAPACK element types): uses Julia's lu!, returns LU object for 4th element
-function factorize_lu!(A::AbstractMatrix{R},
+function factorize_lu!(::Val{:Julia},
+                       A::AbstractMatrix{R},
                        lu_ws,
                        lu_dims::NTuple{2, Int}) where {R <: AbstractFloat}
-    lu = ℒ.lu!(A, check = false)
-    return lu_ws, lu_dims, ℒ.issuccess(lu), lu
-end
-
-# Explicit Julia LU fallback for retry when fast LAPACK getrf! fails
-function factorize_lu_julia!(A::AbstractMatrix{R},
-                             lu_ws,
-                             lu_dims::NTuple{2, Int}) where {R <: AbstractFloat}
     lu = ℒ.lu!(A, check = false)
     return lu_ws, lu_dims, ℒ.issuccess(lu), lu
 end
@@ -164,11 +160,13 @@ function solve_lu_right!(A::AbstractMatrix{R},
     return B
 end
 
-# Fast path (Float32/Float64): generalized Schur via LAPACK gges!
+# ─── Generalized Schur factorization ──────────────────────────────────────────
+
 # Returns NamedTuple{(:S,:T,:Z)} for the decomposition (or dummy values on failure).
-function factorize_generalized_schur!(D::AbstractMatrix{R},
+function factorize_generalized_schur!(::Val{:FastLapack},
+                                      D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
-                                      qz_ws::FastLapackInterface.GeneralizedSchurWs,
+                                      qz_ws,
                                       qz_dims::NTuple{2, Int},
                                       eigenselect::AbstractVector{Bool};
                                       unit_root_tol::Float64 = 1e-6) where {R <: Union{Float32, Float64}}
@@ -199,9 +197,9 @@ function factorize_generalized_schur!(D::AbstractMatrix{R},
     end
 end
 
-# Fallback (non-LAPACK element types): generalized Schur via Julia's schur!/ordschur!
 # Returns NamedTuple{(:S,:T,:Z)} for the decomposition (or dummy values on failure).
-function factorize_generalized_schur!(D::AbstractMatrix{R},
+function factorize_generalized_schur!(::Val{:Julia},
+                                      D::AbstractMatrix{R},
                                       E::AbstractMatrix{R},
                                       qz_ws,
                                       qz_dims::NTuple{2, Int},

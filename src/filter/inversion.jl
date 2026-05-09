@@ -109,7 +109,7 @@ function calculate_loglikelihood(::Val{:inversion},
     if T.nExo == length(observables_index)
         if R <: AbstractFloat
             lu_ws = FastLapackInterface.LUWs(jac)
-            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+            lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
             if !ok
                 if opts.verbose println("Inversion filter failed") end
@@ -1597,7 +1597,7 @@ end
     if T.nExo == length(observables)
         if eltype(jac) <: AbstractFloat
             lu_ws = FastLapackInterface.LUWs(jac)
-            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+            lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
             if !ok
                 @error "Inversion filter failed"
