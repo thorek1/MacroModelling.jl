@@ -763,9 +763,9 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
 end
 
 
-struct ss_solve_block
-    ss_problem::function_and_jacobian
-    extended_ss_problem::function_and_jacobian
+struct ss_solve_block{T <: Real}
+    ss_problem::function_and_jacobian{T}
+    extended_ss_problem::function_and_jacobian{T}
 end
 
 
@@ -792,7 +792,7 @@ struct NSSSSolverFunctions
     aux_funcs::Vector{Function}                        # f!(out, sol_vec, params_vec) — optional pre-step aux
     error_funcs::Vector{Function}                      # g!(out, sol_vec, params_vec) — optional error check
     eval_funcs::Vector{Function}                       # f!(out, sol_vec, params_vec) — main eval (analytical only)
-    solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}} # compiled residual/Jacobian (numerical only)
 end
 
 
@@ -868,7 +868,7 @@ NSSSSolverFunctions() = NSSSSolverFunctions(
     Function[],
     Function[],
     Function[],
-    Union{Nothing,ss_solve_block}[],
+    Union{Nothing,ss_solve_block{Float64}}[],
 )
 
 """Construct an empty `NSSSSolverConstants` with no steps."""

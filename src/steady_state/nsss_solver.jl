@@ -73,7 +73,7 @@ mutable struct NSSSSolverBuilder
     aux_funcs::Vector{Function}
     error_funcs::Vector{Function}
     eval_funcs::Vector{Function}
-    solve_blocks::Vector{Union{Nothing, ss_solve_block}}
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}}
     # Per-step metadata
     step_types::Vector{UInt8}
     descriptions::Vector{String}
@@ -109,7 +109,7 @@ end
 function NSSSSolverBuilder()
     NSSSSolverBuilder(
         Function[], Function[],
-        Function[], Union{Nothing,ss_solve_block}[],
+        Function[], Union{Nothing,ss_solve_block{Float64}}[],
         UInt8[], String[], Int[],
         Int[], UnitRange{Int}[],
         Int[], UnitRange{Int}[],
@@ -180,7 +180,7 @@ end
 
 """Append a numerical step to the builder."""
 function push_numerical_step!(b::NSSSSolverBuilder;
-                              solve_block::ss_solve_block,
+                              solve_block::ss_solve_block{Float64},
                               block_index::Int,
                               write_indices::Vector{Int},
                               param_gather_indices::Vector{Int},
@@ -1814,9 +1814,8 @@ function update_sol_values!(sol_values::AbstractVector{T}, sol_new::AbstractVect
 end
 
 
-function solve_ss(SS_optimizer::Function,
-                    # ss_solve_blocks::Function,
-                    SS_solve_block::ss_solve_block,
+function solve_ss(SS_optimizer::F,
+                    SS_solve_block::ss_solve_block{Float64},
                     parameters_and_solved_vars::Vector{T},
                     closest_parameters_and_solved_vars::Vector{T},
                     lbs::Vector{T},
@@ -1828,12 +1827,12 @@ function solve_ss(SS_optimizer::Function,
                     guess::Vector{T},
                     solver_params::solver_parameters,
                     extended_problem::Bool,
-                    separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
+                    separate_starting_value::T)::Tuple{Vector{T}, Vector{Int}, T, T} where {F, T <: AbstractFloat}
     ftol = tol.nsss.ftol
     n_guess = length(guess)
     init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
-    use_ssv = !(separate_starting_value isa Bool)
-    ssv_val = use_ssv ? T(separate_starting_value) : zero(T)
+    use_ssv = !isnan(separate_starting_value)
+    ssv_val = use_ssv ? separate_starting_value : zero(T)
     sv_val = T(solver_params.starting_value)
     update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
 
@@ -1899,7 +1898,7 @@ function solve_ss(SS_optimizer::Function,
     if sol_minimum < ftol && verbose
         extended_problem_str = extended_problem ? "(extended problem) " : ""
 
-        if separate_starting_value isa Bool
+        if isnan(separate_starting_value)
             starting_value_str = ""
         else
             starting_value_str = "and starting point: $separate_starting_value"
@@ -1913,9 +1912,9 @@ function solve_ss(SS_optimizer::Function,
             all_small_guess &= is_small
         end
 
-        if all_small_guess && separate_starting_value isa Bool
+        if all_small_guess && isnan(separate_starting_value)
             any_guess_str = "previous solution, "
-        elseif has_small_guess && separate_starting_value isa Bool
+        elseif has_small_guess && isnan(separate_starting_value)
             any_guess_str = "provided guess, "
         else
             any_guess_str = ""
@@ -1933,8 +1932,7 @@ end
 
 function block_solver(parameters_and_solved_vars::Vector{T}, 
                         n_block::Int, 
-                        # ss_solve_blocks::Function, 
-                        SS_solve_block::ss_solve_block,
+                        SS_solve_block::ss_solve_block{Float64},
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
                         guess_and_pars_solved_vars::Vector{Vector{T}}, 
@@ -2021,19 +2019,19 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             if 𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default
                 guess_update = sol_cache.u
                 if has_nonfinite(guess_update)
-                    rel_sol_minimum = 1.0
+                    rel_sol_minimum = one(T)
                 else
                     new_guess = guess - guess_update
                     rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
                 end
             else
-                rel_sol_minimum = 1.0
+                rel_sol_minimum = one(T)
             end
         else
-            rel_sol_minimum = 0.0
+            rel_sol_minimum = zero(T)
         end
     else
-        rel_sol_minimum = 1.0
+        rel_sol_minimum = one(T)
     end
     
     if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
@@ -2053,8 +2051,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     algo_candidates = (newton, levenberg_marquardt)
 
     if cold_start
-        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = fail_fast_solvers_only ? (false,) : (false, T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
+        guesses = any(x -> x < T(1e12), guess) ? [guess, fill(T(1e12), length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+        start_vals = fail_fast_solvers_only ? (T(NaN),) : (T(NaN), T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
             for i in 1:n_solver_parameters
                 p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
@@ -2080,8 +2078,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         end
     else !cold_start
 
-        start_vals = Vector{Union{Bool, T}}(undef, 8)
-        start_vals[1] = false
+        start_vals = Vector{T}(undef, 8)
+        start_vals[1] = T(NaN)
         start_vals[3] = T(0.0)
         start_vals[4] = T(1.206)
         start_vals[5] = T(1.5)
