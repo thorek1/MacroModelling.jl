@@ -871,7 +871,7 @@ function obc_state_update(present_states::S, present_shocks::Vector{R}, state_up
 
     p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
-    constraints_violated = any(𝓂.functions.obc_violation(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+    constraints_violated = any(𝓂.functions.obc_violation(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))::Bool
 
     if constraints_violated
         opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
@@ -890,14 +890,14 @@ function obc_state_update(present_states::S, present_shocks::Vector{R}, state_up
 
         present_shocks[contains.(string.(𝓂.constants.post_model_macro.exo),"ᵒᵇᶜ")] .= x
 
-        constraints_violated = any(𝓂.functions.obc_violation(x, p) .> eps(Float32))
+        constraints_violated = any(𝓂.functions.obc_violation(x, p) .> eps(Float32))::Bool
 
         solved = !constraints_violated
     else
         solved = true
     end
 
-    present_states = state_update(present_states, present_shocks)
+    present_states = state_update(present_states, present_shocks)::S
 
     return present_states, present_shocks, solved
 end
