@@ -2127,7 +2127,7 @@ get_solution(RBC, RBC.parameter_values)
 
 # Construct a failure return value for get_solution with uniform tuple type.
 # When 𝐒₁ is provided, it is included as the first solution matrix placeholder.
-function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}) where S <: Real
+function get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}) where S <: Real
     placeholder = zeros(S, nVar, 2)
     if algorithm in [:second_order, :pruned_second_order]
         return SS, AbstractMatrix{S}[placeholder, zeros(S, nVar, 2)], false
@@ -2138,7 +2138,7 @@ function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{
     end
 end
 
-function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}, 𝐒₁::AbstractMatrix{S}) where S <: Real
+function get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}, 𝐒₁::AbstractMatrix{S}) where S <: Real
     if algorithm in [:second_order, :pruned_second_order]
         return SS, AbstractMatrix{S}[𝐒₁, zeros(S, nVar, 2)], false
     elseif algorithm in [:third_order, :pruned_third_order]
@@ -2147,6 +2147,7 @@ function _get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{
         return SS, AbstractMatrix{S}[𝐒₁], false
     end
 end
+
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         steady_state_function::SteadyStateFunctionType = missing,
@@ -2182,14 +2183,14 @@ function get_solution(𝓂::ℳ,
     
     if check_bounds(parameters, 𝓂)
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return _get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S)
+        return get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S)
     end
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
+        return get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
@@ -2206,7 +2207,7 @@ function get_solution(𝓂::ℳ,
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
+        return get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
     end
 
     if algorithm in [:second_order, :pruned_second_order]

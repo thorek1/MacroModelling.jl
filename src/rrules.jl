@@ -11795,7 +11795,7 @@ function rrule(::typeof(get_solution),
 
     # ── Check parameter bounds ──
     if check_bounds(parameters, 𝓂)
-        return _get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S), zero_pullback
+        return get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S), zero_pullback
     end
 
     # ── Step 1: NSSS ──
@@ -11809,7 +11809,7 @@ function rrule(::typeof(get_solution),
     solution_error = nsss_out[2][1]
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
-        result = _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
+        result = get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
         return result, zero_pullback
     end
 
@@ -11837,7 +11837,7 @@ function rrule(::typeof(get_solution),
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
-        result = _get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
+        result = get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
         return result, zero_pullback
     end
 
