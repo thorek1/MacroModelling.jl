@@ -1,4 +1,4 @@
-@stable default_mode = "disable" begin
+@stable default_mode = "error" begin
 
 # Non-stochastic steady state (NSSS) solver
 # 
@@ -16,7 +16,7 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
-@inline function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable @inline function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
     if sol.is_number == true
         return sol
     end
@@ -24,7 +24,7 @@ const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
     return num.is_zero == true ? SPyPyC.Sym(0) : sol
 end
 
-@inline function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable @inline function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
     sol.is_number == true && return Symbol[]
     atoms = Symbol[]
     for a in sol.atoms()
@@ -42,7 +42,7 @@ variable. Used to gate the rewrite: when no hazard is present the rewrite is
 a no-op and can be skipped entirely, saving allocations and SymPy simplify
 calls on log-linear models.
 """
-function expression_has_domain_hazards(expr)
+@unstable function expression_has_domain_hazards(expr)
     hazard = false
     postwalk(x -> begin
         if x isa Expr && x.head == :call && length(x.args) >= 2
@@ -291,7 +291,7 @@ end
     end
 end
 
-function write_block_solution!(𝓂,
+@unstable function write_block_solution!(𝓂,
                                 vars_to_solve,
                                 eqs_to_solve,
                                 relevant_pars_across,
@@ -568,7 +568,7 @@ struct PartialSolveResult{T,E}
     solved_eq_indices::Vector{Int}
 end
 
-function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
+@unstable function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
             var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
@@ -609,7 +609,7 @@ function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incide
     return PartialSolveResult(T[], T[], E[], E[], Int[], Int[], Int[], Int[])
 end
 
-function make_equation_robust_to_domain_errors(eqs,
+@unstable function make_equation_robust_to_domain_errors(eqs,
                                                 vars_to_exclude::Vector{Vector{Symbol}},
                                                 bounds::Dict{Symbol,Tuple{Float64,Float64}},
                                                 ➕_vars::Vector{Symbol},
@@ -968,7 +968,7 @@ function make_equation_robust_to_domain_errors(eqs,
     return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
 end
 
-function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
+@unstable function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
                                 cse = true, skipzeros = true, nnz_parallel_threshold::Int = 1000000)
     sym_exprs = Symbolics.Num[]
     for expr in exprs
@@ -996,7 +996,7 @@ function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, 
     return func!
 end
 
-function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
+@unstable function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
                                𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
                                global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
     write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
@@ -1058,7 +1058,7 @@ function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name
     )
 end
 
-function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
+@unstable function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
                                             verbose::Bool = false,
                                             avoid_solve::Bool = false)
     symbolic_enabled = symbolic_enabled && (symbolics_data !== nothing)
@@ -1730,7 +1730,7 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     return nothing
 end
 
-function find_closest_solution(cache, initial_parameters::Vector{Float64}, expected_length::Int)
+function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, initial_parameters::Vector{Float64}, expected_length::Int)::Tuple{Float64, Vector{Vector{Float64}}}
     current_best = Inf
     closest_solution = cache[end]
 
@@ -1789,7 +1789,7 @@ end
 # ============================================================================
 # Block solver helpers (moved from MacroModelling.jl — used only in NSSS pipeline)
 
-function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
+@unstable function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
     # equation.subs(variable, replacement)
     return SPyPyC.subs(equation, variable, replacement)
 end
@@ -1832,7 +1832,7 @@ function solve_ss(SS_optimizer::Function,
     ftol = tol.nsss.ftol
     n_guess = length(guess)
     init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
-    use_ssv = separate_starting_value isa Float64
+    use_ssv = !(separate_starting_value isa Bool)
     ssv_val = use_ssv ? T(separate_starting_value) : zero(T)
     sv_val = T(solver_params.starting_value)
     update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
@@ -2184,8 +2184,8 @@ Returns: (error, iterations, cache_entries::Vector{Vector{Float64}})
 """
 function execute_step!(step_idx::Int,
                        sol_vec::Vector{Float64}, params_vec::Vector{Float64},
-                       closest_solution, 𝓂, tol, fail_fast_solvers_only,
-                       cold_start, solver_parameters, preferred_solver_parameter_idx::Int, verbose)
+                       closest_solution::Vector{Vector{Float64}}, 𝓂::ℳ, tol::Tolerances, fail_fast_solvers_only::Bool,
+                       cold_start::Bool, solver_parameters::Vector{solver_parameters}, preferred_solver_parameter_idx::Int, verbose::Bool)::Tuple{Float64, Int, Vector{Vector{Float64}}}
     
     c = 𝓂.constants.nsss_solver
     f = 𝓂.functions.nsss_solver
@@ -2388,11 +2388,11 @@ function solve_nsss_steps(
     tol::Tolerances,
     verbose::Bool,
     fail_fast_solvers_only::Bool,
-    closest_solution,
+    closest_solution::Vector{Vector{Float64}},
     cold_start::Bool,
     solver_params::Vector{solver_parameters},
     preferred_solver_parameter_idx::Int
-)
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}, Vector{Vector{Float64}}}
     nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
     nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
     nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
@@ -2493,7 +2493,7 @@ end
         verbose::Bool,
         cold_start::Bool,
         solver_params::Vector{solver_parameters}
-    )::Tuple{Vector, Tuple{Real, Int}}
+    )::Tuple{Vector{Float64}, Tuple{Float64, Int}}
 
 Normal Julia function wrapper for NSSS solving.
 
@@ -2539,7 +2539,7 @@ function solve_nsss_wrapper(
     scale_success_weight::Float64 = 0.4,
     scale_failure_weight::Float64 = 0.3,
     preferred_solver_parameter_idx::Int = 1,
-)::Tuple{Vector, Tuple{Real, Int}}
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}}
 
     n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
     
