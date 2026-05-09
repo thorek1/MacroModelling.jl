@@ -288,31 +288,31 @@ function Find_shocks_workspace(;T::Type{TT} = Float64) where {TT <: Real}
         zeros(TT,0,0))           # kron_I_state_state
 end
 
-@unstable function Higher_order_workspace(;T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: Real, SS <: AbstractFloat}
+function Higher_order_workspace(::Type{TT} = Float64, ::Type{SS} = Float64) where {TT <: Real, SS <: AbstractFloat}
     empty_dx_prob = 𝒮.LinearProblem(zeros(Float64, 0, 0), zeros(Float64, 0))
     empty_dx_lu_buffer = 𝒮.init(empty_dx_prob,
                                 𝒮.FastLUFactorization(),
                                 verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
     empty_lu_factors = zeros(Float64, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
-    higher_order_workspace(spzeros(T,0,0),
-                        spzeros(T,0,0),
-                        spzeros(T,0,0),
-                        spzeros(T,0,0),
-                        spzeros(T,0,0),
-                        spzeros(T,0,0),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
-                        zeros(T,0,0),  # 𝐒₁
-                        zeros(T,0,0),  # 𝐒₁₋╱𝟏ₑ
-                        zeros(T,0,0),
-                        Sylvester_workspace(S = S),
-                        zeros(T,0),    # ∂∇_vec
+    higher_order_workspace(spzeros(TT,0,0),
+                        spzeros(TT,0,0),
+                        spzeros(TT,0,0),
+                        spzeros(TT,0,0),
+                        spzeros(TT,0,0),
+                        spzeros(TT,0,0),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        (Int[], Int[], TT[], Int[], Int[], Int[], TT[]),
+                        zeros(TT,0,0),  # 𝐒₁
+                        zeros(TT,0,0),  # 𝐒₁₋╱𝟏ₑ
+                        zeros(TT,0,0),
+                        Sylvester_workspace(S = SS, T = SS),
+                        zeros(TT,0),    # ∂∇_vec
                         # Second order pullback gradient buffers (lazily allocated)
                         zeros(TT,0,0),  # ∂∇₂
                         zeros(TT,0,0),  # ∂∇₁
@@ -1172,8 +1172,8 @@ end
 
 
 function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
-    workspaces(Higher_order_workspace(T = T, S = S),
-                Higher_order_workspace(T = T, S = S),
+    workspaces(Higher_order_workspace(T, S),
+                Higher_order_workspace(T, S),
                 Float64[],
                 First_order_workspace(T = T, S = S),  # Initialize with size 0, will be resized when needed
                 Qme_doubling_workspace(0, T = T, S = S),  # Initialize with size 0, will be resized when needed

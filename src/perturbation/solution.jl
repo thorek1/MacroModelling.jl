@@ -250,7 +250,7 @@ end
     # grab buffers from the workspace) never see a stale eltype after a previous
     # call with a different eltype (e.g. ForwardDiff.Dual).
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
+        workspaces.second_order = Higher_order_workspace(S)
     end
     # Cache hit: return cached second-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
@@ -466,7 +466,7 @@ end
     # grab buffers from the workspace) never see a stale eltype after a previous
     # call with a different eltype (e.g. ForwardDiff.Dual).
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
+        workspaces.third_order = Higher_order_workspace(S)
     end
     # Cache hit: return cached third-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&

@@ -5712,7 +5712,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     parameter_values::AbstractVector{<:Real} = Float64[],
                     caching::Bool = true) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
+        workspaces.second_order = Higher_order_workspace(S)
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order
@@ -7647,7 +7647,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # --- workspace / constants ---------------------------------------------------
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
+        workspaces.third_order = Higher_order_workspace(S)
     end
     ℂ = workspaces.third_order
     M₂ = constants.second_order

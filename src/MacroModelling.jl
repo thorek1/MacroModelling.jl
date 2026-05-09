@@ -824,7 +824,7 @@ end
 
 function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
-        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T = T, S = F)
+        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T, F)
     end
 
     I           = ℂ.tmp_sparse_prealloc6[1]
