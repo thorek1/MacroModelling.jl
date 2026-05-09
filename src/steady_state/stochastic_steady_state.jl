@@ -24,7 +24,8 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             C)
     end
 
-    ms = ensure_model_structure_constants!(C, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(C, 𝓂.equations.calibration_parameters)
+    ms = C.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = caching)

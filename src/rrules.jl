@@ -430,7 +430,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 estimation::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -750,7 +751,8 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
         return common, pullback
     end
 
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁, jacobian_pullback =
@@ -1559,7 +1561,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = collect(sss) - all_SS
 
@@ -1632,7 +1635,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = [zeros(S, nVars), collect(sss) - all_SS]
 
@@ -1705,7 +1709,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = collect(sss) - all_SS
 
@@ -1782,7 +1787,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
 
@@ -5412,7 +5418,8 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
 
     dynIndex = idx_constants.dyn_index
     reverse_dynamic_order = idx_constants.reverse_dynamic_order
