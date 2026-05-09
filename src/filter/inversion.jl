@@ -549,7 +549,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     # Use workspace buffers instead of fresh allocations
     shock_independent = ws.shock_independent
-    fill!(shock_independent, 0.0)
+    fill!(shock_independent, zero(R))
 
     kronstate¹⁻_vol = ws.kronstate_vol
 
@@ -562,7 +562,7 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
 
     init_guess = ws.init_guess
-    fill!(init_guess, 0.0)
+    fill!(init_guess, zero(R))
 
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
