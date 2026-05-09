@@ -25,7 +25,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
 
     dynIndex = idx_constants.dyn_index
     reverse_dynamic_order = idx_constants.reverse_dynamic_order

@@ -1682,7 +1682,8 @@ end
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     full_state = collect(sss) - all_SS
@@ -1889,7 +1890,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2161,7 +2163,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2475,7 +2478,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))

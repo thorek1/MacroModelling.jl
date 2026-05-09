@@ -1737,7 +1737,8 @@ And data, 4×6 Matrix{Float64}:
         end
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     var_idx = ms.ss_var_idx_in_var_and_calib
 
     calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
@@ -4154,7 +4155,8 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -4177,7 +4179,8 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS]
@@ -4200,7 +4203,8 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -4223,7 +4227,8 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS, zeros(S, 𝓂.constants.post_model_macro.nVars)]
