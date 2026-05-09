@@ -288,7 +288,7 @@ function Find_shocks_workspace(;T::Type{TT} = Float64) where {TT <: Real}
         zeros(TT,0,0))           # kron_I_state_state
 end
 
-function Higher_order_workspace(;T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: Real, SS <: AbstractFloat}
+@unstable function Higher_order_workspace(;T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: Real, SS <: AbstractFloat}
     empty_dx_prob = 𝒮.LinearProblem(zeros(Float64, 0, 0), zeros(Float64, 0))
     empty_dx_lu_buffer = 𝒮.init(empty_dx_prob,
                                 𝒮.FastLUFactorization(),
