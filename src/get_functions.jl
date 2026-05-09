@@ -1261,7 +1261,7 @@ function irf_forward_simulate!(::Val{:third_order},
 end
 
 
-@unstable function get_irf(𝓂::ℳ,
+function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
@@ -1277,7 +1277,7 @@ end
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                     caching::Bool = DEFAULT_CACHING,
-                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::Array{S,3} where S <: Real
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -3686,7 +3686,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :correlation => [1.0 0.999812; 0.999812 1.0]
 ```
 """
-@unstable function get_statistics(𝓂::ℳ,
+function get_statistics(𝓂::ℳ,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
