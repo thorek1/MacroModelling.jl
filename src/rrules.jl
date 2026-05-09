@@ -8992,10 +8992,19 @@ function rrule(::typeof(calculate_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.lu(jacct, check = false)
-        if !ℒ.issuccess(jacc_fact)
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+        if size(jacct, 1) == size(jacct, 2)
+            jacc_fact = ℒ.lu(jacct, check = false)
+            if !ℒ.issuccess(jacc_fact)
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        else
+            jacc_fact = ℒ.qr(jacct)
+            R = jacc_fact.R
+            if any(k -> R[k,k] == 0, axes(R, 1))
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
         end
 
         ℒ.ldiv!(λ[i], jacc_fact, x[i])
@@ -9486,10 +9495,19 @@ function rrule(::typeof(calculate_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.lu(jacct, check = false)
-        if !ℒ.issuccess(jacc_fact)
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+        if size(jacct, 1) == size(jacct, 2)
+            jacc_fact = ℒ.lu(jacct, check = false)
+            if !ℒ.issuccess(jacc_fact)
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        else
+            jacc_fact = ℒ.qr(jacct)
+            R = jacc_fact.R
+            if any(k -> R[k,k] == 0, axes(R, 1))
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
         end
 
         ℒ.ldiv!(λ[i], jacc_fact, x[i])
