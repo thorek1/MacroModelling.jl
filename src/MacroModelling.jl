@@ -2145,6 +2145,20 @@ function covariance_to_correlation(covariance::AbstractMatrix{T}) where T <: Rea
 
     correlation = covariance_symmetric ./ (std_corr * std_corr')
 
+    # Clamp off-diagonal entries at numerical noise level to zero.
+    # Machine-precision noise in the covariance can produce tiny but
+    # sign-inconsistent correlations across equivalent algorithms.
+    noise_tol = eps(T)^(T(2)/T(3))
+    n = size(correlation, 1)
+    @inbounds for j in 1:n, i in 1:n
+        if i != j
+            c = correlation[i, j]
+            if !isnan(c) && abs(c) < noise_tol
+                correlation[i, j] = zero(T)
+            end
+        end
+    end
+
     return correlation, covariance_symmetric, diag_covariance, std_corr
 end
 
