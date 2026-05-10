@@ -32,6 +32,7 @@ function rrule(::typeof(mat_mult_kron),
     Y = mat_mult_kron(A, B, C, D)
 
     function mat_mult_kron_pullback(Ȳ)
+        Ȳ = unthunk(Ȳ)
         if Ȳ isa AbstractZero
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -209,7 +210,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
 
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
-        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
+        ∂x₁ = unthunk(∂x[1])
+        S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -302,7 +304,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
+        ∂x₁ = unthunk(∂x[1])
+        S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -594,7 +597,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        ∂SS = ∂SS_and_pars[1]
+        ∂SS = unthunk(∂SS_and_pars[1])
         if ∂SS isa Union{NoTangent, AbstractZero}
             return NoTangent(), NoTangent(), zeros(S, size(jvp_no_exo, 2)), NoTangent()
         end
@@ -5608,14 +5611,15 @@ function rrule(::typeof(calculate_first_order_solution),
         # Guard: if the cotangent for the solution matrix is NoTangent
         # (e.g. because a downstream filter failure returned all-NoTangent),
         # return zero gradients immediately.
-        if ∂𝐒[1] isa Union{NoTangent, AbstractZero}
+        ∂𝐒_mat = unthunk(∂𝐒[1])
+        if ∂𝐒_mat isa Union{NoTangent, AbstractZero}
             return NoTangent(), zero(∇₁), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁ = zero(∇₁)
 
-        ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
-        ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
+        ∂𝐒ᵗ = ∂𝐒_mat[:,1:T.nPast_not_future_and_mixed]
+        ∂𝐒ᵉ = ∂𝐒_mat[:,T.nPast_not_future_and_mixed + 1:end]
 
         # Shared sub-expression: W = M' * ∂𝐒ᵉ * ∇ₑ' * M'
         # Use workspace buffers to avoid repeated intermediate allocations.
@@ -5912,7 +5916,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # end # timeit_debug
 
-        ∂𝐒₂ = ∂𝐒₂_solved[1]
+        ∂𝐒₂ = unthunk(∂𝐒₂_solved[1])
 
         if size(∂𝐒₂, 2) == size(𝐒₂_stable, 2)
             nothing
@@ -7862,7 +7866,7 @@ function rrule(::typeof(calculate_third_order_solution),
     #   PULLBACK
     # =========================================================================
     function third_order_solution_pullback(∂𝐒₃_solved)
-        ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
+        ∂𝐒₃ = choose_matrix_format(unthunk(∂𝐒₃_solved[1]))
 
         if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -8202,7 +8206,8 @@ function rrule(::typeof(solve_sylvester_equation),
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol
+        ∂P₁ = unthunk(∂P[1])
+        if ℒ.norm(∂P₁) < tol.rtol
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
@@ -8214,7 +8219,7 @@ function rrule(::typeof(solve_sylvester_equation),
             𝕊ℂ.pow_iters = pow_iters_captured
             𝕊ℂ.pow_capture = false
         end
-        ∂C, slvd = solve_sylvester_equation(At, Bt, ∂P[1], 𝕊ℂ,
+        ∂C, slvd = solve_sylvester_equation(At, Bt, ∂P₁, 𝕊ℂ,
                                             sylvester_algorithm = sylvester_algorithm,
                                             preconditioner = preconditioner,
                                             tol = tol,
@@ -8280,7 +8285,8 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol
+        ∂P₁ = unthunk(∂P[1])
+        if ℒ.norm(∂P₁) < tol.rtol
             return NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
@@ -8296,7 +8302,7 @@ function rrule(::typeof(solve_lyapunov_equation),
             workspace.pow_iters = pow_iters_captured
             workspace.pow_capture = false
         end
-        ∂C, slvd = solve_lyapunov_equation(At, Matrix{Float64}(∂P[1]), workspace,
+        ∂C, slvd = solve_lyapunov_equation(At, Matrix{Float64}(∂P₁), workspace,
                                            lyapunov_algorithm = lyapunov_algorithm,
                                            tol = tol,
                                            verbose = verbose)
@@ -8363,7 +8369,7 @@ function rrule(::typeof(find_shocks),
     # ∂𝐒ⁱ²ᵉ = similar(𝐒ⁱ²ᵉ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
@@ -8428,7 +8434,7 @@ function rrule(::typeof(find_shocks),
     xxλ = ℒ.kron(x,xλ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
