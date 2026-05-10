@@ -622,7 +622,7 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
 
         ℒ.rmul!(CC, -1)
 
-        dX, solved = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
+        dX, slvd = solve_sylvester_equation(AA, B_sylv, CC, sylv_ws,
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 preconditioner = opts.sylvester_preconditioner,
@@ -632,6 +632,12 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
         if !sylv_cache_captured
             sylv_ws.pow_capture = false  # captured A^(2^k) on first solve; reuse for subsequent
             sylv_cache_captured = true
+        end
+
+        if !slvd
+            fill!(view(X̃, :, i), NaN)
+            solved = false
+            continue
         end
 
         # initial_guess = dX
@@ -761,6 +767,11 @@ function MacroModelling.solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Du
 
         solved = Bool(solved) && Bool(slvd)
 
+        if !slvd
+            fill!(view(X̃, :, i), NaN)
+            continue
+        end
+
         X̃[:,i] = vec(dX)
     end
     sws.pow_capture = prev_capture
@@ -864,6 +875,11 @@ function MacroModelling.solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,
 
         solved = solved && slvd
 
+        if !slvd
+            fill!(view(P̃, :, i), NaN)
+            continue
+        end
+
         P̃[:,i] = vec(P)
     end
     𝕊ℂ.pow_capture = prev_capture
@@ -960,6 +976,11 @@ function MacroModelling.solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S
                 has_unit_roots = has_unit_roots)
         
         solved = solved && slvd
+
+        if !slvd
+            fill!(view(P̃, :, i), NaN)
+            continue
+        end
 
         P̃[:,i] = vec(P)
     end

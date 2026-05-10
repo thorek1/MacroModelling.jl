@@ -5666,7 +5666,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         # ss_Sht = ss * 𝐒̂ᵗ'  (nVars × nVars) → reuse t2
