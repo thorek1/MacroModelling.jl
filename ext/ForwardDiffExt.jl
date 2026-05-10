@@ -303,7 +303,8 @@ function MacroModelling.get_NSSS_and_parameters(𝓂::ℳ,
                                 estimation::Bool = false,
                                 caching::Bool = true)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
     parameter_values = ℱ.value.(parameter_values_dual)
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     T = 𝓂.constants.post_model_macro
     qme_ws = 𝓂.workspaces.first_order
 
