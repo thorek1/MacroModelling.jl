@@ -1126,7 +1126,9 @@ end
 @unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
-                        D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
+                        D::AbstractMatrix{S};
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
@@ -1323,7 +1325,9 @@ end
 
 @unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
-                        C::AbstractMatrix{T}) where {R <: Real, T <: Real}
+                        C::AbstractMatrix{T};
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        sparse::Bool = false) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 

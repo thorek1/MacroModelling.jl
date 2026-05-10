@@ -986,7 +986,7 @@ And data, 9×42 Matrix{Float64}:
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm == :first_order
-        C = @views 𝓂.caches.first_order_solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]
+        C = 𝓂.caches.first_order_solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]::Matrix{Float64}
     
         CC = C[cond_var_idx,free_shock_idx]
 

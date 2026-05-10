@@ -229,8 +229,7 @@ end
             Tuple{typeof(∇₁), typeof(∇₂), typeof(∇₃),
                   typeof(𝐒₁), typeof(𝐒₂),
                   typeof(RBC.constants), typeof(RBC.workspaces),
-                  typeof(RBC.caches)},
-            broken = true)  # mat_mult_kron union-split MethodError (pre-existing)
+                  typeof(RBC.caches)})
     end
 
     # ------------------------------------------------------------------
@@ -381,8 +380,7 @@ end
         cond_mat = Matrix{Union{Nothing,Float64}}(nothing, RBC.constants.post_model_macro.nVars, 5)
         cond_mat[1, 1] = 0.01
         jet_test_call(MacroModelling.get_conditional_forecast,
-            Tuple{typeof(RBC), typeof(cond_mat)},
-            broken = true)  # factorize_lu! Matrix{Any} union-split MethodError (pre-existing)
+            Tuple{typeof(RBC), typeof(cond_mat)})
     end
 
     # ------------------------------------------------------------------
