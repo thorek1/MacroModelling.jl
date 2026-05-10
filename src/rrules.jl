@@ -8229,6 +8229,10 @@ function rrule(::typeof(solve_sylvester_equation),
 
         solved = solved && slvd
 
+        if !slvd
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+
         # ∂C is n×m, B' is m×m, P_cached is n×m, A is n×n
         # Intermediate products are n×m and m×n — not n×n or m×m,
         # so workspace buffers 𝐀 (n×n) / 𝐁 (m×m) are wrong shape when n ≠ m.
@@ -8310,6 +8314,10 @@ function rrule(::typeof(solve_lyapunov_equation),
         workspace.pow_iters = 0
     
         solved = solved && slvd
+
+        if !slvd
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
         tmp_n1 = workspace.𝐂A
         tmp_n2 = workspace.𝐀²
@@ -10915,6 +10923,7 @@ function rrule(::typeof(calculate_loglikelihood),
     ℒ.mul!(𝐁, B, B')
 
     lyap_pullback = nothing
+    lyap_solved = true
     P = if initial_covariance == :theoretical
         lyap_rrule_result, lyap_pullback_local = rrule(solve_lyapunov_equation,
                                                         A,
@@ -10924,9 +10933,15 @@ function rrule(::typeof(calculate_loglikelihood),
                                                         tol = opts.tol.first_order.ad.lyapunov,
                                                         verbose = opts.verbose)
         lyap_pullback = lyap_pullback_local
+        lyap_solved = lyap_rrule_result[2]
         lyap_rrule_result[1]
     else
         get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    end
+
+    if !lyap_solved
+        if opts.verbose println("KF initial Lyapunov solve failed") end
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     Tt = size(data_in_deviations, 2) + 1
