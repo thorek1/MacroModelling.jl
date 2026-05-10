@@ -25,7 +25,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     ensure_inversion_estimation_buffers!(ws, T.nExo, length(observables_index))
     # @timeit_debug timer "Inversion filter" begin    
@@ -197,7 +197,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
     
@@ -471,7 +471,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -717,7 +717,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "Inversion filter" begin
 
     # Ensure workspaces are properly sized
@@ -1164,7 +1164,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 

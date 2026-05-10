@@ -232,46 +232,46 @@ function Nonlinear_solver_workspace(func_buffer::Vector{T}, jac_buffer::Abstract
 end
 
 
-function Krylov_workspace(;S::Type{ST} = Float64) where {ST <: AbstractFloat}
+function Krylov_workspace(::Type{ST} = Float64) where {ST <: AbstractFloat}
     krylov_workspace(  GmresWorkspace(0,0,Vector{ST}),
                     DqgmresWorkspace(0,0,Vector{ST}),
                     BicgstabWorkspace(0,0,Vector{ST}))
 end
 
-function Sylvester_workspace(;S::Type{ST} = Float64, T::Type{TT} = Float64) where {ST <: AbstractFloat, TT <: Real}
+function Sylvester_workspace(::Type{ST} = Float64, ::Type{TT} = Float64) where {ST <: AbstractFloat, TT <: Real}
     sylvester_workspace(
         0, 0,                   # n, m dimensions
-        zeros(S,0,0),           # tmp (Krylov)
-        zeros(S,0,0),           # 𝐗 (Krylov)
-        zeros(S,0,0),           # 𝐂 (Krylov)
-        zeros(S,0,0),           # 𝐀 (doubling)
-        zeros(S,0,0),           # 𝐀¹ (doubling)
-        zeros(S,0,0),           # 𝐁 (doubling)
-        zeros(S,0,0),           # 𝐁¹ (doubling)
-        zeros(S,0,0),           # 𝐂_dbl (doubling)
-        zeros(S,0,0),           # 𝐂¹ (doubling)
-        zeros(S,0,0),           # 𝐂B (doubling)
-        Krylov_workspace(S = S),
-        zeros(S,0,0),           # P (stable primal cache)
+        zeros(ST,0,0),           # tmp (Krylov)
+        zeros(ST,0,0),           # 𝐗 (Krylov)
+        zeros(ST,0,0),           # 𝐂 (Krylov)
+        zeros(ST,0,0),           # 𝐀 (doubling)
+        zeros(ST,0,0),           # 𝐀¹ (doubling)
+        zeros(ST,0,0),           # 𝐁 (doubling)
+        zeros(ST,0,0),           # 𝐁¹ (doubling)
+        zeros(ST,0,0),           # 𝐂_dbl (doubling)
+        zeros(ST,0,0),           # 𝐂¹ (doubling)
+        zeros(ST,0,0),           # 𝐂B (doubling)
+        Krylov_workspace(ST),
+        zeros(ST,0,0),           # P (stable primal cache)
         # Doubling power cache
-        Vector{AbstractMatrix{S}}(),    # 𝐀_pow
-        Vector{AbstractMatrix{S}}(),    # 𝐁_pow
+        Vector{AbstractMatrix{ST}}(),    # 𝐀_pow
+        Vector{AbstractMatrix{ST}}(),    # 𝐁_pow
         0,                      # pow_iters
         false,                  # pow_capture
         false,                  # pow_transposed
-        zeros(T,0,0),           # P̃
-        zeros(T,0,0),           # Ã_fd
-        zeros(T,0,0),           # B̃_fd
-        zeros(T,0,0))           # C̃_fd
+        zeros(TT,0,0),           # P̃
+        zeros(TT,0,0),           # Ã_fd
+        zeros(TT,0,0),           # B̃_fd
+        zeros(TT,0,0))           # C̃_fd
 end
 
 """
-    Find_shocks_workspace(;T::Type = Float64)
+    Find_shocks_workspace(::Type{TT} = Float64)
 
 Create a workspace for find_shocks conditional forecast with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_find_shocks_buffers!.
 """
-function Find_shocks_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+function Find_shocks_workspace(::Type{TT} = Float64) where {TT <: Real}
     find_shocks_workspace{TT}(
         0,                      # n_exo dimension
         zeros(TT,0),             # kron_buffer (n_exo^2)
@@ -311,7 +311,7 @@ function Higher_order_workspace(::Type{TT} = Float64, ::Type{SS} = Float64) wher
                         zeros(TT,0,0),  # 𝐒₁
                         zeros(TT,0,0),  # 𝐒₁₋╱𝟏ₑ
                         zeros(TT,0,0),
-                        Sylvester_workspace(S = SS, T = SS),
+                        Sylvester_workspace(SS, SS),
                         zeros(TT,0),    # ∂∇_vec
                         # Second order pullback gradient buffers (lazily allocated)
                         zeros(TT,0,0),  # ∂∇₂
@@ -422,7 +422,7 @@ function ensure_dx_lu_buffer!(ws::higher_order_workspace, ∂x::AbstractMatrix{F
         cache.A = ∂x
         cache.b = Δx
     end
-    return ws.dx_lu_buffer
+    return nothing
 end
 
 """
@@ -443,7 +443,7 @@ function ensure_sss_tmp_lu_buffer!(ws::higher_order_workspace, tmp::AbstractMatr
         cache.A = tmp
         cache.b = rhs
     end
-    return ws.sss_tmp_lu_buffer
+    return nothing
 end
 
 function ensure_sss_pullback_fast_lu_workspace!(ws::higher_order_workspace{T}, tmp::AbstractMatrix{T}) where {T <: Union{Float32, Float64}}
@@ -456,11 +456,11 @@ function ensure_sss_pullback_fast_lu_workspace!(ws::higher_order_workspace{T}, t
 end
 
 """
-    First_order_workspace(; T::Type = Float64, S::Type = Float64)
+    First_order_workspace(::Type{TT} = Float64, ::Type{SS} = Float64)
 
 Create a pre-allocated workspace for first-order perturbation and related AD paths.
 """
-function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+function First_order_workspace(::Type{TT} = Float64, ::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
     empty_qr_factors = zeros(TT, 0, 0)
     empty_qr_ws::FastLapackInterface.QRWs = FastLapackInterface.QRWs(empty_qr_factors)
     empty_qr_rhs = zeros(TT, 0, 0)
@@ -475,7 +475,7 @@ function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) w
                                             verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     first_order_workspace(
-                    Sylvester_workspace(S = TT, T = SS),  # sylvester
+                    Sylvester_workspace(TT, SS),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(SS, 0, 0),  # X̃_first_order
                     zeros(SS, 0, 0),  # p_tmp
@@ -520,12 +520,12 @@ function First_order_workspace(; T::Type{TT} = Float64, S::Type{SS} = Float64) w
 end
 
 """
-    Qme_doubling_workspace(n::Int; T::Type = Float64, S::Type = Float64)
+    Qme_doubling_workspace(n::Int, ::Type{TT} = Float64, ::Type{SS} = Float64)
 
 Create a pre-allocated workspace for the quadratic matrix equation doubling algorithm.
 `n` is the dimension of the square matrices (nVars - nPresent_only).
 """
-function Qme_doubling_workspace(n::Int; T::Type{TT} = Float64, S::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
+function Qme_doubling_workspace(n::Int, ::Type{TT} = Float64, ::Type{SS} = Float64) where {TT <: AbstractFloat, SS <: Real}
     empty_lu_factors = zeros(TT, 0, 0)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -543,7 +543,7 @@ function Qme_doubling_workspace(n::Int; T::Type{TT} = Float64, S::Type{SS} = Flo
                     zeros(TT, n, n),  # temp3
                     zeros(TT, n, n),  # B̄
                     zeros(TT, n, n),  # AXX
-                    Sylvester_workspace(S = TT, T = SS),  # sylvester
+                    Sylvester_workspace(TT, SS),  # sylvester
                     # ForwardDiff partials buffers
                     zeros(SS, 0, 0),  # X̃
                     # FastLapackInterface LU workspaces
@@ -564,7 +564,7 @@ function ensure_first_order_fast_qr_workspace!(ws::first_order_workspace{T}, qr_
 end
 
 """
-    Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type = Float64)
+    Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int, ::Type{TT} = Float64)
 
 Create a pre-allocated workspace for the schur-based quadratic matrix equation solver.
 Dimensions:
@@ -573,7 +573,7 @@ Dimensions:
 - `nPfm` = nPast_not_future_and_mixed
 - `nFnpm` = nFuture_not_past_and_mixed
 """
-function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type{TT} = Float64) where {TT <: Real}
+function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int, ::Type{TT} = Float64) where {TT <: Real}
     companion_size = n + nMixed
     nComb = nPfm + nFnpm  # comb = union(future_not_past_and_mixed, past_not_future)
     qz_seed_size = max(companion_size, 1)
@@ -607,41 +607,41 @@ function Schur_workspace(n::Int, nMixed::Int, nPfm::Int, nFnpm::Int; T::Type{TT}
 end
 
 """
-    Lyapunov_workspace(n::Int; T::Type = Float64)
+    Lyapunov_workspace(n::Int, ::Type{TT} = Float64)
 
 Create a workspace for the Lyapunov equation solver with lazy buffer allocation.
 `n` is the dimension of the square matrices.
 Buffers are initialized to 0-dimensional objects and resized on-demand when the corresponding algorithm is used.
 """
-function Lyapunov_workspace(n::Int; T::Type{TT} = Float64) where {TT <: Real}
-    lyapunov_workspace{T, T}(
+function Lyapunov_workspace(n::Int, ::Type{TT} = Float64) where {TT <: Real}
+    lyapunov_workspace{TT, TT}(
         n,                      # dimension
-        zeros(T, 0, 0),         # 𝐂 (doubling)
-        zeros(T, 0, 0),         # 𝐂¹ (doubling)
-        zeros(T, 0, 0),         # 𝐀 (doubling)
-        zeros(T, 0, 0),         # 𝐂A (doubling)
-        zeros(T, 0, 0),         # 𝐀² (doubling)
-        zeros(T, 0, 0),         # tmp̄ (Krylov)
-        zeros(T, 0, 0),         # 𝐗 (Krylov)
-        zeros(T, 0),            # b (Krylov)
-        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres
-        Krylov.DqgmresWorkspace(0, 0, Vector{T}),  # dqgmres
-        zeros(T, 0),            # b_vech (vech-space Krylov)
-        Krylov.BicgstabWorkspace(0, 0, Vector{T}),  # bicgstab_vech
-        Krylov.GmresWorkspace(0, 0, Vector{T}; memory = 20),  # gmres_vech
-        Krylov.DqgmresWorkspace(0, 0, Vector{T}),  # dqgmres_vech
-        zeros(T, 0, 0),         # P (stable primal cache)
+        zeros(TT, 0, 0),         # 𝐂 (doubling)
+        zeros(TT, 0, 0),         # 𝐂¹ (doubling)
+        zeros(TT, 0, 0),         # 𝐀 (doubling)
+        zeros(TT, 0, 0),         # 𝐂A (doubling)
+        zeros(TT, 0, 0),         # 𝐀² (doubling)
+        zeros(TT, 0, 0),         # tmp̄ (Krylov)
+        zeros(TT, 0, 0),         # 𝐗 (Krylov)
+        zeros(TT, 0),            # b (Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{TT}),  # bicgstab
+        Krylov.GmresWorkspace(0, 0, Vector{TT}; memory = 20),  # gmres
+        Krylov.DqgmresWorkspace(0, 0, Vector{TT}),  # dqgmres
+        zeros(TT, 0),            # b_vech (vech-space Krylov)
+        Krylov.BicgstabWorkspace(0, 0, Vector{TT}),  # bicgstab_vech
+        Krylov.GmresWorkspace(0, 0, Vector{TT}; memory = 20),  # gmres_vech
+        Krylov.DqgmresWorkspace(0, 0, Vector{TT}),  # dqgmres_vech
+        zeros(TT, 0, 0),         # P (stable primal cache)
         # ForwardDiff partials buffers
-        zeros(T, 0, 0),         # P̃
-        zeros(T, 0, 0),         # Ã_fd
-        zeros(T, 0, 0),         # C̃_fd
+        zeros(TT, 0, 0),         # P̃
+        zeros(TT, 0, 0),         # Ã_fd
+        zeros(TT, 0, 0),         # C̃_fd
         # Doubling power cache (sparse-aware)
-        Vector{AbstractMatrix{T}}(),  # 𝐀_pow
+        Vector{AbstractMatrix{TT}}(),  # 𝐀_pow
         0,                      # pow_iters
         false,                  # pow_capture
         false,                  # pow_transposed
-        FastLapackInterface.SchurWs(zeros(T, 1, 1))  # schur_ws (lazily resized by gees!)
+        FastLapackInterface.SchurWs(zeros(TT, 1, 1))  # schur_ws (lazily resized by gees!)
     )
 end
 
@@ -905,12 +905,12 @@ end
 
 
 """
-    Inversion_workspace(;T::Type = Float64)
+    Inversion_workspace(::Type{TT} = Float64)
 
 Create a workspace for inversion filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_inversion_buffers!.
 """
-function Inversion_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
     inversion_workspace{TT}(
         0, 0,                   # n_exo, n_past dimensions
         zeros(TT, 0),            # kron_buffer (n_exo^2)
@@ -1086,12 +1086,12 @@ end
 
 
 """
-    Kalman_workspace(;T::Type = Float64)
+    Kalman_workspace(::Type{TT} = Float64)
 
 Create a workspace for Kalman filter computations with lazy buffer allocation.
 All buffers are initialized to 0-dimensional objects and resized on-demand via ensure_kalman_workspaces!.
 """
-function Kalman_workspace(;T::Type{TT} = Float64) where {TT <: Real}
+function Kalman_workspace(::Type{TT} = Float64) where {TT <: Real}
     empty_lu_factors = zeros(TT, 1, 1)
     empty_lu_ws = FastLapackInterface.LUWs(empty_lu_factors)
 
@@ -1171,22 +1171,22 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
 end
 
 
-function Workspaces(;T::Type{Float64} = Float64, S::Type{Float64} = Float64)
+function Workspaces(::Type{T} = Float64, ::Type{S} = Float64) where {T <: Real, S <: Real}
     workspaces(Higher_order_workspace(T, S),
                 Higher_order_workspace(T, S),
                 Float64[],
-                First_order_workspace(T = T, S = S),  # Initialize with size 0, will be resized when needed
-                Qme_doubling_workspace(0, T = T, S = S),  # Initialize with size 0, will be resized when needed
-                Schur_workspace(0, 0, 0, 0, T = T),  # Initialize with size 0, will be resized when needed
-                Lyapunov_workspace(0, T = T),  # 1st order - will be resized
-                Lyapunov_workspace(0, T = T),  # 2nd order - will be resized
-                Lyapunov_workspace(0, T = T),  # 3rd order - will be resized
-                Lyapunov_workspace(0, T = T),  # block-triangular inner - will be resized
-                Sylvester_workspace(S = S),  # 1st order sylvester - will be resized
-                Sylvester_workspace(S = S),  # block-triangular sylvester - will be resized
-                Find_shocks_workspace(T = T),  # conditional forecast - will be resized
-                Inversion_workspace(T = T),  # inversion filter - will be resized
-                Kalman_workspace(T = T),  # Kalman filter - will be resized
+                First_order_workspace(T, S),  # Initialize with size 0, will be resized when needed
+                Qme_doubling_workspace(0, T, S),  # Initialize with size 0, will be resized when needed
+                Schur_workspace(0, 0, 0, 0, T),  # Initialize with size 0, will be resized when needed
+                Lyapunov_workspace(0, T),  # 1st order - will be resized
+                Lyapunov_workspace(0, T),  # 2nd order - will be resized
+                Lyapunov_workspace(0, T),  # 3rd order - will be resized
+                Lyapunov_workspace(0, T),  # block-triangular inner - will be resized
+                Sylvester_workspace(S),  # 1st order sylvester - will be resized
+                Sylvester_workspace(S),  # block-triangular sylvester - will be resized
+                Find_shocks_workspace(T),  # conditional forecast - will be resized
+                Inversion_workspace(T),  # inversion filter - will be resized
+                Kalman_workspace(T),  # Kalman filter - will be resized
                 NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 
@@ -1892,7 +1892,7 @@ function ensure_schur_workspace!(ws::schur_workspace{T}, n::Int, nMixed::Int, nP
        size(ws.sol) != (n, nPfm) ||
        size(ws.Z₁₁) != (nPfm, nPfm) ||
        size(ws.Z₂₁) != (nFnpm, nPfm)
-        return Schur_workspace(n, nMixed, nPfm, nFnpm, T = T)
+        return Schur_workspace(n, nMixed, nPfm, nFnpm, T)
     end
     return ws
 end

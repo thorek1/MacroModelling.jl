@@ -181,8 +181,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         ∂x = (A + B * kron_x_aug_I - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug_buf / 2 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -275,8 +275,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug_buf / 2 + Ĉ * kron_x_kron_buf / 6 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -820,8 +820,8 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
     rhs = collect((𝐒₂ * kron_aug1 / 2)[past_idx])
     tmp_for_pullback = copy(tmp)
 
-    tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
-    tmp_sol = 𝒮.solve!(tmp_cache)
+    ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+    tmp_sol = 𝒮.solve!(𝓂.workspaces.second_order.sss_tmp_lu_buffer)
 
     if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
         common = (false,

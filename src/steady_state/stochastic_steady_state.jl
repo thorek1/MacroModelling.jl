@@ -90,8 +90,8 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
     rhs = collect((𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
     if M === Float64
-        tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
-        tmp_sol = 𝒮.solve!(tmp_cache)
+        ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+        tmp_sol = 𝒮.solve!(𝓂.workspaces.second_order.sss_tmp_lu_buffer)
 
         if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
             if opts.verbose println("SSS not found") end
@@ -294,8 +294,8 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
         x̂ = A * x + B̂ * kron_x_aug_xx / 2
 
         Δx = x̂ - x
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -544,8 +544,8 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
