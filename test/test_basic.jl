@@ -3406,4 +3406,9 @@ include("functionality_tests.jl")
         RBC_CME = nothing
     end
     GC.gc()
+
+    @testset verbose = true "update_equations! / add_equation! / remove_equation!" begin
+        include("test_update_equations.jl")
+    end
+    GC.gc()
     

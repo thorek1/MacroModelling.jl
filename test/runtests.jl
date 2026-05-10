@@ -2,7 +2,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "gali_pruned_2nd_order_estimation", "rrule_robustness", "inversion_filter_gradients"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "gali_pruned_2nd_order_estimation", "gradient_checks"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 
@@ -59,9 +59,8 @@ elseif test_set == "basic"
     include("test_basic.jl")
 elseif test_set == "gali_pruned_2nd_order_estimation"
     include("test_gali_pruned_2nd_order_estimation.jl")
-elseif test_set == "rrule_robustness"
+elseif test_set == "gradient_checks"
     include("test_rrule_robustness.jl")
-elseif test_set == "inversion_filter_gradients"
     include("test_inversion_filter_gradients.jl")
 elseif test_set == "update_equations"
     include("test_update_equations.jl")
