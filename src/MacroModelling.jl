@@ -1164,7 +1164,7 @@ function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
     # @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
     # @assert size(buffer, 2) == n^2 "Buffer must have n columns."
 
-    @turbo for j in 1:m
+    @inbounds for j in 1:m
          for i in 1:n
             buffer[(j - 1) * n + i, j] = x[i]
         end
