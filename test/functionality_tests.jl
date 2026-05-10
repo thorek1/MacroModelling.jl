@@ -1752,7 +1752,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                                     if algorithm == :first_order && filter == :kalman
                                         for i in 1:100
-                                            local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
+                                            local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3), 
                                                                                     x -> begin 
                                                                                             clear_solution_caches!(m, algorithm)
         
@@ -2385,7 +2385,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
                     for i in 1:100
-                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2403,7 +2403,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
                     for i in 1:100
-                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2422,7 +2422,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_for_last = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)
 
                     for i in 1:100
-                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2441,7 +2441,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
                     for i in 1:100
-                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2712,7 +2712,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end         
 
             for i in 1:100        
-                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                                 x -> begin 
                                                                     clear_solution_caches!(m, algorithm)
                                                                     
@@ -2745,7 +2745,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv6_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv6_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
@@ -3327,7 +3327,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3348,7 +3348,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3373,7 +3373,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         vec(collect(get_moments(m,
@@ -3423,7 +3423,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         vec(collect(get_moments(m,
