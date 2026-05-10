@@ -512,7 +512,8 @@ function MacroModelling.calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z
                                         parameter_values::AbstractVector{<:Real} = Float64[],
                                         caching::Bool = true)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
     qme_ws = workspaces.first_order
     sylv_ws = workspaces.sylvester_1st_order
     ensure_first_order_workspace_buffers!(qme_ws, T, length(idx_constants.dyn_index), length(idx_constants.comb))
