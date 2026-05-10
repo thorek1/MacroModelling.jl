@@ -65,6 +65,8 @@ elseif test_set == "inversion_filter_gradients"
     include("test_inversion_filter_gradients.jl")
 elseif test_set == "update_equations"
     include("test_update_equations.jl")
+elseif test_set == "jet_hot_paths"
+    include("test_jet_hot_paths.jl")
 elseif test_set == "dynare_comparison"
     # Dynare comparison runs as a standalone 3-phase pipeline (see CI workflow).
     # If output/ exists with results, run the comparison script directly.

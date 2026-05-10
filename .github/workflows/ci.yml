@@ -158,6 +158,10 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
+            test_set: "jet_hot_paths"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
             test_set: "estimate_sw07_nested_sampling"
     steps:
       - uses: actions/checkout@v6
@@ -223,7 +227,7 @@ jobs:
           rm -f Project.toml.bak
 
       - name: Remove JET from non-jet runs
-        if: matrix.test_set != 'jet'
+        if: "!startsWith(matrix.test_set, 'jet')"
         shell: bash
         run: |
           # `JET` is only needed for the dedicated `jet` rows. Keeping it in the
