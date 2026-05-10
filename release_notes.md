@@ -26,14 +26,23 @@ NSSS solver refactored: struct dissolved into constants, functions, caches, and 
 DispatchDoctor type stability coverage expanded across numerical source files
 compat with Turing 0.45
 added FRBUS model
+get_irf with parameters now also works with higher order
+removed RecursiveFactorization and DifferentiationInterface direct dependency
 
+JET test on less functions (hot paths) so we get some coverage at least
+see that all test scripts are actually run
+there are various approaches of dealing with operations on sparse matrices and constructing them manually throughout th epackage. take stock of what approaches are out there, evaluate them in terms of performance gains and specific challenge they tackle and then use the best in class throughout appropriate applications
 
 follow-ups:
+revisit func test tols
+describe FRBUS model in docs and add to index
+inegrate speed section in docs with benchmarks
+do triage of helpers. either make sure they are used across the package where applciable but then also check that there is no more consice or already existing implmentation in the ecosystem.
+check that we need this BARTELS_STEWART_AVAILABLE thing. its a weird construct to me. check alternatives
+with these large models being used, make returns that are scaling with the number of variables and shocks output only the selected variables and shocks in order not to bloat memory and speed up computations. this includes IRFs, variance decompositions, etc.
 rethink these crazy long input types
-add correlation to get_moments as well
-fix speed in docs
 more DD coverage and fixes as well as getting JET to work again on the whole package
 checkout StaticArrays for filter, if they speed things up
-time filter step as well (SW07)
+time filter step as well (SW07) for speed docs
 eliminate this nested spaghetti code in nsss_solver
 get iterative SSS/mean analytically
