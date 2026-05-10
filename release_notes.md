@@ -33,9 +33,11 @@ JET test on less functions (hot paths) so we get some coverage at least
 see that all test scripts are actually run
 there are various approaches of dealing with operations on sparse matrices and constructing them manually throughout th epackage. take stock of what approaches are out there, evaluate them in terms of performance gains and specific challenge they tackle and then use the best in class throughout appropriate applications
 
+analytical OBC jacobian instead of ForwardDiff.jl
+
 follow-ups:
+update plots (the actual images) in docs to reflect changes in API and outputs as well as the examples in docstrings and docs
 revisit func test tols
-describe FRBUS model in docs and add to index
 inegrate speed section in docs with benchmarks
 do triage of helpers. either make sure they are used across the package where applciable but then also check that there is no more consice or already existing implmentation in the ecosystem.
 check that we need this BARTELS_STEWART_AVAILABLE thing. its a weird construct to me. check alternatives
