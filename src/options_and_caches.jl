@@ -129,6 +129,7 @@ function Second_order_indices()
         # Conditional forecast indices
         Int[],               # var²_idxs
         Int[],               # shockvar²_idxs
+        Int[],               # shockvar_no_vol_idxs
         # Moment computation caches
         BitVector(),         # kron_states
         empty_sparse_float,  # I_plus_s_s
@@ -1574,8 +1575,10 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
         shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
         var_vol²_idxs = so.var_vol²_idxs
         var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+        shockvar_no_vol_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
         so.var²_idxs = var²_idxs
         so.shockvar²_idxs = shockvar²_idxs
+        so.shockvar_no_vol_idxs = shockvar_no_vol_idxs
         so.var_vol²_idxs = var_vol²_idxs
     end
 

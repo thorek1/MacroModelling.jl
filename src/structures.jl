@@ -340,8 +340,9 @@ mutable struct second_order_indices
     # Filled by ensure_conditional_forecast_constants! (options_and_caches.jl)
     # Triggered by: get_conditional_forecast, find_shocks
     # =========================================================================
-    var²_idxs::Vector{Int}               # Variable² indices
+    var²_idxs::Vector{Int}               # Variable² indices (no-vol: kron(s_in_s, s_in_s))
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
+    shockvar_no_vol_idxs::Vector{Int}    # Shock-variable cross indices (no-vol: kron(e_in_s⁺, s_in_s))
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
