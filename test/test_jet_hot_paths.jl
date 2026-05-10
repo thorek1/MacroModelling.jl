@@ -16,6 +16,7 @@ import MacroModelling: get_NSSS_and_parameters, calculate_jacobian, calculate_he
     calculate_stochastic_steady_state,
     solve_lyapunov_equation, solve_sylvester_equation, solve_quadratic_matrix_equation,
     filter_and_smooth,
+    prepare_stochastic_steady_state_base_terms, solve_stochastic_steady_state_newton,
     merge_calculation_options, initialise_constants!, CalculationOptions, Tolerances,
     lyapunov_workspace, sylvester_workspace, ensure_lyapunov_workspace!
 
@@ -70,6 +71,12 @@ constants_obj = initialise_constants!(RBC)
 # Third-order derivatives (available after third order solve)
 ∇₃ = calculate_third_order_derivatives(params, SS_and_pars, RBC.caches,
     RBC.functions.third_order_derivatives, RBC.workspaces)
+
+# Sparse second/third-order solutions for stochastic steady-state rrules
+𝐒₂_sp = sparse(𝐒₂)
+𝐒₃_raw = RBC.caches.third_order_solution
+𝐒₃_sp = 𝐒₃_raw isa SparseMatrixCSC ? 𝐒₃_raw : sparse(𝐒₃_raw)
+x_sss = zeros(RBC.constants.post_model_macro.nVars)
 
 # ---------------------------------------------------------------------------
 # JET analysis targets
@@ -229,8 +236,7 @@ end
             Tuple{typeof(∇₁), typeof(∇₂), typeof(∇₃),
                   typeof(𝐒₁), typeof(𝐒₂),
                   typeof(RBC.constants), typeof(RBC.workspaces),
-                  typeof(RBC.caches)},
-            broken = true)  # mat_mult_kron union-split MethodError (pre-existing)
+                  typeof(RBC.caches)})
     end
 
     # ------------------------------------------------------------------
@@ -381,8 +387,7 @@ end
         cond_mat = Matrix{Union{Nothing,Float64}}(nothing, RBC.constants.post_model_macro.nVars, 5)
         cond_mat[1, 1] = 0.01
         jet_test_call(MacroModelling.get_conditional_forecast,
-            Tuple{typeof(RBC), typeof(cond_mat)},
-            broken = true)  # factorize_lu! Matrix{Any} union-split MethodError (pre-existing)
+            Tuple{typeof(RBC), typeof(cond_mat)})
     end
 
     # ------------------------------------------------------------------
@@ -391,6 +396,22 @@ end
     @testset "get_solution (parameters, second_order)" begin
         jet_test_call(MacroModelling.get_solution,
             Tuple{typeof(RBC), typeof(params)})
+    end
+
+    # ------------------------------------------------------------------
+    # get_statistics (user-facing, used in estimation)
+    # ------------------------------------------------------------------
+    @testset "get_statistics" begin
+        jet_test_call(MacroModelling.get_statistics,
+            Tuple{typeof(RBC), typeof(params)})
+    end
+
+    # ------------------------------------------------------------------
+    # Stochastic steady-state base terms preparation
+    # ------------------------------------------------------------------
+    @testset "prepare_stochastic_steady_state_base_terms" begin
+        jet_test_call(prepare_stochastic_steady_state_base_terms,
+            Tuple{typeof(params), typeof(RBC)})
     end
 
     # ------------------------------------------------------------------
@@ -464,6 +485,109 @@ end
         data_rl = KeyedArray(randn(1, 40); Variables = [RBC.constants.post_model_macro.var[1]], Periods = 1:40)
         jet_test_call(MacroModelling.rrule,
             Tuple{typeof(MacroModelling.get_loglikelihood), typeof(RBC), typeof(data_rl), typeof(params)})
+    end
+
+    # ------------------------------------------------------------------
+    # Additional rrules: higher-order solutions, moments, solvers
+    # ------------------------------------------------------------------
+    @testset "rrule: calculate_third_order_solution" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_third_order_solution), typeof(∇₁), typeof(∇₂), typeof(∇₃),
+                  typeof(𝐒₁), typeof(𝐒₂),
+                  typeof(RBC.constants), typeof(RBC.workspaces), typeof(RBC.caches)})
+    end
+
+    @testset "rrule: calculate_second_order_moments_with_covariance" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_second_order_moments_with_covariance),
+                  typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: calculate_third_order_moments" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_third_order_moments),
+                  typeof(params), Symbol, typeof(RBC)})
+    end
+
+    @testset "rrule: calculate_third_order_moments_with_autocorrelation" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_third_order_moments_with_autocorrelation),
+                  typeof(params), Symbol, typeof(RBC)})
+    end
+
+    @testset "rrule: prepare_stochastic_steady_state_base_terms" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(prepare_stochastic_steady_state_base_terms),
+                  typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: solve_stochastic_steady_state_newton (second_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(solve_stochastic_steady_state_newton),
+                  Val{:second_order}, typeof(𝐒₁), typeof(𝐒₂_sp),
+                  typeof(x_sss), typeof(RBC)})
+    end
+
+    @testset "rrule: solve_stochastic_steady_state_newton (third_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(solve_stochastic_steady_state_newton),
+                  Val{:third_order}, typeof(𝐒₁), typeof(𝐒₂_sp), typeof(𝐒₃_sp),
+                  typeof(x_sss), typeof(RBC)})
+    end
+
+    @testset "rrule: solve_sylvester_equation" begin
+        sylv_ws_r = RBC.workspaces.sylvester_1st_order
+        n_r = 3
+        A_sylv_r = randn(n_r, n_r) * 0.5
+        B_sylv_r = randn(n_r, n_r) * 0.5
+        C_sylv_r = randn(n_r, n_r)
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(solve_sylvester_equation),
+                  typeof(A_sylv_r), typeof(B_sylv_r), typeof(C_sylv_r), typeof(sylv_ws_r)})
+    end
+
+    @testset "rrule: solve_lyapunov_equation" begin
+        lyap_ws_r = ensure_lyapunov_workspace!(RBC.workspaces, RBC.constants.post_model_macro.nVars, :first_order)
+        n_r = RBC.constants.post_model_macro.nVars
+        A_lyap_r = randn(n_r, n_r) * 0.5
+        C_lyap_r = let X = randn(n_r, n_r); X * X'; end
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(solve_lyapunov_equation),
+                  typeof(A_lyap_r), typeof(C_lyap_r), typeof(lyap_ws_r)})
+    end
+
+    @testset "rrule: get_relevant_steady_state_and_state_update (second_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_relevant_steady_state_and_state_update),
+                  Val{:second_order}, typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: get_relevant_steady_state_and_state_update (pruned_second_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_relevant_steady_state_and_state_update),
+                  Val{:pruned_second_order}, typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: get_relevant_steady_state_and_state_update (third_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_relevant_steady_state_and_state_update),
+                  Val{:third_order}, typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: get_relevant_steady_state_and_state_update (pruned_third_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_relevant_steady_state_and_state_update),
+                  Val{:pruned_third_order}, typeof(params), typeof(RBC)})
+    end
+
+    @testset "rrule: get_solution" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_solution), typeof(RBC), typeof(params)})
+    end
+
+    @testset "rrule: get_statistics" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_statistics), typeof(RBC), typeof(params)})
     end
 
 end
