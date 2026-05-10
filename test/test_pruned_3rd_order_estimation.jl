@@ -101,6 +101,9 @@ n_samples = 100
 samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS))
 
 
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))

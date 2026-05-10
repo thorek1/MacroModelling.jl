@@ -63,11 +63,17 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = FS2000_custom_steady_state_function!)
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (Mooncake + custom steady state): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = nothing)
@@ -75,6 +81,9 @@ get_steady_state(FS2000, steady_state_function = nothing)
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (ForwardDiff): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
