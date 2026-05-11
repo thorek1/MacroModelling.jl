@@ -126,6 +126,9 @@ samps = @time sample(gali_model,
                      progress = true,
                      initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
 
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean estimated values (ForwardDiff): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 sample_means = collect(values(FlexiChains.mean(samps); parameters_only = true))

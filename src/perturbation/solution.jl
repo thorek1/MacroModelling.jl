@@ -25,7 +25,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
 
     dynIndex = idx_constants.dyn_index
     reverse_dynamic_order = idx_constants.reverse_dynamic_order
@@ -58,8 +59,7 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
     # Current code reuses QR/ORM workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;                 # Q = qr(∇₀_present)
-                        use_fastlapack_qr = use_fastlapack_qr)
+    Q = factorize_qr!((use_fastlapack_qr ? Val(:FastLapack) : Val(:Julia)), ∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
 
     qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
@@ -137,10 +137,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
-    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
-                                                                                       qme_ws.fast_lu_dims_a0u;
-                                                                                       use_fastlapack_lu = use_fastlapack_lu)
+                                                                                       qme_ws.fast_lu_dims_a0u)
 
     if !solved_Ā₀ᵤ
         if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
@@ -190,10 +189,9 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     ℒ.mul!(∇₀, @view(∇₁[:,1:T.nFuture_not_past_and_mixed]), M, 1, 1)                 # ∇₀ = ∇₊ * M + ∇₀
 
     # Old way (≤v0.1.42): C = lu(∇₀)
-    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
-                                                                                         qme_ws.fast_lu_dims_nabla0;
-                                                                                         use_fastlapack_lu = use_fastlapack_lu)
+                                                                                         qme_ws.fast_lu_dims_nabla0)
 
     if !solved_∇₀
         if opts.verbose println("Factorisation of ∇₀ failed") end
@@ -252,7 +250,7 @@ end
     # grab buffers from the workspace) never see a stale eltype after a previous
     # call with a different eltype (e.g. ForwardDiff.Dual).
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
+        workspaces.second_order = Higher_order_workspace(S)
     end
     # Cache hit: return cached second-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
@@ -327,7 +325,7 @@ end
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
@@ -468,7 +466,7 @@ end
     # grab buffers from the workspace) never see a stale eltype after a previous
     # call with a different eltype (e.g. ForwardDiff.Dual).
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
+        workspaces.third_order = Higher_order_workspace(S)
     end
     # Cache hit: return cached third-order solution if valid for current parameters
     if caching && S === Float64 && !isempty(parameter_values) &&
@@ -547,7 +545,7 @@ end
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
@@ -1128,7 +1126,9 @@ end
 @unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T},
-                        D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
+                        D::AbstractMatrix{S};
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
@@ -1325,7 +1325,9 @@ end
 
 @unstable function mat_mult_kron(A::DenseMatrix{R},
                         B::AbstractMatrix{T},
-                        C::AbstractMatrix{T}) where {R <: Real, T <: Real}
+                        C::AbstractMatrix{T};
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        sparse::Bool = false) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
@@ -2093,6 +2095,12 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
     n_ui = length(ui)
     n_uj = length(uj)
 
+    # Row-slice cache: pack â[row, uj[:]] into compact contiguous vectors
+    # for cache-friendly access in the inner kernel (stride-1 vs stride-nrows)
+    row_cache_i = Vector{T}(undef, n_uj)
+    row_cache_j = Vector{T}(undef, n_uj)
+    row_cache_k = Vector{T}(undef, n_uj)
+
     # --- sparse IJV buffer management ---
     if length(sparse_preallocation[1]) == 0
         estimated_nnz = floor(Int, max(m * m3_cols * (lennz / length(â)) ^ 4, 10000))
@@ -2125,27 +2133,38 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
                 rng_M = SparseArrays.nzrange(M, row)
                 isempty(rng_M) && continue
 
-                # Divisor depends only on row triple
+                # Divisor depends only on row triple; precompute reciprocal
+                # to replace division with multiplication in the inner loop
                 if i1 == j1
                     divisor = i1 == k1 ? 6 : 2
                 else
                     divisor = (i1 ≠ k1 && j1 ≠ k1) ? 1 : 2
                 end
+                inv_divisor = one(T) / divisor
+
+                # Fill row caches for this (i1, j1, k1) triple —
+                # sequential stride-1 reads instead of indirect stride-nrows
+                @inbounds for c in 1:n_uj
+                    col_idx = uj[c]
+                    row_cache_i[c] = â[i1, col_idx]
+                    row_cache_j[c] = â[j1, col_idx]
+                    row_cache_k[c] = â[k1, col_idx]
+                end
 
                 # Col-inner loop: column triples (i2 ≥ j2 ≥ k2) with bounded ranges
                 for idx_i2 in 1:n_uj
                     @inbounds i2 = uj[idx_i2]
-                    # Hoist i2-dependent reads
-                    @inbounds aii = â[i1, i2]
-                    @inbounds aji = â[j1, i2]
-                    @inbounds aki = â[k1, i2]
+                    # Hoist i2-dependent reads from row cache
+                    @inbounds aii = row_cache_i[idx_i2]
+                    @inbounds aji = row_cache_j[idx_i2]
+                    @inbounds aki = row_cache_k[idx_i2]
 
                     for idx_j2 in 1:idx_i2
                         @inbounds j2 = uj[idx_j2]
-                        # Hoist j2-dependent reads
-                        @inbounds aij = â[i1, j2]
-                        @inbounds ajj = â[j1, j2]
-                        @inbounds akj = â[k1, j2]
+                        # Hoist j2-dependent reads from row cache
+                        @inbounds aij = row_cache_i[idx_j2]
+                        @inbounds ajj = row_cache_j[idx_j2]
+                        @inbounds akj = row_cache_k[idx_j2]
 
                         # Precompute sub-expressions for the k2 inner loop
                         p1 = aii * ajj + aij * aji
@@ -2155,14 +2174,14 @@ function mul_compressed_kron³(M::SparseMatrixCSC, a::AbstractMatrix{T};
 
                         for idx_k2 in 1:idx_j2
                             @inbounds k2 = uj[idx_k2]
-                            @inbounds aik = â[i1, k2]
-                            @inbounds ajk = â[j1, k2]
-                            @inbounds akk = â[k1, k2]
+                            @inbounds aik = row_cache_i[idx_k2]
+                            @inbounds ajk = row_cache_j[idx_k2]
+                            @inbounds akk = row_cache_k[idx_k2]
 
                             val = akk * p1 + ajk * p2 + aik * p3
 
                             if abs(val) > tol
-                                scaled_val = val / divisor
+                                scaled_val = val * inv_divisor
                                 col = col_partial + k2
 
                                 # Direct IJV scatter through M[:, row]
@@ -2401,7 +2420,7 @@ function detect_unit_roots_from_solution!(cache::caches, sol::AbstractMatrix{R};
     n = size(sol, 1)
     n == 0 && return nothing
     ImA = similar(sol)
-    @inbounds for j in 1:n, i in 1:n
+    @turbo for j in 1:n, i in 1:n
         ImA[i, j] = ifelse(i == j, one(R), zero(R)) - sol[i, j]
     end
     F = ℒ.lu!(ImA; check = false)

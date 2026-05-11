@@ -970,12 +970,13 @@ function find_shocks(::Val{:LagrangeNewton},
         #     return x, false
         # end
 
-        try
-            f̂xλp = ℒ.factorize(fxλp)
-            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
-        catch
+        f̂xλp = ℒ.lu(fxλp, check = false)
+
+        if !ℒ.issuccess(f̂xλp)
             return x, false
         end
+
+        ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         
         if !all(isfinite,Δxλ) break end
         
@@ -999,27 +1000,9 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
-            # println("LagrangeNewton: $i, Tol reached, $x")
             break
         end
-
-        # if i > 500 && ℒ.norm(Δxλ) > 1e-11 && ℒ.norm(Δxλ) > Δnorm
-        #     # println("LagrangeNewton: $i, Norm increase")
-        #     return x, false
-        # end
-        # # if i == max_iter
-        #     println("LagrangeNewton: $i, Max iter reached")
-            # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
-        # end
     end
-
-    # println(λ)
-    # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
-    # println(ℒ.norm(Δxλ))
-    # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
-    # if !(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol))
-    #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
-    # end
 
     residual = ℒ.norm(x̂) / max(norm1,norm2)
     step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
@@ -1117,14 +1100,13 @@ function find_shocks(::Val{:LagrangeNewton},
         # fXλp = [reshape((2 * 𝐒ⁱ²ᵉ + 6 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
         #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         
-        try
-            f̂xλp = ℒ.factorize(fxλp)
-            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
-        catch
-            # ℒ.svd(fxλp)
-            # println("factorization fails")
+        f̂xλp = ℒ.lu(fxλp, check = false)
+
+        if !ℒ.issuccess(f̂xλp)
             return x, false
         end
+
+        ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         
         if !all(isfinite,Δxλ) break end
         
@@ -1152,43 +1134,9 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
-            # println("LagrangeNewton: $i, Tol: $(ℒ.norm(Δxλ) / ℒ.norm(xλ)) reached, x: $x")
             break
         end
-
-        # if i > 500 && ℒ.norm(Δxλ) > 1e-11 && ℒ.norm(Δxλ) > Δnorm
-        #     # println(ℒ.norm(Δxλ))
-        #     # println(ℒ.norm(x̂) / max(norm1,norm2))
-        #     # println("LagrangeNewton: $i, Norm increase")
-        #     return x, false
-        # end
-        # if i == max_iter
-        #     println("LagrangeNewton: $i, Max iter reached")
-        #     # println(ℒ.norm(Δxλ))
-        # end
     end
-
-    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println("LagrangeNewton: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
-
-    # println(ℒ.norm(x))
-    # println(x)
-    # println(λ)
-    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
-    # println(fxλp)
-    # println(reshape(tmp, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2)))
-    # println([reshape((2 * 𝐒ⁱ²ᵉ - 2 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
-    #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))])
-    # println(fxλp)
-    # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
-    # println(ℒ.norm(Δxλ))
-    # println(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol)
-
-    # if !(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol))
-    #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
-    # end
 
     residual = ℒ.norm(x̂) / max(norm1,norm2)
     step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)

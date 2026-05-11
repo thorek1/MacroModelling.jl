@@ -352,6 +352,15 @@ function levenberg_marquardt(
     return best_current_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
 
+function scale_columns!(A::Matrix{T}, v::Vector{T}) where T <: Real
+    @turbo for j in 1:size(A, 2)
+        for i in 1:size(A, 1)
+            A[i, j] *= v[j]
+        end
+    end
+    return A
+end
+
 function scale_columns!(A::AbstractMatrix{T}, v::AbstractVector{T}) where T
     @inbounds for j in 1:size(A, 2)
         for i in 1:size(A, 1)
@@ -375,6 +384,8 @@ end
 
 function update_∇̂!(∇̂::AbstractMatrix{T}, μ¹s::T, μ²::T, p²::T) where T <: Real
     n = size(∇̂, 1)                # hoist size lookup
+    # Note: @turbo not used here — non-contiguous diagonal stride [i,i] and x^p² (pow)
+    # are unlikely to benefit from SIMD vectorization
     @inbounds for i in 1:n
         x = ∇̂[i,i]                # read once
         x += μ¹s
@@ -604,7 +615,7 @@ end
 
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
-    @inbounds for i in eachindex(x)
+    @turbo for i in eachindex(x)
         x[i] = max(lb[i], min(x[i], ub[i]))
     end
 end

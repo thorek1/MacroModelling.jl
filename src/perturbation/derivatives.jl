@@ -45,7 +45,7 @@ function calculate_hessian(parameters::Vector{M},
     # workspace; the cache short-circuit below would otherwise leave it stale.
     S = promote_type(M, N)
     if eltype(workspaces.second_order.Ŝ) != S
-        workspaces.second_order = Higher_order_workspace(T = S)
+        workspaces.second_order = Higher_order_workspace(S)
     end
 
     # Cache hit: return cached hessian if valid for current parameters
@@ -87,7 +87,7 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     # workspace; the cache short-circuit below would otherwise leave it stale.
     S = promote_type(M, N)
     if eltype(workspaces.third_order.Ŝ) != S
-        workspaces.third_order = Higher_order_workspace(T = S)
+        workspaces.third_order = Higher_order_workspace(S)
     end
 
     # Cache hit: return cached third order derivatives if valid for current parameters
