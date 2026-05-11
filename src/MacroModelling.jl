@@ -553,10 +553,40 @@ function invalidate_cache_validity!(𝓂::ℳ)
 end
 
 
-function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
+function reset_nsss_solver_cache!(𝓂::ℳ)
+    empty!(𝓂.caches.solver)
+
+    c = 𝓂.constants.nsss_solver
+    ms = 𝓂.constants.post_complete_parameters
+    seed = Vector{Vector{Float64}}()
+
+    for step_idx in 1:c.n_steps
+        if c.step_types[step_idx] == NUMERICAL_STEP
+            wr = c.write_ranges[step_idx]
+            nbr = c.numerical_bounds_ranges[step_idx]
+            guess_len = min(length(wr), length(nbr))
+            guesses = Vector{Float64}(undef, guess_len)
+
+            for i in 1:guess_len
+                sol_idx = c.write_indices[wr[i]]
+                sol_name = sol_idx <= length(ms.nsss_sol_names) ? ms.nsss_sol_names[sol_idx] : Symbol("")
+                guesses[i] = get(𝓂.constants.post_parameters_macro.guess, sol_name, Inf)
+            end
+
+            push!(seed, guesses)
+            push!(seed, Float64[Inf])
+        end
     end
+
+    push!(seed, fill(Inf, length(ms.parameters)))
+    push!(𝓂.caches.solver, seed)
+
+    return nothing
+end
+
+
+function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
+    reset_nsss_solver_cache!(𝓂)
 
     𝓂.caches.first_order_solution_matrix = zeros(0,0)
     𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
@@ -1369,9 +1399,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
-    end
+    reset_nsss_solver_cache!(𝓂)
 
     runtime = @elapsed outmodel = try solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
@@ -1464,9 +1492,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         for i in 1:n_samples
             start_time = time()
 
-            while length(𝓂.caches.solver) > 1
-                pop!(𝓂.caches.solver)
-            end
+            reset_nsss_solver_cache!(𝓂)
 
             SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
@@ -1493,10 +1519,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         end
     end
 
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
-    end
-
+    empty!(𝓂.caches.solver)
     push!(𝓂.caches.solver, solved_NSSS)
 
     if solved

@@ -7,6 +7,8 @@ import LinearAlgebra as ℒ
 
 using Random, AxisKeys
 
+import MacroModelling: clear_solution_caches!
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: Zygote-compatible full parameter vector builder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -73,6 +75,45 @@ include("../models/Ireland_2004.jl")
             @test fd_fi < 1e-4
         end
     end
+end
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Regression: clearing solution caches must not retain an evicted solver seed
+# ══════════════════════════════════════════════════════════════════════════════
+@testset "IRF derivative after NSSS solver cache eviction" begin
+    include("../models/Smets_Wouters_2003.jl")
+
+    m = Smets_Wouters_2003
+    parameters = copy(m.parameter_values)
+    initial_state = get_irf(
+        m,
+        algorithm = :first_order,
+        shocks = :none,
+        levels = true,
+        variables = :all,
+        periods = 1,
+    ) |> vec
+
+    get_irf(m, parameters)
+    for i in 1:(m.caches.solver.capacity + 5)
+        push!(m.caches.solver, [fill(float(i), 1), fill(float(i), 1), fill(float(i), length(parameters))])
+    end
+
+    clear_solution_caches!(m, :first_order)
+    @test length(m.caches.solver) == 1
+    @test all(isinf, m.caches.solver[end][end])
+
+    deriv_for = ForwardDiff.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:, end, 1], parameters)
+    deriv_fin = FiniteDifferences.jacobian(
+        FiniteDifferences.central_fdm(5, 1, max_range = 1e-4),
+        x -> begin
+            clear_solution_caches!(m, :first_order)
+            get_irf(m, x, initial_state = initial_state)[:, end, 1]
+        end,
+        parameters,
+    )[1]
+
+    @test isapprox(deriv_for, deriv_fin, rtol = 1e-5)
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
