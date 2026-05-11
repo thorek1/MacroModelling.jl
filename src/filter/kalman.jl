@@ -336,7 +336,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         ℒ.mul!(Ctv, Cv, P)        # Ctv = C[idx,:] * P
         ℒ.mul!(Fv, Ctv, Cv')      # Fv = C[idx,:] * P * C[idx,:]'
 
-        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Fv,
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
                                                                             ws.fast_lu_ws_f,
                                                                             ws.fast_lu_dims_f)
 
@@ -346,7 +346,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         end
 
         logabsdetF = zero(S)
-        signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, 1:m)) ? -one(S) : one(S)
+        signF = isodd(count(i -> luF.ipiv[i] != i, 1:m)) ? -one(S) : one(S)
         @inbounds for i in 1:m
             di = Fv[i, i]
             if di == 0
@@ -364,13 +364,13 @@ function run_kalman_iterations_missing(A::Matrix{S},
 
         if t > presample_periods
             copyto!(ztv, zv)
-            solve_lu_left!(Fv, ztv, ws.fast_lu_ws_f, luF)
+            solve_lu_left!(Fv, ztv, ws.fast_lu_ws_f, luF; use_fastlapack_lu = false)
             loglik += logabsdetF + ℒ.dot(zv, ztv)
             n_obs_total += m
         end
 
         ℒ.mul!(Kv, P, Cv')                   # K = P * C[idx,:]'
-        solve_lu_right!(Fv, Kv, ws.fast_lu_ws_f, luF, rhs_t_kv)  # K = K / F
+        solve_lu_right!(Fv, Kv, ws.fast_lu_ws_f, luF, rhs_t_kv; use_fastlapack_lu = false)  # K = K / F
 
         # P = A * (P - K * C[idx,:] * P) * A' + 𝐁
         ℒ.mul!(tmp, Kv, Cv)                  # tmp = K * C[idx,:]
@@ -536,8 +536,8 @@ function filter_and_smooth(𝓂::ℳ,
             Fv = view(F_buf, 1:m, 1:m)                  # m × m
             Fv .= Cv * P[:, :, t] * Cv'
 
-            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
-                factorize_lu!(Fv, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF_v =
+                factorize_lu!(Val(:Julia), Fv, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
 
             if !solved_F
                 @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
@@ -545,7 +545,7 @@ function filter_and_smooth(𝓂::ℳ,
             end
 
             iF_m = Matrix{Float64}(ℒ.I, m, m)
-            solve_lu_left!(Fv, iF_m, kalman_ws.fast_lu_ws_f, nothing)
+            solve_lu_left!(Fv, iF_m, kalman_ws.fast_lu_ws_f, luF_v; use_fastlapack_lu = false)
 
             v_m = data_in_deviations[idx, t] .- Cv * μ[:, t]
 

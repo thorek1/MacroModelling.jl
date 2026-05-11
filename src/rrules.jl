@@ -8501,6 +8501,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
     n_obs_total = 0
     shocks² = 0.0
     logabsdets = 0.0
+    concat_buf = zeros(n_past + n_exo)
 
     for t in 1:Tt
         idx = idx_seq[t]
@@ -8508,7 +8509,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
         # y_full = data[:,t] - 𝐒obs_past_full * state[t][t⁻]
         y_full = data_in_deviations[:, t] - 𝐒obs_past_full * state_seq[t][t⁻]
         if m == 0
-            x_seq[t] = zeros(n_exo)
+            fill!(x_seq[t], 0.0)
             invjac_v_seq[t] = zeros(0, 0)
             G_seq[t] = zeros(0, 0)
         else
@@ -8566,7 +8567,9 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
             end
         end
         # state[t+1] = 𝐒 * vcat(state[t][t⁻], x_seq[t])
-        ℒ.mul!(state_seq[t+1], 𝐒, vcat(state_seq[t][t⁻], x_seq[t]))
+        copyto!(concat_buf, 1, view(state_seq[t], t⁻), 1, n_past)
+        copyto!(concat_buf, n_past + 1, x_seq[t], 1, n_exo)
+        ℒ.mul!(state_seq[t+1], 𝐒, concat_buf)
     end
 
     llh = -(logabsdets + shocks² + n_obs_total * log(2π)) / 2
@@ -8577,26 +8580,33 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
     function inversion_pullback_missing(∂llh)
         ∂𝐒 = zero(𝐒)
         ∂data_in_deviations = zero(data_in_deviations)
-        ∂state_t⁻ = zeros(n_past)  # cotangent on state[t][t⁻] flowing back
+        ∂state_t⁻ = zeros(n_past)
+
+        n_vars = size(𝐒, 1)
+        n_cols = size(𝐒, 2)
+        v_buf = zeros(n_cols)
+        ∂state_full_next = zeros(n_vars)
+        ∂v = zeros(n_cols)
 
         # Backward pass over periods
         for t in Tt:-1:1
             # state[t+1] = 𝐒 * v where v = vcat(state[t][t⁻], x_seq[t])
-            v = vcat(state_seq[t][t⁻], x_seq[t])
+            copyto!(v_buf, 1, view(state_seq[t], t⁻), 1, n_past)
+            copyto!(v_buf, n_past + 1, x_seq[t], 1, n_exo)
             # Cotangent on state[t+1] enters via the state recursion.
             # ∂state[t+1] is the accumulated cotangent on state[t+1] from later steps;
             # we represent it in its t⁻ projection only for the next iteration.
             # Build full ∂state[t+1] by lifting ∂state_t⁻ into the n_vars-sized vector:
-            ∂state_full_next = zeros(size(𝐒, 1))
+            fill!(∂state_full_next, 0.0)
             ∂state_full_next[t⁻] .= ∂state_t⁻
 
             # ∂𝐒 += ∂state_full_next * v'
-            ℒ.mul!(∂𝐒, ∂state_full_next, v', 1.0, 1.0)
+            ℒ.mul!(∂𝐒, ∂state_full_next, v_buf', 1.0, 1.0)
 
             # ∂v = 𝐒' * ∂state_full_next
-            ∂v = 𝐒' * ∂state_full_next
-            ∂state_t⁻ = ∂v[1:n_past]
-            ∂x_t = ∂v[n_past+1:end]
+            ℒ.mul!(∂v, 𝐒', ∂state_full_next)
+            copyto!(∂state_t⁻, view(∂v, 1:n_past))
+            ∂x_t = view(∂v, n_past+1:n_cols)
 
             idx = idx_seq[t]
             m = length(idx)
@@ -9155,6 +9165,9 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
     kron_buffer3 = zeros(n_exo * (n_past + 1), n_exo)
     𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
     kronaug_state₁ = zeros((n_past + 1 + n_exo)^2)
+    init_guess = zeros(n_exo)
+    kron_buffer = zeros(n_exo^2)
+    kron_buffer2 = zeros(n_exo^2, n_exo)
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -9177,7 +9190,8 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
         𝐒ⁱ_full_seq[t] .= 𝐒ⁱ_full
 
         if m == 0
-            x = zeros(n_exo)
+            fill!(init_guess, 0.0)
+            x = init_guess
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
@@ -9186,9 +9200,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(n_exo)
-            kron_buffer  = zeros(n_exo^2)
-            kron_buffer2 = zeros(n_exo^2, n_exo)
+            fill!(init_guess, 0.0)
             x, matched = find_shocks(Val(filter_algorithm),
                                      init_guess, kron_buffer, kron_buffer2, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
@@ -9866,14 +9878,18 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
             if i > presample_periods
-                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                                inv(jacc[i])'
-                            else
-                                ℒ.pinv(jacc[i])'
-                            end
-                        catch
-                            return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                        end
+                if size(jacc[i], 1) == size(jacc[i], 2)
+                    jacc_lu = ℒ.lu(jacc[i], check = false)
+                    if !ℒ.issuccess(jacc_lu)
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                    ∂jacc = inv(jacc_lu)'
+                else
+                    ∂jacc = ℒ.pinv(jacc[i])'
+                    if !all(isfinite, ∂jacc)
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                end
             else
                 ∂jacc = zero(jacc[i])
             end
@@ -10071,6 +10087,9 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
     kron_buffer3 = zeros(n_exo * (n_past + 1), n_exo)
     𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
     kronaug_state = zeros((n_past + 1 + n_exo)^2)
+    init_guess = zeros(n_exo)
+    kron_buffer = zeros(n_exo^2)
+    kron_buffer2 = zeros(n_exo^2, n_exo)
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -10092,7 +10111,8 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
         𝐒ⁱ_full_seq[t] .= 𝐒ⁱ_full
 
         if m == 0
-            x = zeros(n_exo)
+            fill!(init_guess, 0.0)
+            x = init_guess
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
@@ -10101,9 +10121,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(n_exo)
-            kron_buffer  = zeros(n_exo^2)
-            kron_buffer2 = zeros(n_exo^2, n_exo)
+            fill!(init_guess, 0.0)
             x, matched = find_shocks(Val(filter_algorithm),
                                      init_guess, kron_buffer, kron_buffer2, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
@@ -10716,14 +10734,18 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
             if i > presample_periods
-                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                                inv(jacc[i])'
-                            else
-                                ℒ.pinv(jacc[i])'
-                            end
-                        catch
-                            return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                        end
+                if size(jacc[i], 1) == size(jacc[i], 2)
+                    jacc_lu = ℒ.lu(jacc[i], check = false)
+                    if !ℒ.issuccess(jacc_lu)
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                    ∂jacc = inv(jacc_lu)'
+                else
+                    ∂jacc = ℒ.pinv(jacc[i])'
+                    if !all(isfinite, ∂jacc)
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                end
             else
                 ∂jacc = zero(jacc[i])
             end
@@ -10939,6 +10961,12 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
     kron_buffer4sv = zeros(n_exo^2 * (n_past + 1), n_exo^2)
     kron_aug_state₁ = zeros((n_past + 1 + n_exo)^2)
     kron_kron_aug_state₁ = zeros((n_past + 1 + n_exo)^3)
+    init_guess = zeros(n_exo)
+    kb1 = zeros(n_exo^2)
+    kb2 = zeros(n_exo^3)
+    kb3 = zeros(n_exo^2, n_exo)
+    kb4 = zeros(n_exo^3, n_exo)
+    kb5 = zeros(n_exo^3, n_exo^2)
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -10981,7 +11009,8 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
         𝐒ⁱ²ᵉ_full_seq[t] .= 𝐒ⁱ²ᵉ_full
 
         if m == 0
-            x = zeros(n_exo)
+            fill!(init_guess, 0.0)
+            x = init_guess
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
@@ -10991,12 +11020,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ_full[idx, :]
             𝐒ⁱ³ᵉ_v = 𝐒ⁱ³ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(n_exo)
-            kb1 = zeros(n_exo^2)
-            kb2 = zeros(n_exo^3)
-            kb3 = zeros(n_exo^2, n_exo)
-            kb4 = zeros(n_exo^3, n_exo)
-            kb5 = zeros(n_exo^3, n_exo^2)
+            fill!(init_guess, 0.0)
             x, matched = find_shocks(Val(filter_algorithm),
                                      init_guess, kb1, kb2, kb3, kb4, kb5, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
@@ -11861,14 +11885,18 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
             if i > presample_periods
-                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                                inv(jacc[i])'
-                            else
-                                ℒ.pinv(jacc[i])'
-                            end
-                        catch
-                            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                        end
+                if size(jacc[i], 1) == size(jacc[i], 2)
+                    jacc_lu = ℒ.lu(jacc[i], check = false)
+                    if !ℒ.issuccess(jacc_lu)
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                    ∂jacc = inv(jacc_lu)'
+                else
+                    ∂jacc = ℒ.pinv(jacc[i])'
+                    if !all(isfinite, ∂jacc)
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                end
             else
                 ∂jacc = zero(jacc[i])
             end
@@ -12828,14 +12856,18 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1] — only for i > presample_periods
             if i > presample_periods
-                ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
-                                inv(jacc[i])'
-                            else
-                                ℒ.pinv(jacc[i])'
-                            end
-                        catch
-                            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
-                        end
+                if size(jacc[i], 1) == size(jacc[i], 2)
+                    jacc_lu = ℒ.lu(jacc[i], check = false)
+                    if !ℒ.issuccess(jacc_lu)
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                    ∂jacc = inv(jacc_lu)'
+                else
+                    ∂jacc = ℒ.pinv(jacc[i])'
+                    if !all(isfinite, ∂jacc)
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
+                end
             else
                 ∂jacc = zero(jacc[i])
             end
@@ -13168,7 +13200,7 @@ function rrule(::typeof(calculate_loglikelihood),
             ℒ.mul!(CPv, Cv, P̄)
             ℒ.mul!(Fv, CPv, Cv')
 
-            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Fv,
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
                                                                                                 kalman_ws.fast_lu_ws_f,
                                                                                                 kalman_ws.fast_lu_dims_f)
 
@@ -13178,7 +13210,7 @@ function rrule(::typeof(calculate_loglikelihood),
             end
 
             logabsdetF = 0.0
-            signF = isodd(count(i -> kalman_ws.fast_lu_ws_f.ipiv[i] != i, 1:m)) ? -1.0 : 1.0
+            signF = isodd(count(i -> luF.ipiv[i] != i, 1:m)) ? -1.0 : 1.0
             @inbounds for i in 1:m
                 di = Fv[i, i]
                 if di == 0
@@ -13200,7 +13232,7 @@ function rrule(::typeof(calculate_loglikelihood),
             @inbounds for i in 1:m
                 invF_scratch[i, i] = 1.0
             end
-            solve_lu_left!(Fv, invF_scratch, kalman_ws.fast_lu_ws_f, luF)
+            solve_lu_left!(Fv, invF_scratch, kalman_ws.fast_lu_ws_f, luF; use_fastlapack_lu = false)
             @inbounds for j in 1:m, i in 1:m
                 invF[t][idx[i], idx[j]] = invF_scratch[i, j]
             end
@@ -13224,7 +13256,7 @@ function rrule(::typeof(calculate_loglikelihood),
             Kv_scratch = view(PCtmp, :, 1:m)
             ℒ.mul!(Kv_scratch, P̄, Cv')
             rhs_t_kv = view(kalman_ws.fast_lu_rhs_t_k, 1:m, :)
-            solve_lu_right!(Fv, Kv_scratch, kalman_ws.fast_lu_ws_f, luF, rhs_t_kv)
+            solve_lu_right!(Fv, Kv_scratch, kalman_ws.fast_lu_ws_f, luF, rhs_t_kv; use_fastlapack_lu = false)
             @inbounds for j in 1:m, i in 1:size(K[t], 1)
                 K[t][i, idx[j]] = Kv_scratch[i, j]
             end

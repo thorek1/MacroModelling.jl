@@ -3047,11 +3047,11 @@ function calculate_loglikelihood_inversion_missing_first_order(
                 logabsdets += ℒ.logabsdet(jacdecomp)[1]
             end
         else
-            jacdecomp = try ℒ.svd(jac_v)
-            catch
-                if opts.verbose println("Inversion filter failed at step $i (SVD)") end
+            if !all(isfinite, jac_v)
+                if opts.verbose println("Inversion filter failed at step $i (non-finite Jacobian)") end
                 return on_failure_loglikelihood
             end
+            jacdecomp = ℒ.svd(jac_v)
             x_v = jacdecomp \ y_v
             if i > presample_periods
                 logabsdets += sum(s -> log(abs(s)), jacdecomp.S)
