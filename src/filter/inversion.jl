@@ -62,7 +62,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = false)
     ensure_inversion_estimation_buffers!(ws, T.nExo, length(observables_index))
 
@@ -163,7 +163,7 @@ function calculate_loglikelihood(::Val{:inversion},
     if T.nExo == length(observables_index)
         if R <: AbstractFloat
             lu_ws = FastLapackInterface.LUWs(jac)
-            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+            lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
             if !ok
                 if opts.verbose println("Inversion filter failed") end
@@ -251,7 +251,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
     
@@ -284,20 +284,13 @@ function calculate_loglikelihood(::Val{:inversion},
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺  = cc.e_in_s⁺
     
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+    so = ensure_conditional_forecast_constants!(constants)
+    shock_idxs = so.shock_idxs
+    shock²_idxs = so.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = so.var_vol²_idxs
+    var²_idxs = so.var²_idxs
 
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
-    
     𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
@@ -536,7 +529,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -568,19 +561,11 @@ function calculate_loglikelihood(::Val{:inversion},
 
     # s_in_s⁺ = computational_constants.s_in_s
     cc = ensure_computational_constants!(constants)
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
+    so = ensure_conditional_forecast_constants!(constants)
+    shock_idxs = cc.shock_idxs
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
     
     # tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
     # var²_idxs = tmp.nzind
@@ -625,7 +610,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     # Use workspace buffers instead of fresh allocations
     shock_independent = ws.shock_independent
-    fill!(shock_independent, 0.0)
+    fill!(shock_independent, zero(R))
 
     kronstate¹⁻_vol = ws.kronstate_vol
 
@@ -638,7 +623,7 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
 
     init_guess = ws.init_guess
-    fill!(init_guess, 0.0)
+    fill!(init_guess, zero(R))
 
     # end # timeit_debug
     # @timeit_debug timer "Loop" begin
@@ -793,7 +778,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "Inversion filter" begin
 
     # Ensure workspaces are properly sized
@@ -824,18 +809,15 @@ function calculate_loglikelihood(::Val{:inversion},
 
     cc = ensure_computational_constants!(constants)
     s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
 
+    so = ensure_conditional_forecast_constants!(constants; third_order = true)
     shockvar_idxs = cc.shockvar_idxs
-    shock_idxs = cc.shock_idxs
-    shock_idxs2 = cc.shock_idxs2
     shock²_idxs = cc.shock²_idxs
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
+    shockvar²_idxs = so.shockvar²_idxs
     var_vol²_idxs = cc.var_vol²_idxs
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    var²_idxs = so.var²_idxs
+    to = constants.third_order
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -856,30 +838,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    var_vol³_idxs = to.var_vol³_idxs
+    shock³_idxs = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs = to.shockvar³_idxs
 
     𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs] |> collect
@@ -1255,7 +1217,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real,U <: AbstractFloat}
     T = constants.post_model_macro
-    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(T = R)
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1286,26 +1248,12 @@ function calculate_loglikelihood(::Val{:inversion},
     logabsdets = zero(R)
 
     cc = ensure_computational_constants!(constants)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    so = ensure_conditional_forecast_constants!(constants; third_order = true)
+    shock²_idxs = cc.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = cc.var_vol²_idxs
+    var²_idxs = so.var²_idxs
+    to = constants.third_order
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -1326,30 +1274,10 @@ function calculate_loglikelihood(::Val{:inversion},
 
     state = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    var_vol³_idxs = to.var_vol³_idxs
+    shock³_idxs = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs = to.shockvar³_idxs
 
     𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
@@ -1714,7 +1642,7 @@ end
     if T.nExo == length(observables)
         if eltype(jac) <: AbstractFloat
             lu_ws = FastLapackInterface.LUWs(jac)
-            lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+            lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
             if !ok
                 @error "Inversion filter failed"
@@ -1811,7 +1739,8 @@ end
         return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     full_state = collect(sss) - all_SS
@@ -1825,20 +1754,11 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    so = ensure_conditional_forecast_constants!(𝓂.constants)
     # s_in_s⁺ = computational_constants.s_in_s
-    sv_in_s⁺ = computational_constants.s_in_s⁺
-    e_in_s⁺ = computational_constants.e_in_s⁺
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
+    shock²_idxs = computational_constants.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = computational_constants.var_vol²_idxs
     
     # tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
     # var²_idxs = tmp.nzind
@@ -2047,7 +1967,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2075,23 +1996,13 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
-    s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    so = ensure_conditional_forecast_constants!(𝓂.constants)
     sv_in_s⁺ = computational_constants.s_in_s⁺
-    e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    shock²_idxs = computational_constants.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = computational_constants.var_vol²_idxs
+    var²_idxs = so.var²_idxs
     
     𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -2348,7 +2259,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2376,26 +2288,12 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
-    s_in_s⁺ = computational_constants.s_in_s
-    sv_in_s⁺ = computational_constants.s_in_s⁺
-    e_in_s⁺ = computational_constants.e_in_s⁺
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    so = ensure_conditional_forecast_constants!(𝓂.constants; third_order = true)
+    shock²_idxs = computational_constants.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = computational_constants.var_vol²_idxs
+    var²_idxs = so.var²_idxs
+    to = 𝓂.constants.third_order
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -2416,30 +2314,10 @@ end
 
     state = state[T.past_not_future_and_mixed_idx]
 
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    var_vol³_idxs = to.var_vol³_idxs
+    shock³_idxs = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs = to.shockvar³_idxs
 
     𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
@@ -2689,7 +2567,8 @@ end
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -2717,29 +2596,18 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    so = ensure_conditional_forecast_constants!(𝓂.constants; third_order = true)
     s_in_s⁺ = computational_constants.s_in_s
-    sv_in_s⁺ = computational_constants.s_in_s⁺
     e_in_s⁺ = computational_constants.e_in_s⁺
 
-    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
-    shockvar_idxs = tmp.nzind
+    shockvar_idxs = so.shockvar_no_vol_idxs
     
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
+    shock²_idxs = computational_constants.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs = computational_constants.var_vol²_idxs
 
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
+    var²_idxs = so.var²_idxs
+    to = 𝓂.constants.third_order
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -2760,30 +2628,10 @@ end
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    var_vol³_idxs = to.var_vol³_idxs
+    shock³_idxs = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs = to.shockvar³_idxs
 
     𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]

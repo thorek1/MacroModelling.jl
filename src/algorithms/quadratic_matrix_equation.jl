@@ -206,12 +206,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_qz_dims,
     schdcmp,
     schur_ok,
-    has_ur = factorize_generalized_schur!(D,
+    has_ur = factorize_generalized_schur!((use_fastlapack_schur ? Val(:FastLapack) : Val(:Julia)), D,
                                             E,
                                             schur_ws_local.fast_qz_ws,
                                             schur_ws_local.fast_qz_dims,
-                                            schur_ws_local.eigenselect;
-                                            use_fastlapack_schur = use_fastlapack_schur)
+                                            schur_ws_local.eigenselect)
 
     if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -234,10 +233,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_z11,
     schur_ws_local.fast_lu_dims_z11,
     solved_Z₁₁,
-    Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
+    Ẑ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.Z₁₁,
                         schur_ws_local.fast_lu_ws_z11,
-                        schur_ws_local.fast_lu_dims_z11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_z11)
     
     if !solved_Z₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -248,10 +246,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_s11,
     schur_ws_local.fast_lu_dims_s11,
     solved_S₁₁,
-    Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
+    Ŝ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.S₁₁,
                         schur_ws_local.fast_lu_ws_s11,
-                        schur_ws_local.fast_lu_dims_s11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_s11)
     
     if !solved_S₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -338,10 +335,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100,
+                                        max_iter::Int = 50,
                                         caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
     workspace = ensure_qme_doubling_workspace!(workspaces, size(A, 1))
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
@@ -351,10 +349,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     guess_provided = true
     n = size(A, 1)
 
-    if length(initial_guess) == 0
-        guess_provided = false
-        initial_guess = zero(A)
-    end
+    # if length(initial_guess) == 0
+    #     guess_provided = false
+    #     initial_guess = zero(A)
+    # end
 
     # Extract workspaces
     E = workspace.E
@@ -376,15 +374,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     copy!(F, A)
     copy!(B̄, B)
 
-    ℒ.mul!(B̄, A, initial_guess, 1, 1)
+    # ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
     workspace.fast_lu_ws_qme_a,
     workspace.fast_lu_dims_qme_a,
     solved_B,
-    B̂ = factorize_lu!(B̄,
+    B̂ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), B̄,
                        workspace.fast_lu_ws_qme_a,
-                       workspace.fast_lu_dims_qme_a;
-                       use_fastlapack_lu = use_fastlapack_lu)
+                       workspace.fast_lu_dims_qme_a)
 
     if !solved_B
         return A, 0, 1.0
@@ -399,7 +396,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # X = -E - initial_guess (in-place)
     copy!(X, E)
     ℒ.rmul!(X, -1)
-    ℒ.axpy!(-1, initial_guess, X)
+    # ℒ.axpy!(-1, initial_guess, X)
     # Y = -F (in-place)
     copy!(Y, F)
     ℒ.rmul!(Y, -1)
@@ -431,10 +428,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_a,
         workspace.fast_lu_dims_qme_a,
         solved_EI,
-        fEI = factorize_lu!(temp1,
+        fEI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp1,
                             workspace.fast_lu_ws_qme_a,
-                            workspace.fast_lu_dims_qme_a;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_a)
 
         if !solved_EI
             return A, iter, 1.0
@@ -466,10 +462,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_b,
         workspace.fast_lu_dims_qme_b,
         solved_FI,
-        fFI = factorize_lu!(temp2,
+        fFI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp2,
                             workspace.fast_lu_ws_qme_b,
-                            workspace.fast_lu_dims_qme_b;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_b)
         
         if !solved_FI
             return A, iter, 1.0
@@ -538,7 +533,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
     # end # timeit_debug
 
-    ℒ.axpy!(1, initial_guess, X_new)
+    # ℒ.axpy!(1, initial_guess, X_new)
 
     # Compute residual to verify solution quality
     # AXX = A * X_new^2 (use temp1 for X^2)

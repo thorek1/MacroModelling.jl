@@ -194,7 +194,7 @@ function run_kalman_iterations(A::Matrix{S},
         ℒ.mul!(F, Ctmp, C')                                    # F = C * P * C'
 
         # Old way (≤v0.1.42): luF = lu(F)  — allocates new LU each step
-        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
                                                                            ws.fast_lu_ws_f,
                                                                            ws.fast_lu_dims_f)
 
@@ -516,7 +516,7 @@ function filter_and_smooth(𝓂::ℳ,
             end
 
             kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
-                factorize_lu!(F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+                factorize_lu!(Val(:FastLapack), F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
 
             if !solved_F
                 @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."

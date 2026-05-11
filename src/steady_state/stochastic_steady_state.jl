@@ -1,19 +1,19 @@
 @stable default_mode = "disable" begin
 
 
-@unstable function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
+function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                      𝓂::ℳ;
                                                      opts::CalculationOptions = merge_calculation_options(),
                                                      estimation::Bool = false,
-                                                     caching::Bool = true) where M
-    constants = initialise_constants!(𝓂)
-    T = constants.post_model_macro
+                                                     caching::Bool = true)::Tuple{Bool, Vector{M}, Vector{M}, M, Matrix{M}, SparseMatrixCSC{M, Int}, Matrix{M}, SparseMatrixCSC{M, Int}, Vector{M}, constants} where M
+    C = initialise_constants!(𝓂)
+    T = C.post_model_macro
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation, caching = caching)
 
     if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         return (false,
-            zeros(T.nVars),
+            zeros(M, T.nVars),
             SS_and_pars,
             solution_error,
             zeros(M,0,0),
@@ -21,16 +21,17 @@
             zeros(M,0,0),
             spzeros(M,0,0),
             zeros(M,0),
-            constants)
+            C)
     end
 
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(C, 𝓂.equations.calibration_parameters)
+    ms = C.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = caching)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                         constants,
+                                                         C,
                                                          𝓂.workspaces,
                                                          𝓂.caches;
                                                          opts = opts,
@@ -51,16 +52,18 @@
             zeros(M,0,0),
             spzeros(M,0,0),
             zeros(M,0),
-            constants)
+            C)
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces, caching = caching)
 
-    𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
+    𝐒₂_raw_untyped, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
                                                   opts = opts,
                                                   parameter_values = parameters,
                                                   caching = caching)
+
+    𝐒₂_raw = sparse(𝐒₂_raw_untyped)::SparseMatrixCSC{M, Int}
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -75,20 +78,20 @@
             zeros(M,0,0),
             spzeros(M,0,0),
             zeros(M,0),
-            constants)
+            C)
     end
 
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
+    𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)])
+    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
     tmp = collect(T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
     rhs = collect((𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
     if M === Float64
-        tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
-        tmp_sol = 𝒮.solve!(tmp_cache)
+        ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+        tmp_sol = 𝒮.solve!(𝓂.workspaces.second_order.sss_tmp_lu_buffer)
 
         if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
             if opts.verbose println("SSS not found") end
@@ -101,7 +104,7 @@
                 zeros(M,0,0),
                 spzeros(M,0,0),
                 zeros(M,0),
-                constants)
+                C)
         end
 
         SSSstates = collect(tmp_sol.u)
@@ -119,11 +122,13 @@
                 zeros(M,0,0),
                 spzeros(M,0,0),
                 zeros(M,0),
-                constants)
+                C)
         end
 
         SSSstates = collect(tmp̄ \ rhs)
     end
+
+    SSSstates = SSSstates::Vector{M}
 
         return (true,
             all_SS,
@@ -134,15 +139,15 @@
             𝐒₁,
             𝐒₂_raw,
             SSSstates,
-            constants)
+            C)
 end
 
-@unstable function calculate_stochastic_steady_state(::Val{:second_order},
+function calculate_stochastic_steady_state(::Val{:second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false,
-                                           caching::Bool = true) where M
+                                           caching::Bool = true)::Tuple{Vector{M}, Bool, Vector{M}, M, Matrix{M}, SparseMatrixCSC{M, Int}, Matrix{M}, SparseMatrixCSC{M, Int}} where M
     # Cache hit: return cached SSS if valid for current parameters
     if caching && M === Float64 && !isempty(parameters) &&
        cache_valid_for_parameters(𝓂.caches.valid_for.second_order_stochastic_steady_state, parameters)
@@ -168,7 +173,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     so = 𝓂.constants.second_order
     kron_s⁺_s⁺ = so.kron_s⁺_s⁺
@@ -194,12 +199,12 @@ end
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
-@unstable function calculate_stochastic_steady_state(::Val{:pruned_second_order},
+function calculate_stochastic_steady_state(::Val{:pruned_second_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false,
-                                           caching::Bool = true) where M
+                                           caching::Bool = true)::Tuple{Vector{M}, Bool, Vector{M}, M, Matrix{M}, SparseMatrixCSC{M, Int}, Matrix{M}, SparseMatrixCSC{M, Int}} where M
     # Cache hit: return cached pruned SSS if valid for current parameters
     if caching && M === Float64 && !isempty(parameters) &&
        cache_valid_for_parameters(𝓂.caches.valid_for.pruned_second_order_stochastic_steady_state, parameters)
@@ -225,10 +230,12 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates +
-            𝐒₂ * ℒ.kron(sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)]), sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])) / 2
+    T = 𝓂.constants.post_model_macro
+    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
+    state = 𝐒₁[:,1:T.nPast_not_future_and_mixed] * SSSstates +
+            𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
     result = all_SS + Vector{M}(state)
 
@@ -242,12 +249,12 @@ end
 
 
 
-@unstable function solve_stochastic_steady_state_newton(::Val{:second_order}, 
+function solve_stochastic_steady_state_newton(::Val{:second_order}, 
                                               𝐒₁::Matrix{R}, 
                                               𝐒₂::AbstractSparseMatrix{R}, 
                                               x::Vector{R},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14) where R <: AbstractFloat
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Setup matrices" begin
 
     # Get cached computational constants
@@ -287,8 +294,8 @@ end
         x̂ = A * x + B̂ * kron_x_aug_xx / 2
 
         Δx = x̂ - x
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -314,12 +321,12 @@ end
 
 
 
-@unstable function calculate_stochastic_steady_state(::Val{:third_order},
+function calculate_stochastic_steady_state(::Val{:third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false,
-                                           caching::Bool = true) where M <: Real
+                                           caching::Bool = true)::Tuple{Vector{M}, Bool, Vector{M}, M, Matrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, Matrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
     # Cache hit: return cached SSS if valid for current parameters
     if caching && M === Float64 && !isempty(parameters) &&
        cache_valid_for_parameters(𝓂.caches.valid_for.third_order_stochastic_steady_state, parameters)
@@ -347,7 +354,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -408,12 +415,12 @@ end
     return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
-@unstable function calculate_stochastic_steady_state(::Val{:pruned_third_order},
+function calculate_stochastic_steady_state(::Val{:pruned_third_order},
                                            parameters::Vector{M},
                                            𝓂::ℳ;
                                            opts::CalculationOptions = merge_calculation_options(),
                                            estimation::Bool = false,
-                                           caching::Bool = true) where M <: Real
+                                           caching::Bool = true)::Tuple{Vector{M}, Bool, Vector{M}, M, Matrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, Matrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
     # Cache hit: return cached pruned SSS if valid for current parameters
     if caching && M === Float64 && !isempty(parameters) &&
        cache_valid_for_parameters(𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state, parameters)
@@ -441,7 +448,7 @@ end
     end
 
     # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -471,8 +478,9 @@ end
     Ŝ = 𝓂.workspaces.third_order.Ŝ
     𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
 
-    aug_state₁ = sparse([zeros(𝓂.constants.post_model_macro.nPast_not_future_and_mixed); 1; zeros(𝓂.constants.post_model_macro.nExo)])
-    state = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+    T = 𝓂.constants.post_model_macro
+    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
+    state = 𝐒₁[:,1:T.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
     result = all_SS + Vector{M}(state)
 
@@ -485,13 +493,13 @@ end
 end
 
 
-@unstable function solve_stochastic_steady_state_newton(::Val{:third_order}, 
+function solve_stochastic_steady_state_newton(::Val{:third_order}, 
                                               𝐒₁::Matrix{Float64}, 
                                               𝐒₂::AbstractSparseMatrix{Float64}, 
                                               𝐒₃::AbstractSparseMatrix{Float64},
                                               x::Vector{Float64},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14)
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{Float64}, Bool}
     # Get cached computational constants
     so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
@@ -536,8 +544,8 @@ end
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false

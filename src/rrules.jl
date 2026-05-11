@@ -32,6 +32,7 @@ function rrule(::typeof(mat_mult_kron),
     Y = mat_mult_kron(A, B, C, D)
 
     function mat_mult_kron_pullback(Ȳ)
+        Ȳ = unthunk(Ȳ)
         if Ȳ isa AbstractZero
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -181,8 +182,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         ∂x = (A + B * kron_x_aug_I - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug_buf / 2 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -209,7 +210,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
 
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
-        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
+        ∂x₁ = unthunk(∂x[1])
+        S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -275,8 +277,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug_buf / 2 + Ĉ * kron_x_kron_buf / 6 - x)
-        dx_cache = ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
-        sol = 𝒮.solve!(dx_cache)
+        ensure_dx_lu_buffer!(ℂ, ∂x, Δx)
+        sol = 𝒮.solve!(ℂ.dx_lu_buffer)
 
         if sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(sol.retcode)
             return x, false
@@ -302,7 +304,8 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
+        ∂x₁ = unthunk(∂x[1])
+        S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
         
@@ -430,7 +433,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 estimation::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -561,7 +565,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         JVP = qme_ws.nsss_jvp_rhs
     else
         # Old way (≤v0.1.42): nsss_lu = lu(∂SS/∂SS_and_pars)
-        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(∂SS_equations_∂SS_and_pars,
+        qme_ws.fast_lu_ws_nsss, qme_ws.fast_lu_dims_nsss, solved_nsss, nsss_lu = factorize_lu!(Val(:FastLapack), ∂SS_equations_∂SS_and_pars,
                                                                                                  qme_ws.fast_lu_ws_nsss,
                                                                                                  qme_ws.fast_lu_dims_nsss)
 
@@ -593,7 +597,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        ∂SS = ∂SS_and_pars[1]
+        ∂SS = unthunk(∂SS_and_pars[1])
         if ∂SS isa Union{NoTangent, AbstractZero}
             return NoTangent(), NoTangent(), zeros(S, size(jvp_no_exo, 2)), NoTangent()
         end
@@ -750,7 +754,8 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
         return common, pullback
     end
 
-    ms = ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    ms = constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     ∇₁, jacobian_pullback =
@@ -818,8 +823,8 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
     rhs = collect((𝐒₂ * kron_aug1 / 2)[past_idx])
     tmp_for_pullback = copy(tmp)
 
-    tmp_cache = ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
-    tmp_sol = 𝒮.solve!(tmp_cache)
+    ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
+    tmp_sol = 𝒮.solve!(𝓂.workspaces.second_order.sss_tmp_lu_buffer)
 
     if tmp_sol.retcode != 𝒮.SciMLBase.ReturnCode.Default && !𝒮.SciMLBase.successful_retcode(tmp_sol.retcode)
         common = (false,
@@ -840,13 +845,13 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
 
     SSSstates = collect(tmp_sol.u)
     tmp_pb_lu_ws, tmp_pb_lu_dims = ensure_sss_pullback_fast_lu_workspace!(𝓂.workspaces.second_order, tmp_for_pullback)
-    tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu = factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
+    tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu = factorize_lu!(Val(:FastLapack), tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
     𝓂.workspaces.second_order.fast_lu_ws_sss_pullback = tmp_pb_lu_ws
     𝓂.workspaces.second_order.fast_lu_dims_sss_pullback = tmp_pb_lu_dims
     use_fastlapack_tmp_pb = solved_tmp_pb_lu
     if !solved_tmp_pb_lu
         tmp_pb_lu_ws, tmp_pb_lu_dims, solved_tmp_pb_lu, tmp_pb_lu =
-            factorize_lu!(tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims; use_fastlapack_lu = false)
+            factorize_lu!(Val(:Julia), tmp_for_pullback, tmp_pb_lu_ws, tmp_pb_lu_dims)
         @assert solved_tmp_pb_lu "Could not factorize preserved stochastic steady-state pullback matrix."
         use_fastlapack_tmp_pb = false
     end
@@ -1559,7 +1564,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = collect(sss) - all_SS
 
@@ -1632,7 +1638,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = [zeros(S, nVars), collect(sss) - all_SS]
 
@@ -1705,7 +1712,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = collect(sss) - all_SS
 
@@ -1782,7 +1790,8 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, _ -> (NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
     state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
 
@@ -5412,7 +5421,8 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Preprocessing" begin
 
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
 
     dynIndex = idx_constants.dyn_index
     reverse_dynamic_order = idx_constants.reverse_dynamic_order
@@ -5448,8 +5458,7 @@ function rrule(::typeof(calculate_first_order_solution),
     #   A₊ = Q' * ∇₊;  A₀ = Q' * ∇₀;  A₋ = Q' * ∇₋
     # Current code reuses QR workspaces to avoid allocations.
     qr_factors, qr_ws = ensure_first_order_fast_qr_workspace!(qme_ws, ∇₀_present)
-    Q = factorize_qr!(∇₀_present, qr_factors, qr_ws;                 # Q = qr(∇₀_present)
-                        use_fastlapack_qr = use_fastlapack_qr)
+    Q = factorize_qr!((use_fastlapack_qr ? Val(:FastLapack) : Val(:Julia)), ∇₀_present, qr_factors, qr_ws)                 # Q = qr(∇₀_present)
 
     qme_ws.fast_qr_orm_ws_plus, qme_ws.fast_qr_orm_dims_plus = apply_qr_transpose_left!(A₊, ∇₊, Q,           # A₊ = Q' * ∇₊
                                                                                         qme_ws.fast_qr_orm_ws_plus,
@@ -5519,10 +5528,9 @@ function rrule(::typeof(calculate_first_order_solution),
     # @timeit_debug timer "Invert Ā₀ᵤ" begin
 
     # Old way (≤v0.1.42): Ā̂₀ᵤ = lu(Ā₀ᵤ)
-    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!(Ā₀ᵤ,
+    qme_ws.fast_lu_ws_a0u, qme_ws.fast_lu_dims_a0u, solved_Ā₀ᵤ, Ā̂₀ᵤ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), Ā₀ᵤ,
                                                                                        qme_ws.fast_lu_ws_a0u,
-                                                                                       qme_ws.fast_lu_dims_a0u;
-                                                                                       use_fastlapack_lu = use_fastlapack_lu)
+                                                                                       qme_ws.fast_lu_dims_a0u)
 
     if !solved_Ā₀ᵤ
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -5568,10 +5576,9 @@ function rrule(::typeof(calculate_first_order_solution),
 
     # Old way (≤v0.1.42): C = lu(∇₀)
     # Old way (≤v0.1.42): C = lu(∇₀)
-    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!(∇₀,
+    qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇₀, C = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), ∇₀,
                                                                                          qme_ws.fast_lu_ws_nabla0,
-                                                                                         qme_ws.fast_lu_dims_nabla0;
-                                                                                         use_fastlapack_lu = use_fastlapack_lu)
+                                                                                         qme_ws.fast_lu_dims_nabla0)
 
     if !solved_∇₀
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -5604,14 +5611,15 @@ function rrule(::typeof(calculate_first_order_solution),
         # Guard: if the cotangent for the solution matrix is NoTangent
         # (e.g. because a downstream filter failure returned all-NoTangent),
         # return zero gradients immediately.
-        if ∂𝐒[1] isa Union{NoTangent, AbstractZero}
+        ∂𝐒_mat = unthunk(∂𝐒[1])
+        if ∂𝐒_mat isa Union{NoTangent, AbstractZero}
             return NoTangent(), zero(∇₁), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂∇₁ = zero(∇₁)
 
-        ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
-        ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
+        ∂𝐒ᵗ = ∂𝐒_mat[:,1:T.nPast_not_future_and_mixed]
+        ∂𝐒ᵉ = ∂𝐒_mat[:,T.nPast_not_future_and_mixed + 1:end]
 
         # Shared sub-expression: W = M' * ∂𝐒ᵉ * ∇ₑ' * M'
         # Use workspace buffers to avoid repeated intermediate allocations.
@@ -5658,7 +5666,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         # ss_Sht = ss * 𝐒̂ᵗ'  (nVars × nVars) → reuse t2
@@ -5708,7 +5716,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     parameter_values::AbstractVector{<:Real} = Float64[],
                     caching::Bool = true) where {S <: Real, R <: Real}
     if !(eltype(workspaces.second_order.Ŝ) == S)
-        workspaces.second_order = Higher_order_workspace(T = S)
+        workspaces.second_order = Higher_order_workspace(S)
     end
     ℂ = workspaces.second_order
     M₂ = constants.second_order
@@ -5763,7 +5771,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             if opts.verbose println("Second order solution: inversion failed") end
@@ -5824,12 +5832,23 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
+    # Doubling power-cache: enable capture so the pullback's adjoint solve can
+    # reuse A^(2^k), B^(2^k) from this forward pass.
+    cache_eligible_2nd = opts.sylvester_algorithm² == :doubling
+    if cache_eligible_2nd
+        ℂ.sylvester_workspace.pow_iters = 0
+        ℂ.sylvester_workspace.pow_capture = true
+        ℂ.sylvester_workspace.pow_transposed = true
+    end
     𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess,
-                                            sylvester_algorithm = opts.sylvester_algorithm²,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.second_order.ad.sylvester,
-                                            verbose = opts.verbose)
+                                        initial_guess = initial_guess,
+                                        sylvester_algorithm = opts.sylvester_algorithm²,
+                                        preconditioner = opts.sylvester_preconditioner,
+                                        tol = opts.tol.second_order.ad.sylvester,
+                                        verbose = opts.verbose)
+    ℂ.sylvester_workspace.pow_capture = false
+    pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
+    ℂ.sylvester_workspace.pow_iters = 0
     𝐒₂_stable = copy(𝐒₂)
 
     # end # timeit_debug
@@ -5897,7 +5916,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # end # timeit_debug
 
-        ∂𝐒₂ = ∂𝐒₂_solved[1]
+        ∂𝐒₂ = unthunk(∂𝐒₂_solved[1])
 
         if size(∂𝐒₂, 2) == size(𝐒₂_stable, 2)
             nothing
@@ -5912,11 +5931,22 @@ function rrule(::typeof(calculate_second_order_solution),
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, ℂ.sylvester_workspace,
-                                                sylvester_algorithm = opts.sylvester_algorithm²,
-                                                preconditioner = opts.sylvester_preconditioner,
-                                                tol = opts.tol.second_order.ad.sylvester,
-                                                verbose = opts.verbose)
+        ws = ℂ.sylvester_workspace
+        cache_valid = cache_eligible_2nd &&
+                      pow_iters_captured_2nd >= 1 &&
+                      ws.pow_transposed
+        saved_capture = ws.pow_capture
+        if cache_valid
+            ws.pow_iters = pow_iters_captured_2nd
+            ws.pow_capture = false
+        end
+        ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
+                                              sylvester_algorithm = opts.sylvester_algorithm²,
+                                              preconditioner = opts.sylvester_preconditioner,
+                                              tol = opts.tol.second_order.ad.sylvester,
+                                              verbose = opts.verbose)
+        ws.pow_capture = saved_capture
+        ws.pow_iters = 0
 
         if !solved
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -7621,7 +7651,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # --- workspace / constants ---------------------------------------------------
     if !(eltype(workspaces.third_order.Ŝ) == S)
-        workspaces.third_order = Higher_order_workspace(T = S)
+        workspaces.third_order = Higher_order_workspace(S)
     end
     ℂ = workspaces.third_order
     M₂ = constants.second_order
@@ -7677,7 +7707,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     if S === Float64
         qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0, solved_∇lu, lu_handle =
-            factorize_lu!(∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
+            factorize_lu!(Val(:FastLapack), ∇₁₊𝐒₁➕∇₁₀, qme_ws.fast_lu_ws_nabla0, qme_ws.fast_lu_dims_nabla0)
 
         if !solved_∇lu
             return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -7758,12 +7788,21 @@ function rrule(::typeof(calculate_third_order_solution),
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
+    cache_eligible_3rd = opts.sylvester_algorithm³ == :doubling
+    if cache_eligible_3rd
+        ℂ.sylvester_workspace.pow_iters = 0
+        ℂ.sylvester_workspace.pow_capture = true
+        ℂ.sylvester_workspace.pow_transposed = true
+    end
     𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess_sylv,
-                                            sylvester_algorithm = opts.sylvester_algorithm³,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.third_order.ad.sylvester,
-                                            verbose = opts.verbose)
+                                        initial_guess = initial_guess_sylv,
+                                        sylvester_algorithm = opts.sylvester_algorithm³,
+                                        preconditioner = opts.sylvester_preconditioner,
+                                        tol = opts.tol.third_order.ad.sylvester,
+                                        verbose = opts.verbose)
+    ℂ.sylvester_workspace.pow_capture = false
+    pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
+    ℂ.sylvester_workspace.pow_iters = 0
 
     𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
@@ -7827,18 +7866,29 @@ function rrule(::typeof(calculate_third_order_solution),
     #   PULLBACK
     # =========================================================================
     function third_order_solution_pullback(∂𝐒₃_solved)
-        ∂𝐒₃ = choose_matrix_format(∂𝐒₃_solved[1])
+        ∂𝐒₃ = choose_matrix_format(unthunk(∂𝐒₃_solved[1]))
 
         if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ℂ.sylvester_workspace,
-                                                  sylvester_algorithm = opts.sylvester_algorithm³,
-                                                  preconditioner = opts.sylvester_preconditioner,
-                                                  tol = opts.tol.third_order.ad.sylvester,
-                                                  verbose = opts.verbose)
+        ws = ℂ.sylvester_workspace
+        cache_valid = cache_eligible_3rd &&
+                      pow_iters_captured_3rd >= 1 &&
+                      ws.pow_transposed
+        saved_capture = ws.pow_capture
+        if cache_valid
+            ws.pow_iters = pow_iters_captured_3rd
+            ws.pow_capture = false
+        end
+        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
+                                              sylvester_algorithm = opts.sylvester_algorithm³,
+                                              preconditioner = opts.sylvester_preconditioner,
+                                              tol = opts.tol.third_order.ad.sylvester,
+                                              verbose = opts.verbose)
+        ws.pow_capture = saved_capture
+        ws.pow_iters = 0
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
@@ -8118,12 +8168,27 @@ function rrule(::typeof(solve_sylvester_equation),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
+    # Enable doubling-power capture only for the dense-dense :doubling path
+    # (the dense-dense overload of solve_sylvester_equation populates 𝐀_pow/𝐁_pow).
+    # Enable doubling-power capture for the :doubling algorithm path.
+    # The solver overloads populate 𝕊ℂ.𝐀_pow / 𝐁_pow during forward iteration so
+    # the pullback can skip squaring. With pow_transposed=true, powers are stored
+    # in transposed form directly, saving a post-hoc transpose pass.
+    cache_eligible = sylvester_algorithm == :doubling
+    if cache_eligible
+        𝕊ℂ.pow_iters = 0
+        𝕊ℂ.pow_capture = true
+        𝕊ℂ.pow_transposed = true
+    end
     P, solved = solve_sylvester_equation(A, B, C, 𝕊ℂ,
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        preconditioner = preconditioner,
-                                        tol = tol, 
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    preconditioner = preconditioner,
+                                    tol = tol,
+                                    verbose = verbose,
+                                    initial_guess = initial_guess)
+    𝕊ℂ.pow_capture = false
+    pow_iters_captured = 𝕊ℂ.pow_iters
+    𝕊ℂ.pow_iters = 0
 
     if size(𝕊ℂ.P) != size(P)
         𝕊ℂ.P = zeros(eltype(P), size(P)...)
@@ -8133,23 +8198,46 @@ function rrule(::typeof(solve_sylvester_equation),
 
     ensure_sylvester_doubling_buffers!(𝕊ℂ, size(A, 1), size(B, 1))
 
+    # Precompute transposes once outside the pullback closure: needed for both
+    # the matmul forming ∂A/∂B (every call) and the fallback adjoint solve
+    # (when the doubling power cache is unavailable).
+    At = A'
+    Bt = B'
+
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        ∂P₁ = unthunk(∂P[1])
+        if ℒ.norm(∂P₁) < tol.rtol
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 𝕊ℂ,
-                                            sylvester_algorithm = sylvester_algorithm, 
+        cache_valid = cache_eligible &&
+                      pow_iters_captured >= 1 &&
+                      𝕊ℂ.pow_transposed
+        saved_capture = 𝕊ℂ.pow_capture
+        if cache_valid
+            𝕊ℂ.pow_iters = pow_iters_captured
+            𝕊ℂ.pow_capture = false
+        end
+        ∂C, slvd = solve_sylvester_equation(At, Bt, ∂P₁, 𝕊ℂ,
+                                            sylvester_algorithm = sylvester_algorithm,
                                             preconditioner = preconditioner,
-                                            tol = tol, 
+                                            tol = tol,
                                             verbose = verbose)
+        𝕊ℂ.pow_capture = saved_capture
+        𝕊ℂ.pow_iters = 0
 
         solved = solved && slvd
+
+        if !slvd
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
         # ∂C is n×m, B' is m×m, P_cached is n×m, A is n×n
         # Intermediate products are n×m and m×n — not n×n or m×m,
         # so workspace buffers 𝐀 (n×n) / 𝐁 (m×m) are wrong shape when n ≠ m.
-        ∂A = (∂C * B') * P_cached'
-        ∂B = (P_cached' * A') * ∂C
+        ∂A = (∂C * Bt) * P_cached'
+        ∂B = (P_cached' * At) * ∂C
 
         return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
     end
@@ -8171,12 +8259,22 @@ function rrule(::typeof(solve_lyapunov_equation),
                 verbose::Bool = false,
                 has_unit_roots::Bool = false)
 
+    # Enable doubling-power capture for the :doubling algorithm path.
+    # With pow_transposed=true, powers are stored in transposed form directly.
+    if lyapunov_algorithm == :doubling
+        workspace.pow_iters = 0
+        workspace.pow_capture = true
+        workspace.pow_transposed = true
+    end
     P, solved = solve_lyapunov_equation(A, C, workspace,
-                                        initial_guess = initial_guess,
-                                        lyapunov_algorithm = lyapunov_algorithm,
-                                        tol = tol,
-                                        verbose = verbose,
-                                        has_unit_roots = has_unit_roots)
+                            initial_guess = initial_guess,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            tol = tol,
+                            verbose = verbose,
+                            has_unit_roots = has_unit_roots)
+    workspace.pow_capture = false
+    pow_iters_captured = workspace.pow_iters
+    workspace.pow_iters = 0
     if size(workspace.P) != size(P)
         workspace.P = zeros(eltype(P), size(P)...)
     end
@@ -8184,20 +8282,42 @@ function rrule(::typeof(solve_lyapunov_equation),
     P_cached = workspace.P
     ensure_lyapunov_doubling_buffers!(workspace)
     A_dense = collect(A)
+    # Precompute Aᵀ once outside the pullback closure: needed by the matmul
+    # forming ∂A (every call) and by the fallback adjoint solve.
+    At = A_dense'
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol.rtol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        ∂P₁ = unthunk(∂P[1])
+        if ℒ.norm(∂P₁) < tol.rtol
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
-        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space
-        # Use dense A' directly with Val(:doubling) to force BLAS-backed dense path
-        # (the dispatcher's choose_matrix_format would convert back to sparse)
-        ∂C_result, adj_iters, adj_tol = solve_lyapunov_equation(A_dense', Matrix{Float64}(∂P[1]), Val(:doubling), workspace, tol = tol)
-        ∂C = ∂C_result
-        slvd = adj_tol < tol.acceptance_tol
+        # Adjoint Lyapunov: ∂P is generally not symmetric, so issymmetric will route to full-space.
+        # Prefer the forward dense doubling solver in replay mode against the
+        # transposed power cache when the forward pass populated workspace.𝐀_pow;
+        # otherwise fall back to the legacy solver call.
+        cache_valid = lyapunov_algorithm == :doubling &&
+                      pow_iters_captured >= 1 &&
+                      workspace.pow_transposed
+        saved_capture = workspace.pow_capture
+        if cache_valid
+            workspace.pow_iters = pow_iters_captured
+            workspace.pow_capture = false
+        end
+        ∂C, slvd = solve_lyapunov_equation(At, Matrix{Float64}(∂P₁), workspace,
+                                           lyapunov_algorithm = lyapunov_algorithm,
+                                           tol = tol,
+                                           verbose = verbose)
+        workspace.pow_capture = saved_capture
+        workspace.pow_iters = 0
     
         solved = solved && slvd
+
+        if !slvd
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
 
         tmp_n1 = workspace.𝐂A
         tmp_n2 = workspace.𝐀²
@@ -8257,7 +8377,7 @@ function rrule(::typeof(find_shocks),
     # ∂𝐒ⁱ²ᵉ = similar(𝐒ⁱ²ᵉ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
@@ -8322,7 +8442,7 @@ function rrule(::typeof(find_shocks),
     xxλ = ℒ.kron(x,xλ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat(∂x[1], zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
@@ -8699,7 +8819,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     if T.nExo == length(observables_index)
         lu_ws = FastLapackInterface.LUWs(jac)
-        lu_ws, _, ok, lu_handle = factorize_lu!(jac, lu_ws, size(jac))
+        lu_ws, _, ok, lu_handle = factorize_lu!(Val(:FastLapack), jac, lu_ws, size(jac))
 
         if !ok
             if opts.verbose println("Inversion filter failed") end
@@ -9552,16 +9672,24 @@ function rrule(::typeof(calculate_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = try
-                        ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
-                    catch
-                        if opts.verbose println("Inversion filter failed at step $i") end
-                        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
-                    end
+        if size(jacct, 1) == size(jacct, 2)
+            jacc_fact = ℒ.lu(jacct, check = false)
+            if !ℒ.issuccess(jacc_fact)
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        else
+            jacc_fact = ℒ.qr(jacct)
+            R = jacc_fact.R
+            if any(k -> R[k,k] == 0, axes(R, 1))
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        end
 
-        try
-            ℒ.ldiv!(λ[i], jacc_fact, x[i])
-        catch
+        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+
+        if !all(isfinite, λ[i])
             if opts.verbose println("Inversion filter failed at step $i") end
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
@@ -10393,16 +10521,24 @@ function rrule(::typeof(calculate_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = try
-                        ℒ.factorize(jacct)
-                    catch
-                        if opts.verbose println("Inversion filter failed at step $i") end
-                        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
-                    end
+        if size(jacct, 1) == size(jacct, 2)
+            jacc_fact = ℒ.lu(jacct, check = false)
+            if !ℒ.issuccess(jacc_fact)
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        else
+            jacc_fact = ℒ.qr(jacct)
+            R = jacc_fact.R
+            if any(k -> R[k,k] == 0, axes(R, 1))
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+        end
 
-        try
-            ℒ.ldiv!(λ[i], jacc_fact, x[i])
-        catch
+        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+
+        if !all(isfinite, λ[i])
             if opts.verbose println("Inversion filter failed at step $i") end
             return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
         end
@@ -12881,6 +13017,7 @@ function rrule(::typeof(calculate_loglikelihood),
     ℒ.mul!(𝐁, B, B')
 
     lyap_pullback = nothing
+    lyap_solved = true
     P = if initial_covariance == :theoretical
         lyap_rrule_result, lyap_pullback_local = rrule(solve_lyapunov_equation,
                                                         A,
@@ -12890,9 +13027,15 @@ function rrule(::typeof(calculate_loglikelihood),
                                                         tol = opts.tol.first_order.ad.lyapunov,
                                                         verbose = opts.verbose)
         lyap_pullback = lyap_pullback_local
+        lyap_solved = lyap_rrule_result[2]
         lyap_rrule_result[1]
     else
         get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    end
+
+    if !lyap_solved
+        if opts.verbose println("KF initial Lyapunov solve failed") end
+        return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     Tt = size(data_in_deviations, 2) + 1
@@ -12963,7 +13106,7 @@ function rrule(::typeof(calculate_loglikelihood),
             ℒ.mul!(CP[t], C, P̄)
             ℒ.mul!(F, CP[t], C')
 
-            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
                                                                                                 kalman_ws.fast_lu_ws_f,
                                                                                                 kalman_ws.fast_lu_dims_f)
 
@@ -13913,15 +14056,8 @@ function rrule(::typeof(get_solution),
     zero_pullback(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
 
     # ── Check parameter bounds ──
-    if length(𝓂.constants.post_parameters_macro.bounds) > 0
-        for (k, v) in 𝓂.constants.post_parameters_macro.bounds
-            if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                idx = indexin([k], 𝓂.constants.post_complete_parameters.parameters)[1]
-                if min(max(parameters[idx], v[1]), v[2]) != parameters[idx]
-                    return -Inf, zero_pullback
-                end
-            end
-        end
+    if check_bounds(parameters, 𝓂)
+        return get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S), zero_pullback
     end
 
     # ── Step 1: NSSS ──
@@ -13935,13 +14071,7 @@ function rrule(::typeof(get_solution),
     solution_error = nsss_out[2][1]
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
-        if algorithm in [:second_order, :pruned_second_order]
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), false)
-        elseif algorithm in [:third_order, :pruned_third_order]
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), spzeros(nVar, 2), spzeros(nVar, 2), false)
-        else
-            result = (SS_and_pars[1:nVar], zeros(nVar, 2), false)
-        end
+        result = get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
         return result, zero_pullback
     end
 
@@ -13969,13 +14099,7 @@ function rrule(::typeof(get_solution),
     update_perturbation_counter!(𝓂.counters, solved, estimation = estimation, order = 1)
 
     if !solved
-        if algorithm in [:second_order, :pruned_second_order]
-            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), false)
-        elseif algorithm in [:third_order, :pruned_third_order]
-            result = (SS_and_pars[1:nVar], 𝐒₁, spzeros(nVar, 2), spzeros(nVar, 2), false)
-        else
-            result = (SS_and_pars[1:nVar], 𝐒₁, false)
-        end
+        result = get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
         return result, zero_pullback
     end
 
@@ -14004,8 +14128,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, solved)
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, true)
+        # Return: (NSSS, [𝐒₁, 𝐒₂], solved)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw], true)
 
         pullback_2nd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -14015,9 +14139,22 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
-            ∂𝐒₂_ext = Δ[3]
-            # Δ[4] is ∂solved — not differentiable
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            # Δ[3] is ∂solved — not differentiable
+
+            # Extract per-matrix cotangents defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[2])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))
@@ -14123,8 +14260,8 @@ function rrule(::typeof(get_solution),
 
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
-        # Return compressed: (NSSS, 𝐒₁, 𝐒₂, 𝐒₃, solved)
-        result = (SS_and_pars[1:nVar], 𝐒₁, 𝐒₂_raw, 𝐒₃_raw, true)
+        # Return: (NSSS, [𝐒₁, 𝐒₂, 𝐒₃], solved)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw, 𝐒₃_raw], true)
 
         pullback_3rd = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -14134,10 +14271,28 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
-            ∂𝐒₂_ext = Δ[3]
-            ∂𝐒₃_ext = Δ[4]
-            # Δ[5] is ∂solved — not differentiable
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            # Δ[3] is ∂solved — not differentiable
+
+            # Extract per-matrix cotangents defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[2])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
+            ∂𝐒₃_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[3])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))
@@ -14215,7 +14370,7 @@ function rrule(::typeof(get_solution),
 
     else
         # ── First order ──
-        result = (SS_and_pars[1:nVar], 𝐒₁, true)
+        result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁], true)
 
         pullback_1st = function (∂result_bar)
             Δ = unthunk(∂result_bar)
@@ -14225,8 +14380,16 @@ function rrule(::typeof(get_solution),
             end
 
             ∂NSSS    = Δ[1]
-            ∂𝐒₁_ext = Δ[2]
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
             # Δ[3] is ∂solved — not differentiable
+
+            # Extract ∂𝐒₁ defensively
+            ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
+                NoTangent()
+            else
+                m = unthunk(∂mats[1])
+                m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
+            end
 
             # ── Accumulate ∂SS_and_pars (zero-pad to full length) ──
             ∂SS_and_pars = zeros(S, length(SS_and_pars))

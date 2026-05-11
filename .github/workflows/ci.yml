@@ -158,7 +158,19 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
+            test_set: "jet_hot_paths"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
             test_set: "estimate_sw07_nested_sampling"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "gradient_checks"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "system_prior_estimation"
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v2
@@ -223,7 +235,7 @@ jobs:
           rm -f Project.toml.bak
 
       - name: Remove JET from non-jet runs
-        if: matrix.test_set != 'jet'
+        if: "!startsWith(matrix.test_set, 'jet')"
         shell: bash
         run: |
           # `JET` is only needed for the dedicated `jet` rows. Keeping it in the
