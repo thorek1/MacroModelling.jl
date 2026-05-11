@@ -703,22 +703,34 @@ function calculate_per_shock_variance_second_order(parameters::Vector{R},
     per_shock_var = zeros(R, nVars, nᵉ)
     all_ok = true
 
+    # Pre-allocate loop buffers to avoid per-iteration allocations
+    N_ê₂ = nᵉ + nᵉ^2 + nˢ * nᵉ
+    Γᵢ_buf = zeros(R, N_ê₂, N_ê₂)
+    ê_to_ŝ₂_dense = Matrix(ê_to_ŝ₂)
+    ê_to_y₂_dense = Matrix(ê_to_y₂)
+    Cᵢ_buf = Matrix{R}(undef, n_ŝ₂, n_ŝ₂)
+    Σʸᵢ_buf = Matrix{R}(undef, nVars, nVars)
+    tmp_ŝ = Matrix{R}(undef, n_ŝ₂, N_ê₂)
+    tmp_y = Matrix{R}(undef, nVars, N_ê₂)
+
     for i in 1:nᵉ
-        eᵢ = zeros(R, nᵉ)
-        eᵢ[i] = one(R)
-        eᵢeᵢᵀ = eᵢ * eᵢ'
-        kron_eᵢ_eᵢ = ℒ.kron(eᵢ, eᵢ)
-        blk1 = eᵢeᵢᵀ
-        blk2 = 2 * kron_eᵢ_eᵢ * kron_eᵢ_eᵢ'
-        blk3 = ℒ.kron(Σᶻ₁, eᵢeᵢᵀ)
+        fill!(Γᵢ_buf, zero(R))
+        # Block 1: eᵢeᵢᵀ (nᵉ × nᵉ) — only (i,i) is nonzero
+        @inbounds Γᵢ_buf[i, i] = one(R)
+        # Block 2: 2·(eᵢ⊗eᵢ)(eᵢ⊗eᵢ)ᵀ (nᵉ² × nᵉ²) — only ((i-1)*nᵉ+i, (i-1)*nᵉ+i) is nonzero
+        idx_ee = nᵉ + (i - 1) * nᵉ + i
+        @inbounds Γᵢ_buf[idx_ee, idx_ee] = 2 * one(R)
+        # Block 3: kron(Σᶻ₁, eᵢeᵢᵀ) (nˢ·nᵉ × nˢ·nᵉ) — column i of each nᵉ-wide block
+        off3 = nᵉ + nᵉ^2
+        @inbounds for a in 1:nˢ, b in 1:nˢ
+            Γᵢ_buf[off3 + (a - 1) * nᵉ + i, off3 + (b - 1) * nᵉ + i] = Σᶻ₁[a, b]
+        end
 
-        Γᵢ = [ blk1                            zeros(R, nᵉ, nᵉ^2)             zeros(R, nᵉ, nᵉ * nˢ)
-               zeros(R, nᵉ^2, nᵉ)              blk2                            zeros(R, nᵉ^2, nᵉ * nˢ)
-               zeros(R, nˢ * nᵉ, nᵉ)           zeros(R, nˢ * nᵉ, nᵉ^2)         blk3 ]
+        # Cᵢ = ê_to_ŝ₂ * Γᵢ * ê_to_ŝ₂' (in-place via tmp_ŝ)
+        ℒ.mul!(tmp_ŝ, ê_to_ŝ₂_dense, Γᵢ_buf)
+        ℒ.mul!(Cᵢ_buf, tmp_ŝ, ê_to_ŝ₂_dense')
 
-        Cᵢ = ê_to_ŝ₂ * Γᵢ * ê_to_ŝ₂'
-
-        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Matrix(Cᵢ), lyap_ws,
+        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Cᵢ_buf, lyap_ws,
                                             lyapunov_algorithm = opts.lyapunov_algorithm,
                                             tol = opts.tol.second_order.lyapunov,
                                             verbose = opts.verbose,
@@ -730,8 +742,13 @@ function calculate_per_shock_variance_second_order(parameters::Vector{R},
             continue
         end
 
-        Σʸᵢ = ŝ_to_y₂ * Σᶻᵢ * ŝ_to_y₂' + ê_to_y₂ * Γᵢ * ê_to_y₂'
-        per_shock_var[:, i] = ℒ.diag(Σʸᵢ)
+        # Σʸᵢ = ŝ_to_y₂ * Σᶻᵢ * ŝ_to_y₂' + ê_to_y₂ * Γᵢ * ê_to_y₂'
+        ℒ.mul!(tmp_y, ê_to_y₂_dense, Γᵢ_buf)
+        ℒ.mul!(Σʸᵢ_buf, tmp_y, ê_to_y₂_dense')
+        Σʸᵢ_buf .+= ŝ_to_y₂ * Σᶻᵢ * ŝ_to_y₂'
+        @inbounds for j in 1:nVars
+            per_shock_var[j, i] = Σʸᵢ_buf[j, j]
+        end
     end
 
     return per_shock_var, ℒ.diag(Σʸ₂), all_ok
@@ -994,23 +1011,40 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
 
     Γ₃_dense = Matrix(Γ₃)
     Eᴸᶻ_dense = Matrix(Eᴸᶻ)
+    ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
+    ê_to_y₃_dense = Matrix(ê_to_y₃)
+    N_ŝ₃_cols = size(Eᴸᶻ_dense, 2)
+
+    # Pre-allocate loop buffers
+    Γᵢ_buf = zeros(R, N_e_aug, N_e_aug)
+    Eᴸᶻᵢ_buf = zeros(R, N_e_aug, N_ŝ₃_cols)
+    Cᵢ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
+    Aᵢ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
+    tmp_ŝ_Γ = Matrix{R}(undef, n_ŝ₃, N_e_aug)
+    tmp_ŝ_E = Matrix{R}(undef, n_ŝ₃, N_ŝ₃_cols)
 
     for i in 1:nᵉ
         m = build_per_shock_mask(i)
         midx = findall(m)
 
         # Γ⁽ⁱ⁾ = diag(m) Γ₃ diag(m): only rows/cols in midx survive.
-        Γᵢ = zeros(R, N_e_aug, N_e_aug)
-        Γᵢ[midx, midx] = Γ₃_dense[midx, midx]
+        fill!(Γᵢ_buf, zero(R))
+        @inbounds Γᵢ_buf[midx, midx] = Γ₃_dense[midx, midx]
 
         # Eᴸᶻ⁽ⁱ⁾ = diag(m) Eᴸᶻ: only rows in midx survive.
-        Eᴸᶻᵢ = zeros(R, size(Eᴸᶻ_dense)...)
-        Eᴸᶻᵢ[midx, :] = Eᴸᶻ_dense[midx, :]
+        fill!(Eᴸᶻᵢ_buf, zero(R))
+        @inbounds Eᴸᶻᵢ_buf[midx, :] = Eᴸᶻ_dense[midx, :]
 
-        Aᵢ = ê_to_ŝ₃ * Eᴸᶻᵢ * ŝ_to_ŝ₃'
-        Cᵢ = ê_to_ŝ₃ * Γᵢ * ê_to_ŝ₃' + Aᵢ + Aᵢ'
+        # Cᵢ = ê_to_ŝ₃ * Γᵢ * ê_to_ŝ₃' + Aᵢ + Aᵢ'  where Aᵢ = ê_to_ŝ₃ * Eᴸᶻᵢ * ŝ_to_ŝ₃'
+        ℒ.mul!(tmp_ŝ_E, ê_to_ŝ₃_dense, Eᴸᶻᵢ_buf)
+        ℒ.mul!(Aᵢ_buf, tmp_ŝ_E, ŝ_to_ŝ₃')
+        ℒ.mul!(tmp_ŝ_Γ, ê_to_ŝ₃_dense, Γᵢ_buf)
+        ℒ.mul!(Cᵢ_buf, tmp_ŝ_Γ, ê_to_ŝ₃_dense')
+        @inbounds for idx in eachindex(Cᵢ_buf)
+            Cᵢ_buf[idx] += Aᵢ_buf[idx] + Aᵢ_buf'[idx]
+        end
 
-        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Matrix(Cᵢ), lyap_ws_3rd,
+        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Cᵢ_buf, lyap_ws_3rd,
                                             lyapunov_algorithm = opts.lyapunov_algorithm,
                                             tol = opts.tol.third_order.lyapunov,
                                             verbose = opts.verbose,
@@ -1022,8 +1056,12 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
             continue
         end
 
-        Σʸᵢ = ŝ_to_y₃ * Σᶻᵢ * ŝ_to_y₃' + ê_to_y₃ * Γᵢ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻᵢ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻᵢ' * ê_to_y₃'
-        per_shock_var[:, i] = ℒ.diag(Σʸᵢ)
+        Σʸᵢ = ŝ_to_y₃ * Σᶻᵢ * ŝ_to_y₃' + ê_to_y₃_dense * Γᵢ_buf * ê_to_y₃_dense'
+        tmp_cross = ê_to_y₃_dense * Eᴸᶻᵢ_buf * ŝ_to_y₃'
+        Σʸᵢ .+= tmp_cross .+ tmp_cross'
+        @inbounds for j in 1:nVars
+            per_shock_var[j, i] = Σʸᵢ[j, j]
+        end
     end
 
     return per_shock_var, ℒ.diag(Σʸ₃_total), all_ok
@@ -1111,6 +1149,15 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
     nodes, weights = gausslegendre_unit_interval(2)            # exact for V's degree ≤ 4
     shares = zeros(R, nVars, nᵉ)
 
+    N_ê₂ = nᵉ + nᵉ^2 + nˢ * nᵉ
+    # Pre-allocate inner-loop buffers
+    inner_buf = Matrix{R}(undef, N_ê₂, N_ê₂)
+    Ċ_buf = Matrix{R}(undef, n_ŝ₂, n_ŝ₂)
+    tmp_ŝ_inner = Matrix{R}(undef, n_ŝ₂, N_ê₂)
+    tmp_y_inner = Matrix{R}(undef, nVars, N_ê₂)
+    Σ̇ʸ_buf = Matrix{R}(undef, nVars, nVars)
+    ṁ_buf = Vector{R}(undef, N_ê₂)
+
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_second_order(x, nᵉ, nˢ)
@@ -1118,11 +1165,15 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
         Γ_Dm = Γ_full_dense * Dm                               # cache once per node
         Dm_Γ = Dm * Γ_full_dense
         for i in 1:nᵉ
-            ṁ = mask_directional_derivative_second_order(x, i, nᵉ, nˢ)
-            Dṁ = ℒ.Diagonal(ṁ)
-            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ                      # symmetric
-            Ċ = ê_to_ŝ₂_dense * inner * ê_to_ŝ₂_dense'
-            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Matrix(Ċ), lyap_ws,
+            mask_directional_derivative_second_order!(ṁ_buf, x, i, nᵉ, nˢ)
+            Dṁ = ℒ.Diagonal(ṁ_buf)
+            # inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ (in-place)
+            ℒ.mul!(inner_buf, Dṁ, Γ_Dm)
+            ℒ.mul!(inner_buf, Dm_Γ, Dṁ, one(R), one(R))
+            # Ċ = ê_to_ŝ₂ * inner * ê_to_ŝ₂' (in-place)
+            ℒ.mul!(tmp_ŝ_inner, ê_to_ŝ₂_dense, inner_buf)
+            ℒ.mul!(Ċ_buf, tmp_ŝ_inner, ê_to_ŝ₂_dense')
+            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Ċ_buf, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                                 tol = opts.tol.second_order.lyapunov,
                                                 verbose = opts.verbose,
@@ -1130,8 +1181,13 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, false
             end
-            Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂_dense * inner * ê_to_y₂_dense'
-            shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
+            # Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂' (in-place)
+            ℒ.mul!(tmp_y_inner, ê_to_y₂_dense, inner_buf)
+            ℒ.mul!(Σ̇ʸ_buf, tmp_y_inner, ê_to_y₂_dense')
+            Σ̇ʸ_buf .+= ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂'
+            @inbounds for j in 1:nVars
+                shares[j, i] += R(w) * Σ̇ʸ_buf[j, j]
+            end
         end
     end
     return shares, total_var, true
@@ -1349,6 +1405,20 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
     nodes, weights = gausslegendre_unit_interval(3)            # exact for V's degree ≤ 6
     shares = zeros(R, nVars, nᵉ)
 
+    N_ê₃ = size(Γ₃_dense, 1)
+    N_ŝ₃_cols = size(Eᴸᶻ_dense, 2)
+    # Pre-allocate inner-loop buffers
+    inner_buf = Matrix{R}(undef, N_ê₃, N_ê₃)
+    Dṁ_EL_buf = Matrix{R}(undef, N_ê₃, N_ŝ₃_cols)
+    Ȧᴿ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
+    Ċ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
+    tmp_ŝ_inner = Matrix{R}(undef, n_ŝ₃, N_ê₃)
+    tmp_ŝ_EL = Matrix{R}(undef, n_ŝ₃, N_ŝ₃_cols)
+    Σ̇ʸ_buf = Matrix{R}(undef, nVars, nVars)
+    tmp_y_inner = Matrix{R}(undef, nVars, N_ê₃)
+    cross_y_buf = Matrix{R}(undef, nVars, nVars)
+    ṁ_buf = Vector{R}(undef, N_ê₃)
+
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_third_order(x, nᵉ, nˢ)
@@ -1356,13 +1426,23 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
         Γ_Dm = Γ₃_dense * Dm                                   # cache once per node
         Dm_Γ = Dm * Γ₃_dense
         for i in 1:nᵉ
-            ṁ = mask_directional_derivative_third_order(x, i, nᵉ, nˢ)
-            Dṁ = ℒ.Diagonal(ṁ)
-            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ                      # symmetric
-            Dṁ_EL = Dṁ * Eᴸᶻ_dense                             # row-mask derivative
-            Ȧᴿ = ê_to_ŝ₃_dense * Dṁ_EL * ŝ_to_ŝ₃'
-            Ċ = ê_to_ŝ₃_dense * inner * ê_to_ŝ₃_dense' + Ȧᴿ + Ȧᴿ'
-            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Matrix(Ċ), lyap_ws_3rd,
+            mask_directional_derivative_third_order!(ṁ_buf, x, i, nᵉ, nˢ)
+            Dṁ = ℒ.Diagonal(ṁ_buf)
+            # inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ (in-place)
+            ℒ.mul!(inner_buf, Dṁ, Γ_Dm)
+            ℒ.mul!(inner_buf, Dm_Γ, Dṁ, one(R), one(R))
+            # Dṁ_EL = Dṁ * Eᴸᶻ_dense (in-place)
+            ℒ.mul!(Dṁ_EL_buf, Dṁ, Eᴸᶻ_dense)
+            # Ȧᴿ = ê_to_ŝ₃ * Dṁ_EL * ŝ_to_ŝ₃'
+            ℒ.mul!(tmp_ŝ_EL, ê_to_ŝ₃_dense, Dṁ_EL_buf)
+            ℒ.mul!(Ȧᴿ_buf, tmp_ŝ_EL, ŝ_to_ŝ₃')
+            # Ċ = ê_to_ŝ₃ * inner * ê_to_ŝ₃' + Ȧᴿ + Ȧᴿ'
+            ℒ.mul!(tmp_ŝ_inner, ê_to_ŝ₃_dense, inner_buf)
+            ℒ.mul!(Ċ_buf, tmp_ŝ_inner, ê_to_ŝ₃_dense')
+            @inbounds for idx in eachindex(Ċ_buf)
+                Ċ_buf[idx] += Ȧᴿ_buf[idx] + Ȧᴿ_buf'[idx]
+            end
+            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Ċ_buf, lyap_ws_3rd,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                                 tol = opts.tol.third_order.lyapunov,
                                                 verbose = opts.verbose,
@@ -1370,10 +1450,19 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, false
             end
-            cross_y = ê_to_y₃_dense * Dṁ_EL * ŝ_to_y₃'
-            Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃_dense * inner * ê_to_y₃_dense' +
-                  cross_y + cross_y'
-            shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
+            # Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' + cross + cross'
+            ℒ.mul!(tmp_y_inner, ê_to_y₃_dense, inner_buf)
+            ℒ.mul!(Σ̇ʸ_buf, tmp_y_inner, ê_to_y₃_dense')
+            Σ̇ʸ_buf .+= ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃'
+            # cross_y = ê_to_y₃ * Dṁ_EL * ŝ_to_y₃'
+            tmp_y_EL = ê_to_y₃_dense * Dṁ_EL_buf
+            ℒ.mul!(cross_y_buf, tmp_y_EL, ŝ_to_y₃')
+            @inbounds for idx in eachindex(Σ̇ʸ_buf)
+                Σ̇ʸ_buf[idx] += cross_y_buf[idx] + cross_y_buf'[idx]
+            end
+            @inbounds for j in 1:nVars
+                shares[j, i] += R(w) * Σ̇ʸ_buf[j, j]
+            end
         end
     end
     return shares, total_var, true

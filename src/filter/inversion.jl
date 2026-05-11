@@ -82,13 +82,13 @@ function pruned_state_update_3rd_order!(
 end
 
 function aumann_shapley_shock_decomposition_pruned_2nd_order!(
-        decomposition::AbstractArray,
+        decomposition::AbstractArray{R},
         variables::AbstractMatrix,
         shocks::AbstractMatrix,
         initial_state,
         𝐒,
         T,
-        nE::Int)
+        nE::Int) where R <: Real
     nVars = T.nVars
     past_idx = T.past_not_future_and_mixed_idx
     n_past = length(past_idx)
@@ -100,26 +100,26 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     n_nodes = length(nodes)
 
     # Scratch buffers — single set, reused for each node sequentially.
-    s1     = zeros(nVars)
-    s2     = zeros(nVars)
-    new_s1 = zeros(nVars)
-    new_s2 = zeros(nVars)
-    v_i    = [zeros(nVars) for _ in 1:nE]
-    w_i    = [zeros(nVars) for _ in 1:nE]
-    new_vi = [zeros(nVars) for _ in 1:nE]
-    new_wi = [zeros(nVars) for _ in 1:nE]
+    s1     = zeros(R, nVars)
+    s2     = zeros(R, nVars)
+    new_s1 = zeros(R, nVars)
+    new_s2 = zeros(R, nVars)
+    v_i    = [zeros(R, nVars) for _ in 1:nE]
+    w_i    = [zeros(R, nVars) for _ in 1:nE]
+    new_vi = [zeros(R, nVars) for _ in 1:nE]
+    new_wi = [zeros(R, nVars) for _ in 1:nE]
 
-    aug1   = Vector{Float64}(undef, n_aug)
-    aug2   = Vector{Float64}(undef, n_aug)
-    ȧ1     = Vector{Float64}(undef, n_aug)
-    ȧ2     = Vector{Float64}(undef, n_aug)
-    kk     = Vector{Float64}(undef, n_kron)
-    kdot   = Vector{Float64}(undef, n_kron)
-    kdot2  = Vector{Float64}(undef, n_kron)
+    aug1   = Vector{R}(undef, n_aug)
+    aug2   = Vector{R}(undef, n_aug)
+    ȧ1     = Vector{R}(undef, n_aug)
+    ȧ2     = Vector{R}(undef, n_aug)
+    kk     = Vector{R}(undef, n_kron)
+    kdot   = Vector{R}(undef, n_kron)
+    kdot2  = Vector{R}(undef, n_kron)
 
-    full_dir = zeros(nE)
-    eps_dir  = zeros(nE)
-    zero_dir = zeros(nE)
+    full_dir = zeros(R, nE)
+    eps_dir  = zeros(R, nE)
+    zero_dir = zeros(R, nE)
 
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
     s1 .= initial_state[1]; s2 .= initial_state[2]
@@ -186,13 +186,13 @@ end
 
 
 function aumann_shapley_shock_decomposition_pruned_3rd_order!(
-        decomposition::AbstractArray,
+        decomposition::AbstractArray{R},
         variables::AbstractMatrix,
         shocks::AbstractMatrix,
         initial_state,
         𝐒,
         T,
-        nE::Int)
+        nE::Int) where R <: Real
     nVars = T.nVars
     past_idx = T.past_not_future_and_mixed_idx
     n_past = length(past_idx)
@@ -205,39 +205,39 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     n_nodes = length(nodes)
 
     # Scratch buffers — single set, reused for each node sequentially.
-    s1     = zeros(nVars)
-    s2     = zeros(nVars)
-    s3     = zeros(nVars)
-    new_s1 = zeros(nVars)
-    new_s2 = zeros(nVars)
-    new_s3 = zeros(nVars)
-    v_i    = [zeros(nVars) for _ in 1:nE]
-    w_i    = [zeros(nVars) for _ in 1:nE]
-    u_i    = [zeros(nVars) for _ in 1:nE]
-    new_vi = [zeros(nVars) for _ in 1:nE]
-    new_wi = [zeros(nVars) for _ in 1:nE]
-    new_ui = [zeros(nVars) for _ in 1:nE]
+    s1     = zeros(R, nVars)
+    s2     = zeros(R, nVars)
+    s3     = zeros(R, nVars)
+    new_s1 = zeros(R, nVars)
+    new_s2 = zeros(R, nVars)
+    new_s3 = zeros(R, nVars)
+    v_i    = [zeros(R, nVars) for _ in 1:nE]
+    w_i    = [zeros(R, nVars) for _ in 1:nE]
+    u_i    = [zeros(R, nVars) for _ in 1:nE]
+    new_vi = [zeros(R, nVars) for _ in 1:nE]
+    new_wi = [zeros(R, nVars) for _ in 1:nE]
+    new_ui = [zeros(R, nVars) for _ in 1:nE]
 
-    aug1     = Vector{Float64}(undef, n_aug)
-    aug1̂     = Vector{Float64}(undef, n_aug)
-    aug2     = Vector{Float64}(undef, n_aug)
-    aug3     = Vector{Float64}(undef, n_aug)
-    ȧ1       = Vector{Float64}(undef, n_aug)
-    ȧ2       = Vector{Float64}(undef, n_aug)
-    ȧ3       = Vector{Float64}(undef, n_aug)
+    aug1     = Vector{R}(undef, n_aug)
+    aug1̂     = Vector{R}(undef, n_aug)
+    aug2     = Vector{R}(undef, n_aug)
+    aug3     = Vector{R}(undef, n_aug)
+    ȧ1       = Vector{R}(undef, n_aug)
+    ȧ2       = Vector{R}(undef, n_aug)
+    ȧ3       = Vector{R}(undef, n_aug)
 
-    k11      = Vector{Float64}(undef, n_kron2)
-    k12̂      = Vector{Float64}(undef, n_kron2)
-    k11_dot  = Vector{Float64}(undef, n_kron2)
-    k12̂_dot  = Vector{Float64}(undef, n_kron2)
-    kron_buf2 = Vector{Float64}(undef, n_kron2)
-    k111     = Vector{Float64}(undef, n_kron3)
-    k111_dot = Vector{Float64}(undef, n_kron3)
-    kron_buf3 = Vector{Float64}(undef, n_kron3)
+    k11      = Vector{R}(undef, n_kron2)
+    k12̂      = Vector{R}(undef, n_kron2)
+    k11_dot  = Vector{R}(undef, n_kron2)
+    k12̂_dot  = Vector{R}(undef, n_kron2)
+    kron_buf2 = Vector{R}(undef, n_kron2)
+    k111     = Vector{R}(undef, n_kron3)
+    k111_dot = Vector{R}(undef, n_kron3)
+    kron_buf3 = Vector{R}(undef, n_kron3)
 
-    full_dir = zeros(nE)
-    eps_dir  = zeros(nE)
-    zero_dir = zeros(nE)
+    full_dir = zeros(R, nE)
+    eps_dir  = zeros(R, nE)
+    zero_dir = zeros(R, nE)
 
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
     s1 .= initial_state[1]; s2 .= initial_state[2]; s3 .= initial_state[3]

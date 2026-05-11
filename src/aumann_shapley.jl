@@ -63,8 +63,20 @@ function mask_directional_derivative_second_order(x::AbstractVector{T}, i::Int, 
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
     N = sum(block_sizes)
     dm = zeros(T, N)
+    mask_directional_derivative_second_order!(dm, x, i, nᵉ, nˢ)
+    return dm
+end
+
+"""
+$(SIGNATURES)
+In-place version of `mask_directional_derivative_second_order`. Writes into
+pre-allocated output vector `dm` (length `nᵉ + nᵉ² + nˢ·nᵉ`).
+"""
+function mask_directional_derivative_second_order!(dm::AbstractVector{T}, x::AbstractVector{T}, i::Int, nᵉ::Int, nˢ::Int) where T <: Real
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
+    fill!(dm, zero(T))
     off = 0
-    dm[off + i] = one(T)                                       # block 1
+    @inbounds dm[off + i] = one(T)                                       # block 1
     off += block_sizes[1]
     @inbounds for j in 1:nᵉ, k in 1:nᵉ                         # block 2
         if j == k && j == i
@@ -148,8 +160,20 @@ function mask_directional_derivative_third_order(x::AbstractVector{T}, i::Int, n
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
     N = sum(block_sizes)
     dm = zeros(T, N)
+    mask_directional_derivative_third_order!(dm, x, i, nᵉ, nˢ)
+    return dm
+end
+
+"""
+$(SIGNATURES)
+In-place version of `mask_directional_derivative_third_order`. Writes into
+pre-allocated output vector `dm`.
+"""
+function mask_directional_derivative_third_order!(dm::AbstractVector{T}, x::AbstractVector{T}, i::Int, nᵉ::Int, nˢ::Int) where T <: Real
+    block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
+    fill!(dm, zero(T))
     off = 0
-    dm[off + i] = one(T)                                       # block 1
+    @inbounds dm[off + i] = one(T)                                       # block 1
     off += block_sizes[1]
     @inbounds for j in 1:nᵉ, k in 1:nᵉ                         # block 2
         if j == k && j == i
@@ -188,21 +212,18 @@ function mask_directional_derivative_third_order(x::AbstractVector{T}, i::Int, n
     end
     off += block_sizes[6]
     @inbounds for j in 1:nᵉ, k in 1:nᵉ, l in 1:nᵉ              # block 7
-        # ∂(multilinear over unique({j,k,l}))/∂x_i
         v = zero(T)
         if j == k == l == i
             v = one(T)
         elseif j == k == l
             v = zero(T)
         elseif j == k
-            # x_j * x_l; nonzero if j==i (gives x_l) or l==i (gives x_j)
             v = (j == i ? x[l] : zero(T)) + (l == i ? x[j] : zero(T))
         elseif j == l
             v = (j == i ? x[k] : zero(T)) + (k == i ? x[j] : zero(T))
         elseif k == l
             v = (j == i ? x[k] : zero(T)) + (k == i ? x[j] : zero(T))
         else
-            # x_j * x_k * x_l, all distinct
             v = (j == i ? x[k] * x[l] : zero(T)) +
                 (k == i ? x[j] * x[l] : zero(T)) +
                 (l == i ? x[j] * x[k] : zero(T))
