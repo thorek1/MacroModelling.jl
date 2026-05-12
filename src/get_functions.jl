@@ -47,6 +47,8 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulation = simulate(RBC)
 
 get_shock_decomposition(RBC,simulation([:c],:,:simulate))
@@ -58,25 +60,25 @@ get_shock_decomposition(RBC,simulation([:c],:,:simulate))
 And data, 4×2×40 Array{Float64, 3}:
 [showing 3 of 40 slices]
 [:, :, 1] ~ (:, :, 1):
-        (:eps_z₍ₓ₎)   (:Initial_values)
-  (:c)   0.000407252  -0.00104779
-  (:k)   0.00374808   -0.0104645
-  (:q)   0.00415533   -0.000807161
-  (:z)   0.000603617  -1.99957e-6
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.00128797   0.00319151
+  (:k)   0.0118536    0.0318
+  (:q)   0.0131415    0.00335202
+  (:z)   0.00190898   0.000146294
 
 [:, :, 21] ~ (:, :, 21):
         (:eps_z₍ₓ₎)  (:Initial_values)
-  (:c)   0.026511    -0.000433619
-  (:k)   0.25684     -0.00433108
-  (:q)   0.115858    -0.000328764
-  (:z)   0.0150266    0.0
+  (:c)  -0.0428897    0.00132724
+  (:k)  -0.425096     0.0132567
+  (:q)  -0.0721742    0.00100629
+  (:z)  -0.00622294   1.73472e-18
 
 [:, :, 40] ~ (:, :, 40):
-        (:eps_z₍ₓ₎)  (:Initial_values)
-  (:c)   0.0437976   -0.000187505
-  (:k)   0.4394      -0.00187284
-  (:q)   0.00985518  -0.000142164
-  (:z)  -0.00366442   8.67362e-19
+        (:eps_z₍ₓ₎)   (:Initial_values)
+  (:c)  -0.0116806     0.000573923
+  (:k)  -0.116386      0.00573246
+  (:q)  -0.012256      0.00043514
+  (:z)  -0.000533531   1.0842e-19
 ```
 """
 @unstable function get_shock_decomposition(𝓂::ℳ,
@@ -204,6 +206,8 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulation = simulate(RBC)
 
 get_estimated_shocks(RBC,simulation([:c],:,:simulate))
@@ -212,8 +216,8 @@ get_estimated_shocks(RBC,simulation([:c],:,:simulate))
 ↓   Shocks ∈ 1-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 1×40 Matrix{Float64}:
-               (1)          (2)         (3)         (4)         …  (37)         (38)        (39)         (40)
-  (:eps_z₍ₓ₎)    0.0603617    0.614652   -0.519048    0.711454       -0.873774     1.27918    -0.929701    -0.2255
+               (1)         (2)        …  (39)         (40)
+  (:eps_z₍ₓ₎)    0.190898    1.24786       -0.676457    -0.00870749
 ```
 """
 @unstable function get_estimated_shocks(𝓂::ℳ,
@@ -332,6 +336,8 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulation = simulate(RBC)
 
 get_estimated_variables(RBC,simulation([:c],:,:simulate))
@@ -340,11 +346,11 @@ get_estimated_variables(RBC,simulation([:c],:,:simulate))
 ↓   Variables ∈ 4-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 4×40 Matrix{Float64}:
-        (1)           (2)           (3)           (4)          …  (37)          (38)            (39)           (40)
-  (:c)    5.92901       5.92797       5.92847       5.92048          5.95845       5.95697         5.95686        5.96173
-  (:k)   47.3185       47.3087       47.3125       47.2392          47.6034       47.5969         47.5954        47.6402
-  (:q)    6.87159       6.86452       6.87844       6.79352          7.00476       6.9026          6.90727        6.95841
-  (:z)   -0.00109471   -0.00208056    4.43613e-5   -0.0123318        0.0162992     0.000445065     0.00119089     0.00863586
+        (1)           (2)          …  (39)           (40)
+  (:c)    5.94073       5.94913          5.9249         5.92515
+  (:k)   47.4339       47.5121          47.2781        47.2796
+  (:q)    6.90055       6.97596          6.86123        6.87224
+  (:z)    0.00205528    0.0128896       -0.00223228    -0.000533531
 ```
 """
 @unstable function get_estimated_variables(𝓂::ℳ,
@@ -466,6 +472,8 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulation = simulate(RBC)
 
 get_model_estimates(RBC,simulation([:c],:,:simulate))
@@ -474,12 +482,12 @@ get_model_estimates(RBC,simulation([:c],:,:simulate))
 ↓   Variables_and_shocks ∈ 5-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 5×40 Matrix{Float64}:
-               (1)          (2)           (3)           (4)          …  (37)           (38)           (39)           (40)
-  (:c)           5.94335      5.94676       5.94474       5.95135          5.93773        5.94333        5.94915        5.95473
-  (:k)          47.4603      47.4922       47.476        47.5356          47.4079        47.4567        47.514         47.5696
-  (:q)           6.89873      6.92782       6.87844       6.96043          6.85055        6.9403         6.95556        6.96064
-  (:z)           0.0014586    0.00561728   -0.00189203    0.0101896       -0.00543334     0.00798437     0.00968602     0.00981981
-  (:eps_z₍ₓ₎)    0.12649      0.532556     -0.301549      1.0568     …    -0.746981       0.907104       0.808914       0.788261
+               (1)           (2)          …  (39)           (40)
+  (:c)           5.94073       5.94913          5.9249         5.92515
+  (:k)          47.4339       47.5121          47.2781        47.2796
+  (:q)           6.90055       6.97596          6.86123        6.87224
+  (:z)           0.00205528    0.0128896       -0.00223228    -0.000533531
+  (:eps_z₍ₓ₎)    0.190898      1.24786    …    -0.676457      -0.00870749
 ```
 """
 @unstable function get_model_estimates(𝓂::ℳ,
@@ -583,6 +591,8 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulation = simulate(RBC)
 
 get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
@@ -591,11 +601,11 @@ get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
 ↓   Standard_deviations ∈ 4-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 4×40 Matrix{Float64}:
-        (1)           (2)            (3)            (4)            …  (38)            (39)            (40)
-  (:c)    1.23202e-9    1.84069e-10    8.23181e-11    8.23181e-11        8.23181e-11     8.23181e-11     0.0
-  (:k)    0.00509299    0.000382934    2.87922e-5     2.16484e-6         1.6131e-9       9.31323e-10     1.47255e-9
-  (:q)    0.0612887     0.0046082      0.000346483    2.60515e-5         1.31709e-9      1.31709e-9      9.31323e-10
-  (:z)    0.00961766    0.000723136    5.43714e-5     4.0881e-6          3.08006e-10     3.29272e-10     2.32831e-10
+        (1)           (2)            …  (39)            (40)
+  (:c)    1.31709e-9    1.16415e-10        8.23181e-11     0.0
+  (:k)    0.00509299    0.000382934        9.31323e-10     1.6131e-9
+  (:q)    0.0612887     0.0046082          9.31323e-10     9.31323e-10
+  (:z)    0.00961766    0.000723136        0.0             1.64636e-10
 ```
 """
 @unstable function get_estimated_variable_standard_deviations(𝓂::ℳ,
@@ -730,16 +740,16 @@ get_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_lev
 ↓   Variables_and_shocks ∈ 9-element Vector{Symbol}
 →   Periods ∈ 42-element UnitRange{Int64}
 And data, 9×42 Matrix{Float64}:
-                (1)            (2)           …  (41)            (42)
-  (:A)            0.0313639      0.0134792         0.000221372     0.000199235
-  (:Pi)           0.000780257    0.00020929       -0.000146071    -0.000140137
-  (:R)            0.00117156     0.00031425       -0.000219325    -0.000210417
-  (:c)            0.01           0.00600605        0.00213278      0.00203751
-  (:k)            0.034584       0.0477482   …     0.0397631       0.0380482
-  (:y)            0.0446375      0.02              0.00129544      0.001222
-  (:z_delta)      0.00025        0.000225          3.69522e-6      3.3257e-6
-  (:delta_eps)    0.05           0.0               0.0             0.0
-  (:eps_z)        4.61234       -2.16887           0.0             0.0
+                   (1)            …  (41)            (42)
+  (:A)               0.0313639          0.000221372     0.000199235
+  (:Pi)              0.000780257       -0.000146071    -0.000140137
+  (:R)               0.00117156        -0.000219325    -0.000210417
+  (:c)               0.01               0.00213278      0.00203751
+  (:k)               0.034584     …     0.0397631       0.0380482
+  (:y)               0.0446375          0.00129544      0.001222
+  (:z_delta)         0.00025            3.69522e-6      3.3257e-6
+  (:delta_eps₍ₓ₎)    0.05               0.0             0.0
+  (:eps_z₍ₓ₎)        4.61234            0.0             0.0
 
 # The same can be achieved with the other input formats:
 # conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
@@ -1936,7 +1946,7 @@ get_solution(RBC)
 And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
                    (:c)         (:k)        (:q)        (:z)
   (:Steady_state)   5.93625     47.3903      6.88406     0.0
-  (:k₍₋₁₎)          0.0957964    0.956835    0.0726316  -0.0
+  (:k₍₋₁₎)          0.0957964    0.956835    0.0726316   0.0
   (:z₍₋₁₎)          0.134937     1.24187     1.37681     0.2
   (:eps_z₍ₓ₎)       0.00674687   0.0620937   0.0688406   0.01
 ```
@@ -2118,11 +2128,7 @@ end
 
 get_solution(RBC, RBC.parameter_values)
 # output
-([5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0], AbstractMatrix{Float64}[
- [0.09579643002421227 0.1349373930517757 0.006746869652588215; 
-  0.9568351489231555 1.241874201151121 0.06209371005755664; 
-  0.07263157894736819 1.376811594202897 0.06884057971014486; 
-  0.0 0.19999999999999998 0.01]], true)
+([5.936252888048734, 47.39025414828825, 6.8840579710144985, 0.0], AbstractMatrix{Float64}[[0.09579643002421026 0.1349373930517762 0.006746869652588118; 0.9568351489231574 1.2418742011511228 0.062093710057556865; 0.07263157894736799 1.3768115942028993 0.06884057971014498; 0.0 0.2 0.01]], true)
 ```
 """
 
@@ -2318,7 +2324,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 11] ~ (:, :, 11.0):
               (:delta_eps)  (:eps_z)
-  (:A)         5.88653e-32   1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0245641     0.975436
   (:R)         0.0245641     0.975436
   (:c)         0.0175249     0.982475
@@ -2328,7 +2334,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 21] ~ (:, :, Inf):
               (:delta_eps)  (:eps_z)
-  (:A)         9.6461e-31    1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -2502,7 +2508,7 @@ get_variance_decomposition(RBC_CME)
 →   Shocks ∈ 2-element Vector{Symbol}
 And data, 7×2 Matrix{Float64}:
               (:delta_eps)  (:eps_z)
-  (:A)         9.78485e-31   1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -3674,7 +3680,7 @@ end
     β = 0.95
 end
 
-get_statistics(RBC, RBC.parameter_values, parameters = get_parameters(RBC), standard_deviation = RBC.var)
+get_statistics(RBC, RBC.parameter_values, standard_deviation = get_variables(RBC))
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
@@ -3684,7 +3690,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:q, :z]])
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0 0.00546602 0.000728709; 0.0 0.0 0.0 0.000104167]
+  :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0…
 
 # For correlation (returns the correlation matrix among the selected variables;
 # diagonal is 1; supports the same grouped input as `covariance`, with cross-group
@@ -4009,11 +4015,13 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulated_data = simulate(RBC)
 
 get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 # output
-58.24780188977981
+53.76735680353869
 ```
 """
 function get_loglikelihood(𝓂::ℳ, 

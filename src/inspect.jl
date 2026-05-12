@@ -255,8 +255,8 @@ get_steady_state_equations(RBC)
  :((-β * ((k ^ (α - 1) * α * exp(z{TFP}) - δ * exp(z{δ})) + 1)) / c + 1 / c)
  :(((c - k * (-δ * exp(z{δ}) + 1)) + k) - q)
  :(-(k ^ α) * exp(z{TFP}) + q)
- :(-z{TFP} * ρ{TFP} + z{TFP})
- :(-z{δ} * ρ{δ} + z{δ})
+ :(-(z{TFP}) * ρ{TFP} + z{TFP})
+ :(-(z{δ}) * ρ{δ} + z{δ})
  :(➕₁ - c / q)
  :(➕₂ - c / q)
  :((Δc_share - log(➕₁)) + log(➕₂))
@@ -952,9 +952,10 @@ end
 
 get_nonnegativity_auxiliary_variables(RBC)
 # output
-2-element Vector{String}:
+3-element Vector{String}:
  "➕₁"
  "➕₂"
+ "➕₃"
 ```
 """
 function get_nonnegativity_auxiliary_variables(𝓂::ℳ)::Vector{String}
