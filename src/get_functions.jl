@@ -39,7 +39,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -198,7 +198,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -328,7 +328,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -464,7 +464,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -583,7 +583,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -713,7 +713,7 @@ using SparseArrays, AxisKeys
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -750,8 +750,10 @@ And data, 9×42 Matrix{Float64}:
   (:z_delta)         0.00025            3.69522e-6      3.3257e-6
   (:delta_eps₍ₓ₎)    0.05               0.0             0.0
   (:eps_z₍ₓ₎)        4.61234            0.0             0.0
+```
 
-# The same can be achieved with the other input formats:
+The same can be achieved with the other input formats:
+```julia
 # conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
 # conditions[4,1] = .01
 # conditions[6,2] = .02
@@ -1110,7 +1112,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1401,7 +1403,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1637,7 +1639,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1930,7 +1932,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2118,7 +2120,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2292,7 +2294,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -2489,7 +2491,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -2692,7 +2694,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2762,7 +2764,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2915,7 +2917,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3672,7 +3674,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3684,21 +3686,23 @@ get_statistics(RBC, RBC.parameter_values, standard_deviation = get_variables(RBC
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
+```
 
-# For grouped covariance (computing covariances only within specified groups; cross-group
-# entries are set to zero):
+For grouped covariance (computing covariances only within specified groups; cross-group
+entries are set to zero):
+```julia
 get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:q, :z]])
-# output
-Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0…
+# Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+#   :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0…
+```
 
-# For correlation (returns the correlation matrix among the selected variables;
-# diagonal is 1; supports the same grouped input as `covariance`, with cross-group
-# entries set to zero):
+For correlation (returns the correlation matrix among the selected variables;
+diagonal is 1; supports the same grouped input as `covariance`, with cross-group
+entries set to zero):
+```julia
 get_statistics(RBC, RBC.parameter_values, correlation = [:c, :k])
-# output
-Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :correlation => [1.0 0.999812; 0.999812 1.0]
+# Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+#   :correlation => [1.0 0.999812; 0.999812 1.0]
 ```
 """
 function get_statistics(𝓂::ℳ,
@@ -4007,7 +4011,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -4303,7 +4307,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 - `KeyedArray` (from the `AxisKeys` package) containing the absolute values of the residuals of the non-stochastic steady state equations.
 
 # Examples
-```jldoctest
+```jldoctest; filter = r"(Equation|CalibrationEquation)([^0-9+-]+)\\S+" => s"\\1\\2 0.0"
 using MacroModelling
 
 @model RBC begin
@@ -4313,7 +4317,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -4333,17 +4337,19 @@ And data, 5-element Vector{Float64}:
  (:Equation₃)             0.0
  (:Equation₄)             0.0
  (:CalibrationEquation₁)  0.0
+```
 
+Passing approximate values returns the residuals at those values:
+```julia
 get_non_stochastic_steady_state_residuals(RBC, [1.1641597, 3.0635781, 1.2254312, 0.0, 0.18157895])
-# output
-1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Equation ∈ 5-element Vector{Symbol}
-And data, 5-element Vector{Float64}:
- (:Equation₁)             2.7360991250446887e-10
- (:Equation₂)             6.199999980083248e-8
- (:Equation₃)             2.7897102183871425e-8
- (:Equation₄)             0.0
- (:CalibrationEquation₁)  8.160392850342646e-8
+# 1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+# ↓   Equation ∈ 5-element Vector{Symbol}
+# And data, 5-element Vector{Float64}:
+#  (:Equation₁)             2.7360991250446887e-10
+#  (:Equation₂)             6.199999980083248e-8
+#  (:Equation₃)             2.7897102183871425e-8
+#  (:Equation₄)             0.0
+#  (:CalibrationEquation₁)  8.160392850342646e-8
 ```
 """
 @unstable function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
