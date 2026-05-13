@@ -126,7 +126,9 @@ samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; con
                             # initial_params = inits,
                             progress = true)
 
-println(samps)
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (linear): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 linear)" begin
@@ -178,7 +180,9 @@ samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; con
                             # initial_params = inits,
                             progress = true)
 
-println(samps)
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (nonlinear): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 nonlinear)" begin

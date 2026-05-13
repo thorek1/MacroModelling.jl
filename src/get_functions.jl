@@ -39,13 +39,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+
+import Random; Random.seed!(3)
 
 simulation = simulate(RBC)
 
@@ -58,25 +60,25 @@ get_shock_decomposition(RBC,simulation([:c],:,:simulate))
 And data, 4×2×40 Array{Float64, 3}:
 [showing 3 of 40 slices]
 [:, :, 1] ~ (:, :, 1):
-        (:eps_z₍ₓ₎)   (:Initial_values)
-  (:c)   0.000407252  -0.00104779
-  (:k)   0.00374808   -0.0104645
-  (:q)   0.00415533   -0.000807161
-  (:z)   0.000603617  -1.99957e-6
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.00128797   0.00319151
+  (:k)   0.0118536    0.0318
+  (:q)   0.0131415    0.00335202
+  (:z)   0.00190898   0.000146294
 
 [:, :, 21] ~ (:, :, 21):
         (:eps_z₍ₓ₎)  (:Initial_values)
-  (:c)   0.026511    -0.000433619
-  (:k)   0.25684     -0.00433108
-  (:q)   0.115858    -0.000328764
-  (:z)   0.0150266    0.0
+  (:c)  -0.0428897    0.00132724
+  (:k)  -0.425096     0.0132567
+  (:q)  -0.0721742    0.00100629
+  (:z)  -0.00622294   1.73472e-18
 
 [:, :, 40] ~ (:, :, 40):
-        (:eps_z₍ₓ₎)  (:Initial_values)
-  (:c)   0.0437976   -0.000187505
-  (:k)   0.4394      -0.00187284
-  (:q)   0.00985518  -0.000142164
-  (:z)  -0.00366442   8.67362e-19
+        (:eps_z₍ₓ₎)   (:Initial_values)
+  (:c)  -0.0116806     0.000573923
+  (:k)  -0.116386      0.00573246
+  (:q)  -0.012256      0.00043514
+  (:z)  -0.000533531   1.0842e-19
 ```
 """
 @unstable function get_shock_decomposition(𝓂::ℳ,
@@ -196,13 +198,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+
+import Random; Random.seed!(3)
 
 simulation = simulate(RBC)
 
@@ -212,8 +216,8 @@ get_estimated_shocks(RBC,simulation([:c],:,:simulate))
 ↓   Shocks ∈ 1-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 1×40 Matrix{Float64}:
-               (1)          (2)         (3)         (4)         …  (37)         (38)        (39)         (40)
-  (:eps_z₍ₓ₎)    0.0603617    0.614652   -0.519048    0.711454       -0.873774     1.27918    -0.929701    -0.2255
+               (1)         (2)        …  (39)         (40)
+  (:eps_z₍ₓ₎)    0.190898    1.24786       -0.676457    -0.00870749
 ```
 """
 @unstable function get_estimated_shocks(𝓂::ℳ,
@@ -324,13 +328,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+
+import Random; Random.seed!(3)
 
 simulation = simulate(RBC)
 
@@ -340,11 +346,11 @@ get_estimated_variables(RBC,simulation([:c],:,:simulate))
 ↓   Variables ∈ 4-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 4×40 Matrix{Float64}:
-        (1)           (2)           (3)           (4)          …  (37)          (38)            (39)           (40)
-  (:c)    5.92901       5.92797       5.92847       5.92048          5.95845       5.95697         5.95686        5.96173
-  (:k)   47.3185       47.3087       47.3125       47.2392          47.6034       47.5969         47.5954        47.6402
-  (:q)    6.87159       6.86452       6.87844       6.79352          7.00476       6.9026          6.90727        6.95841
-  (:z)   -0.00109471   -0.00208056    4.43613e-5   -0.0123318        0.0162992     0.000445065     0.00119089     0.00863586
+        (1)           (2)          …  (39)           (40)
+  (:c)    5.94073       5.94913          5.9249         5.92515
+  (:k)   47.4339       47.5121          47.2781        47.2796
+  (:q)    6.90055       6.97596          6.86123        6.87224
+  (:z)    0.00205528    0.0128896       -0.00223228    -0.000533531
 ```
 """
 @unstable function get_estimated_variables(𝓂::ℳ,
@@ -458,13 +464,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+
+import Random; Random.seed!(3)
 
 simulation = simulate(RBC)
 
@@ -474,12 +482,12 @@ get_model_estimates(RBC,simulation([:c],:,:simulate))
 ↓   Variables_and_shocks ∈ 5-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 5×40 Matrix{Float64}:
-               (1)          (2)           (3)           (4)          …  (37)           (38)           (39)           (40)
-  (:c)           5.94335      5.94676       5.94474       5.95135          5.93773        5.94333        5.94915        5.95473
-  (:k)          47.4603      47.4922       47.476        47.5356          47.4079        47.4567        47.514         47.5696
-  (:q)           6.89873      6.92782       6.87844       6.96043          6.85055        6.9403         6.95556        6.96064
-  (:z)           0.0014586    0.00561728   -0.00189203    0.0101896       -0.00543334     0.00798437     0.00968602     0.00981981
-  (:eps_z₍ₓ₎)    0.12649      0.532556     -0.301549      1.0568     …    -0.746981       0.907104       0.808914       0.788261
+               (1)           (2)          …  (39)           (40)
+  (:c)           5.94073       5.94913          5.9249         5.92515
+  (:k)          47.4339       47.5121          47.2781        47.2796
+  (:q)           6.90055       6.97596          6.86123        6.87224
+  (:z)           0.00205528    0.0128896       -0.00223228    -0.000533531
+  (:eps_z₍ₓ₎)    0.190898      1.24786    …    -0.676457      -0.00870749
 ```
 """
 @unstable function get_model_estimates(𝓂::ℳ,
@@ -575,13 +583,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+
+import Random; Random.seed!(3)
 
 simulation = simulate(RBC)
 
@@ -591,11 +601,11 @@ get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
 ↓   Standard_deviations ∈ 4-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 And data, 4×40 Matrix{Float64}:
-        (1)           (2)            (3)            (4)            …  (38)            (39)            (40)
-  (:c)    1.23202e-9    1.84069e-10    8.23181e-11    8.23181e-11        8.23181e-11     8.23181e-11     0.0
-  (:k)    0.00509299    0.000382934    2.87922e-5     2.16484e-6         1.6131e-9       9.31323e-10     1.47255e-9
-  (:q)    0.0612887     0.0046082      0.000346483    2.60515e-5         1.31709e-9      1.31709e-9      9.31323e-10
-  (:z)    0.00961766    0.000723136    5.43714e-5     4.0881e-6          3.08006e-10     3.29272e-10     2.32831e-10
+        (1)           (2)            …  (39)            (40)
+  (:c)    1.31709e-9    1.16415e-10        8.23181e-11     0.0
+  (:k)    0.00509299    0.000382934        9.31323e-10     1.6131e-9
+  (:q)    0.0612887     0.0046082          9.31323e-10     9.31323e-10
+  (:z)    0.00961766    0.000723136        0.0             1.64636e-10
 ```
 """
 @unstable function get_estimated_variable_standard_deviations(𝓂::ℳ,
@@ -703,7 +713,7 @@ using SparseArrays, AxisKeys
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -730,18 +740,20 @@ get_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_lev
 ↓   Variables_and_shocks ∈ 9-element Vector{Symbol}
 →   Periods ∈ 42-element UnitRange{Int64}
 And data, 9×42 Matrix{Float64}:
-                (1)            (2)           …  (41)            (42)
-  (:A)            0.0313639      0.0134792         0.000221372     0.000199235
-  (:Pi)           0.000780257    0.00020929       -0.000146071    -0.000140137
-  (:R)            0.00117156     0.00031425       -0.000219325    -0.000210417
-  (:c)            0.01           0.00600605        0.00213278      0.00203751
-  (:k)            0.034584       0.0477482   …     0.0397631       0.0380482
-  (:y)            0.0446375      0.02              0.00129544      0.001222
-  (:z_delta)      0.00025        0.000225          3.69522e-6      3.3257e-6
-  (:delta_eps)    0.05           0.0               0.0             0.0
-  (:eps_z)        4.61234       -2.16887           0.0             0.0
+                   (1)            …  (41)            (42)
+  (:A)               0.0313639          0.000221372     0.000199235
+  (:Pi)              0.000780257       -0.000146071    -0.000140137
+  (:R)               0.00117156        -0.000219325    -0.000210417
+  (:c)               0.01               0.00213278      0.00203751
+  (:k)               0.034584     …     0.0397631       0.0380482
+  (:y)               0.0446375          0.00129544      0.001222
+  (:z_delta)         0.00025            3.69522e-6      3.3257e-6
+  (:delta_eps₍ₓ₎)    0.05               0.0             0.0
+  (:eps_z₍ₓ₎)        4.61234            0.0             0.0
+```
 
-# The same can be achieved with the other input formats:
+The same can be achieved with the other input formats:
+```julia
 # conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
 # conditions[4,1] = .01
 # conditions[6,2] = .02
@@ -986,7 +998,7 @@ And data, 9×42 Matrix{Float64}:
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm == :first_order
-        C = @views 𝓂.caches.first_order_solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]
+        C = 𝓂.caches.first_order_solution_matrix[:,𝓂.constants.post_model_macro.nPast_not_future_and_mixed+1:end]::Matrix{Float64}
     
         CC = C[cond_var_idx,free_shock_idx]
 
@@ -996,7 +1008,7 @@ And data, 9×42 Matrix{Float64}:
             shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
         elseif length(free_shock_idx) == length(cond_var_idx)
             CC_lu_ws = FastLapackInterface.LUWs(CC)
-            CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+            CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(Val(:FastLapack), CC, CC_lu_ws, size(CC))
 
             @assert ok "Numerical stabiltiy issues for restrictions in period 1."
 
@@ -1030,7 +1042,7 @@ And data, 9×42 Matrix{Float64}:
                 shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
             elseif length(free_shock_idx) == length(cond_var_idx)
                 CC_lu_ws = FastLapackInterface.LUWs(CC)
-                CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(CC, CC_lu_ws, size(CC))
+                CC_lu_ws, _, ok, CC_lu_handle = factorize_lu!(Val(:FastLapack), CC, CC_lu_ws, size(CC))
 
                 @assert ok "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
 
@@ -1100,7 +1112,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1261,7 +1273,7 @@ function irf_forward_simulate!(::Val{:third_order},
 end
 
 
-@unstable function get_irf(𝓂::ℳ,
+function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
@@ -1277,7 +1289,7 @@ end
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                     caching::Bool = DEFAULT_CACHING,
-                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::Array{S,3} where S <: Real
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -1391,7 +1403,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1627,7 +1639,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1737,7 +1749,8 @@ And data, 4×6 Matrix{Float64}:
         end
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     var_idx = ms.ss_var_idx_in_var_and_calib
 
     calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
@@ -1919,7 +1932,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1935,7 +1948,7 @@ get_solution(RBC)
 And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
                    (:c)         (:k)        (:q)        (:z)
   (:Steady_state)   5.93625     47.3903      6.88406     0.0
-  (:k₍₋₁₎)          0.0957964    0.956835    0.0726316  -0.0
+  (:k₍₋₁₎)          0.0957964    0.956835    0.0726316   0.0
   (:z₍₋₁₎)          0.134937     1.24187     1.37681     0.2
   (:eps_z₍ₓ₎)       0.00674687   0.0620937   0.0688406   0.01
 ```
@@ -2094,7 +2107,7 @@ Function to use when differentiating IRFs with respect to parameters.
 - $VERBOSE®
 
 # Returns
-- `Tuple` consisting of a `Vector` containing the NSSS, followed by a `Matrix` containing the first order solution matrix. In case of higher order solutions, `SparseMatrixCSC` represent the higher order solution matrices. The last element is a `Bool` indicating the correctness of the solution provided.
+- `Tuple{Vector, Vector{AbstractMatrix}, Bool}` consisting of a `Vector` containing the NSSS, a `Vector` of solution matrices (one `Matrix` for first order, two for second order, three for third order), and a `Bool` indicating the correctness of the solution provided.
 
 # Examples
 ```jldoctest
@@ -2107,7 +2120,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2117,14 +2130,34 @@ end
 
 get_solution(RBC, RBC.parameter_values)
 # output
-([5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0], 
- [0.09579643002421227 0.1349373930517757 0.006746869652588215; 
-  0.9568351489231555 1.241874201151121 0.06209371005755664; 
-  0.07263157894736819 1.376811594202897 0.06884057971014486; 
-  0.0 0.19999999999999998 0.01], true)
+([5.936252888048734, 47.39025414828825, 6.8840579710144985, 0.0], AbstractMatrix{Float64}[[0.09579643002421026 0.1349373930517762 0.006746869652588118; 0.9568351489231574 1.2418742011511228 0.062093710057556865; 0.07263157894736799 1.3768115942028993 0.06884057971014498; 0.0 0.2 0.01]], true)
 ```
 """
-@unstable function get_solution(𝓂::ℳ, 
+
+# Construct a failure return value for get_solution with uniform tuple type.
+# When 𝐒₁ is provided, it is included as the first solution matrix placeholder.
+function get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}) where S <: Real
+    placeholder = zeros(S, nVar, 2)
+    if algorithm in [:second_order, :pruned_second_order]
+        return SS, AbstractMatrix{S}[placeholder, zeros(S, nVar, 2)], false
+    elseif algorithm in [:third_order, :pruned_third_order]
+        return SS, AbstractMatrix{S}[placeholder, zeros(S, nVar, 2), zeros(S, nVar, 2)], false
+    else
+        return SS, AbstractMatrix{S}[placeholder], false
+    end
+end
+
+function get_solution_fail(algorithm::Symbol, SS::Vector{S}, nVar::Int, ::Type{S}, 𝐒₁::AbstractMatrix{S}) where S <: Real
+    if algorithm in [:second_order, :pruned_second_order]
+        return SS, AbstractMatrix{S}[𝐒₁, zeros(S, nVar, 2)], false
+    elseif algorithm in [:third_order, :pruned_third_order]
+        return SS, AbstractMatrix{S}[𝐒₁, zeros(S, nVar, 2), zeros(S, nVar, 2)], false
+    else
+        return SS, AbstractMatrix{S}[𝐒₁], false
+    end
+end
+
+function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -2133,7 +2166,7 @@ get_solution(RBC, RBC.parameter_values)
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         caching::Bool = DEFAULT_CACHING,
-                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where S <: Real
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::Tuple{Vector{S}, Vector{AbstractMatrix{S}}, Bool} where S <: Real
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -2149,34 +2182,24 @@ get_solution(RBC, RBC.parameter_values)
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
 
+    nVar = length(𝓂.constants.post_model_macro.var)
+
     solve!(𝓂, 
            opts = opts, 
            steady_state_function = steady_state_function,
            algorithm = algorithm)
 
     
-    if length(𝓂.constants.post_parameters_macro.bounds) > 0
-        for (k,v) in 𝓂.constants.post_parameters_macro.bounds
-            if k ∈ 𝓂.constants.post_complete_parameters.parameters
-                if min(max(parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.constants.post_complete_parameters.parameters)][1]
-                    if !use_workspaces; 𝓂.workspaces = orig_ws; end
-                    return -Inf
-                end
-            end
-        end
+    if check_bounds(parameters, 𝓂)
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return get_solution_fail(algorithm, fill(S(-Inf), nVar), nVar, S)
     end
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts, estimation = estimation)
 
     if solution_error > tol.nsss.acceptance_tol || isnan(solution_error)
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        if algorithm in [:second_order, :pruned_second_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm in [:third_order, :pruned_third_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        else
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], zeros(length(𝓂.constants.post_model_macro.var),2), false
-        end
+        return get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
@@ -2193,13 +2216,7 @@ get_solution(RBC, RBC.parameter_values)
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        if algorithm in [:second_order, :pruned_second_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        elseif algorithm in [:third_order, :pruned_third_order]
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, spzeros(length(𝓂.constants.post_model_macro.var),2), spzeros(length(𝓂.constants.post_model_macro.var),2), false
-        else
-            return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, false
-        end
+        return get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S, 𝐒₁)
     end
 
     if algorithm in [:second_order, :pruned_second_order]
@@ -2212,7 +2229,7 @@ get_solution(RBC, RBC.parameter_values)
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂], true
     elseif algorithm in [:third_order, :pruned_third_order]
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
     
@@ -2235,10 +2252,10 @@ get_solution(RBC, RBC.parameter_values)
         update_perturbation_counter!(𝓂.counters, solved3, estimation = estimation, order = 3)
 
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂, 𝐒₃], true
     else
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return SS_and_pars[1:length(𝓂.constants.post_model_macro.var)], 𝐒₁, true
+        return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁], true
     end
 end
 
@@ -2277,7 +2294,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -2309,7 +2326,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 11] ~ (:, :, 11.0):
               (:delta_eps)  (:eps_z)
-  (:A)         5.88653e-32   1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0245641     0.975436
   (:R)         0.0245641     0.975436
   (:c)         0.0175249     0.982475
@@ -2319,7 +2336,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 21] ~ (:, :, Inf):
               (:delta_eps)  (:eps_z)
-  (:A)         9.6461e-31    1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -2474,7 +2491,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME begin
+@parameters RBC_CME silent = true begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -2493,7 +2510,7 @@ get_variance_decomposition(RBC_CME)
 →   Shocks ∈ 2-element Vector{Symbol}
 And data, 7×2 Matrix{Float64}:
               (:delta_eps)  (:eps_z)
-  (:A)         9.78485e-31   1.0
+  (:A)         0.0           1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -2677,7 +2694,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2698,64 +2715,7 @@ And data, 4×4 Matrix{Float64}:
   (:z)   0.314562   0.296104   0.965726   1.0
 ```
 """
-@unstable function get_correlation(𝓂::ℳ; 
-                        parameters::ParameterType = nothing,
-                        steady_state_function::SteadyStateFunctionType = missing,  
-                        algorithm::Symbol = DEFAULT_ALGORITHM,
-                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
-                        verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = Tolerances(),
-                        caching::Bool = DEFAULT_CACHING,
-                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
-    # @nospecialize # reduce compile time                    
-
-    if !caching; invalidate_cache_validity!(𝓂); end
-    orig_ws = 𝓂.workspaces
-    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
-
-    opts = merge_calculation_options(tol = tol, verbose = verbose,
-                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                        lyapunov_algorithm = lyapunov_algorithm)
-
-    @assert algorithm ∈ [:first_order, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
-
-    solve!(𝓂, 
-            parameters = parameters,
-            steady_state_function = steady_state_function, 
-            opts = opts, 
-            algorithm = algorithm)
-
-    if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
-    elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-    else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
-
-        if !solved
-            @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
-        end
-    end
-
-    covar_dcmp[abs.(covar_dcmp) .< opts.tol.first_order.lyapunov.acceptance_tol] .= 0
-
-    std = sqrt.(max.(ℒ.diag(covar_dcmp),eps(Float64)))
-    
-    corr = covar_dcmp ./ (std * std')
-    
-    axis1 = 𝓂.constants.post_model_macro.var
-
-    ensure_name_display_constants!(𝓂)
-    axis1 = 𝓂.constants.post_complete_parameters.var_axis
-
-    if !use_workspaces; 𝓂.workspaces = orig_ws; end
-
-    KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
-end
+@unstable get_correlation(args...; kwargs...) = get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, correlation = true, derivatives = get(kwargs, :derivatives, false))[:correlation]
 
 """
 See [`get_correlation`](@ref)
@@ -2804,7 +2764,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2918,7 +2878,7 @@ See [`get_autocorrelation`](@ref)
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, covariance matrix, and correlation matrix. Derivatives of the moments can also be provided by setting `derivatives` to `true`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -2932,6 +2892,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- `correlation` [Default: `false`, Type: `Bool`]: switch to return correlation matrix of endogenous variables
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
@@ -2943,7 +2904,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. The `KeyedArray` type is provided by the `AxisKeys` package.
+- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. Covariance and correlation matrices are returned as 2D `KeyedArray`s (or 3D when `derivatives = true`). The `KeyedArray` type is provided by the `AxisKeys` package.
 
 # Examples
 ```jldoctest part1
@@ -2956,7 +2917,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2993,6 +2954,21 @@ And data, 4×6 Matrix{Float64}:
   (:q)   0.0739325              7.39325     -0.974722   0.726551   1.08
   (:z)   0.0102062              1.02062      0.0        0.0        0.0
 ```
+
+Correlation matrix (returned when `correlation = true`):
+```jldoctest part1
+get_moments(RBC, non_stochastic_steady_state = false, standard_deviation = false, correlation = true, derivatives = false)[:correlation]
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0
+```
 """
 @unstable function get_moments(𝓂::ℳ; 
                     parameters::ParameterType = nothing,
@@ -3002,6 +2978,7 @@ And data, 4×6 Matrix{Float64}:
                     standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
                     variance::Bool = DEFAULT_VARIANCE_FLAG, 
                     covariance::Bool = DEFAULT_COVARIANCE_FLAG, 
+                    correlation::Bool = DEFAULT_CORRELATION_FLAG,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                     derivatives::Bool = DEFAULT_DERIVATIVES_FLAG,
                     parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
@@ -3033,7 +3010,7 @@ And data, 4×6 Matrix{Float64}:
             opts = opts, 
             silent = silent)
 
-    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
+    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance), ("Correlation", correlation)]
         if condition
             @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`."
         end
@@ -3072,13 +3049,16 @@ And data, 4×6 Matrix{Float64}:
         inf_val = Inf * sum(abs2, 𝓂.parameter_values)
         var_idx_fail = parse_variables_input_to_index(variables, 𝓂) |> sort
         axis1_fail = 𝓂.constants.post_model_macro.var[var_idx_fail]
-        inf_arr = KeyedArray(fill(inf_val, length(var_idx_fail)); Variables = axis1_fail)
         ret = Dict{Symbol,KeyedArray}()
-        if non_stochastic_steady_state; ret[:non_stochastic_steady_state] = inf_arr; end
-        if mean; ret[:mean] = inf_arr; end
-        if standard_deviation; ret[:standard_deviation] = inf_arr; end
-        if variance; ret[:variance] = inf_arr; end
+        if non_stochastic_steady_state
+            axis1_nsss_fail = [axis1_fail..., 𝓂.equations.calibration_parameters...]
+            ret[:non_stochastic_steady_state] = KeyedArray(fill(inf_val, length(axis1_nsss_fail)); Variables = axis1_nsss_fail)
+        end
+        if mean; ret[:mean] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
+        if standard_deviation; ret[:standard_deviation] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
+        if variance; ret[:variance] = KeyedArray(fill(inf_val, length(axis1_fail)); Variables = axis1_fail); end
         if covariance; ret[:covariance] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, Variables2 = axis1_fail); end
+        if correlation; ret[:correlation] = KeyedArray(fill(inf_val, length(var_idx_fail), length(var_idx_fail)); Variables = axis1_fail, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1_fail); end
         return ret
     end
 
@@ -3086,11 +3066,11 @@ And data, 4×6 Matrix{Float64}:
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
     end 
 
-    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean && !covariance)
+    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean && !covariance && !correlation)
         derivatives = false
     end
 
-    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean || covariance)
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean || covariance || correlation)
         derivatives = true
     end
 
@@ -3163,14 +3143,14 @@ And data, 4×6 Matrix{Float64}:
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        # Hoist covariance rrule call for shared use across variance/std_dev/covariance
-        if variance || standard_deviation || covariance
+        # Hoist covariance rrule call for shared use across variance/std_dev/covariance/correlation
+        if variance || standard_deviation || covariance || correlation
             if algorithm == :pruned_second_order
                 _cov_result, _cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 _n_cov_tuple = 15
             elseif algorithm == :pruned_third_order
-                _cov_obs = covariance ? :full_covar : variables
+                _cov_obs = (covariance || correlation) ? :full_covar : variables
                 _cov_result, _cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, _cov_obs, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 _n_cov_tuple = 4
@@ -3245,14 +3225,7 @@ And data, 4×6 Matrix{Float64}:
         end
 
 
-        if covariance
-            axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
-        
-            if any(x -> contains(string(x), "◖"), axis3)
-                axis3_decomposed = decompose_name.(axis3)
-                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
-            end
-
+        if covariance || correlation
             # Compute full covariance Jacobian via VJP from hoisted rrule
             _np_cov2 = length(𝓂.parameter_values)
             _nv_cov2 = size(covar_dcmp, 1)
@@ -3266,6 +3239,15 @@ And data, 4×6 Matrix{Float64}:
                 if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
             dcovariance = dcovariance[:, param_idx]
+        end
+
+        if covariance
+            axis3 = vcat(:Covariance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
+        
+            if any(x -> contains(string(x), "◖"), axis3)
+                axis3_decomposed = decompose_name.(axis3)
+                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
+            end
         end
 
         if mean && algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -3416,6 +3398,30 @@ And data, 4×6 Matrix{Float64}:
                 end
             end
         end
+
+        if correlation
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+
+                if mean && algorithm == :first_order
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                end
+
+                if !solved
+                    @warn "Could not find covariance matrix."
+                end
+            end
+        end
     end
 
     
@@ -3493,6 +3499,56 @@ And data, 4×6 Matrix{Float64}:
             ret[:covariance] = KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
         end
     end
+    if correlation
+        axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+
+        if any(x -> contains(string(x), "◖"), axis1)
+            axis1_decomposed = decompose_name.(axis1)
+            axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        end
+
+        corr_full_mat, covar_sym, diag_cov, std_corr = covariance_to_correlation(covar_dcmp)
+
+        if derivatives
+            n_full_vars = size(covar_dcmp, 1)
+            n_reduced_vars = length(var_idx)
+            n_params = length(param_idx)
+
+            corr_with_derivs = zeros(n_reduced_vars, n_reduced_vars, 1 + n_params)
+            corr_with_derivs[:, :, 1] = corr_full_mat[var_idx, var_idx]
+
+            for p in 1:n_params
+                dΣ_full = reshape(dcovariance[:, p], n_full_vars, n_full_vars)
+                for (ri, i) in enumerate(var_idx)
+                    for (rj, j) in enumerate(var_idx)
+                        σi = std_corr[i]
+                        σj = std_corr[j]
+                        if !isfinite(σi) || !isfinite(σj) || diag_cov[i] <= 0 || diag_cov[j] <= 0
+                            corr_with_derivs[ri, rj, p+1] = NaN
+                        else
+                            # dC[i,j]/dθ = dΣ[i,j]/(σi*σj) - C[i,j]*(dΣ[i,i]/(2*Σ[i,i]) + dΣ[j,j]/(2*Σ[j,j]))
+                            corr_with_derivs[ri, rj, p+1] = dΣ_full[i,j] / (σi * σj) - corr_full_mat[i,j] * (dΣ_full[i,i] / (2 * diag_cov[i]) + dΣ_full[j,j] / (2 * diag_cov[j]))
+                        end
+                    end
+                end
+            end
+
+            axis_corr = vcat(:Correlation, 𝓂.constants.post_complete_parameters.parameters[param_idx])
+
+            if any(x -> contains(string(x), "◖"), axis_corr)
+                axis_corr_decomposed = decompose_name.(axis_corr)
+                axis_corr = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis_corr_decomposed]
+            end
+
+            ret[:correlation] = KeyedArray(corr_with_derivs;
+                Variables = axis1,
+                𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1,
+                Correlation_and_∂correlation∂parameter = axis_corr
+            )
+        else
+            ret[:correlation] = KeyedArray(corr_full_mat[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
+        end
+    end
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
@@ -3502,7 +3558,7 @@ end
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-@unstable get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[:variance]
+@unstable get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, derivatives = get(kwargs, :derivatives, true))[:variance]
 
 
 """
@@ -3520,7 +3576,7 @@ Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_ste
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-@unstable get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[:standard_deviation]
+@unstable get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false, derivatives = get(kwargs, :derivatives, true))[:standard_deviation]
 
 
 """
@@ -3548,7 +3604,7 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, derivatives = false`.
 """
-@unstable get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true, derivatives = false)[:covariance]
+@unstable get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true, derivatives = get(kwargs, :derivatives, false))[:covariance]
 
 
 """
@@ -3566,7 +3622,7 @@ Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_s
 """
 Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
-@unstable get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[:mean]
+@unstable get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true, derivatives = get(kwargs, :derivatives, true))[:mean]
 
 
 # """
@@ -3618,7 +3674,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3626,28 +3682,30 @@ end
     β = 0.95
 end
 
-get_statistics(RBC, RBC.parameter_values, parameters = get_parameters(RBC), standard_deviation = RBC.var)
+get_statistics(RBC, RBC.parameter_values, standard_deviation = get_variables(RBC))
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
+```
 
-# For grouped covariance (computing covariances only within specified groups; cross-group
-# entries are set to zero):
+For grouped covariance (computing covariances only within specified groups; cross-group
+entries are set to zero):
+```julia
 get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:q, :z]])
-# output
-Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0 0.00546602 0.000728709; 0.0 0.0 0.0 0.000104167]
+# Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+#   :covariance => [0.00071098 0.00705609 0.0 0.0; 0.0 0.0700541 0.0 0.0; 0.0 0.0…
+```
 
-# For correlation (returns the correlation matrix among the selected variables;
-# diagonal is 1; supports the same grouped input as `covariance`, with cross-group
-# entries set to zero):
+For correlation (returns the correlation matrix among the selected variables;
+diagonal is 1; supports the same grouped input as `covariance`, with cross-group
+entries set to zero):
+```julia
 get_statistics(RBC, RBC.parameter_values, correlation = [:c, :k])
-# output
-Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :correlation => [1.0 0.999812; 0.999812 1.0]
+# Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+#   :correlation => [1.0 0.999812; 0.999812 1.0]
 ```
 """
-@unstable function get_statistics(𝓂::ℳ,
+function get_statistics(𝓂::ℳ,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.constants.post_complete_parameters.parameters,
                         steady_state_function::SteadyStateFunctionType = missing, 
@@ -3953,7 +4011,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3961,14 +4019,16 @@ end
     β = 0.95
 end
 
+import Random; Random.seed!(3)
+
 simulated_data = simulate(RBC)
 
 get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 # output
-58.24780188977981
+53.76735680353869
 ```
 """
-@unstable function get_loglikelihood(𝓂::ℳ, 
+function get_loglikelihood(𝓂::ℳ, 
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 
@@ -4094,11 +4154,11 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
 end
 
 
-@unstable function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    estimation::Bool = false) where S <: Real
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Vector{AbstractMatrix{S}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
     
@@ -4107,7 +4167,8 @@ end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -4117,11 +4178,11 @@ end
 
 
 
-@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_stochastic_steady_state(Val(:pruned_second_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
 
@@ -4130,21 +4191,22 @@ end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS]
+    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS]
 
     return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
 
-@unstable function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Vector{AbstractMatrix{S}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer,  
 
@@ -4153,7 +4215,8 @@ end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
     state = collect(sss) - all_SS
@@ -4163,11 +4226,11 @@ end
 
 
 
-@unstable function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_stochastic_steady_state(Val(:pruned_third_order), parameter_values, 𝓂, opts = opts, estimation = estimation) # timer = timer, 
 
@@ -4176,20 +4239,21 @@ end
         return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars), zeros(S, 𝓂.constants.post_model_macro.nVars)], converged
     end
 
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     all_SS = expand_steady_state(SS_and_pars, ms)
 
-    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss) - all_SS, zeros(S, 𝓂.constants.post_model_macro.nVars)]
+    state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS, zeros(S, 𝓂.constants.post_model_macro.nVars)]
 
     return 𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
-@unstable function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    estimation::Bool = false)::Tuple{constants, Vector{S}, Matrix{S}, Vector{Vector{Float64}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     # Initialize constants at entry point
     constants_obj = initialise_constants!(𝓂)
@@ -4243,7 +4307,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 - `KeyedArray` (from the `AxisKeys` package) containing the absolute values of the residuals of the non-stochastic steady state equations.
 
 # Examples
-```jldoctest
+```jldoctest; filter = r"(Equation|CalibrationEquation)([^0-9+-]+)\\S+" => s"\\1\\2 0.0"
 using MacroModelling
 
 @model RBC begin
@@ -4253,7 +4317,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -4273,17 +4337,19 @@ And data, 5-element Vector{Float64}:
  (:Equation₃)             0.0
  (:Equation₄)             0.0
  (:CalibrationEquation₁)  0.0
+```
 
+Passing approximate values returns the residuals at those values:
+```julia
 get_non_stochastic_steady_state_residuals(RBC, [1.1641597, 3.0635781, 1.2254312, 0.0, 0.18157895])
-# output
-1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Equation ∈ 5-element Vector{Symbol}
-And data, 5-element Vector{Float64}:
- (:Equation₁)             2.7360991250446887e-10
- (:Equation₂)             6.199999980083248e-8
- (:Equation₃)             2.7897102183871425e-8
- (:Equation₄)             0.0
- (:CalibrationEquation₁)  8.160392850342646e-8
+# 1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+# ↓   Equation ∈ 5-element Vector{Symbol}
+# And data, 5-element Vector{Float64}:
+#  (:Equation₁)             2.7360991250446887e-10
+#  (:Equation₂)             6.199999980083248e-8
+#  (:Equation₃)             2.7897102183871425e-8
+#  (:Equation₄)             0.0
+#  (:CalibrationEquation₁)  8.160392850342646e-8
 ```
 """
 @unstable function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 

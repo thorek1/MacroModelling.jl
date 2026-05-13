@@ -624,7 +624,7 @@ RBC_CME = nothing
 
     @test isapprox(forw_grad,fin_grad,rtol = 1e-5)
 
-    solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2])
+    solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2][1])
     forw_grad = ForwardDiff.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))
     reverse_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
     zygote_reverse_grad = Zygote.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))[1]

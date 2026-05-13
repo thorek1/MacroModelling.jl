@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Non-stochastic steady state (NSSS) solver
 # 
 # This file contains:
@@ -14,7 +16,7 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
-@inline function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable @inline function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
     if sol.is_number == true
         return sol
     end
@@ -22,7 +24,7 @@ const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
     return num.is_zero == true ? SPyPyC.Sym(0) : sol
 end
 
-@inline function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable @inline function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
     sol.is_number == true && return Symbol[]
     atoms = Symbol[]
     for a in sol.atoms()
@@ -40,7 +42,7 @@ variable. Used to gate the rewrite: when no hazard is present the rewrite is
 a no-op and can be skipped entirely, saving allocations and SymPy simplify
 calls on log-linear models.
 """
-function expression_has_domain_hazards(expr)
+@unstable function expression_has_domain_hazards(expr)
     hazard = false
     postwalk(x -> begin
         if x isa Expr && x.head == :call && length(x.args) >= 2
@@ -71,7 +73,7 @@ mutable struct NSSSSolverBuilder
     aux_funcs::Vector{Function}
     error_funcs::Vector{Function}
     eval_funcs::Vector{Function}
-    solve_blocks::Vector{Union{Nothing, ss_solve_block}}
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}}
     # Per-step metadata
     step_types::Vector{UInt8}
     descriptions::Vector{String}
@@ -107,7 +109,7 @@ end
 function NSSSSolverBuilder()
     NSSSSolverBuilder(
         Function[], Function[],
-        Function[], Union{Nothing,ss_solve_block}[],
+        Function[], Union{Nothing,ss_solve_block{Float64}}[],
         UInt8[], String[], Int[],
         Int[], UnitRange{Int}[],
         Int[], UnitRange{Int}[],
@@ -178,7 +180,7 @@ end
 
 """Append a numerical step to the builder."""
 function push_numerical_step!(b::NSSSSolverBuilder;
-                              solve_block::ss_solve_block,
+                              solve_block::ss_solve_block{Float64},
                               block_index::Int,
                               write_indices::Vector{Int},
                               param_gather_indices::Vector{Int},
@@ -289,7 +291,7 @@ end
     end
 end
 
-function write_block_solution!(𝓂,
+@unstable function write_block_solution!(𝓂,
                                 vars_to_solve,
                                 eqs_to_solve,
                                 relevant_pars_across,
@@ -566,7 +568,7 @@ struct PartialSolveResult{T,E}
     solved_eq_indices::Vector{Int}
 end
 
-function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
+@unstable function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
             var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
@@ -607,7 +609,7 @@ function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incide
     return PartialSolveResult(T[], T[], E[], E[], Int[], Int[], Int[], Int[])
 end
 
-function make_equation_robust_to_domain_errors(eqs,
+@unstable function make_equation_robust_to_domain_errors(eqs,
                                                 vars_to_exclude::Vector{Vector{Symbol}},
                                                 bounds::Dict{Symbol,Tuple{Float64,Float64}},
                                                 ➕_vars::Vector{Symbol},
@@ -966,7 +968,7 @@ function make_equation_robust_to_domain_errors(eqs,
     return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
 end
 
-function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
+@unstable function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
                                 cse = true, skipzeros = true, nnz_parallel_threshold::Int = 1000000)
     sym_exprs = Symbolics.Num[]
     for expr in exprs
@@ -994,7 +996,7 @@ function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, 
     return func!
 end
 
-function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
+@unstable function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
                                𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
                                global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
     write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
@@ -1056,7 +1058,7 @@ function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name
     )
 end
 
-function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
+@unstable function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
                                             verbose::Bool = false,
                                             avoid_solve::Bool = false)
     symbolic_enabled = symbolic_enabled && (symbolics_data !== nothing)
@@ -1728,12 +1730,12 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool =
     return nothing
 end
 
-function find_closest_solution(cache, initial_parameters::Vector{Float64}, expected_length::Int)
+function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, initial_parameters::Vector{Float64}, expected_length::Int)::Tuple{Float64, Vector{Vector{Float64}}}
     current_best = Inf
     closest_solution = cache[end]
 
     target_parameters_norm_squared = 0.0
-    @inbounds for i in eachindex(initial_parameters)
+    @turbo for i in eachindex(initial_parameters)
         pi = initial_parameters[i]
         target_parameters_norm_squared += pi * pi
     end
@@ -1747,7 +1749,7 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
         cached_parameters = pars[end]
         squared_distance = 0.0
         cached_parameters_norm_squared = 0.0
-        for i in eachindex(initial_parameters)
+        @turbo for i in eachindex(initial_parameters)
             ci = cached_parameters[i]
             d = ci - initial_parameters[i]
             squared_distance += d * d
@@ -1771,7 +1773,7 @@ function find_closest_solution(cache, initial_parameters::Vector{Float64}, expec
         if (closest_solution[end] isa Vector{Float64}) && (length(closest_solution[end]) == length(initial_parameters))
             cached_parameters = closest_solution[end]
             current_best = 0.0
-            @inbounds for i in eachindex(initial_parameters)
+            @turbo for i in eachindex(initial_parameters)
                 d = cached_parameters[i] - initial_parameters[i]
                 current_best += d * d
             end
@@ -1787,7 +1789,7 @@ end
 # ============================================================================
 # Block solver helpers (moved from MacroModelling.jl — used only in NSSS pipeline)
 
-function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
+@unstable function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
     # equation.subs(variable, replacement)
     return SPyPyC.subs(equation, variable, replacement)
 end
@@ -1812,9 +1814,8 @@ function update_sol_values!(sol_values::AbstractVector{T}, sol_new::AbstractVect
 end
 
 
-function solve_ss(SS_optimizer::Function,
-                    # ss_solve_blocks::Function,
-                    SS_solve_block::ss_solve_block,
+function solve_ss(SS_optimizer::F,
+                    SS_solve_block::ss_solve_block{Float64},
                     parameters_and_solved_vars::Vector{T},
                     closest_parameters_and_solved_vars::Vector{T},
                     lbs::Vector{T},
@@ -1826,12 +1827,12 @@ function solve_ss(SS_optimizer::Function,
                     guess::Vector{T},
                     solver_params::solver_parameters,
                     extended_problem::Bool,
-                    separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
+                    separate_starting_value::T)::Tuple{Vector{T}, Vector{Int}, T, T} where {F, T <: AbstractFloat}
     ftol = tol.nsss.ftol
     n_guess = length(guess)
     init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
-    use_ssv = separate_starting_value isa Float64
-    ssv_val = use_ssv ? T(separate_starting_value) : zero(T)
+    use_ssv = !isnan(separate_starting_value)
+    ssv_val = use_ssv ? separate_starting_value : zero(T)
     sv_val = T(solver_params.starting_value)
     update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
 
@@ -1897,7 +1898,7 @@ function solve_ss(SS_optimizer::Function,
     if sol_minimum < ftol && verbose
         extended_problem_str = extended_problem ? "(extended problem) " : ""
 
-        if separate_starting_value isa Bool
+        if isnan(separate_starting_value)
             starting_value_str = ""
         else
             starting_value_str = "and starting point: $separate_starting_value"
@@ -1911,9 +1912,9 @@ function solve_ss(SS_optimizer::Function,
             all_small_guess &= is_small
         end
 
-        if all_small_guess && separate_starting_value isa Bool
+        if all_small_guess && isnan(separate_starting_value)
             any_guess_str = "previous solution, "
-        elseif has_small_guess && separate_starting_value isa Bool
+        elseif has_small_guess && isnan(separate_starting_value)
             any_guess_str = "provided guess, "
         else
             any_guess_str = ""
@@ -1931,8 +1932,7 @@ end
 
 function block_solver(parameters_and_solved_vars::Vector{T}, 
                         n_block::Int, 
-                        # ss_solve_blocks::Function, 
-                        SS_solve_block::ss_solve_block,
+                        SS_solve_block::ss_solve_block{Float64},
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
                         guess_and_pars_solved_vars::Vector{Vector{T}}, 
@@ -2019,19 +2019,19 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             if 𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default
                 guess_update = sol_cache.u
                 if has_nonfinite(guess_update)
-                    rel_sol_minimum = 1.0
+                    rel_sol_minimum = one(T)
                 else
                     new_guess = guess - guess_update
                     rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
                 end
             else
-                rel_sol_minimum = 1.0
+                rel_sol_minimum = one(T)
             end
         else
-            rel_sol_minimum = 0.0
+            rel_sol_minimum = zero(T)
         end
     else
-        rel_sol_minimum = 1.0
+        rel_sol_minimum = one(T)
     end
     
     if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
@@ -2051,8 +2051,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     algo_candidates = (newton, levenberg_marquardt)
 
     if cold_start
-        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
-        start_vals = fail_fast_solvers_only ? (false,) : (false, T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
+        guesses = any(x -> x < T(1e12), guess) ? [guess, fill(T(1e12), length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+        start_vals = fail_fast_solvers_only ? (T(NaN),) : (T(NaN), T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
         for g in guesses
             for i in 1:n_solver_parameters
                 p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
@@ -2078,8 +2078,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         end
     else !cold_start
 
-        start_vals = Vector{Union{Bool, T}}(undef, 8)
-        start_vals[1] = false
+        start_vals = Vector{T}(undef, 8)
+        start_vals[1] = T(NaN)
         start_vals[3] = T(0.0)
         start_vals[4] = T(1.206)
         start_vals[5] = T(1.5)
@@ -2182,8 +2182,8 @@ Returns: (error, iterations, cache_entries::Vector{Vector{Float64}})
 """
 function execute_step!(step_idx::Int,
                        sol_vec::Vector{Float64}, params_vec::Vector{Float64},
-                       closest_solution, 𝓂, tol, fail_fast_solvers_only,
-                       cold_start, solver_parameters, preferred_solver_parameter_idx::Int, verbose)
+                       closest_solution::Vector{Vector{Float64}}, 𝓂::ℳ, tol::Tolerances, fail_fast_solvers_only::Bool,
+                       cold_start::Bool, solver_parameters::Vector{solver_parameters}, preferred_solver_parameter_idx::Int, verbose::Bool)::Tuple{Float64, Int, Vector{Vector{Float64}}}
     
     c = 𝓂.constants.nsss_solver
     f = 𝓂.functions.nsss_solver
@@ -2386,11 +2386,11 @@ function solve_nsss_steps(
     tol::Tolerances,
     verbose::Bool,
     fail_fast_solvers_only::Bool,
-    closest_solution,
+    closest_solution::Vector{Vector{Float64}},
     cold_start::Bool,
     solver_params::Vector{solver_parameters},
     preferred_solver_parameter_idx::Int
-)
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}, Vector{Vector{Float64}}}
     nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
     nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
     nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
@@ -2491,7 +2491,7 @@ end
         verbose::Bool,
         cold_start::Bool,
         solver_params::Vector{solver_parameters}
-    )::Tuple{Vector, Tuple{Real, Int}}
+    )::Tuple{Vector{Float64}, Tuple{Float64, Int}}
 
 Normal Julia function wrapper for NSSS solving.
 
@@ -2537,7 +2537,7 @@ function solve_nsss_wrapper(
     scale_success_weight::Float64 = 0.4,
     scale_failure_weight::Float64 = 0.3,
     preferred_solver_parameter_idx::Int = 1,
-)::Tuple{Vector, Tuple{Real, Int}}
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}}
 
     n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
     
@@ -2592,8 +2592,9 @@ function solve_nsss_wrapper(
         
         # Interpolate parameters between target and cached solution
         if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
-            @inbounds for i in eachindex(initial_parameters)
-                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_solution_init[end][i]
+            closest_params = closest_solution_init[end]
+            @turbo for i in eachindex(initial_parameters)
+                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_params[i]
             end
             parameters = scaled_parameters
         else
@@ -2649,3 +2650,5 @@ function solve_nsss_wrapper(
 
     return SS_and_pars, (1.0, 0)
 end
+
+end # @stable

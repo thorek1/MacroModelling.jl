@@ -340,8 +340,9 @@ mutable struct second_order_indices
     # Filled by ensure_conditional_forecast_constants! (options_and_caches.jl)
     # Triggered by: get_conditional_forecast, find_shocks
     # =========================================================================
-    var²_idxs::Vector{Int}               # Variable² indices
+    var²_idxs::Vector{Int}               # Variable² indices (no-vol: kron(s_in_s, s_in_s))
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
+    shockvar_no_vol_idxs::Vector{Int}    # Shock-variable cross indices (no-vol: kron(e_in_s⁺, s_in_s))
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
@@ -527,6 +528,16 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     # Stable primal solution cache for AD/rrule pullbacks
     P::Matrix{G}
     
+    # Doubling power cache (for AD: reuse A^(2^k), B^(2^k) sequences across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)) ; 𝐁_pow[k] = B^(2^(k-1)). Only valid when pow_iters > 0.
+    # Fields are AbstractMatrix so the cache can hold dense Matrix or sparse SparseMatrixCSC entries
+    # (the doubling overloads dispatched by Sylvester preserve the sparsity of A and B across squaring).
+    𝐀_pow::Vector{AbstractMatrix{G}}
+    𝐁_pow::Vector{AbstractMatrix{G}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow / 𝐁_pow
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store transposes as Adjoint views (for adjoint use)
+
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
     Ã_fd::Matrix{H}    # Temporary for ForwardDiff partials of A
@@ -739,14 +750,23 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
 
+    # Doubling power cache (for AD: reuse A^(2^k) sequence across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)). Valid only when pow_iters > 0.
+    # Slot type is AbstractMatrix so dense and sparse iterations
+    # share the same storage (sparse-aware capture).
+    𝐀_pow::Vector{AbstractMatrix{T}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow stores transposes as Adjoint views (for adjoint use)
+
     # FastLapackInterface Schur workspace for unit-root deflation (lazily resized)
     schur_ws::FastLapackInterface.SchurWs{T}
 end
 
 
-struct ss_solve_block
-    ss_problem::function_and_jacobian
-    extended_ss_problem::function_and_jacobian
+struct ss_solve_block{T <: Real}
+    ss_problem::function_and_jacobian{T}
+    extended_ss_problem::function_and_jacobian{T}
 end
 
 
@@ -773,7 +793,7 @@ struct NSSSSolverFunctions
     aux_funcs::Vector{Function}                        # f!(out, sol_vec, params_vec) — optional pre-step aux
     error_funcs::Vector{Function}                      # g!(out, sol_vec, params_vec) — optional error check
     eval_funcs::Vector{Function}                       # f!(out, sol_vec, params_vec) — main eval (analytical only)
-    solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}} # compiled residual/Jacobian (numerical only)
 end
 
 
@@ -849,7 +869,7 @@ NSSSSolverFunctions() = NSSSSolverFunctions(
     Function[],
     Function[],
     Function[],
-    Union{Nothing,ss_solve_block}[],
+    Union{Nothing,ss_solve_block{Float64}}[],
 )
 
 """Construct an empty `NSSSSolverConstants` with no steps."""

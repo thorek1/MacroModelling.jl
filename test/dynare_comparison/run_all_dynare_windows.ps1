@@ -536,6 +536,10 @@ status_file = fullfile(batch_root, 'model_status.csv');
 status_fid = fopen(status_file, 'w');
 fprintf(status_fid, 'model,status,message\n');
 
+runtime_file = fullfile('$( ConvertTo-MatlabString -Value $resolvedOutputDir )', 'runtime_dynare.csv');
+runtime_fid = fopen(runtime_file, 'w');
+fprintf(runtime_fid, 'model,elapsed_seconds\n');
+
 model_entries = struct('name', {}, 'work_dir', {}, 'output_dir', {}, 'benchmark_only', {});
     $modelEntriesBlock
 
@@ -549,15 +553,16 @@ for entry_idx = 1:numel(model_entries)
     cd(entry.work_dir);
     model_tic = tic;
     try
-        clearvars -except status_fid model_entries entry_idx entry batch_root original_dir requested_threads thread_env_names previous_num_comp_threads active_num_comp_threads batch_start_tic model_tic;
+        clearvars -except status_fid runtime_fid model_entries entry_idx entry batch_root original_dir requested_threads thread_env_names previous_num_comp_threads active_num_comp_threads batch_start_tic model_tic;
         model_name = entry.name;
         output_dir = entry.output_dir;
         benchmark_only_mode = entry.benchmark_only;
         dynare $dynareStub noclearall;
         extract_dynare_results;
-        elapsed_model = toc(model_tic);
-        fprintf('[%s] OK: %s in %.1f s\n', datestr(now, 'HH:MM:SS'), entry.name, elapsed_model);
+        elapsed_model = toc(model_tic) - bench_elapsed_total;
+        fprintf('[%s] OK: %s in %.1f s (excl. %.1f s benchmarks)\n', datestr(now, 'HH:MM:SS'), entry.name, elapsed_model, bench_elapsed_total);
         fprintf(status_fid, '%s,ok,\n', entry.name);
+        fprintf(runtime_fid, '%s,%.6f\n', entry.name, elapsed_model);
     catch ME
         elapsed_model = toc(model_tic);
         report_text = getReport(ME, 'extended', 'hyperlinks', 'off');
@@ -569,10 +574,14 @@ for entry_idx = 1:numel(model_entries)
         message = strrep(ME.message, ',', ';');
         message = strrep(message, sprintf('\n'), ' ');
         fprintf(status_fid, '%s,error,%s\n', entry.name, message);
+        fprintf(runtime_fid, '%s,%.6f\n', entry.name, elapsed_model);
     end
     cd(original_dir);
 end
-fprintf('[%s] Batch finished in %.1f s\n', datestr(now, 'HH:MM:SS'), toc(batch_start_tic));
+batch_elapsed = toc(batch_start_tic);
+fprintf(runtime_fid, 'TOTAL,%.6f\n', batch_elapsed);
+fclose(runtime_fid);
+fprintf('[%s] Batch finished in %.1f s\n', datestr(now, 'HH:MM:SS'), batch_elapsed);
 
 fclose(status_fid);
 done_fid = fopen('batch_done.flag', 'w');

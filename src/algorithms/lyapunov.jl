@@ -222,22 +222,41 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns owned sparse storage created locally in this method.
-    # Note: workspace is unused for sparse matrices but accepted for API consistency
+    # Note: workspace was unused for sparse matrices but is now used for AD power capture
     𝐂  = copy(C)
     𝐀  = copy(A)
 
-    max_iter = 500
+    if workspace.pow_capture
+        cache_set!(workspace.𝐀_pow, 1, A, workspace.pow_transposed)
+        workspace.pow_iters = 1
+    end
 
     iters = max_iter
 
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
-        𝐀 = 𝐀^2
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if issparse(cached) && size(𝐀) == size(cached) && eltype(𝐀) == eltype(cached)
+                𝐀 = cached
+            else
+                𝐀 = convert(typeof(𝐀), cached)
+            end
+        else
+            𝐀 = 𝐀^2
 
-        droptol!(𝐀, eps())
+            droptol!(𝐀, eps())
+
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
+        end
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
@@ -272,25 +291,44 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns owned sparse storage created locally in this method.
-    # Note: workspace is unused for sparse matrices but accepted for API consistency
+    # Note: workspace was unused for sparse matrices but is now used for AD power capture
     𝐂  = copy(C)
     𝐀  = copy(A)
 
     𝐀² = similar(𝐀)
 
-    max_iter = 500
+    if workspace.pow_capture
+        cache_set!(workspace.𝐀_pow, 1, A, workspace.pow_transposed)
+        workspace.pow_iters = 1
+    end
 
     iters = max_iter
 
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
-        ℒ.mul!(𝐀², 𝐀, 𝐀)
-        copyto!(𝐀, 𝐀²)
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if typeof(cached) === typeof(𝐀) && size(cached) == size(𝐀)
+                copyto!(𝐀, cached)
+            else
+                copyto!(𝐀, convert(typeof(𝐀), cached))
+            end
+        else
+            ℒ.mul!(𝐀², 𝐀, 𝐀)
+            copyto!(𝐀, 𝐀²)
 
-        # droptol!(𝐀, eps())
+            # droptol!(𝐀, eps())
+
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
+        end
 
         if i % 2 == 0
             normdiff = ℒ.norm(𝐂¹ - 𝐂)
@@ -325,15 +363,19 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns owned dense storage created locally in this method.
-    # Note: workspace is unused for sparse matrices but accepted for API consistency
+    # Note: workspace was unused for sparse matrices but is now used for AD power capture
     𝐂  = copy(C)
     𝐀  = copy(A)
     𝐂A = collect(𝐀)    
     𝐂¹ = copy(C)
 
-    max_iter = 500
+    if workspace.pow_capture
+        cache_set!(workspace.𝐀_pow, 1, A, workspace.pow_transposed)
+        workspace.pow_iters = 1
+    end
 
     iters = max_iter
 
@@ -342,13 +384,28 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
         ℒ.mul!(𝐂A, 𝐂, 𝐀')
         ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
-        # 𝐀 *= 𝐀
-        𝐀 = 𝐀^2 # faster than A *= A
-        # copyto!(𝐂A,𝐀)
-        # 𝐀 = sparse(𝐀 * 𝐂A)
-        # 𝐀 = sparse(𝐂A * 𝐀) # faster than sparse-dense matmul but slower than sparse sparse matmul
-        
-        droptol!(𝐀, eps())
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if issparse(cached) && size(𝐀) == size(cached) && eltype(𝐀) == eltype(cached)
+                𝐀 = cached
+            else
+                𝐀 = convert(typeof(𝐀), cached)
+            end
+        else
+            # 𝐀 *= 𝐀
+            𝐀 = 𝐀^2 # faster than A *= A
+            # copyto!(𝐂A,𝐀)
+            # 𝐀 = sparse(𝐀 * 𝐂A)
+            # 𝐀 = sparse(𝐂A * 𝐀) # faster than sparse-dense matmul but slower than sparse sparse matmul
+            
+            droptol!(𝐀, eps())
+
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
+        end
 
         if i % 2 == 0
             copyto!(𝐂A, 𝐂¹)
@@ -384,6 +441,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     ::Val{:doubling},
                                     workspace::lyapunov_workspace;
                                     # timer::TimerOutput = TimerOutput(),
+                                    max_iter::Int = 50,
                                     tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # Ownership: returns workspace-backed dense buffer workspace.𝐂.
     # Ensure doubling buffers are allocated
@@ -400,7 +458,12 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     copyto!(𝐂¹, C)
     copyto!(𝐀, A)
 
-    max_iter = 500
+    if workspace.pow_capture
+        if workspace.pow_iters < 1
+            cache_set!(workspace.𝐀_pow, 1, A, workspace.pow_transposed)
+            workspace.pow_iters = 1
+        end
+    end
 
     iters = max_iter
 
@@ -409,8 +472,25 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
         ℒ.mul!(𝐂A, 𝐂, 𝐀')
         ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
-        ℒ.mul!(𝐀², 𝐀, 𝐀)
-        copyto!(𝐀, 𝐀²)
+        if workspace.pow_iters >= i + 1
+            cached = workspace.𝐀_pow[i + 1]
+            if size(𝐀) == size(cached) && eltype(𝐀) == eltype(cached) && !issparse(cached)
+                copyto!(𝐀, cached)
+            else
+                𝐀 = Matrix{eltype(𝐀)}(cached)
+                workspace.𝐀 = 𝐀
+                𝐀² = workspace.𝐀²
+            end
+        else
+            ℒ.mul!(𝐀², 𝐀, 𝐀)
+            copyto!(𝐀, 𝐀²)
+            # Capture power for AD reuse: 𝐀_pow[i+1] = A^(2^i)
+            if workspace.pow_capture
+                target_k = i + 1
+                cache_set!(workspace.𝐀_pow, target_k, 𝐀, workspace.pow_transposed)
+                workspace.pow_iters = target_k
+            end
+        end
 
         if i % 2 == 0
             copyto!(𝐂A, 𝐂¹)
@@ -436,6 +516,14 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
 
     return 𝐂, iters, reached_tol # return info on convergence
 end
+
+
+
+
+
+
+
+
 
 
 
