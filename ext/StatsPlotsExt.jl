@@ -789,9 +789,6 @@ function plot_model_estimates(𝓂::ℳ,
         marginal_contribution = false
     end
     mc = marginal_contribution && shock_decomposition && pruning
-    if mc && 𝓂.constants.post_model_macro.nExo > 10
-        @warn "`marginal_contribution = true` propagates 2^nᵉ pruned states per period. With nᵉ = $(𝓂.constants.post_model_macro.nExo) shocks this may be slow and memory-intensive." maxlog = 3
-    end
     is_pruned = pruning
     pruning = pruning && !mc
 

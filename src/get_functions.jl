@@ -7,7 +7,7 @@ Return the shock decomposition in absolute deviations from the relevant steady s
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
-Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order`) instead allocates the cross-shock interaction across shocks via marginal contributions (Shapley values): each shock's column then carries its average marginal contribution across all coalitions of the other shocks, and the `Nonlinearities` column is omitted. The cost is `2^nᵉ` pruned-state propagations per period; a warning is emitted when `nᵉ > 10`. For first-order solutions the option has no effect (silent fallback).
+Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order`) instead allocates the cross-shock interaction across shocks via marginal contributions (Shapley values) using the Aumann–Shapley path-integral identity with Gauss–Legendre quadrature: each shock's column then carries its average marginal contribution and the `Nonlinearities` column is omitted. The cost is `n_nodes * nᵉ` pruned-state propagations per period (`2 * nᵉ` at second order, `3 * nᵉ` at third order), scaling linearly in the number of shocks. For first-order solutions the option has no effect (silent fallback).
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -118,10 +118,6 @@ And data, 4×2×40 Array{Float64, 3}:
     if marginal_contribution && !pruning
         @info "`marginal_contribution = true` is only meaningful for pruned higher-order solutions (`:pruned_second_order`, `:pruned_third_order`). Setting `marginal_contribution = false` for `algorithm = $(algorithm)`." maxlog = 3
         marginal_contribution = false
-    end
-
-    if marginal_contribution && 𝓂.constants.post_model_macro.nExo > 10
-        @warn "`marginal_contribution = true` propagates 2^nᵉ pruned states per period. With nᵉ = $(𝓂.constants.post_model_macro.nExo) shocks this may be slow and memory-intensive." maxlog = 3
     end
 
     solve!(𝓂, 
