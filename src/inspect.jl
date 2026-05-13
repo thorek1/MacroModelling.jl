@@ -172,7 +172,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -239,7 +239,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -255,8 +255,8 @@ get_steady_state_equations(RBC)
  :((-β * ((k ^ (α - 1) * α * exp(z{TFP}) - δ * exp(z{δ})) + 1)) / c + 1 / c)
  :(((c - k * (-δ * exp(z{δ}) + 1)) + k) - q)
  :(-(k ^ α) * exp(z{TFP}) + q)
- :(-z{TFP} * ρ{TFP} + z{TFP})
- :(-z{δ} * ρ{δ} + z{δ})
+ :(-(z{TFP}) * ρ{TFP} + z{TFP})
+ :(-(z{δ}) * ρ{δ} + z{δ})
  :(➕₁ - c / q)
  :(➕₂ - c / q)
  :((Δc_share - log(➕₁)) + log(➕₂))
@@ -315,7 +315,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -439,7 +439,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -507,7 +507,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -565,7 +565,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -612,7 +612,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC_incomplete begin
+@parameters RBC_incomplete silent = true report_missing_parameters = false begin
     std_z = 0.01
     ρ = 0.2
     # Note: α, β, δ are not defined
@@ -652,7 +652,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC silent = true report_missing_parameters = false begin
     std_z = 0.01
     ρ = 0.2
 end
@@ -694,7 +694,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -746,7 +746,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -792,7 +792,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -838,7 +838,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -886,7 +886,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -940,7 +940,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -952,9 +952,10 @@ end
 
 get_nonnegativity_auxiliary_variables(RBC)
 # output
-2-element Vector{String}:
+3-element Vector{String}:
  "➕₁"
  "➕₂"
+ "➕₃"
 ```
 """
 function get_nonnegativity_auxiliary_variables(𝓂::ℳ)::Vector{String}
@@ -989,7 +990,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -1040,7 +1041,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -1093,7 +1094,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5
@@ -1151,7 +1152,7 @@ using MacroModelling
     Δk_4q[0] = log(k[0]) - log(k[-4])
 end
 
-@parameters RBC begin
+@parameters RBC silent = true begin
     σ = 0.01
     ρ = 0.2
     capital_to_output = 1.5

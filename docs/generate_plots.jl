@@ -8,6 +8,7 @@ using MacroModelling
 import MatrixEquations
 import StatsPlots
 using AxisKeys
+using Statistics: mean
 import Random; Random.seed!(10) # For reproducibility of :simulate
 
 
@@ -3016,8 +3017,12 @@ chain_path = "docs/src/assets/chain_NUTS.jls"
 chain_NUTS = if isfile(chain_path)
     open(deserialize, chain_path)
 else
-    n_samples = 100
-    sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
+    n_samples = 1000
+    chain = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
+    open(chain_path, "w") do io
+        serialize(io, chain)
+    end
+    chain
 end
 
 # ensure output directory exists and save the chain plot as PNG
@@ -3027,18 +3032,14 @@ savefig(p, joinpath("./docs/src/assets", "FS2000_chain_NUTS.png"))
 # ![NUTS chain](../assets/FS2000_chain_NUTS.png)
 
 
-using ComponentArrays
-import DynamicPPL: logjoint
-
 parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
 
-pars = ComponentArray([parameter_mean], Axis(:parameters));
+DynamicPPL.logjoint(FS2000_loglikelihood, (; parameters = parameter_mean))
 
-logjoint(FS2000_loglikelihood, pars)
-
-function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
-    orig_pars[1][pars_syms] = [par1, par2]
-    logjoint(model, orig_pars)
+function calculate_log_probability(par1, par2, pars_syms, orig_pars, likelihood_model)
+    p = copy(orig_pars)
+    p[pars_syms] = [par1, par2]
+    DynamicPPL.logjoint(likelihood_model, (; parameters = p))
 end
 
 granularity = 32;
@@ -3046,24 +3047,28 @@ granularity = 32;
 par1 = :del;
 par2 = :gam;
 
-paridx1 = indexin([par1], FS2000.parameters)[1];
-paridx2 = indexin([par2], FS2000.parameters)[1];
+paridx1 = indexin([par1], Symbol.(get_parameters(FS2000)))[1];
+paridx2 = indexin([par2], Symbol.(get_parameters(FS2000)))[1];
 
-parameter_samples = chain_NUTS[:parameters, stack = true]
+param_data = chain_NUTS[:parameters]
+n_iter_chain = size(param_data, 1)
+n_ch_chain = size(param_data, 2)
+all_samples = [param_data[i, c] for i in 1:n_iter_chain for c in 1:n_ch_chain]
+parameter_samples_matrix = reduce(hcat, all_samples)'
 
-par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));
-par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));
+par_range1 = collect(range(minimum(parameter_samples_matrix[:, paridx1]), stop = maximum(parameter_samples_matrix[:, paridx1]), length = granularity));
+par_range2 = collect(range(minimum(parameter_samples_matrix[:, paridx2]), stop = maximum(parameter_samples_matrix[:, paridx2]), length = granularity));
 
 p = surface(par_range1, par_range2, 
-            (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
+            (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], parameter_mean, FS2000_loglikelihood),
             camera=(30, 65),
             colorbar=false,
             color=:inferno);
 
-joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));
+joint_loglikelihood = vec([DynamicPPL.logjoint(FS2000_loglikelihood, (; parameters = all_samples[j])) for j in eachindex(all_samples)]);
 
-scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
-            vec(collect(parameter_samples[:, :, paridx2])),
+scatter3d!(parameter_samples_matrix[:, paridx1],
+            parameter_samples_matrix[:, paridx2],
             joint_loglikelihood,
             mc = :viridis, 
             marker_z = collect(1:length(joint_loglikelihood)), 
@@ -3086,7 +3091,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # adtype = AutoZygote(), 
                                         initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 
-get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.params))
+get_estimated_shocks(FS2000, data, parameters = first(modeFS2000.params.data))
 
 plot_model_estimates(FS2000, data,
                         save_plots = true, 
@@ -3407,3 +3412,47 @@ plot_conditional_forecast(Smets_Wouters_2003,conditions, shocks = shocks, plots_
 # ![Smets_Wouters_2003 conditional forecast 1](../assets/conditional_fcst__SW03__conditional_forecast__1.png)
 
 # ![Smets_Wouters_2003 conditional forecast 2](../assets/conditional_fcst__SW03__conditional_forecast__2.png)
+
+## Clean up: remove files from docs/src/assets/ that are not referenced in the documentation
+
+let
+    assets_dir = joinpath(@__DIR__, "src", "assets")
+    docs_src = joinpath(@__DIR__, "src")
+    repo_root = dirname(@__DIR__)
+
+    # Collect all filenames referenced in markdown files under docs/src/
+    referenced = Set{String}()
+    for (root, _, files) in walkdir(docs_src)
+        for f in files
+            endswith(f, ".md") || continue
+            for line in eachline(joinpath(root, f))
+                for m in eachmatch(r"assets/([^\)\"]+\.\w+)", line)
+                    push!(referenced, m.captures[1])
+                end
+            end
+        end
+    end
+
+    # Also scan markdown files in the repo root (README.md, etc.)
+    for f in readdir(repo_root)
+        endswith(f, ".md") || continue
+        for line in eachline(joinpath(repo_root, f))
+            for m in eachmatch(r"docs/src/assets/([^\)\"]+\.\w+)", line)
+                push!(referenced, m.captures[1])
+            end
+        end
+    end
+
+    # Also keep files used as inputs by this script
+    push!(referenced, "chain_NUTS.jls")
+
+    # Delete unreferenced files
+    n_deleted = 0
+    for f in readdir(assets_dir)
+        if f ∉ referenced
+            rm(joinpath(assets_dir, f))
+            n_deleted += 1
+        end
+    end
+    println("Cleaned up $n_deleted unreferenced files from docs/src/assets/ (kept $(length(referenced)) referenced files)")
+end

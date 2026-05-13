@@ -113,6 +113,207 @@ function jet_test_call(@nospecialize(f), @nospecialize(argtypes);
     end
 end
 
+# ---------------------------------------------------------------------------
+# Helper: run the standard first-order JET hot-path battery for any model.
+# Expects the model to be solved at least at first order before calling.
+# ---------------------------------------------------------------------------
+function run_first_order_jet_battery(model; model_name::String)
+    params = copy(model.parameter_values)
+    opts   = merge_calculation_options()
+
+    SS_and_pars, _ = get_NSSS_and_parameters(model, params, opts = opts)
+    ∇₁ = calculate_jacobian(params, SS_and_pars, model.caches, model.functions.jacobian, model.workspaces)
+    constants_obj = initialise_constants!(model)
+    𝐒₁, _, _ = calculate_first_order_solution(∇₁, constants_obj, model.workspaces, model.caches;
+        opts = opts, initial_guess = model.caches.qme_solution, parameter_values = params)
+
+    @testset "get_NSSS_and_parameters" begin
+        jet_test_call(get_NSSS_and_parameters,
+            Tuple{typeof(model), Vector{Float64}})
+    end
+
+    @testset "calculate_jacobian" begin
+        jet_test_call(calculate_jacobian,
+            Tuple{typeof(params), typeof(SS_and_pars),
+                  typeof(model.caches), typeof(model.functions.jacobian),
+                  typeof(model.workspaces)})
+    end
+
+    @testset "calculate_first_order_solution" begin
+        jet_test_call(calculate_first_order_solution,
+            Tuple{typeof(∇₁), typeof(constants_obj),
+                  typeof(model.workspaces), typeof(model.caches)})
+    end
+
+    @testset "calculate_covariance" begin
+        jet_test_call(calculate_covariance,
+            Tuple{typeof(params), typeof(model)})
+    end
+
+    @testset "calculate_mean" begin
+        jet_test_call(calculate_mean,
+            Tuple{typeof(params), typeof(model)})
+    end
+
+    @testset "calculate_second_order_moments" begin
+        jet_test_call(calculate_second_order_moments,
+            Tuple{typeof(params), typeof(model)})
+    end
+
+    @testset "get_relevant_steady_state_and_state_update (first_order)" begin
+        jet_test_call(get_relevant_steady_state_and_state_update,
+            Tuple{Val{:first_order}, typeof(params), typeof(model)})
+    end
+
+    @testset "get_solution (parameters, first_order)" begin
+        jet_test_call(MacroModelling.get_solution,
+            Tuple{typeof(model), typeof(params)})
+    end
+
+    @testset "get_irf (parameters)" begin
+        jet_test_call(MacroModelling.get_irf,
+            Tuple{typeof(model), typeof(params)})
+    end
+
+    @testset "get_loglikelihood" begin
+        data = KeyedArray(randn(1, 40);
+            Variables = [model.constants.post_model_macro.var[1]], Periods = 1:40)
+        jet_test_call(MacroModelling.get_loglikelihood,
+            Tuple{typeof(model), typeof(data), typeof(params)})
+    end
+
+    @testset "get_statistics" begin
+        jet_test_call(MacroModelling.get_statistics,
+            Tuple{typeof(model), typeof(params)})
+    end
+
+    @testset "get_conditional_variance_decomposition" begin
+        jet_test_call(MacroModelling.get_conditional_variance_decomposition,
+            Tuple{typeof(model)})
+    end
+
+    @testset "filter_and_smooth" begin
+        obs_syms = [model.constants.post_model_macro.var[1]]
+        data_fs = randn(1, 40)
+        jet_test_call(filter_and_smooth,
+            Tuple{typeof(model), typeof(data_fs), typeof(obs_syms)})
+    end
+
+    @testset "solve_lyapunov_equation" begin
+        lyap_ws = ensure_lyapunov_workspace!(model.workspaces, model.constants.post_model_macro.nVars, :first_order)
+        n = model.constants.post_model_macro.nVars
+        A_test = randn(n, n) * 0.5
+        C_test = let X = randn(n, n); X * X'; end
+        jet_test_call(solve_lyapunov_equation,
+            Tuple{typeof(A_test), typeof(C_test), typeof(lyap_ws)})
+    end
+
+    @testset "solve_quadratic_matrix_equation" begin
+        constants_qme = initialise_constants!(model)
+        n = model.constants.post_model_macro.nVars - model.constants.post_model_macro.nPresent_only
+        A_qme = randn(n, n)
+        B_qme = randn(n, n)
+        C_qme = randn(n, n)
+        jet_test_call(solve_quadratic_matrix_equation,
+            Tuple{typeof(A_qme), typeof(B_qme), typeof(C_qme),
+                  typeof(model.constants), typeof(model.workspaces), typeof(model.caches)})
+    end
+
+    @testset "calculate_loglikelihood (Kalman)" begin
+        calculate_loglikelihood_fn = MacroModelling.calculate_loglikelihood
+        obs_idx = [1]
+        data_dev = randn(1, 40)
+        state_vec = [zeros(model.constants.post_model_macro.nVars)]
+        jet_test_call(calculate_loglikelihood_fn,
+            Tuple{Val{:kalman}, Val{:first_order}, typeof(obs_idx),
+                  Matrix{Float64}, typeof(data_dev),
+                  typeof(model.constants), typeof(state_vec), typeof(model.workspaces)})
+    end
+
+    @testset "calculate_loglikelihood (Inversion, first_order)" begin
+        calculate_loglikelihood_fn = MacroModelling.calculate_loglikelihood
+        obs_idx = [1]
+        data_dev = randn(1, 40)
+        state_vec = [zeros(model.constants.post_model_macro.nVars)]
+        jet_test_call(calculate_loglikelihood_fn,
+            Tuple{Val{:inversion}, Val{:first_order}, typeof(obs_idx),
+                  Matrix{Float64}, typeof(data_dev),
+                  typeof(model.constants), typeof(state_vec), typeof(model.workspaces)})
+    end
+
+    # rrules
+    @testset "rrule: calculate_jacobian" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_jacobian), typeof(params), typeof(SS_and_pars),
+                  typeof(model.caches), typeof(model.functions.jacobian),
+                  typeof(model.workspaces)})
+    end
+
+    @testset "rrule: get_NSSS_and_parameters" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_NSSS_and_parameters), typeof(model), typeof(params)})
+    end
+
+    @testset "rrule: calculate_first_order_solution" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_first_order_solution), typeof(∇₁),
+                  typeof(constants_obj), typeof(model.workspaces), typeof(model.caches)})
+    end
+
+    @testset "rrule: calculate_covariance" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_covariance), typeof(params), typeof(model)})
+    end
+
+    @testset "rrule: calculate_mean" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_mean), typeof(params), typeof(model)})
+    end
+
+    @testset "rrule: calculate_second_order_moments" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(calculate_second_order_moments), typeof(params), typeof(model)})
+    end
+
+    @testset "rrule: get_relevant_steady_state_and_state_update (first_order)" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(get_relevant_steady_state_and_state_update),
+                  Val{:first_order}, typeof(params), typeof(model)})
+    end
+
+    @testset "rrule: get_irf" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_irf), typeof(model), typeof(params)})
+    end
+
+    @testset "rrule: get_loglikelihood" begin
+        data_rl = KeyedArray(randn(1, 40);
+            Variables = [model.constants.post_model_macro.var[1]], Periods = 1:40)
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_loglikelihood), typeof(model), typeof(data_rl), typeof(params)})
+    end
+
+    @testset "rrule: get_solution" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_solution), typeof(model), typeof(params)})
+    end
+
+    @testset "rrule: get_statistics" begin
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(MacroModelling.get_statistics), typeof(model), typeof(params)})
+    end
+
+    @testset "rrule: solve_lyapunov_equation" begin
+        lyap_ws_r = ensure_lyapunov_workspace!(model.workspaces, model.constants.post_model_macro.nVars, :first_order)
+        n_r = model.constants.post_model_macro.nVars
+        A_lyap_r = randn(n_r, n_r) * 0.5
+        C_lyap_r = let X = randn(n_r, n_r); X * X'; end
+        jet_test_call(MacroModelling.rrule,
+            Tuple{typeof(solve_lyapunov_equation),
+                  typeof(A_lyap_r), typeof(C_lyap_r), typeof(lyap_ws_r)})
+    end
+end
+
 @testset verbose = true "JET hot-path analysis" begin
 
     # ------------------------------------------------------------------
@@ -590,4 +791,37 @@ end
             Tuple{typeof(MacroModelling.get_statistics), typeof(RBC), typeof(params)})
     end
 
+end
+
+# ===========================================================================
+# Backus_Kehoe_Kydland_1992 — 2-country model with loop macros
+# ===========================================================================
+include("models/Backus_Kehoe_Kydland_1992.jl")
+get_solution(Backus_Kehoe_Kydland_1992, algorithm = :first_order, silent = true)
+
+@testset verbose = true "JET hot-path analysis (Backus_Kehoe_Kydland_1992)" begin
+    run_first_order_jet_battery(Backus_Kehoe_Kydland_1992;
+        model_name = "Backus_Kehoe_Kydland_1992")
+end
+
+# ===========================================================================
+# NAWM_EAUS_2008 — large-scale 2-region DSGE
+# ===========================================================================
+include("../models/NAWM_EAUS_2008.jl")
+get_solution(NAWM_EAUS_2008, algorithm = :first_order, silent = true)
+
+@testset verbose = true "JET hot-path analysis (NAWM_EAUS_2008)" begin
+    run_first_order_jet_battery(NAWM_EAUS_2008;
+        model_name = "NAWM_EAUS_2008")
+end
+
+# ===========================================================================
+# Gali_2015_chapter_3_obc — OBC model with max() and bound constraints
+# ===========================================================================
+include("../models/Gali_2015_chapter_3_obc.jl")
+get_solution(Gali_2015_chapter_3_obc, algorithm = :first_order, silent = true)
+
+@testset verbose = true "JET hot-path analysis (Gali_2015_chapter_3_obc)" begin
+    run_first_order_jet_battery(Gali_2015_chapter_3_obc;
+        model_name = "Gali_2015_chapter_3_obc")
 end

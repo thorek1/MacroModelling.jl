@@ -2,9 +2,11 @@ using Test
 using MacroModelling
 import Turing
 import Zygote
+import Mooncake
 import ForwardDiff
 import ADTypes
-import ADTypes: AutoZygote, AutoForwardDiff
+import ADTypes: AutoZygote, AutoForwardDiff, AutoMooncake
+import DifferentiationInterface
 import FiniteDifferences
 import Turing: NUTS, sample
 import LinearAlgebra as ℒ
@@ -118,7 +120,7 @@ gali_model = Gali_estimation(data, Gali_2015_chapter_3_nonlinear, :pruned_second
 
 Random.seed!(123)
 
-n_samples = 100
+n_samples = 1000
 
 samps = @time sample(gali_model,
                      NUTS(adtype = AutoForwardDiff()),
@@ -138,6 +140,30 @@ sample_means = collect(values(FlexiChains.mean(samps); parameters_only = true))
     @test all(isfinite, sample_means)
     # Means should be in the right ballpark of true values
     @test isapprox(sample_means, true_params[estimated_param_indices], rtol = 0.5)
+end
+
+# ---------------------------------------------------------------------------
+# Mooncake NUTS sampling
+# ---------------------------------------------------------------------------
+Random.seed!(123)
+
+samps_mc = @time sample(gali_model,
+                     NUTS(adtype = AutoMooncake(; config=nothing)),
+                     n_samples,
+                     progress = true,
+                     initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
+
+posterior_summary_mc = FlexiChains.summarystats(samps_mc)
+show(stdout, MIME"text/plain"(), posterior_summary_mc)
+println()
+
+sample_means_mc = collect(values(FlexiChains.mean(samps_mc); parameters_only = true))
+println("Mean estimated values (Mooncake): $(sample_means_mc)")
+
+@testset "Gali pruned 2nd order estimation results (Mooncake)" begin
+    @test length(sample_means_mc) == 6
+    @test all(isfinite, sample_means_mc)
+    @test isapprox(sample_means_mc, true_params[estimated_param_indices], rtol = 0.5)
 end
 
 @testset "Zygote vs FiniteDifferences gradient (Gali pruned 2nd order)" begin
@@ -218,4 +244,76 @@ end
     rel_err = maximum(abs.(zy_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
     println("Zygote vs ForwardDiff gradient rel err on log posterior: $rel_err")
     @test rel_err < 1e-6
+end
+
+@testset "Mooncake vs ForwardDiff gradient (Gali pruned 2nd order)" begin
+    function combined_objective_mc(x)
+        all_p = build_full_params(x)
+        m = Gali_2015_chapter_3_nonlinear
+        alg = :pruned_second_order
+
+        llh = get_loglikelihood(m, data, all_p, algorithm = alg, on_failure_loglikelihood = -Inf)
+
+        stats_n = get_statistics(m, all_p, non_stochastic_steady_state = nsss_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_nsss, 0.1), stats_n[:non_stochastic_steady_state]))
+
+        stats_m = get_statistics(m, all_p, mean = moment_vars, standard_deviation = moment_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_mean, 0.1), stats_m[:mean]))
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_std, 0.05), stats_m[:standard_deviation]))
+
+        irf_v = get_irf(m, all_p, algorithm = alg, periods = 5)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_irf, 0.1), irf_v[irf_var_idx, 1, 1]))
+
+        return llh
+    end
+
+    test_point = true_params[estimated_param_indices]
+
+    mc_grad = DifferentiationInterface.gradient(combined_objective_mc, AutoMooncake(config = nothing), test_point)
+    fd_grad = ForwardDiff.gradient(combined_objective_mc, test_point)
+
+    @test all(isfinite, mc_grad)
+    @test all(isfinite, fd_grad)
+
+    rel_err = maximum(abs.(mc_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
+    println("Mooncake vs ForwardDiff gradient rel err: $rel_err")
+    @test rel_err < 1e-4
+end
+
+@testset "Mooncake log posterior gradient (Gali pruned 2nd order)" begin
+    function turing_logjoint_mc(x)
+        all_p = build_full_params(x)
+        m = Gali_2015_chapter_3_nonlinear
+        alg = :pruned_second_order
+
+        llh = get_loglikelihood(m, data, all_p, algorithm = alg, on_failure_loglikelihood = -Inf)
+
+        stats_n = get_statistics(m, all_p, non_stochastic_steady_state = nsss_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_nsss, 0.1), stats_n[:non_stochastic_steady_state]))
+
+        stats_m = get_statistics(m, all_p, mean = moment_vars, standard_deviation = moment_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_mean, 0.1), stats_m[:mean]))
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_std, 0.05), stats_m[:standard_deviation]))
+
+        irf_v = get_irf(m, all_p, algorithm = alg, periods = 5)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_irf, 0.1), irf_v[irf_var_idx, 1, 1]))
+
+        for (i, d) in enumerate(dists)
+            llh += Turing.logpdf(d, x[i])
+        end
+
+        return llh
+    end
+
+    test_pt = true_params[estimated_param_indices]
+
+    mc_grad = DifferentiationInterface.gradient(turing_logjoint_mc, AutoMooncake(config = nothing), test_pt)
+    fd_grad = ForwardDiff.gradient(turing_logjoint_mc, test_pt)
+
+    @test all(isfinite, mc_grad)
+    @test all(isfinite, fd_grad)
+
+    rel_err = maximum(abs.(mc_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
+    println("Mooncake vs ForwardDiff gradient rel err on log posterior: $rel_err")
+    @test rel_err < 1e-4
 end
