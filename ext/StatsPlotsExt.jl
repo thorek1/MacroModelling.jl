@@ -872,10 +872,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     if is_pruned
         if mc
-            nE = 𝓂.constants.post_model_macro.nExo
-            decomposition[:, 1:nE, :]   .+= SSS_delta
-            decomposition[:, nE + 1, :] .-= SSS_delta * (nE - 1)
-            decomposition[:, end, :]    .+= SSS_delta
+            decomposition[:, end - 1, :] .+= SSS_delta
         else
             decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
             decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
@@ -1025,18 +1022,23 @@ function plot_model_estimates(𝓂::ℳ,
                         decomp = decomposition[var_idx[i],:,periods]
                     end
 
-                    additional_indices = pruning ? [size(decomp,1)-1, size(decomp,1)-2] : [size(decomp,1)-1]
+                    initial_value_idx = size(decomp,1) - 1
+                    shock_component_idx = 1:(size(decomp,1) - 2 - Int(pruning && !mc))
+                    component_order = vcat(initial_value_idx, shock_component_idx)
+                    if pruning && !mc
+                        component_order = vcat(component_order, size(decomp,1) - 2)
+                    end
                     
                     # Prepare data with NaN padding for forecast extension
                     decomp_padded = if forecast_periods > 0
-                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in component_order]
                     else
-                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                        [decomp[k,:] for k in component_order]
                     end
                     
                     p = standard_subplot(Val(:stack),
                                         decomp_padded, 
-                                        [SS for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
+                                        [SS for _ in component_order], 
                                         variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
@@ -1156,7 +1158,8 @@ function plot_model_estimates(𝓂::ℳ,
                             color = shock_decomposition ? data_color : pal[2])
 
             if shock_decomposition
-                additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+                additional_labels_prefix = ["Initial value"]
+                additional_labels_suffix = pruning && !mc ? ["Nonlinearities"] : String[]
                 
                 if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                     other_shocks = ["Other shocks (net)"]
@@ -1164,7 +1167,7 @@ function plot_model_estimates(𝓂::ℳ,
                     other_shocks = []
                 end
 
-                lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+                lbls_vec = vcat(additional_labels_prefix, string.(non_zero_shock_names), other_shocks, additional_labels_suffix)
 
                 lbls = reshape(lbls_vec, 1, length(lbls_vec))
 
@@ -1227,7 +1230,8 @@ function plot_model_estimates(𝓂::ℳ,
 
 
         if shock_decomposition
-            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+            additional_labels_prefix = ["Initial value"]
+            additional_labels_suffix = pruning && !mc ? ["Nonlinearities"] : String[]
 
             if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                 other_shocks = ["Other shocks (net)"]
@@ -1235,7 +1239,7 @@ function plot_model_estimates(𝓂::ℳ,
                 other_shocks = []
             end
 
-            lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+            lbls_vec = vcat(additional_labels_prefix, string.(non_zero_shock_names), other_shocks, additional_labels_suffix)
 
             lbls = reshape(lbls_vec, 1, length(lbls_vec))
 

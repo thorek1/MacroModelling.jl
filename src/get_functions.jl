@@ -7,7 +7,7 @@ Return the shock decomposition in absolute deviations from the relevant steady s
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
-Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order`) instead allocates the cross-shock interaction across shocks via marginal contributions (Shapley values) using the Aumann–Shapley path-integral identity with Gauss–Legendre quadrature: each shock's column then carries its average marginal contribution and the `Nonlinearities` column is omitted. The cost is `n_nodes * nᵉ` pruned-state propagations per period (`2 * nᵉ` at second order, `3 * nᵉ` at third order), scaling linearly in the number of shocks. For first-order solutions the option has no effect (silent fallback).
+Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order`) instead replaces the separate `Nonlinearities` column by an Aumann–Shapley allocation of the incremental response above the zero-shock path, using the path-integral identity with Gauss–Legendre quadrature. Equivalently, each shock's column carries its standalone effect plus its marginal-contribution share of the cross-shock interaction, while `Initial_values` remains separate. The cost is `n_nodes * nᵉ` pruned-state propagations per period (`2 * nᵉ` at second order, `3 * nᵉ` at third order), scaling linearly in the number of shocks. For first-order solutions the option has no effect (silent fallback).
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -21,7 +21,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
-- `marginal_contribution` [Default: `false`, Type: `Bool`]: if `true` and the algorithm is `:pruned_second_order` or `:pruned_third_order`, attribute the cross-shock interaction across shocks via marginal contributions (Shapley values) and omit the `Nonlinearities` column.
+- `marginal_contribution` [Default: `false`, Type: `Bool`]: if `true` and the algorithm is `:pruned_second_order` or `:pruned_third_order`, replace the separate `Nonlinearities` column by an Aumann–Shapley allocation across shock columns while keeping `Initial_values` separate.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -162,9 +162,7 @@ And data, 4×2×40 Array{Float64, 3}:
 
     if pruning
         if marginal_contribution
-            nE = 𝓂.constants.post_model_macro.nExo
-            decomposition[:, 1:nE, :]   .+= SSS_delta
-            decomposition[:, nE + 1, :] .-= SSS_delta * (nE - 1)
+            decomposition[:, end - 1, :] .+= SSS_delta
         else
             decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
             decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)

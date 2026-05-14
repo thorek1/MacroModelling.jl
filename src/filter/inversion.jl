@@ -27,10 +27,13 @@
 # augmented vector picks up `εᵢ_t · eᵢ` because ∂(xᵢ·εᵢ_t)/∂xᵢ = εᵢ_t.
 # A separate s = 0 primal trajectory is propagated to obtain V(∅).
 #
-# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Shapley
-# attributions and `decomposition[:, nᵉ+1, :]` with the residual
-# `V(∅) + (variables − V(N))`, matching the layout the public API
-# expects when `marginal_contribution = true`.
+# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Aumann–
+# Shapley shares of the incremental response `V(N) − V(∅)`. By linearity,
+# these columns equal each shock's standalone effect plus its allocated share
+# of the cross-shock interaction. The `decomposition[:, nᵉ+1, :]` column keeps
+# the zero-shock / initial-values path `V(∅)` plus any tiny numerical closure
+# residual, matching the layout the public API expects when
+# `marginal_contribution = true`.
 
 # Pruned 2nd-order state update: new_s1, new_s2 = 𝐒₁·aug1, 𝐒₁·aug2 + ½𝐒₂·(aug1⊗aug1).
 # Builds augmented vectors via copyto!, computes kron product, and applies solution matrices in-place.
@@ -89,96 +92,126 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         𝐒,
         T,
         nE::Int) where R <: Real
-    nVars = T.nVars
-    past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
-    n_aug = n_past + 1 + nE
+    nᵥ = T.nVars
+    iₚ = T.past_not_future_and_mixed_idx
+    nₚ = length(iₚ)
+    n_aug = nₚ + 1 + nE
     n_kron = n_aug^2
-    nT = size(decomposition, 3)
+    nₜ = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(2)
     n_nodes = length(nodes)
 
-    # Scratch buffers — single set, reused for each node sequentially.
-    s1     = zeros(R, nVars)
-    s2     = zeros(R, nVars)
-    new_s1 = zeros(R, nVars)
-    new_s2 = zeros(R, nVars)
-    v_i    = [zeros(R, nVars) for _ in 1:nE]
-    w_i    = [zeros(R, nVars) for _ in 1:nE]
-    new_vi = [zeros(R, nVars) for _ in 1:nE]
-    new_wi = [zeros(R, nVars) for _ in 1:nE]
+    # Scratch buffers — one set reused sequentially across quadrature nodes.
+    # s₁/s₂ are primal pruned state components; s₁⁺/s₂⁺ are next-period outputs.
+    s₁   = zeros(R, nᵥ)
+    s₂   = zeros(R, nᵥ)
+    s₁⁺  = zeros(R, nᵥ)
+    s₂⁺  = zeros(R, nᵥ)
+    # ds* buffers hold tangent states ∂s/∂xᵢ for each shock direction i.
+    ds₁ᵢ   = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ   = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₁ᵢ⁺  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ⁺  = [zeros(R, nᵥ) for _ in 1:nE]
 
-    aug1   = Vector{R}(undef, n_aug)
-    aug2   = Vector{R}(undef, n_aug)
-    ȧ1     = Vector{R}(undef, n_aug)
-    ȧ2     = Vector{R}(undef, n_aug)
-    kk     = Vector{R}(undef, n_kron)
-    kdot   = Vector{R}(undef, n_kron)
-    kdot2  = Vector{R}(undef, n_kron)
+    # Augmented primal/tangent vectors [past state; constant; shocks].
+    a₁  = Vector{R}(undef, n_aug)
+    a₂  = Vector{R}(undef, n_aug)
+    da₁ = Vector{R}(undef, n_aug)
+    da₂ = Vector{R}(undef, n_aug)
+    # Kronecker workspaces for a₁⊗a₁ and its directional derivative.
+    k₁₁  = Vector{R}(undef, n_kron)
+    dk₁₁ = Vector{R}(undef, n_kron)
+    dk₁₁′ = Vector{R}(undef, n_kron)
 
-    full_dir = zeros(R, nE)
-    eps_dir  = zeros(R, nE)
-    zero_dir = zeros(R, nE)
+    # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
+    ε̄ₜ = zeros(R, nE)
+    εᵢₜ = zeros(R, nE)
+    ε₀ = zeros(R, nE)
 
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
-    s1 .= initial_state[1]; s2 .= initial_state[2]
-    for t in 1:nT
-        pruned_state_update_2nd_order!(new_s1, new_s2, s1, s2, past_idx, zero_dir, zero_dir, aug1, aug2, kk, 𝐒)
-        @inbounds for j in 1:nVars
-            decomposition[j, nE + 1, t] = new_s1[j] + new_s2[j]
+    s₁ .= initial_state[1]
+    s₂ .= initial_state[2]
+    # Propagate the baseline path with all shocks set to zero.
+    for t in 1:nₜ
+        pruned_state_update_2nd_order!(s₁⁺, s₂⁺, s₁, s₂, iₚ, ε₀, ε₀, a₁, a₂, k₁₁, 𝐒)
+        @inbounds for v in 1:nᵥ
+            decomposition[v, nE + 1, t] = s₁⁺[v] + s₂⁺[v]
         end
-        s1, new_s1 = new_s1, s1
-        s2, new_s2 = new_s2, s2
+        # Swap current and next buffers instead of allocating a fresh state.
+        s₁, s₁⁺ = s₁⁺, s₁
+        s₂, s₂⁺ = s₂⁺, s₂
     end
 
     # --- Pass 2: one node at a time, accumulate weighted tangents. ---
     @views fill!(decomposition[:, 1:nE, :], 0.0)
 
+    # Quadrature over shock scaling nodes; each node contributes one weighted path.
     for k in 1:n_nodes
-        sk = nodes[k]; wk = weights[k]
-        s1 .= initial_state[1]; s2 .= initial_state[2]
-        for i in 1:nE; fill!(v_i[i], 0.0); fill!(w_i[i], 0.0); end
+        sₖ = nodes[k]
+        wₖ = weights[k]
+        s₁ .= initial_state[1]
+        s₂ .= initial_state[2]
+        # Reset the tangent trajectories for this quadrature node.
+        for i in 1:nE
+            fill!(ds₁ᵢ[i], 0.0)
+            fill!(ds₂ᵢ[i], 0.0)
+        end
 
-        for t in 1:nT
-            ε_t = @view shocks[:, t]
-            full_dir .= sk .* ε_t
-            pruned_state_update_2nd_order!(new_s1, new_s2, s1, s2, past_idx, full_dir, zero_dir, aug1, aug2, kk, 𝐒)
+        # March forward one period at a time, updating the primal path and all tangents.
+        for t in 1:nₜ
+            εₜ = @view shocks[:, t]
+            ε̄ₜ .= sₖ .* εₜ
+            pruned_state_update_2nd_order!(s₁⁺, s₂⁺, s₁, s₂, iₚ, ε̄ₜ, ε₀, a₁, a₂, k₁₁, 𝐒)
 
+            # For each shock direction i, propagate tangent recursions and
+            # accumulate node-weighted directional derivatives.
             for i in 1:nE
-                fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                @views copyto!(ȧ1[1:n_past], v_i[i][past_idx])
-                ȧ1[n_past + 1] = 0.0
-                copyto!(ȧ1, n_past + 2, eps_dir, 1, nE)
-                @views copyto!(ȧ2[1:n_past], w_i[i][past_idx])
-                ȧ2[n_past + 1] = 0.0
-                copyto!(ȧ2, n_past + 2, zero_dir, 1, nE)
-                ℒ.kron!(kdot,  ȧ1, aug1)
-                ℒ.kron!(kdot2, aug1, ȧ1)
-                kdot .+= kdot2
-                ℒ.mul!(new_vi[i], 𝐒[1], ȧ1)
-                ℒ.mul!(new_wi[i], 𝐒[1], ȧ2)
-                ℒ.mul!(new_wi[i], 𝐒[2], kdot, 0.5, 1.0)
-                @inbounds for j in 1:nVars
-                    decomposition[j, i, t] += wk * (new_vi[i][j] + new_wi[i][j])
+                fill!(εᵢₜ, 0.0)
+                εᵢₜ[i] = εₜ[i]
+
+                @views copyto!(da₁[1:nₚ], ds₁ᵢ[i][iₚ])
+                da₁[nₚ + 1] = 0.0
+                copyto!(da₁, nₚ + 2, εᵢₜ, 1, nE)
+
+                @views copyto!(da₂[1:nₚ], ds₂ᵢ[i][iₚ])
+                da₂[nₚ + 1] = 0.0
+                copyto!(da₂, nₚ + 2, ε₀, 1, nE)
+
+                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                ℒ.kron!(dk₁₁,  da₁, a₁)
+                ℒ.kron!(dk₁₁′, a₁, da₁)
+                dk₁₁ .+= dk₁₁′
+
+                # Plain form: ds₁ᵢ⁺ = S1 * da₁
+                ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
+                # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+
+                @inbounds for v in 1:nᵥ
+                    decomposition[v, i, t] += wₖ * (ds₁ᵢ⁺[i][v] + ds₂ᵢ⁺[i][v])
                 end
             end
 
-            s1, new_s1 = new_s1, s1
-            s2, new_s2 = new_s2, s2
+            # Advance the primal and tangent buffers to the next period.
+            s₁, s₁⁺ = s₁⁺, s₁
+            s₂, s₂⁺ = s₂⁺, s₂
             for i in 1:nE
-                v_i[i], new_vi[i] = new_vi[i], v_i[i]
-                w_i[i], new_wi[i] = new_wi[i], w_i[i]
+                ds₁ᵢ[i], ds₁ᵢ⁺[i] = ds₁ᵢ⁺[i], ds₁ᵢ[i]
+                ds₂ᵢ[i], ds₂ᵢ⁺[i] = ds₂ᵢ⁺[i], ds₂ᵢ[i]
             end
         end
     end
 
-    # --- Residual: V(∅) + (observed − (Σφ + V(∅))). ---
-    @inbounds for t in 1:nT, j in 1:nVars
-        sumφ = 0.0
-        for i in 1:nE; sumφ += decomposition[j, i, t]; end
-        ve = decomposition[j, nE + 1, t]
-        decomposition[j, nE + 1, t] = ve + (variables[j, t] - (sumφ + ve))
+    # Keep the zero-shock / initial-values path separate and absorb any tiny
+    # closure residual there instead of smearing it across the shock columns.
+    @inbounds for t in 1:nₜ, v in 1:nᵥ
+        ϕsum = 0.0
+        for i in 1:nE
+            ϕsum += decomposition[v, i, t]
+        end
+        decomposition[v, nE + 1, t] += variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
     end
 
     return decomposition
@@ -193,133 +226,173 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
         𝐒,
         T,
         nE::Int) where R <: Real
-    nVars = T.nVars
-    past_idx = T.past_not_future_and_mixed_idx
-    n_past = length(past_idx)
-    n_aug = n_past + 1 + nE
+    nᵥ = T.nVars
+    iₚ = T.past_not_future_and_mixed_idx
+    nₚ = length(iₚ)
+    n_aug = nₚ + 1 + nE
     n_kron2 = n_aug^2
     n_kron3 = n_aug^3
-    nT = size(decomposition, 3)
+    nₜ = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(3)        # exact for degree ≤ 5; need ≥ k − 1 = 2.
     n_nodes = length(nodes)
 
-    # Scratch buffers — single set, reused for each node sequentially.
-    s1     = zeros(R, nVars)
-    s2     = zeros(R, nVars)
-    s3     = zeros(R, nVars)
-    new_s1 = zeros(R, nVars)
-    new_s2 = zeros(R, nVars)
-    new_s3 = zeros(R, nVars)
-    v_i    = [zeros(R, nVars) for _ in 1:nE]
-    w_i    = [zeros(R, nVars) for _ in 1:nE]
-    u_i    = [zeros(R, nVars) for _ in 1:nE]
-    new_vi = [zeros(R, nVars) for _ in 1:nE]
-    new_wi = [zeros(R, nVars) for _ in 1:nE]
-    new_ui = [zeros(R, nVars) for _ in 1:nE]
+    # Scratch buffers — one set reused sequentially across quadrature nodes.
+    # s₁/s₂/s₃ are primal pruned state components; s*⁺ are next-period outputs.
+    s₁  = zeros(R, nᵥ)
+    s₂  = zeros(R, nᵥ)
+    s₃  = zeros(R, nᵥ)
+    s₁⁺ = zeros(R, nᵥ)
+    s₂⁺ = zeros(R, nᵥ)
+    s₃⁺ = zeros(R, nᵥ)
+    # ds* buffers hold tangent states ∂s/∂xᵢ for each shock direction i.
+    ds₁ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₃ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₁ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₃ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
 
-    aug1     = Vector{R}(undef, n_aug)
-    aug1̂     = Vector{R}(undef, n_aug)
-    aug2     = Vector{R}(undef, n_aug)
-    aug3     = Vector{R}(undef, n_aug)
-    ȧ1       = Vector{R}(undef, n_aug)
-    ȧ2       = Vector{R}(undef, n_aug)
-    ȧ3       = Vector{R}(undef, n_aug)
+    # Augmented primal/tangent vectors [past state; constant; shocks].
+    # a₁⁰ is a₁ with zero constant slot for the third-order cross term.
+    a₁  = Vector{R}(undef, n_aug)
+    a₁⁰ = Vector{R}(undef, n_aug)
+    a₂  = Vector{R}(undef, n_aug)
+    a₃  = Vector{R}(undef, n_aug)
+    da₁ = Vector{R}(undef, n_aug)
+    da₂ = Vector{R}(undef, n_aug)
+    da₃ = Vector{R}(undef, n_aug)
 
-    k11      = Vector{R}(undef, n_kron2)
-    k12̂      = Vector{R}(undef, n_kron2)
-    k11_dot  = Vector{R}(undef, n_kron2)
-    k12̂_dot  = Vector{R}(undef, n_kron2)
-    kron_buf2 = Vector{R}(undef, n_kron2)
-    k111     = Vector{R}(undef, n_kron3)
-    k111_dot = Vector{R}(undef, n_kron3)
-    kron_buf3 = Vector{R}(undef, n_kron3)
+    # Kronecker workspaces for primal terms and directional derivatives:
+    # k₁₁=a₁⊗a₁, k₁₂⁰=a₁⁰⊗a₂, k₁₁₁=(a₁⊗a₁)⊗a₁ and their d/dxᵢ variants.
+    k₁₁   = Vector{R}(undef, n_kron2)
+    k₁₂⁰  = Vector{R}(undef, n_kron2)
+    dk₁₁  = Vector{R}(undef, n_kron2)
+    dk₁₂⁰ = Vector{R}(undef, n_kron2)
+    k₂tmp = Vector{R}(undef, n_kron2)
+    k₁₁₁  = Vector{R}(undef, n_kron3)
+    dk₁₁₁ = Vector{R}(undef, n_kron3)
+    k₃tmp = Vector{R}(undef, n_kron3)
 
-    full_dir = zeros(R, nE)
-    eps_dir  = zeros(R, nE)
-    zero_dir = zeros(R, nE)
+    # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
+    ε̄ₜ = zeros(R, nE)
+    εᵢₜ = zeros(R, nE)
+    ε₀ = zeros(R, nE)
 
     # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
-    s1 .= initial_state[1]; s2 .= initial_state[2]; s3 .= initial_state[3]
-    for t in 1:nT
-        pruned_state_update_3rd_order!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, zero_dir, zero_dir,
-                                       aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
-        @inbounds for j in 1:nVars
-            decomposition[j, nE + 1, t] = new_s1[j] + new_s2[j] + new_s3[j]
+    s₁ .= initial_state[1]
+    s₂ .= initial_state[2]
+    s₃ .= initial_state[3]
+    # Propagate the baseline path with all shocks set to zero.
+    for t in 1:nₜ
+        pruned_state_update_3rd_order!(s₁⁺, s₂⁺, s₃⁺, s₁, s₂, s₃, iₚ, ε₀, ε₀,
+                                       a₁, a₁⁰, a₂, a₃, k₁₁, k₁₂⁰, k₁₁₁, 𝐒)
+        @inbounds for v in 1:nᵥ
+            decomposition[v, nE + 1, t] = s₁⁺[v] + s₂⁺[v] + s₃⁺[v]
         end
-        s1, new_s1 = new_s1, s1
-        s2, new_s2 = new_s2, s2
-        s3, new_s3 = new_s3, s3
+        # Swap current and next buffers instead of allocating a fresh state.
+        s₁, s₁⁺ = s₁⁺, s₁
+        s₂, s₂⁺ = s₂⁺, s₂
+        s₃, s₃⁺ = s₃⁺, s₃
     end
 
     # --- Pass 2: one node at a time, accumulate weighted tangents. ---
     @views fill!(decomposition[:, 1:nE, :], 0.0)
 
+    # Quadrature over shock scaling nodes; each node contributes one weighted path.
     for k in 1:n_nodes
-        sk = nodes[k]; wk = weights[k]
-        s1 .= initial_state[1]; s2 .= initial_state[2]; s3 .= initial_state[3]
-        for i in 1:nE; fill!(v_i[i], 0.0); fill!(w_i[i], 0.0); fill!(u_i[i], 0.0); end
+        sₖ = nodes[k]
+        wₖ = weights[k]
+        s₁ .= initial_state[1]
+        s₂ .= initial_state[2]
+        s₃ .= initial_state[3]
+        # Reset the tangent trajectories for this quadrature node.
+        for i in 1:nE
+            fill!(ds₁ᵢ[i], 0.0)
+            fill!(ds₂ᵢ[i], 0.0)
+            fill!(ds₃ᵢ[i], 0.0)
+        end
 
-        for t in 1:nT
-            ε_t = @view shocks[:, t]
-            full_dir .= sk .* ε_t
+        # March forward one period at a time, updating the primal path and all tangents.
+        for t in 1:nₜ
+            εₜ = @view shocks[:, t]
+            ε̄ₜ .= sₖ .* εₜ
 
-            pruned_state_update_3rd_order!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, full_dir, zero_dir,
-                                           aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
+            pruned_state_update_3rd_order!(s₁⁺, s₂⁺, s₃⁺, s₁, s₂, s₃, iₚ, ε̄ₜ, ε₀,
+                                           a₁, a₁⁰, a₂, a₃, k₁₁, k₁₂⁰, k₁₁₁, 𝐒)
 
+            # For each shock direction i, propagate first/second/third-order
+            # tangents and accumulate the node-weighted contribution.
             for i in 1:nE
-                fill!(eps_dir, 0.0); eps_dir[i] = ε_t[i]
-                @views copyto!(ȧ1[1:n_past], v_i[i][past_idx])
-                ȧ1[n_past + 1] = 0.0
-                copyto!(ȧ1, n_past + 2, eps_dir, 1, nE)
-                @views copyto!(ȧ2[1:n_past], w_i[i][past_idx])
-                ȧ2[n_past + 1] = 0.0
-                copyto!(ȧ2, n_past + 2, zero_dir, 1, nE)
-                @views copyto!(ȧ3[1:n_past], u_i[i][past_idx])
-                ȧ3[n_past + 1] = 0.0
-                copyto!(ȧ3, n_past + 2, zero_dir, 1, nE)
+                fill!(εᵢₜ, 0.0)
+                εᵢₜ[i] = εₜ[i]
 
-                ℒ.kron!(k11_dot, ȧ1, aug1)
-                ℒ.kron!(kron_buf2, aug1, ȧ1)
-                k11_dot .+= kron_buf2
+                @views copyto!(da₁[1:nₚ], ds₁ᵢ[i][iₚ])
+                da₁[nₚ + 1] = 0.0
+                copyto!(da₁, nₚ + 2, εᵢₜ, 1, nE)
 
-                ℒ.kron!(k12̂_dot, ȧ1, aug2)
-                ℒ.kron!(kron_buf2, aug1̂, ȧ2)
-                k12̂_dot .+= kron_buf2
+                @views copyto!(da₂[1:nₚ], ds₂ᵢ[i][iₚ])
+                da₂[nₚ + 1] = 0.0
+                copyto!(da₂, nₚ + 2, ε₀, 1, nE)
 
-                ℒ.kron!(k111_dot, k11_dot, aug1)
-                ℒ.kron!(kron_buf3, k11, ȧ1)
-                k111_dot .+= kron_buf3
+                @views copyto!(da₃[1:nₚ], ds₃ᵢ[i][iₚ])
+                da₃[nₚ + 1] = 0.0
+                copyto!(da₃, nₚ + 2, ε₀, 1, nE)
 
-                ℒ.mul!(new_vi[i], 𝐒[1], ȧ1)
-                ℒ.mul!(new_wi[i], 𝐒[1], ȧ2)
-                ℒ.mul!(new_wi[i], 𝐒[2], k11_dot, 0.5, 1.0)
-                ℒ.mul!(new_ui[i], 𝐒[1], ȧ3)
-                ℒ.mul!(new_ui[i], 𝐒[2], k12̂_dot, 1.0, 1.0)
-                ℒ.mul!(new_ui[i], 𝐒[3], k111_dot, 1/6, 1.0)
+                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                ℒ.kron!(dk₁₁, da₁, a₁)
+                ℒ.kron!(k₂tmp, a₁, da₁)
+                dk₁₁ .+= k₂tmp
 
-                @inbounds for j in 1:nVars
-                    decomposition[j, i, t] += wk * (new_vi[i][j] + new_wi[i][j] + new_ui[i][j])
+                # d(aug1_no_const ⊗ aug2) = (d aug1 ⊗ aug2) + (aug1_no_const ⊗ d aug2)
+                ℒ.kron!(dk₁₂⁰, da₁, a₂)
+                ℒ.kron!(k₂tmp, a₁⁰, da₂)
+                dk₁₂⁰ .+= k₂tmp
+
+                # d(k11 ⊗ aug1) = (d k11 ⊗ aug1) + (k11 ⊗ d aug1)
+                ℒ.kron!(dk₁₁₁, dk₁₁, a₁)
+                ℒ.kron!(k₃tmp, k₁₁, da₁)
+                dk₁₁₁ .+= k₃tmp
+
+                # Plain form: ds₁ᵢ⁺ = S1 * da₁
+                ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
+                # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+                # Plain form: ds₃ᵢ⁺ = S1 * da₃ + S2 * d(a₁⁰⊗a₂) + (1/6) * S3 * d(a₁⊗a₁⊗a₁)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
+
+                @inbounds for v in 1:nᵥ
+                    decomposition[v, i, t] += wₖ * (
+                        ds₁ᵢ⁺[i][v] +
+                        ds₂ᵢ⁺[i][v] +
+                        ds₃ᵢ⁺[i][v]
+                    )
                 end
             end
 
-            s1, new_s1 = new_s1, s1
-            s2, new_s2 = new_s2, s2
-            s3, new_s3 = new_s3, s3
+            # Advance the primal and tangent buffers to the next period.
+            s₁, s₁⁺ = s₁⁺, s₁
+            s₂, s₂⁺ = s₂⁺, s₂
+            s₃, s₃⁺ = s₃⁺, s₃
             for i in 1:nE
-                v_i[i], new_vi[i] = new_vi[i], v_i[i]
-                w_i[i], new_wi[i] = new_wi[i], w_i[i]
-                u_i[i], new_ui[i] = new_ui[i], u_i[i]
+                ds₁ᵢ[i], ds₁ᵢ⁺[i] = ds₁ᵢ⁺[i], ds₁ᵢ[i]
+                ds₂ᵢ[i], ds₂ᵢ⁺[i] = ds₂ᵢ⁺[i], ds₂ᵢ[i]
+                ds₃ᵢ[i], ds₃ᵢ⁺[i] = ds₃ᵢ⁺[i], ds₃ᵢ[i]
             end
         end
     end
 
-    # --- Residual: V(∅) + (observed − (Σφ + V(∅))). ---
-    @inbounds for t in 1:nT, j in 1:nVars
-        sumφ = 0.0
-        for i in 1:nE; sumφ += decomposition[j, i, t]; end
-        ve = decomposition[j, nE + 1, t]
-        decomposition[j, nE + 1, t] = ve + (variables[j, t] - (sumφ + ve))
+    # Keep the zero-shock / initial-values path separate and absorb any tiny
+    # closure residual there instead of smearing it across the shock columns.
+    @inbounds for t in 1:nₜ, v in 1:nᵥ
+        ϕsum = 0.0
+        for i in 1:nE
+            ϕsum += decomposition[v, i, t]
+        end
+        decomposition[v, nE + 1, t] += variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
     end
 
     return decomposition

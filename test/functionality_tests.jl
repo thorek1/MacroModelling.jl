@@ -1687,11 +1687,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test :Nonlinearities ∉ axiskeys(sd_mc, :Shocks)
                 @test :Initial_values ∈ axiskeys(sd_mc, :Shocks)
                 @test size(sd_mc, :Shocks) == size(sd_default, :Shocks) - 1
-                # Per-period totals match the default (Shapley efficiency: the
-                # cross-shock interaction is fully redistributed across the
-                # per-shock columns, leaving the row-sum invariant unchanged).
+                init_mc = sd_mc[:, :Initial_values, :]
+                shock_keys_mc = filter(!=(:Initial_values), collect(axiskeys(sd_mc, :Shocks)))
+                shock_sum_mc = dropdims(sum(collect(sd_mc[:, shock_keys_mc, :]), dims = 2), dims = 2)
+                # In marginal-contribution mode the zero-shock / initial-values
+                # path stays separate; only the incremental response is
+                # reallocated across the shock columns.
                 sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
                 sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
+                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-8)
                 @test isapprox(sum_default, sum_mc, atol = 1e-8)
             end
 
