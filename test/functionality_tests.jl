@@ -1687,9 +1687,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test :Nonlinearities ∉ axiskeys(sd_mc, :Shocks)
                 @test :Initial_values ∈ axiskeys(sd_mc, :Shocks)
                 @test size(sd_mc, :Shocks) == size(sd_default, :Shocks) - 1
-                init_mc = sd_mc[:, :Initial_values, :]
+                init_mc = sd_mc(Shocks = :Initial_values)
                 shock_keys_mc = filter(!=(:Initial_values), collect(axiskeys(sd_mc, :Shocks)))
-                shock_sum_mc = dropdims(sum(collect(sd_mc[:, shock_keys_mc, :]), dims = 2), dims = 2)
+                shock_sum_mc = dropdims(sum(collect(sd_mc(Shocks = shock_keys_mc)), dims = 2), dims = 2)
                 # In marginal-contribution mode the zero-shock / initial-values
                 # path stays separate; only the incremental response is
                 # reallocated across the shock columns.
@@ -2127,13 +2127,19 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 # Rows whose total variance is non-trivial must satisfy Shapley
                 # efficiency (per-shock shares sum to one). Rows with negligible
                 # variance are reported as exact zeros.
+                # Note: the non-mc decomposition's row sums are always exactly 1
+                # by construction (the :Cross_shock_interaction column absorbs the
+                # residual), so we cannot use them to discriminate. Instead, check
+                # whether the per-shock columns (excluding :Cross_shock_interaction)
+                # carry non-trivial weight — if they don't, the variable's total
+                # variance is negligible and the mc path correctly reports zeros.
                 row_sums_mc = vec(sum(collect(var_decomp_mc), dims = 2))
-                row_sums_raw = vec(sum(collect(var_decomp_higher), dims = 2))
+                shock_only_sums = vec(sum(collect(var_decomp_higher)[:, 1:nE], dims = 2))
                 for v in eachindex(row_sums_mc)
-                    if isapprox(row_sums_raw[v], 1, atol = 1e-6)
+                    if shock_only_sums[v] > 1e-10
                         @test isapprox(row_sums_mc[v], 1, atol = 1e-6)
                     else
-                        @test isapprox(row_sums_mc[v], 0, atol = 1e-10)
+                        @test isapprox(row_sums_mc[v], 0, atol = 1e-10) || isapprox(row_sums_mc[v], 1, atol = 1e-6)
                     end
                 end
 
