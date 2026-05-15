@@ -113,7 +113,27 @@
         println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
-    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :doubling
+        # Must use collect() here: the doubling method aliases 𝕊ℂ.𝐀/𝕊ℂ.𝐂_dbl internally
+        # (squaring A, iterating C) then reads the original A/C for the final residual.
+        aa = collect(A)
+
+        cc = collect(C)
+
+        x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                            Val(:doubling), 𝕊ℂ,
+                                                            initial_guess = zeros(0,0), 
+                                                            preconditioner = preconditioner,
+                                                            tol = tol, 
+                                                            # timer = timer, 
+                                                            verbose = verbose)
+
+        if verbose# && i != 0
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
+        end
+    end
+
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && has_bartels_stewart()
         aa = 𝕊ℂ.𝐀
         copyto!(aa, A)
 
@@ -203,26 +223,6 @@
 
         if verbose# && i != 0
             println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
-        end
-    end
-
-    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :doubling
-        # Must use collect() here: the doubling method aliases 𝕊ℂ.𝐀/𝕊ℂ.𝐂_dbl internally
-        # (squaring A, iterating C) then reads the original A/C for the final residual.
-        aa = collect(A)
-
-        cc = collect(C)
-
-        x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
-                                                            Val(:doubling), 𝕊ℂ,
-                                                            initial_guess = zeros(0,0), 
-                                                            preconditioner = preconditioner,
-                                                            tol = tol, 
-                                                            # timer = timer, 
-                                                            verbose = verbose)
-
-        if verbose# && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
         end
     end
 
