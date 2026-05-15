@@ -317,7 +317,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     max_iter::Int = 50,
-                                    tol::SolverTolerances = SolverTolerances())::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns owned sparse storage created locally in this method.
     # guess_provided = true
