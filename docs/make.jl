@@ -59,6 +59,7 @@ makedocs(
             ],
         # "Model syntax" => "dsl.md",
         "API" => "api.md",
+        "Speed Benchmarks" => "speed.md",
         "Index" => "call_index.md",
     ],
     warnonly = true,
