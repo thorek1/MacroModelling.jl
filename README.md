@@ -38,6 +38,20 @@ The package is not:
 
 For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
 
+## Speed
+
+MacroModelling.jl is genuinely faster than dynare in calculating perturbation solutions which makes MacroModelling.jl ideal for tasks where speed matters: estimation
+
+dynare is most competitive when using compiled mex files for first order solutions. MacroModelling.jl ist faster in that case but the benefit does not scale and as the QZ decomposition starts to dominate timings, the performance between the two becomes similar (and comes down to the underlying BLAS/LAPACK and not how the code was set up).
+
+For higher order perturbation, MacroModelling.jl is almost and order of magnitude faster and the speedup increases with the perturbation order to two orders of magnitude for third order problems.
+
+For more details on speed benchmarks across operating systems, CPU architectures, and models see # TODO: insert link here
+
+Truth be told, for the user experience actual runtimes matter and here MacroModelling.jl inherits julia cost of just-in-time compilation. dynare has an advantage, being a compiled language, but this benefit errodes as model size increases and once MacroModelling.jl can benefit from function already being compiled previously. More concretely, the time-to-first-output can take a minute or more on a small model because the corresponding functions need compiling. Once that is done, any subsequent execution is blazingly fast.
+
+Practically, if the user just wants to quickly check 1 output of a model, dynare will deliver faster. If the user wants to experiment with the model and change parameters or equations interactively, the benefits of MacroModelling.jl outweigh. These benefits relate to the provided functions being designed for interactive use and the inherent speed of previously compiled functions. Last but not least, for estimation MacroModelling.jl has an edge because of it's optimised routines and algorithms and it's compatibility with the very rich set of samplers available in julia.
+
 ## Getting started
 
 ### Installation

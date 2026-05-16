@@ -1,12 +1,14 @@
 # Todo list
 ## High priority
 
+- [ ] add filter free estimation to one of the estimation tests (think about filter free filtering instead of smoothing)
+- [ ] derivatives of variance decomposition for estimation!?
 - [ ] check dispatch doctor coverage in new functions
 - [ ] dont use variable, parameter, function names starting with _
 - [x] add higher order variance decomposition
 - [ ] let filters work with relevant subspace of solution only and also allow for missing obs
 - [ ] make package work with semi structural expectations models
-- [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
+- [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually captures higher order effects such as stochastic vol.
 - [ ] implement NestedSampling with NormalisingFlows in Julia
 - [ ] Move mean, second-order moments, and third-order moments to compressed space end-to-end; they still use uncompressed-space matrices, and the third-order solution still uses uncompressed second-order matrices.
 - [ ] check allocations of jacobian in sparse case (NAWM)
