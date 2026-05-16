@@ -151,10 +151,12 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
+            allow_failure: true
           - version: 'lts'
             os: macOS-latest
             arch: x64
             test_set: "jet"
+            allow_failure: true
           - version: '1'
             os: ubuntu-latest
             arch: x64

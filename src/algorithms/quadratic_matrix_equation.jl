@@ -49,15 +49,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.mul!(X², X, X)
         # A*X² into AXX buffer
         ℒ.mul!(qme_ws.AXX, A, X²)
+        norm_AXX = ℒ.norm(qme_ws.AXX)
         
-        AXXnorm = min(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
+        # B*X into X² buffer (no longer needed for X²)
+        ℒ.mul!(X², B, X)
+        norm_BX = ℒ.norm(X²)
         
-        # AXX += B*X
-        ℒ.mul!(qme_ws.AXX, B, X, 1, 1)
-        # AXX += C
+        # Accumulate residual: AXX += B*X + C
+        ℒ.axpy!(1, X², qme_ws.AXX)
         ℒ.axpy!(1, C, qme_ws.AXX)
     
-        reached_tol = ℒ.norm(qme_ws.AXX) / AXXnorm
+        # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+        reached_tol = ℒ.norm(qme_ws.AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
 
         if reached_tol < (initial_guess_acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
@@ -309,14 +312,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # A*X² into AXX buffer
     ℒ.mul!(schur_ws_local.AXX, A, schur_ws_local.temp_X2)
     
-    AXXnorm = min(ℒ.norm(schur_ws_local.AXX), ℒ.norm(C))
+    norm_AXX = ℒ.norm(schur_ws_local.AXX)
     
-    # AXX += B*X
-    ℒ.mul!(schur_ws_local.AXX, B, X, 1, 1)
-    # AXX += C
+    # B*X into temp_X2 buffer (no longer needed for X²)
+    ℒ.mul!(schur_ws_local.temp_X2, B, X)
+    norm_BX = ℒ.norm(schur_ws_local.temp_X2)
+    
+    # Accumulate residual: AXX += B*X + C
+    ℒ.axpy!(1, schur_ws_local.temp_X2, schur_ws_local.AXX)
     ℒ.axpy!(1, C, schur_ws_local.AXX)
     
-    reached_tol = ℒ.norm(schur_ws_local.AXX) / AXXnorm
+    # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+    reached_tol = ℒ.norm(schur_ws_local.AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
     
     return X, 0, reached_tol
 end
@@ -540,13 +547,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.mul!(temp1, X_new, X_new)
     ℒ.mul!(AXX, A, temp1)
     
-    AXXnorm = min(ℒ.norm(AXX), ℒ.norm(C))
+    norm_AXX = ℒ.norm(AXX)
 
-    ℒ.mul!(AXX, B, X_new, 1, 1)
+    # B*X into temp1 buffer (no longer needed for X²)
+    ℒ.mul!(temp1, B, X_new)
+    norm_BX = ℒ.norm(temp1)
 
+    # Accumulate residual: AXX += B*X + C
+    ℒ.axpy!(1, temp1, AXX)
     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+    reached_tol = ℒ.norm(AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
 
     # if reached_tol > tol
     #     println("QME: doubling $reached_tol")

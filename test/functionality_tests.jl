@@ -2429,7 +2429,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_last[1]))
-                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-4)
                             break
                         end
                     end

@@ -137,8 +137,11 @@ include("../models/Gali_2015_chapter_3_nonlinear.jl")
 const GALI = Gali_2015_chapter_3_nonlinear
 
 # 3 shocks total → under-identified = 1 or 2 obs, square = 3 obs.
+# Square obs must be linearly independent in the first-order solution.
+# log_W_real = σ·log_y + φ·log_N (static identity from W_real = Y^σ·N^φ),
+# so [:log_y, :log_W_real, :log_N] is rank-deficient; use i_ann instead.
 const GALI_OBS_UNDER  = [:log_y, :log_W_real]
-const GALI_OBS_SQUARE = [:log_y, :log_W_real, :log_N]
+const GALI_OBS_SQUARE = [:log_y, :log_N, :i_ann]
 
 const GALI_PARAM_SUBSET_NAMES = [:σ, :φ, :ϕᵖⁱ, :ρ_a, :ρ_z, :std_a, :std_z]
 

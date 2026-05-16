@@ -1474,7 +1474,20 @@ include("functionality_tests.jl")
     end
     m = nothing
 
+    @testset verbose = true "Borrowing constraint (OBC model with max)" begin
+        include("models/borrowing_constraint.jl")
 
+        bc_ss = get_steady_state(borrowing_constraint)
+        @test size(bc_ss, 1) > 0
+
+        bc_sol = get_solution(borrowing_constraint)
+        @test size(bc_sol, 1) > 0
+
+        bc_irf = get_irf(borrowing_constraint)
+        @test size(bc_irf, 1) > 0
+    end
+    borrowing_constraint = nothing
+    GC.gc()
 
     @testset verbose = true "Distribution functions, general and SS" begin
         
