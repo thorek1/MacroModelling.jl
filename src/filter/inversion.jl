@@ -99,10 +99,10 @@ function calculate_loglikelihood(::Val{:inversion},
     # Reduce state to past_not_future_and_mixed_idx — the only rows that are
     # ever read downstream. Pre-slice 𝐒 to the same row set so the per-period state
     # update touches the minimum number of rows.
-    t⁻ = T.past_not_future_and_mixed_idx
-    n_past = length(t⁻)
-    state = convert(Vector{R}, state[1][t⁻])
-    𝐒past = 𝐒[t⁻, :]
+    past_idx = T.past_not_future_and_mixed_idx
+    n_past = length(past_idx)
+    state = convert(Vector{R}, state[1][past_idx])
+    𝐒past = 𝐒[past_idx, :]
 
     precision_factor = one(R)
 
