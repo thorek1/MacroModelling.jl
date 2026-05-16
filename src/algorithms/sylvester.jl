@@ -307,9 +307,9 @@ end
 
 
 
-function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
-                                    B::AbstractSparseMatrix{T},
-                                    C::AbstractSparseMatrix{T},
+function solve_sylvester_equation(  A::M,
+                                    B::N,
+                                    C::O,
                                     ::Val{:doubling},
                                     𝕊ℂ::sylvester_workspace;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
@@ -317,7 +317,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     preconditioner::Symbol = :none,
                                     verbose::Bool = false,
                                     max_iter::Int = 50,
-                                    tol::SolverTolerances = SolverTolerances())::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{O, Int, T} where {T <: AbstractFloat, M <: AbstractSparseMatrix{T}, N <: AbstractSparseMatrix{T}, O <: AbstractSparseMatrix{T}}
                                     # see doi:10.1016/j.aml.2009.01.012
     # Ownership: returns owned sparse storage created locally in this method.
     # guess_provided = true
