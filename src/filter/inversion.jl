@@ -10,13 +10,10 @@
 # integral identity
 #     φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s·𝟙)/∂xᵢ ds
 #                ≈ Σ_k w_k · ∂Ṽ_t(s_k·𝟙)/∂xᵢ      (Gauss–Legendre)
-# where Ṽ_t is the polynomial extension of `S → ŝ_t(S)[v]`. Because
-# Ṽ_t(s·𝟙) is a univariate polynomial in `s` of degree ≤ k, ⌈k/2⌉
-# Gauss–Legendre nodes integrate the directional derivative exactly
-# at 2nd order; at 3rd order the driver introduces a small split-only
-# perturbation (≈1e-8 on tested medium-nE models) relative to the
-# multilinear-extension Shapley value, while preserving Shapley
-# efficiency exactly.
+# where Ṽ_t is the polynomial extension of `S → ŝ_t(S)[v]`. The production
+# drivers start from the low-order Gauss–Legendre rules (2 nodes at 2nd
+# order, 3 at 3rd order) and rerun with 4 nodes only when the coarse
+# Shapley-efficiency closure residual exceeds `1e-3`.
 #
 # Per period the driver maintains, for every Gauss–Legendre node s_k:
 #   - one primal pruned-state trajectory under shocks scaled by s_k;
@@ -92,6 +89,37 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         𝐒,
         T,
         nE::Int) where R <: Real
+        # TODO: relate the max error directly to the const instead of having that as a function (seem overkill)
+    max_error = _aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                                      variables,
+                                                                      shocks,
+                                                                      initial_state,
+                                                                      𝐒,
+                                                                      T,
+                                                                      nE,
+                                                                      2)
+    if aumann_shapley_needs_refinement(max_error)
+        _aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                              variables,
+                                                              shocks,
+                                                              initial_state,
+                                                              𝐒,
+                                                              T,
+                                                              nE,
+                                                              aumann_shapley_refined_node_count(2))
+    end
+    return decomposition
+end
+
+function _aumann_shapley_shock_decomposition_pruned_2nd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int,
+        n_nodes::Int) where R <: Real
     nᵥ = T.nVars
     iₚ = T.past_not_future_and_mixed_idx
     nₚ = length(iₚ)
@@ -99,8 +127,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     n_kron = n_aug^2
     nₜ = size(decomposition, 3)
 
-    nodes, weights = gausslegendre_unit_interval(2)
-    n_nodes = length(nodes)
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
 
     # Scratch buffers — one set reused sequentially across quadrature nodes.
     # s₁/s₂ are primal pruned state components; s₁⁺/s₂⁺ are next-period outputs.
@@ -144,7 +171,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     end
 
     # --- Pass 2: one node at a time, accumulate weighted tangents. ---
-    @views fill!(decomposition[:, 1:nE, :], 0.0)
+    @views fill!(decomposition[:, 1:nE, :], zero(R))
 
     # Quadrature over shock scaling nodes; each node contributes one weighted path.
     for k in 1:n_nodes
@@ -206,15 +233,18 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
 
     # Keep the zero-shock / initial-values path separate and absorb any tiny
     # closure residual there instead of smearing it across the shock columns.
+    max_error = zero(R)
     @inbounds for t in 1:nₜ, v in 1:nᵥ
-        ϕsum = 0.0
+        ϕsum = zero(R)
         for i in 1:nE
             ϕsum += decomposition[v, i, t]
         end
-        decomposition[v, nE + 1, t] += variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        max_error = max(max_error, abs(residual))
+        decomposition[v, nE + 1, t] += residual
     end
 
-    return decomposition
+    return max_error
 end
 
 
@@ -226,6 +256,36 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
         𝐒,
         T,
         nE::Int) where R <: Real
+    max_error = _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                                      variables,
+                                                                      shocks,
+                                                                      initial_state,
+                                                                      𝐒,
+                                                                      T,
+                                                                      nE,
+                                                                      3)
+    if aumann_shapley_needs_refinement(max_error)
+        _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                              variables,
+                                                              shocks,
+                                                              initial_state,
+                                                              𝐒,
+                                                              T,
+                                                              nE,
+                                                              aumann_shapley_refined_node_count(3))
+    end
+    return decomposition
+end
+
+function _aumann_shapley_shock_decomposition_pruned_3rd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int,
+        n_nodes::Int) where R <: Real
     nᵥ = T.nVars
     iₚ = T.past_not_future_and_mixed_idx
     nₚ = length(iₚ)
@@ -234,8 +294,7 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     n_kron3 = n_aug^3
     nₜ = size(decomposition, 3)
 
-    nodes, weights = gausslegendre_unit_interval(3)        # exact for degree ≤ 5; need ≥ k − 1 = 2.
-    n_nodes = length(nodes)
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
 
     # Scratch buffers — one set reused sequentially across quadrature nodes.
     # s₁/s₂/s₃ are primal pruned state components; s*⁺ are next-period outputs.
@@ -297,7 +356,7 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     end
 
     # --- Pass 2: one node at a time, accumulate weighted tangents. ---
-    @views fill!(decomposition[:, 1:nE, :], 0.0)
+    @views fill!(decomposition[:, 1:nE, :], zero(R))
 
     # Quadrature over shock scaling nodes; each node contributes one weighted path.
     for k in 1:n_nodes
@@ -384,18 +443,21 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
             end
         end
     end
-
+    # TODO: dont absorb the error anywhere (implement this also above) and also print the error if verbose = true for all shapley related codes
     # Keep the zero-shock / initial-values path separate and absorb any tiny
     # closure residual there instead of smearing it across the shock columns.
+    max_error = zero(R)
     @inbounds for t in 1:nₜ, v in 1:nᵥ
-        ϕsum = 0.0
+        ϕsum = zero(R)
         for i in 1:nE
             ϕsum += decomposition[v, i, t]
         end
-        decomposition[v, nE + 1, t] += variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        max_error = max(max_error, abs(residual))
+        decomposition[v, nE + 1, t] += residual
     end
 
-    return decomposition
+    return max_error
 end
 
 """

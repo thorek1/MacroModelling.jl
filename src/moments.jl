@@ -1078,16 +1078,26 @@ $(SIGNATURES)
 Allocate the pruned second-order variance to individual shocks via the
 Aumann–Shapley path-integral representation of the Shapley value.
 
-The integrand is exact (zero quadrature error) because the multilinear
-extension of `V` is a polynomial of degree ≤ 3 in the path parameter `t`,
-integrated exactly by 2-node Gauss–Legendre.
-
-Cost: `n_nodes · nᵉ` Lyapunov solves with `n_nodes = 2`.
+The production path starts from the 2-node Gauss–Legendre rule and
+automatically reruns with 4 nodes when the Shapley-efficiency closure error
+exceeds `1e-3`.
 """
 function calculate_aumann_shapley_second_order(parameters::Vector{R},
                                                 𝓂::ℳ;
                                                 opts::CalculationOptions = merge_calculation_options()
                                                 )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    shares, total_var, ok, max_error = _calculate_aumann_shapley_second_order(parameters, 𝓂, 2; opts = opts)
+    if ok && aumann_shapley_needs_refinement(max_error)
+        shares, total_var, ok, max_error = _calculate_aumann_shapley_second_order(parameters, 𝓂, aumann_shapley_refined_node_count(2); opts = opts)
+    end
+    return shares, total_var, ok
+end
+# TODO: dont use funciton names starting with _
+function _calculate_aumann_shapley_second_order(parameters::Vector{R},
+                                                𝓂::ℳ,
+                                                n_nodes::Int;
+                                                opts::CalculationOptions = merge_calculation_options()
+                                                )::Tuple{Matrix{R}, Vector{R}, Bool, R} where R <: Real
     moms = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd = moms
 
@@ -1095,13 +1105,13 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
     if !slvd
-        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false, R(NaN)
     end
 
     total_var = ℒ.diag(Σʸ₂)
 
     if nᵉ == 1
-        return reshape(copy(total_var), nVars, 1), total_var, true
+        return reshape(copy(total_var), nVars, 1), total_var, true, zero(R)
     end
 
     ensure_moments_constants!(𝓂.constants)
@@ -1146,7 +1156,7 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
     ê_to_ŝ₂_dense = Matrix(ê_to_ŝ₂)
     ê_to_y₂_dense = Matrix(ê_to_y₂)
 
-    nodes, weights = gausslegendre_unit_interval(2)            # exact for V's degree ≤ 4
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
     shares = zeros(R, nVars, nᵉ)
 
     N_ê₂ = nᵉ + nᵉ^2 + nˢ * nᵉ
@@ -1179,7 +1189,7 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
                                                 verbose = opts.verbose,
                                                 has_unit_roots = 𝓂.caches.has_unit_roots)
             if !info
-                return fill(R(NaN), nVars, nᵉ), total_var, false
+                return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
             end
             # Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂' (in-place)
             ℒ.mul!(tmp_y_inner, ê_to_y₂_dense, inner_buf)
@@ -1190,7 +1200,9 @@ function calculate_aumann_shapley_second_order(parameters::Vector{R},
             end
         end
     end
-    return shares, total_var, true
+    # TODO: this is supposed to be relative error
+    max_error = maximum(abs.(vec(sum(shares, dims = 2)) .- total_var))
+    return shares, total_var, true, max_error
 end
 
 
@@ -1203,10 +1215,9 @@ Aumann–Shapley driver for the pruned third-order variance decomposition.
 Computes per-variable Shapley shares of the unconditional pruned 3rd-order
 variance via the path-integral identity
 `φᵢ = ∫₀¹ ∂Ṽ(t·𝟙)/∂xᵢ dt`, where `Ṽ` is the multilinear extension of the
-coalition-variance functional. Because `Ṽ` is a polynomial of total degree
-≤ 6 in `x`, three Gauss–Legendre nodes integrate the integrand exactly. Per
-node we solve `nᵉ` forward Lyapunov sensitivities with the same operator
-`ŝ_to_ŝ₃`, giving `3·nᵉ` Lyapunov solves total.
+coalition-variance functional. The production path starts from the 3-node
+Gauss–Legendre rule and automatically reruns with 4 nodes when the
+Shapley-efficiency closure error exceeds `1e-3`.
 
 Returns `(shares::Matrix, total_var::Vector, ok::Bool)`.
 """
@@ -1214,26 +1225,38 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
                                               𝓂::ℳ;
                                               opts::CalculationOptions = merge_calculation_options()
                                               )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
+    shares, total_var, ok, max_error = _calculate_aumann_shapley_third_order(parameters, 𝓂, 3; opts = opts)
+    if ok && aumann_shapley_needs_refinement(max_error)
+        shares, total_var, ok, max_error = _calculate_aumann_shapley_third_order(parameters, 𝓂, aumann_shapley_refined_node_count(3); opts = opts)
+    end
+    return shares, total_var, ok
+end
+
+function _calculate_aumann_shapley_third_order(parameters::Vector{R},
+                                               𝓂::ℳ,
+                                               n_nodes::Int;
+                                               opts::CalculationOptions = merge_calculation_options()
+                                               )::Tuple{Matrix{R}, Vector{R}, Bool, R} where R <: Real
     Σʸ₃_total, _μʸ₂, _SS_and_pars, slvd_total = calculate_third_order_moments(parameters, :full_covar, 𝓂; opts = opts)
 
     nVars = 𝓂.constants.post_model_macro.nVars
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
     if !slvd_total
-        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false, R(NaN)
     end
 
     total_var = ℒ.diag(Σʸ₃_total)
 
     if nᵉ == 1
-        return reshape(copy(total_var), nVars, 1), total_var, true
+        return reshape(copy(total_var), nVars, 1), total_var, true, zero(R)
     end
 
     second = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
     Σʸ₂, Σᶻ₂_compressed, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd2 = second
 
     if !slvd2
-        return fill(R(NaN), nVars, nᵉ), total_var, false
+        return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
     end
 
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
@@ -1252,7 +1275,7 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
                                                 opts = opts, parameter_values = parameters)
 
     if !solved3
-        return fill(R(NaN), nVars, nᵉ), total_var, false
+        return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
     end
 
     𝐒₃ = sparse(𝐒₃ * 𝓂.constants.third_order.𝐔₃)
@@ -1402,7 +1425,7 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
     ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
     ê_to_y₃_dense = Matrix(ê_to_y₃)
 
-    nodes, weights = gausslegendre_unit_interval(3)            # exact for V's degree ≤ 6
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
     shares = zeros(R, nVars, nᵉ)
 
     N_ê₃ = size(Γ₃_dense, 1)
@@ -1448,7 +1471,7 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
                                                 verbose = opts.verbose,
                                                 has_unit_roots = 𝓂.caches.has_unit_roots)
             if !info
-                return fill(R(NaN), nVars, nᵉ), total_var, false
+                return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
             end
             # Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' + cross + cross'
             ℒ.mul!(tmp_y_inner, ê_to_y₃_dense, inner_buf)
@@ -1465,7 +1488,8 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
             end
         end
     end
-    return shares, total_var, true
+    max_error = maximum(abs.(vec(sum(shares, dims = 2)) .- total_var))
+    return shares, total_var, true, max_error
 end
 
 

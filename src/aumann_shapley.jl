@@ -17,7 +17,9 @@ need `n_e` forward Lyapunov sensitivities (one per direction `eᵢ`); each
 sensitivity is one Lyapunov solve with right-hand side `Ċ(x;eᵢ)`.
 
 Total Lyapunov solves: `n_nodes · n_e`, independent of subset enumeration.
-For `n_e = 7` this is 14 (2nd order) and 21 (3rd order).
+The production drivers default to the low-order rules (2 nodes at second
+order, 3 at third order) and automatically rerun with 4 nodes when the
+Shapley-efficiency closure error exceeds `1e-3`.
 
 This file provides:
 * `continuous_coalition_mask_second_order` / `_third_order`
@@ -25,6 +27,15 @@ This file provides:
 * `gausslegendre_unit_interval`
 * The `calculate_aumann_shapley_*_order` drivers live in `moments.jl`.
 =#
+# TODO: make this rtol and then refine by increasing by 1 node and up to 7 if necessary
+const AUMANN_SHAPLEY_REFINEMENT_ATOL = 1e-3
+
+aumann_shapley_needs_refinement(max_error::Real) = isfinite(max_error) && max_error > AUMANN_SHAPLEY_REFINEMENT_ATOL
+
+function aumann_shapley_refined_node_count(n::Int)
+    n < 4 || return n
+    return 4
+end
 
 """
 $(SIGNATURES)
@@ -236,11 +247,13 @@ end
 """
 $(SIGNATURES)
 Hand-coded Gauss–Legendre nodes/weights on the unit interval `[0, 1]` for
-`n ∈ {2, 3, 4}`. Avoids a runtime dependency on `FastGaussQuadrature`. The
+`n ∈ {1, 2, 3, 4}`. Avoids a runtime dependency on `FastGaussQuadrature`. The
 nodes and weights integrate polynomials of degree ≤ `2n − 1` exactly.
 """
 function gausslegendre_unit_interval(n::Int)
-    if n == 2
+    if n == 1
+        return [0.5], [1.0]
+    elseif n == 2
         a = 1 / sqrt(3.0)
         return [0.5 - a/2, 0.5 + a/2], [0.5, 0.5]
     elseif n == 3
@@ -254,6 +267,6 @@ function gausslegendre_unit_interval(n::Int)
         weights_pm1 = [w2, w1, w1, w2]
         return (nodes_pm1 .+ 1) ./ 2, weights_pm1 ./ 2
     else
-        error("Gauss–Legendre on [0,1] hand-coded only for n ∈ {2,3,4}; got n=$n")
+        error("Gauss–Legendre on [0,1] hand-coded only for n ∈ {1,2,3,4}; got n=$n")
     end
 end
