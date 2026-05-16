@@ -4052,10 +4052,15 @@ function get_loglikelihood(𝓂::ℳ,
     orig_ws = 𝓂.workspaces
     if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
+    sylv²::Symbol = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1]
+    sylv³::Symbol = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ?
+        (sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM) :
+        sylvester_algorithm[2]
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm² = sylv²,
+                            sylvester_algorithm³ = sylv³,
                             lyapunov_algorithm = lyapunov_algorithm)
 
     estimation = true
@@ -4104,19 +4109,15 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood 
     end
  
-    if collect(axiskeys(data,1)) isa Vector{String}
-        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
-    end
+    data_keyed::KeyedArray = collect(axiskeys(data, 1)) isa Vector{String} ?
+        rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
+        data
 
-    dt = collect(data(observables))
+    # Canonicalise to Matrix{Float64} with NaN for missing/nothing entries so
+    # the downstream filter code sees a single, type-stable representation.
+    dt::Matrix{Float64} = missing_data_to_nan(collect(data_keyed(observables)))
 
-    # Convert missing → NaN for downstream filter code
-    if eltype(dt) >: Missing
-        dt = coalesce.(dt, NaN)
-    end
-
-    # prepare data
-    data_in_deviations = dt .- SS_and_pars[obs_indices]
+    data_in_deviations::Matrix{Float64} = dt .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 
