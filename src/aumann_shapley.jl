@@ -18,8 +18,8 @@ sensitivity is one Lyapunov solve with right-hand side `Ċ(x;eᵢ)`.
 
 Total Lyapunov solves: `n_nodes · n_e`, independent of subset enumeration.
 The production drivers default to the low-order rules (2 nodes at second
-order, 3 at third order) and automatically rerun with 4 nodes when the
-Shapley-efficiency closure error exceeds `1e-3`.
+order, 3 at third order) and incrementally rerun with up to 7 nodes when the
+relative Shapley-efficiency closure error exceeds `1e-3`.
 
 This file provides:
 * `continuous_coalition_mask_second_order` / `_third_order`
@@ -27,15 +27,8 @@ This file provides:
 * `gausslegendre_unit_interval`
 * The `calculate_aumann_shapley_*_order` drivers live in `moments.jl`.
 =#
-# TODO: make this rtol and then refine by increasing by 1 node and up to 7 if necessary
-const AUMANN_SHAPLEY_REFINEMENT_ATOL = 1e-3
-
-aumann_shapley_needs_refinement(max_error::Real) = isfinite(max_error) && max_error > AUMANN_SHAPLEY_REFINEMENT_ATOL
-
-function aumann_shapley_refined_node_count(n::Int)
-    n < 4 || return n
-    return 4
-end
+const AUMANN_SHAPLEY_REFINEMENT_RTOL = 1e-3
+const AUMANN_SHAPLEY_REFINEMENT_MAX_NODES = 7
 
 """
 $(SIGNATURES)

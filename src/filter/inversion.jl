@@ -88,30 +88,42 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         initial_state,
         𝐒,
         T,
-        nE::Int) where R <: Real
-        # TODO: relate the max error directly to the const instead of having that as a function (seem overkill)
-    max_error = _aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+        nE::Int;
+        verbose::Bool = false) where R <: Real
+    n_nodes = 2
+    max_error = aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
                                                                       variables,
                                                                       shocks,
                                                                       initial_state,
                                                                       𝐒,
                                                                       T,
                                                                       nE,
-                                                                      2)
-    if aumann_shapley_needs_refinement(max_error)
-        _aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
-                                                              variables,
-                                                              shocks,
-                                                              initial_state,
-                                                              𝐒,
-                                                              T,
-                                                              nE,
-                                                              aumann_shapley_refined_node_count(2))
+                                                                      n_nodes)
+    if verbose
+        println("Aumann-Shapley second-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if verbose
+            println("Aumann-Shapley second-order shock decomposition rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        max_error = aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                                          variables,
+                                                                          shocks,
+                                                                          initial_state,
+                                                                          𝐒,
+                                                                          T,
+                                                                          nE,
+                                                                          n_nodes)
+        if verbose
+            println("Aumann-Shapley second-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+        end
     end
     return decomposition
 end
 
-function _aumann_shapley_shock_decomposition_pruned_2nd_order!(
+function aumann_shapley_shock_decomposition_pruned_2nd_order!(
         decomposition::AbstractArray{R},
         variables::AbstractMatrix,
         shocks::AbstractMatrix,
@@ -231,20 +243,21 @@ function _aumann_shapley_shock_decomposition_pruned_2nd_order!(
         end
     end
 
-    # Keep the zero-shock / initial-values path separate and absorb any tiny
-    # closure residual there instead of smearing it across the shock columns.
-    max_error = zero(R)
+    max_residual = zero(R)
+    max_reference = zero(R)
     @inbounds for t in 1:nₜ, v in 1:nᵥ
         ϕsum = zero(R)
         for i in 1:nE
             ϕsum += decomposition[v, i, t]
         end
         residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
-        max_error = max(max_error, abs(residual))
-        decomposition[v, nE + 1, t] += residual
+        max_residual = max(max_residual, abs(residual))
+        max_reference = max(max_reference, abs(variables[v, t]))
     end
 
-    return max_error
+    T = float(R)
+    scale = max(T(max_reference), sqrt(eps(T)))
+    return T(max_residual) / scale
 end
 
 
@@ -255,7 +268,9 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
         initial_state,
         𝐒,
         T,
-        nE::Int) where R <: Real
+        nE::Int;
+        verbose::Bool = false) where R <: Real
+    n_nodes = 3
     max_error = _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
                                                                       variables,
                                                                       shocks,
@@ -263,16 +278,27 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                                                                       𝐒,
                                                                       T,
                                                                       nE,
-                                                                      3)
-    if aumann_shapley_needs_refinement(max_error)
-        _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
-                                                              variables,
-                                                              shocks,
-                                                              initial_state,
-                                                              𝐒,
-                                                              T,
-                                                              nE,
-                                                              aumann_shapley_refined_node_count(3))
+                                                                      n_nodes)
+    if verbose
+        println("Aumann-Shapley third-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if verbose
+            println("Aumann-Shapley third-order shock decomposition rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        max_error = _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                                          variables,
+                                                                          shocks,
+                                                                          initial_state,
+                                                                          𝐒,
+                                                                          T,
+                                                                          nE,
+                                                                          n_nodes)
+        if verbose
+            println("Aumann-Shapley third-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+        end
     end
     return decomposition
 end
@@ -443,21 +469,21 @@ function _aumann_shapley_shock_decomposition_pruned_3rd_order!(
             end
         end
     end
-    # TODO: dont absorb the error anywhere (implement this also above) and also print the error if verbose = true for all shapley related codes
-    # Keep the zero-shock / initial-values path separate and absorb any tiny
-    # closure residual there instead of smearing it across the shock columns.
-    max_error = zero(R)
+    max_residual = zero(R)
+    max_reference = zero(R)
     @inbounds for t in 1:nₜ, v in 1:nᵥ
         ϕsum = zero(R)
         for i in 1:nE
             ϕsum += decomposition[v, i, t]
         end
         residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
-        max_error = max(max_error, abs(residual))
-        decomposition[v, nE + 1, t] += residual
+        max_residual = max(max_residual, abs(residual))
+        max_reference = max(max_reference, abs(variables[v, t]))
     end
 
-    return max_error
+    T = float(R)
+    scale = max(T(max_reference), sqrt(eps(T)))
+    return T(max_residual) / scale
 end
 
 """
@@ -2486,7 +2512,8 @@ end
                                                       initial_state,
                                                       𝐒,
                                                       T,
-                                                      nE)
+                                                      nE;
+                                                      verbose = opts.verbose)
         return variables, shocks, zeros(0,0), decomposition
     end
 
@@ -3146,7 +3173,8 @@ end
                                                       initial_state,
                                                       𝐒,
                                                       T,
-                                                      nE)
+                                                      nE;
+                                                      verbose = opts.verbose)
         return variables, shocks, zeros(0,0), decomposition
     end
 

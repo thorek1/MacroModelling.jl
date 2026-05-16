@@ -51,6 +51,7 @@ makedocs(
         ],
         "Steady State" => "steady_state.md",
         "Shapley decompositions (higher order)" => "shapley_decompositions.md",
+        "Speed Benchmarks" => "speed.md",
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
@@ -59,7 +60,6 @@ makedocs(
             ],
         # "Model syntax" => "dsl.md",
         "API" => "api.md",
-        "Speed Benchmarks" => "speed.md",
         "Index" => "call_index.md",
     ],
     warnonly = true,
