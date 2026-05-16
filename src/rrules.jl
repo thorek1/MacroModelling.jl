@@ -8461,6 +8461,21 @@ function rrule(::typeof(find_shocks),
 end
 
 
+rrule_inversion_missing(::Val{:first_order}, args...; kwargs...) =
+    rrule_inversion_first_order_missing(args...; kwargs...)
+
+rrule_inversion_missing(::Val{:pruned_second_order}, args...; kwargs...) =
+    rrule_inversion_pruned_second_order_missing(args...; kwargs...)
+
+rrule_inversion_missing(::Val{:second_order}, args...; kwargs...) =
+    rrule_inversion_second_order_missing(args...; kwargs...)
+
+rrule_inversion_missing(::Val{:pruned_third_order}, args...; kwargs...) =
+    rrule_inversion_pruned_third_order_missing(args...; kwargs...)
+
+rrule_inversion_missing(::Val{:third_order}, args...; kwargs...) =
+    rrule_inversion_third_order_missing(args...; kwargs...)
+
 function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                                               𝐒::Matrix{Float64},
                                               data_in_deviations::Matrix{Float64},
@@ -8718,7 +8733,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return rrule_inversion_first_order_missing(observables_index, 𝐒, data_in_deviations,
+        return rrule_inversion_missing(Val(:first_order), observables_index, 𝐒, data_in_deviations,
                                                     constants, state, workspaces, obs_idx_per_t;
                                                     warmup_iterations = warmup_iterations,
                                                     on_failure_loglikelihood = on_failure_loglikelihood,
@@ -9524,7 +9539,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return rrule_inversion_pruned_second_order_missing(observables_index, 𝐒, data_in_deviations,
+        return rrule_inversion_missing(Val(:pruned_second_order), observables_index, 𝐒, data_in_deviations,
                                                             constants, state, workspaces, obs_idx_per_t;
                                                             warmup_iterations = warmup_iterations,
                                                             on_failure_loglikelihood = on_failure_loglikelihood,
@@ -10384,12 +10399,12 @@ function rrule(::typeof(calculate_loglikelihood),
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return rrule_inversion_second_order_missing(observables_index, 𝐒, data_in_deviations,
-                                                     constants, state, workspaces, obs_idx_per_t;
-                                                     warmup_iterations = warmup_iterations,
-                                                     on_failure_loglikelihood = on_failure_loglikelihood,
-                                                     presample_periods = presample_periods,
-                                                     opts = opts,
+        return rrule_inversion_missing(Val(:second_order), observables_index, 𝐒, data_in_deviations,
+                                                      constants, state, workspaces, obs_idx_per_t;
+                                                      warmup_iterations = warmup_iterations,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood,
+                                                      presample_periods = presample_periods,
+                                                      opts = opts,
                                                      filter_algorithm = filter_algorithm)
     end
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
@@ -11501,7 +11516,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return rrule_inversion_pruned_third_order_missing(observables_index, 𝐒, data_in_deviations,
+        return rrule_inversion_missing(Val(:pruned_third_order), observables_index, 𝐒, data_in_deviations,
                                                           constants, state, workspaces, obs_idx_per_t;
                                                           warmup_iterations = warmup_iterations,
                                                           on_failure_loglikelihood = on_failure_loglikelihood,
@@ -12543,7 +12558,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return rrule_inversion_third_order_missing(observables_index, 𝐒, data_in_deviations,
+        return rrule_inversion_missing(Val(:third_order), observables_index, 𝐒, data_in_deviations,
                                                    constants, state, workspaces, obs_idx_per_t;
                                                    warmup_iterations = warmup_iterations,
                                                    on_failure_loglikelihood = on_failure_loglikelihood,

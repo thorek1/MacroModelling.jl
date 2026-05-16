@@ -147,12 +147,22 @@ end
     end
     data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
 
+    dat_nothing = Matrix{Union{Nothing,Float64}}(copy(dat_nan))
+    @inbounds for j in axes(dat_nothing, 2), i in axes(dat_nothing, 1)
+        if !isfinite(coalesce(dat_nothing[i, j], NaN))
+            dat_nothing[i, j] = nothing
+        end
+    end
+    data_nothing = KeyedArray(dat_nothing, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nothing, 2))
+
     # 1. forward filter: finite, agrees across NaN/Missing forms, differs from dense.
     ll_dense = get_loglikelihood(FS2000, data, FS2000.parameter_values)
     ll_nan   = get_loglikelihood(FS2000, data_nan, FS2000.parameter_values)
     ll_miss  = get_loglikelihood(FS2000, data_missing, FS2000.parameter_values)
+    ll_nothing = get_loglikelihood(FS2000, data_nothing, FS2000.parameter_values)
     @test isfinite(ll_nan)
     @test isapprox(ll_nan, ll_miss)
+    @test isapprox(ll_nan, ll_nothing)
     @test ll_nan != ll_dense
 
     # 2. AD gradient (Mooncake) matches finite differences on the missing-data input.
@@ -208,14 +218,24 @@ end
     end
     data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
 
+    dat_nothing = Matrix{Union{Nothing,Float64}}(copy(dat_nan))
+    @inbounds for j in axes(dat_nothing, 2), i in axes(dat_nothing, 1)
+        if !isfinite(coalesce(dat_nothing[i, j], NaN))
+            dat_nothing[i, j] = nothing
+        end
+    end
+    data_nothing = KeyedArray(dat_nothing, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nothing, 2))
+
     inversion_algos = [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
 
     for algo in inversion_algos
         ll_dense = get_loglikelihood(FS2000, data,         FS2000.parameter_values; algorithm = algo, filter = :inversion)
         ll_nan   = get_loglikelihood(FS2000, data_nan,     FS2000.parameter_values; algorithm = algo, filter = :inversion)
         ll_miss  = get_loglikelihood(FS2000, data_missing, FS2000.parameter_values; algorithm = algo, filter = :inversion)
+        ll_nothing = get_loglikelihood(FS2000, data_nothing, FS2000.parameter_values; algorithm = algo, filter = :inversion)
         @test isfinite(ll_nan)
         @test isapprox(ll_nan, ll_miss)
+        @test isapprox(ll_nan, ll_nothing)
         @test ll_nan != ll_dense
 
         # filter_data_with_model end-to-end via the smoother accessors.
@@ -224,9 +244,7 @@ end
         @test size(sh, 2) == n_time
     end
 
-    # AD: first_order, pruned_second_order and second_order inversion support
-    # missing data; the remaining higher orders are not yet implemented and must
-    # error out clearly rather than silently zeroing the gradient.
+    # AD gradients are available for all inversion algorithms in this loop.
     for algo in (:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order)
         back_grad = DifferentiationInterface.gradient(
             x -> get_loglikelihood(FS2000, data_nan, x; algorithm = algo, filter = :inversion),

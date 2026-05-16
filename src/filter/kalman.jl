@@ -13,16 +13,16 @@
 """
     missing_data_to_nan(data) -> Matrix{Float64}
 
-Convert a matrix that may contain `missing` values into a `Matrix{Float64}`
-where `missing` becomes `NaN`. `Matrix{Float64}` inputs are returned unchanged
-(no copy).
+Convert a matrix that may contain `missing` or `nothing` values into a
+`Matrix{Float64}` where `missing`/`nothing` become `NaN`. `Matrix{Float64}`
+inputs are returned unchanged (no copy).
 """
 missing_data_to_nan(data::Matrix{Float64}) = data
-function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Real}})
+function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Nothing,Real}})
     out = Matrix{Float64}(undef, size(data, 1), size(data, 2))
     @inbounds for j in axes(data, 2), i in axes(data, 1)
         v = data[i, j]
-        out[i, j] = (v === missing) ? NaN : Float64(v)
+        out[i, j] = (v === missing || v === nothing) ? NaN : Float64(v)
     end
     return out
 end

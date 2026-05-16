@@ -38,6 +38,23 @@ function inversion_missing_state_update_first_order!(state::AbstractVector,
     return state
 end
 
+@inline effective_presample_periods(presample_periods::Int, warmup_iterations::Int) = presample_periods + warmup_iterations
+
+calculate_loglikelihood_inversion_missing(::Val{:first_order}, args...; kwargs...) =
+    calculate_loglikelihood_inversion_missing_first_order(args...; kwargs...)
+
+calculate_loglikelihood_inversion_missing(::Val{:pruned_second_order}, args...; kwargs...) =
+    calculate_loglikelihood_inversion_missing_pruned_second_order(args...; kwargs...)
+
+calculate_loglikelihood_inversion_missing(::Val{:second_order}, args...; kwargs...) =
+    calculate_loglikelihood_inversion_missing_second_order(args...; kwargs...)
+
+calculate_loglikelihood_inversion_missing(::Val{:pruned_third_order}, args...; kwargs...) =
+    calculate_loglikelihood_inversion_missing_pruned_third_order(args...; kwargs...)
+
+calculate_loglikelihood_inversion_missing(::Val{:third_order}, args...; kwargs...) =
+    calculate_loglikelihood_inversion_missing_third_order(args...; kwargs...)
+
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
@@ -68,7 +85,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return calculate_loglikelihood_inversion_missing_first_order(
+        return calculate_loglikelihood_inversion_missing(Val(:first_order),
             observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
             warmup_iterations = warmup_iterations,
             presample_periods = presample_periods,
@@ -80,11 +97,12 @@ function calculate_loglikelihood(::Val{:inversion},
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     # Reduce state to past_not_future_and_mixed_idx — the only rows that are
-    # ever read downstream (matches the higher-order methods at lines 311,
-    # 598, 1316). Pre-slice 𝐒 to the same row set so the per-period state
+    # ever read downstream. Pre-slice 𝐒 to the same row set so the per-period state
     # update touches the minimum number of rows.
-    state = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
-    𝐒past = 𝐒[T.past_not_future_and_mixed_idx, :]
+    t⁻ = T.past_not_future_and_mixed_idx
+    n_past = length(t⁻)
+    state = convert(Vector{R}, state[1][t⁻])
+    𝐒past = 𝐒[t⁻, :]
 
     precision_factor = one(R)
 
@@ -221,8 +239,8 @@ function calculate_loglikelihood(::Val{:inversion},
         end
 
         # Use pre-allocated state_concat instead of vcat
-        copyto!(state_concat, 1, state, 1, T.nPast_not_future_and_mixed)
-        copyto!(state_concat, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
+        copyto!(state_concat, 1, state, 1, n_past)
+        copyto!(state_concat, n_past + 1, x, 1, T.nExo)
         ℒ.mul!(state, 𝐒past, state_concat)
         # state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
@@ -263,7 +281,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return calculate_loglikelihood_inversion_missing_pruned_second_order(
+        return calculate_loglikelihood_inversion_missing(Val(:pruned_second_order),
             observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
             warmup_iterations = warmup_iterations,
             presample_periods = presample_periods,
@@ -541,7 +559,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return calculate_loglikelihood_inversion_missing_second_order(
+        return calculate_loglikelihood_inversion_missing(Val(:second_order),
             observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
             warmup_iterations = warmup_iterations,
             presample_periods = presample_periods,
@@ -789,7 +807,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return calculate_loglikelihood_inversion_missing_pruned_third_order(
+        return calculate_loglikelihood_inversion_missing(Val(:pruned_third_order),
             observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
             warmup_iterations = warmup_iterations,
             presample_periods = presample_periods,
@@ -956,7 +974,8 @@ function calculate_loglikelihood(::Val{:inversion},
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
 
-        copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
+        copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
+        ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
         ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
@@ -1229,7 +1248,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
     if has_missing
-        return calculate_loglikelihood_inversion_missing_third_order(
+        return calculate_loglikelihood_inversion_missing(Val(:third_order),
             observables_index, 𝐒, data_in_deviations, constants, state, workspaces, obs_idx_per_t;
             warmup_iterations = warmup_iterations,
             presample_periods = presample_periods,
@@ -1600,14 +1619,10 @@ end
 
     data_arr = collect(data_in_deviations)
     obs_idx_per_t, has_missing = build_obs_index(data_arr)
-    if has_missing && warmup_iterations > 0
-        @error "Inversion filter: warmup_iterations > 0 is not supported with missing observations."
-        return variables, shocks, zeros(0,0), decomposition
-    end
 
     jac = zeros(0, 0)
 
-    if warmup_iterations > 0
+    if warmup_iterations > 0 && !has_missing
         if warmup_iterations >= 1
             jac = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
             if warmup_iterations >= 2
@@ -2987,10 +3002,7 @@ function calculate_loglikelihood_inversion_missing_first_order(
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    if warmup_iterations > 0
-        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
-        return on_failure_loglikelihood
-    end
+    eff_presample_periods = effective_presample_periods(presample_periods, warmup_iterations)
     T = constants.post_model_macro
     ws = workspaces.inversion
 
@@ -3043,7 +3055,7 @@ function calculate_loglikelihood_inversion_missing_first_order(
                 return on_failure_loglikelihood
             end
             x_v = jacdecomp \ y_v
-            if i > presample_periods
+            if i > eff_presample_periods
                 logabsdets += ℒ.logabsdet(jacdecomp)[1]
             end
         else
@@ -3053,14 +3065,14 @@ function calculate_loglikelihood_inversion_missing_first_order(
             end
             jacdecomp = ℒ.svd(jac_v)
             x_v = jacdecomp \ y_v
-            if i > presample_periods
+            if i > eff_presample_periods
                 logabsdets += sum(s -> log(abs(s)), jacdecomp.S)
             end
         end
 
         copyto!(x_buf, x_v)
 
-        if i > presample_periods
+        if i > eff_presample_periods
             shocks² += sum(abs2, x_buf)
             n_obs_total += m
             if !isfinite(shocks²) || !isfinite(logabsdets)
@@ -3088,10 +3100,7 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    if warmup_iterations > 0
-        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
-        return on_failure_loglikelihood
-    end
+    eff_presample_periods = effective_presample_periods(presample_periods, warmup_iterations)
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -3177,7 +3186,7 @@ function calculate_loglikelihood_inversion_missing_pruned_second_order(
                 if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i") end
                 return on_failure_loglikelihood
             end
-            if i > presample_periods
+            if i > eff_presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
@@ -3221,10 +3230,7 @@ function calculate_loglikelihood_inversion_missing_second_order(
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    if warmup_iterations > 0
-        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
-        return on_failure_loglikelihood
-    end
+    eff_presample_periods = effective_presample_periods(presample_periods, warmup_iterations)
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -3303,7 +3309,7 @@ function calculate_loglikelihood_inversion_missing_second_order(
                 if opts.verbose println("Inversion filter (2nd) failed at step $i") end
                 return on_failure_loglikelihood
             end
-            if i > presample_periods
+            if i > eff_presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
@@ -3343,10 +3349,7 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    if warmup_iterations > 0
-        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
-        return on_failure_loglikelihood
-    end
+    eff_presample_periods = effective_presample_periods(presample_periods, warmup_iterations)
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -3456,7 +3459,8 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
-        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ)
+        ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
         ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
@@ -3480,7 +3484,7 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
                 if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i") end
                 return on_failure_loglikelihood
             end
-            if i > presample_periods
+            if i > eff_presample_periods
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.kron!(kron_buffer3, kron_buffer2, x)
                 jacc_v = view(jacc_v_buf, 1:m, :)
@@ -3529,10 +3533,7 @@ function calculate_loglikelihood_inversion_missing_third_order(
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    if warmup_iterations > 0
-        @error "Inversion filter: `warmup_iterations > 0` is not supported with missing observations."
-        return on_failure_loglikelihood
-    end
+    eff_presample_periods = effective_presample_periods(presample_periods, warmup_iterations)
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -3624,7 +3625,8 @@ function calculate_loglikelihood_inversion_missing_third_order(
         ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
-        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ)
+        ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
         ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
@@ -3648,7 +3650,7 @@ function calculate_loglikelihood_inversion_missing_third_order(
                 if opts.verbose println("Inversion filter (3rd) failed at step $i") end
                 return on_failure_loglikelihood
             end
-            if i > presample_periods
+            if i > eff_presample_periods
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.kron!(kron_buffer, x, x)
                 ℒ.kron!(kron_buffer3, J, kron_buffer)

@@ -4028,7 +4028,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 53.76735680353869
 ```
 """
-@unstable function get_loglikelihood(𝓂::ℳ, 
+function get_loglikelihood(𝓂::ℳ, 
                             data::KeyedArray{T}, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 
@@ -4045,7 +4045,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64, Union{Missing, Float64}}, S <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
 
     if !caching; invalidate_cache_validity!(𝓂); end
