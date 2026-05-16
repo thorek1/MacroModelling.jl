@@ -8497,8 +8497,9 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
     Tt = size(data_in_deviations, 2)
 
     if warmup_iterations > 0
-        @error "Inversion filter rrule: warmup_iterations > 0 not supported with missing observations."
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
+    else
+        eff_presample = presample_periods
     end
 
     state₀ = copy(state[1])
@@ -8560,7 +8561,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
             invjac_v_seq[t] = invjac_v
             G_seq[t] = G
 
-            if t > presample_periods
+            if t > eff_presample
                 shocks² += sum(abs2, xv)
                 # logabsdet[t] = sum log svdvals(jac_v) = (1/2) log det(jac_v jac_v')
                 # for square m == n_exo: = log|det(jac_v)|
@@ -8626,7 +8627,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
             idx = idx_seq[t]
             m = length(idx)
 
-            if m > 0 && t > presample_periods
+            if m > 0 && t > eff_presample
                 # shocks² adds: ∂x_t += -∂llh * x_seq[t]
                 ∂x_t = ∂x_t .+ (-∂llh) .* x_seq[t]
             end
@@ -8657,8 +8658,8 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                     ∂jac_v = -(pinvA' * ∂x_t) * x_seq[t]' + g_t * (P_perp * ∂x_t)'
                 end
 
-                # logabsdet[t] term (only if t > presample): ∂jac_v += -∂llh/2 * pinv(jac_v)'
-                if t > presample_periods
+                # logabsdet[t] term (only if t > eff_presample): ∂jac_v += -∂llh/2 * pinv(jac_v)'
+                if t > eff_presample
                     if m == n_exo
                         invjac_v = invjac_v_seq[t]
                         ∂jac_v = ∂jac_v .+ (-∂llh / 2) .* invjac_v'
@@ -9132,8 +9133,9 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
     Tt = size(data_in_deviations, 2)
 
     if warmup_iterations > 0
-        @error "Inversion filter rrule (pruned 2nd): warmup_iterations > 0 not supported with missing observations."
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
+    else
+        eff_presample = presample_periods
     end
 
     cc = ensure_conditional_forecast_constants!(constants)
@@ -9223,7 +9225,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t") end
                 return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
-            if t > presample_periods
+            if t > eff_presample
                 jac_v = similar(𝐒ⁱ_v)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jac_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
@@ -9338,7 +9340,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 𝐒ⁱ²ᵉ_v_local = 𝐒ⁱ²ᵉ[idx, :]
                 jac_v_local = 𝐒ⁱ_v_local + 2 * 𝐒ⁱ²ᵉ_v_local * ℒ.kron(J, x)
             end
-            if m > 0 && t > presample_periods
+            if m > 0 && t > eff_presample
                 # ∂shocks² = -1/2 (from llh wrt shocks²); ∂x_k += -x_k
                 @inbounds for k in 1:n_exo
                     ∂x[k] += -x[k]
@@ -9415,7 +9417,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 # Add direct ∂jac_v contributions:
                 #   ∂𝐒ⁱ_v    += ∂jac_v
                 #   ∂𝐒ⁱ²ᵉ_v += 2 * ∂jac_v * kron(I, x)'
-                if t > presample_periods
+                if t > eff_presample
                     ∂𝐒ⁱ_v_total = ∂𝐒ⁱ_v + ∂jac_v
                     ∂𝐒ⁱ²ᵉ_v_total = ∂𝐒ⁱ²ᵉ_v_kkt + 2 * ∂jac_v * ℒ.kron(J, x)'
                 else
@@ -10060,8 +10062,9 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
     Tt = size(data_in_deviations, 2)
 
     if warmup_iterations > 0
-        @error "Inversion filter rrule (2nd, non-pruned): warmup_iterations > 0 not supported with missing observations."
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
+    else
+        eff_presample = presample_periods
     end
 
     cc = ensure_conditional_forecast_constants!(constants)
@@ -10144,7 +10147,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t") end
                 return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
-            if t > presample_periods
+            if t > eff_presample
                 jac_v = similar(𝐒ⁱ_v)
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jac_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
@@ -10238,7 +10241,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 𝐒ⁱ²ᵉ_v_local = 𝐒ⁱ²ᵉ[idx, :]
                 jac_v_local = 𝐒ⁱ_v_local + 2 * 𝐒ⁱ²ᵉ_v_local * ℒ.kron(J, x)
             end
-            if m > 0 && t > presample_periods
+            if m > 0 && t > eff_presample
                 @inbounds for k in 1:n_exo
                     ∂x[k] += -x[k]
                 end
@@ -10297,7 +10300,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 ∂𝐒ⁱ²ᵉ_v_F   = -Sλ * vec(xx_outer)'
                 ∂𝐒ⁱ²ᵉ_v_kkt = ∂𝐒ⁱ²ᵉ_v_top + ∂𝐒ⁱ²ᵉ_v_F
 
-                if t > presample_periods
+                if t > eff_presample
                     ∂𝐒ⁱ_v_total = ∂𝐒ⁱ_v + ∂jac_v
                     ∂𝐒ⁱ²ᵉ_v_total = ∂𝐒ⁱ²ᵉ_v_kkt + 2 * ∂jac_v * ℒ.kron(J, x)'
                 else
@@ -10904,8 +10907,9 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
     Tt = size(data_in_deviations, 2)
 
     if warmup_iterations > 0
-        @error "Inversion filter rrule (pruned 3rd): warmup_iterations > 0 not supported with missing observations."
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
+    else
+        eff_presample = presample_periods
     end
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
@@ -11043,7 +11047,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t") end
                 return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
-            if t > presample_periods
+            if t > eff_presample
                 kron_J_x = ℒ.kron(J, x)
                 kron_xx  = ℒ.kron(x, x)
                 kron_J_xx = ℒ.kron(J, kron_xx)
@@ -11205,7 +11209,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 kron_J_xx_local = ℒ.kron(J, kron_xx_local)
                 jac_v_local = 𝐒ⁱ_v_local + 2 * 𝐒ⁱ²ᵉ_v_local * kron_J_x_local + 3 * 𝐒ⁱ³ᵉ_v_local * kron_J_xx_local
             end
-            if m > 0 && t > presample_periods
+            if m > 0 && t > eff_presample
                 @inbounds for k in 1:n_exo
                     ∂x[k] += -x[k]
                 end
@@ -11292,7 +11296,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 ∂𝐒ⁱ³ᵉ_v_kkt = ∂𝐒ⁱ³ᵉ_v_top + ∂𝐒ⁱ³ᵉ_v_F
 
                 # Add direct ∂jac_v contributions for periods past presample
-                if t > presample_periods
+                if t > eff_presample
                     ∂𝐒ⁱ_v_total    = ∂𝐒ⁱ_v + ∂jac_v
                     ∂𝐒ⁱ²ᵉ_v_total  = ∂𝐒ⁱ²ᵉ_v_kkt + 2 * ∂jac_v * ℒ.kron(J, x)'
                     ∂𝐒ⁱ³ᵉ_v_total  = ∂𝐒ⁱ³ᵉ_v_kkt + 3 * ∂jac_v * ℒ.kron(J, kron_xx_local)'
@@ -12105,8 +12109,9 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
     Tt = size(data_in_deviations, 2)
 
     if warmup_iterations > 0
-        @error "Inversion filter rrule (3rd, missing): warmup_iterations > 0 not supported."
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
+    else
+        eff_presample = presample_periods
     end
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
@@ -12217,7 +12222,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                 if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t") end
                 return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
-            if t > presample_periods
+            if t > eff_presample
                 kron_J_x = ℒ.kron(J, x)
                 kron_xx  = ℒ.kron(x, x)
                 kron_J_xx = ℒ.kron(J, kron_xx)
@@ -12324,7 +12329,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                 kron_J_xx_local = ℒ.kron(J, kron_xx_local)
                 jac_v_local = 𝐒ⁱ_v_local + 2 * 𝐒ⁱ²ᵉ_v_local * kron_J_x_local + 3 * 𝐒ⁱ³ᵉ_v_local * kron_J_xx_local
             end
-            if m > 0 && t > presample_periods
+            if m > 0 && t > eff_presample
                 @inbounds for k in 1:n_exo
                     ∂x[k] += -x[k]
                 end
@@ -12397,7 +12402,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                 kron_x_xx  = ℒ.kron(x,  kron_xx_local)
                 ∂𝐒ⁱ³ᵉ_v_kkt = 3 * λ * kron_Sx_xx' - Sλ * kron_x_xx'
 
-                if t > presample_periods
+                if t > eff_presample
                     ∂𝐒ⁱ_v_total    = ∂𝐒ⁱ_v + ∂jac_v
                     ∂𝐒ⁱ²ᵉ_v_total  = ∂𝐒ⁱ²ᵉ_v_kkt + 2 * ∂jac_v * ℒ.kron(J, x)'
                     ∂𝐒ⁱ³ᵉ_v_total  = ∂𝐒ⁱ³ᵉ_v_kkt + 3 * ∂jac_v * ℒ.kron(J, kron_xx_local)'
