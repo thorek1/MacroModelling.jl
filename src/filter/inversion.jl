@@ -1620,39 +1620,52 @@ end
     data_arr = collect(data_in_deviations)
     obs_idx_per_t, has_missing = build_obs_index(data_arr)
 
-    jac = zeros(0, 0)
+    y = zeros(length(cond_var_idx))
+    x = zeros(T.nExo)
+    jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
 
-    if warmup_iterations > 0 && !has_missing
-        if warmup_iterations >= 1
-            jac = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
-            if warmup_iterations >= 2
-                jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
-                if warmup_iterations >= 3
-                    Sᵉ = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-                    for e in 1:warmup_iterations-2
-                        jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
-                        Sᵉ *= 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+    if warmup_iterations > 0
+        if has_missing
+            n_warm = min(warmup_iterations - 1, size(data_in_deviations, 2))
+            @inbounds for i in 1:n_warm
+                @views ℒ.mul!(y, 𝐒₁[cond_var_idx,1:end-T.nExo], state[T.past_not_future_and_mixed_idx])
+                @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
+                idx = obs_idx_per_t[i]
+                if isempty(idx)
+                    fill!(x, 0)
+                else
+                    jac_v = jac[idx, :]
+                    y_v = y[idx]
+                    x .= jac_v \ y_v
+                end
+                ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], x))
+            end
+        else
+            if warmup_iterations >= 1
+                warmup_jac = jac
+                if warmup_iterations >= 2
+                    warmup_jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], warmup_jac)
+                    if warmup_iterations >= 3
+                        Sᵉ = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                        for e in 1:warmup_iterations-2
+                            warmup_jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], warmup_jac)
+                            Sᵉ *= 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                        end
                     end
+                end
+                jacdecomp = ℒ.svd(warmup_jac)
+
+                x_warmup = jacdecomp \ data_in_deviations[:,1]
+            
+                warmup_shocks = reshape(x_warmup, T.nExo, warmup_iterations)
+            
+                for i in 1:warmup_iterations-1
+                    ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+                    # state = state_update(state, warmup_shocks[:,i])
                 end
             end
         end
-    
-        jacdecomp = ℒ.svd(jac)
-
-        x = jacdecomp \ data_in_deviations[:,1]
-    
-        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
-    
-        for i in 1:warmup_iterations-1
-            ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
-            # state = state_update(state, warmup_shocks[:,i])
-        end
     end
-
-    y = zeros(length(cond_var_idx))
-    x = zeros(T.nExo)
-
-    jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
 
     if T.nExo == length(observables)
         if eltype(jac) <: AbstractFloat
@@ -3459,8 +3472,7 @@ function calculate_loglikelihood_inversion_missing_pruned_third_order(
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
-        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ)
-        ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
         ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
@@ -3625,8 +3637,7 @@ function calculate_loglikelihood_inversion_missing_third_order(
         ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
         x_kron_II!(kron_buffer4sv, state¹⁻_vol)
-        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ)
-        ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
+        copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
         ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
 
         if m == 0
