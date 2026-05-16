@@ -67,7 +67,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, rekey, NamedDimsArray
 import AxisKeys
-# Keep a local alias for internal call sites while avoiding explicit `axiskeys` imports into this namespace.
+# Local wrapper for internal call sites, without re-exporting `axiskeys` from AxisKeys.
 axiskeys(args...; kwargs...) = AxisKeys.axiskeys(args...; kwargs...)
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
