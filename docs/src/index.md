@@ -53,6 +53,20 @@ The package contains the following models in the `models` folder:
 - [Smets and Wouters (2003)](https://onlinelibrary.wiley.com/doi/10.1162/154247603770383415) `SW03.jl`
 - [Smets and Wouters (2007)](https://www.aeaweb.org/articles?id=10.1257/aer.97.3.586) `SW07.jl`
 
+## Speed
+
+`MacroModelling.jl` is genuinely faster than Dynare at computing perturbation solutions, which makes it well suited for tasks where runtime matters most — in particular estimation.
+
+For first-order solves, Dynare is most competitive when using compiled MATLAB mex files. `MacroModelling.jl` is still faster in that case, but the gap narrows as model size grows and the QZ decomposition starts to dominate the runtime; at that point performance is largely determined by the underlying BLAS/LAPACK rather than by the surrounding code.
+
+For higher-order perturbation the gap widens substantially. `MacroModelling.jl` is typically close to an order of magnitude faster at second order, and around two orders of magnitude faster at third order (roughly `40x`–`115x` on the bundled third-order timings for `Caldara_et_al_2012` and `Gali_2015_chapter_3_nonlinear`). Derivative construction (Jacobians and Hessians) shows even larger relative speedups — often `100x`–`1000x` — but because those operations take only microseconds in absolute terms for most models, they are not the main driver of end-to-end runtime. The speedups that actually change the user experience are in the solve steps themselves.
+
+See the [Speed Benchmarks](@ref "Speed Benchmarks") page for full per-model timings across operating systems and CPU architectures.
+
+Wall-clock user experience is a different story. `MacroModelling.jl` inherits Julia's just-in-time compilation cost: time-to-first-output can take a minute or more on a small model while the relevant functions are compiled. Once compiled, every subsequent call is extremely fast. Dynare, being built on a compiled host, has the edge on a single cold call, but this advantage erodes as model size grows and disappears entirely as soon as functions are reused.
+
+In practice: if the goal is a single output from a model run once, Dynare will deliver it sooner. For iterative work — changing parameters or equations interactively, running estimation, or anything that calls the solver many times — `MacroModelling.jl` is the better fit, thanks to its interactive design, the speed of precompiled functions, and its compatibility with Julia's rich ecosystem of gradient-based samplers.
+
 ## Comparison with other packages
 
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[IRIS](https://iris.igpmn.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)|

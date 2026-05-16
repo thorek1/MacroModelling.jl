@@ -1079,25 +1079,38 @@ Allocate the pruned second-order variance to individual shocks via the
 Aumann–Shapley path-integral representation of the Shapley value.
 
 The production path starts from the 2-node Gauss–Legendre rule and
-automatically reruns with 4 nodes when the Shapley-efficiency closure error
-exceeds `1e-3`.
+incrementally reruns with up to 7 nodes when the relative
+Shapley-efficiency closure error exceeds `1e-3`.
 """
 function calculate_aumann_shapley_second_order(parameters::Vector{R},
                                                 𝓂::ℳ;
                                                 opts::CalculationOptions = merge_calculation_options()
                                                 )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
-    shares, total_var, ok, max_error = _calculate_aumann_shapley_second_order(parameters, 𝓂, 2; opts = opts)
-    if ok && aumann_shapley_needs_refinement(max_error)
-        shares, total_var, ok, max_error = _calculate_aumann_shapley_second_order(parameters, 𝓂, aumann_shapley_refined_node_count(2); opts = opts)
+    n_nodes = 2
+    shares, total_var, max_error = calculate_aumann_shapley_second_order_at_nodes(parameters, 𝓂, n_nodes; opts = opts)
+    ok = isfinite(max_error)
+    if ok && opts.verbose
+        println("Aumann-Shapley second-order variance closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while ok && max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if opts.verbose
+            println("Aumann-Shapley second-order variance rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        shares, total_var, max_error = calculate_aumann_shapley_second_order_at_nodes(parameters, 𝓂, n_nodes; opts = opts)
+        ok = isfinite(max_error)
+        if ok && opts.verbose
+            println("Aumann-Shapley second-order variance closure error with ", n_nodes, " nodes: ", max_error)
+        end
     end
     return shares, total_var, ok
 end
-# TODO: dont use funciton names starting with _
-function _calculate_aumann_shapley_second_order(parameters::Vector{R},
+function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
                                                 𝓂::ℳ,
                                                 n_nodes::Int;
                                                 opts::CalculationOptions = merge_calculation_options()
-                                                )::Tuple{Matrix{R}, Vector{R}, Bool, R} where R <: Real
+                                                )::Tuple{Matrix{R}, Vector{R}, R} where R <: Real
     moms = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd = moms
 
@@ -1105,13 +1118,13 @@ function _calculate_aumann_shapley_second_order(parameters::Vector{R},
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
     if !slvd
-        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false, R(NaN)
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), R(NaN)
     end
 
     total_var = ℒ.diag(Σʸ₂)
 
     if nᵉ == 1
-        return reshape(copy(total_var), nVars, 1), total_var, true, zero(R)
+        return reshape(copy(total_var), nVars, 1), total_var, zero(R)
     end
 
     ensure_moments_constants!(𝓂.constants)
@@ -1189,7 +1202,7 @@ function _calculate_aumann_shapley_second_order(parameters::Vector{R},
                                                 verbose = opts.verbose,
                                                 has_unit_roots = 𝓂.caches.has_unit_roots)
             if !info
-                return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
+                return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
             # Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂' (in-place)
             ℒ.mul!(tmp_y_inner, ê_to_y₂_dense, inner_buf)
@@ -1200,9 +1213,11 @@ function _calculate_aumann_shapley_second_order(parameters::Vector{R},
             end
         end
     end
-    # TODO: this is supposed to be relative error
-    max_error = maximum(abs.(vec(sum(shares, dims = 2)) .- total_var))
-    return shares, total_var, true, max_error
+    closure_residual = vec(sum(shares, dims = 2)) .- total_var
+    T = float(R)
+    scale = max(T(maximum(abs, total_var)), sqrt(eps(T)))
+    max_error = T(maximum(abs, closure_residual)) / scale
+    return shares, total_var, max_error
 end
 
 
@@ -1216,8 +1231,8 @@ Computes per-variable Shapley shares of the unconditional pruned 3rd-order
 variance via the path-integral identity
 `φᵢ = ∫₀¹ ∂Ṽ(t·𝟙)/∂xᵢ dt`, where `Ṽ` is the multilinear extension of the
 coalition-variance functional. The production path starts from the 3-node
-Gauss–Legendre rule and automatically reruns with 4 nodes when the
-Shapley-efficiency closure error exceeds `1e-3`.
+Gauss–Legendre rule and incrementally reruns with up to 7 nodes when the
+relative Shapley-efficiency closure error exceeds `1e-3`.
 
 Returns `(shares::Matrix, total_var::Vector, ok::Bool)`.
 """
@@ -1225,38 +1240,52 @@ function calculate_aumann_shapley_third_order(parameters::Vector{R},
                                               𝓂::ℳ;
                                               opts::CalculationOptions = merge_calculation_options()
                                               )::Tuple{Matrix{R}, Vector{R}, Bool} where R <: Real
-    shares, total_var, ok, max_error = _calculate_aumann_shapley_third_order(parameters, 𝓂, 3; opts = opts)
-    if ok && aumann_shapley_needs_refinement(max_error)
-        shares, total_var, ok, max_error = _calculate_aumann_shapley_third_order(parameters, 𝓂, aumann_shapley_refined_node_count(3); opts = opts)
+    n_nodes = 3
+    shares, total_var, max_error = calculate_aumann_shapley_third_order_at_nodes(parameters, 𝓂, n_nodes; opts = opts)
+    ok = isfinite(max_error)
+    if ok && opts.verbose
+        println("Aumann-Shapley third-order variance closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while ok && max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if opts.verbose
+            println("Aumann-Shapley third-order variance rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        shares, total_var, max_error = calculate_aumann_shapley_third_order_at_nodes(parameters, 𝓂, n_nodes; opts = opts)
+        ok = isfinite(max_error)
+        if ok && opts.verbose
+            println("Aumann-Shapley third-order variance closure error with ", n_nodes, " nodes: ", max_error)
+        end
     end
     return shares, total_var, ok
 end
 
-function _calculate_aumann_shapley_third_order(parameters::Vector{R},
+function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
                                                𝓂::ℳ,
                                                n_nodes::Int;
                                                opts::CalculationOptions = merge_calculation_options()
-                                               )::Tuple{Matrix{R}, Vector{R}, Bool, R} where R <: Real
+                                               )::Tuple{Matrix{R}, Vector{R}, R} where R <: Real
     Σʸ₃_total, _μʸ₂, _SS_and_pars, slvd_total = calculate_third_order_moments(parameters, :full_covar, 𝓂; opts = opts)
 
     nVars = 𝓂.constants.post_model_macro.nVars
     nᵉ = 𝓂.constants.post_model_macro.nExo
 
     if !slvd_total
-        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false, R(NaN)
+        return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), R(NaN)
     end
 
     total_var = ℒ.diag(Σʸ₃_total)
 
     if nᵉ == 1
-        return reshape(copy(total_var), nVars, 1), total_var, true, zero(R)
+        return reshape(copy(total_var), nVars, 1), total_var, zero(R)
     end
 
     second = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
     Σʸ₂, Σᶻ₂_compressed, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_raw, ∇₂, slvd2 = second
 
     if !slvd2
-        return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
+        return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
     end
 
     𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
@@ -1275,7 +1304,7 @@ function _calculate_aumann_shapley_third_order(parameters::Vector{R},
                                                 opts = opts, parameter_values = parameters)
 
     if !solved3
-        return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
+        return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
     end
 
     𝐒₃ = sparse(𝐒₃ * 𝓂.constants.third_order.𝐔₃)
@@ -1471,7 +1500,7 @@ function _calculate_aumann_shapley_third_order(parameters::Vector{R},
                                                 verbose = opts.verbose,
                                                 has_unit_roots = 𝓂.caches.has_unit_roots)
             if !info
-                return fill(R(NaN), nVars, nᵉ), total_var, false, R(NaN)
+                return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
             # Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' + cross + cross'
             ℒ.mul!(tmp_y_inner, ê_to_y₃_dense, inner_buf)
@@ -1488,8 +1517,11 @@ function _calculate_aumann_shapley_third_order(parameters::Vector{R},
             end
         end
     end
-    max_error = maximum(abs.(vec(sum(shares, dims = 2)) .- total_var))
-    return shares, total_var, true, max_error
+    closure_residual = vec(sum(shares, dims = 2)) .- total_var
+    T = float(R)
+    scale = max(T(maximum(abs, total_var)), sqrt(eps(T)))
+    max_error = T(maximum(abs, closure_residual)) / scale
+    return shares, total_var, max_error
 end
 
 
