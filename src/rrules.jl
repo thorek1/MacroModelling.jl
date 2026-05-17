@@ -8539,6 +8539,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         else
             jac_v = jac_full[idx, :]
             y_v   = y_full[idx]
+            logabsdet_t = 0.0
             if m == n_exo
                 jac_v_lu = ℒ.lu(jac_v, check = false)
                 if !ℒ.issuccess(jac_v_lu)
@@ -8548,6 +8549,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 xv = jac_v_lu \ y_v
                 invjac_v = inv(jac_v_lu)
                 G = invjac_v' * invjac_v  # = (jac_v jac_v')^{-1}
+                logabsdet_t = ℒ.logabsdet(jac_v_lu)[1]
             else
                 # m < n_exo (or > n_exo handled below)
                 if m > n_exo
@@ -8564,6 +8566,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # x = jac_v' * G * y_v (min-norm solution)
                 xv = jac_v' * (G * y_v)
                 invjac_v = G * jac_v  # this is pinv(jac_v)' (m × n_exo); useful below
+                logabsdet_t = ℒ.logabsdet(JJt_lu)[1] / 2
             end
             x_seq[t] = xv
             invjac_v_seq[t] = invjac_v
@@ -8571,19 +8574,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
             if t > eff_presample
                 shocks² += sum(abs2, xv)
-                # logabsdet[t] = sum log svdvals(jac_v) = (1/2) log det(jac_v jac_v')
-                # for square m == n_exo: = log|det(jac_v)|
-                if m == n_exo
-                    # use LU determinant magnitude
-                    ld = 0.0
-                    for k in 1:m
-                        ld += log(abs(jac_v[k, k]))  # cheap proxy; replace with svdvals for safety
-                    end
-                    # safer:
-                    logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
-                else
-                    logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
-                end
+                logabsdets += logabsdet_t
                 n_obs_total += m
                 if !isfinite(shocks²) || !isfinite(logabsdets)
                     return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -9225,7 +9216,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jac_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jac_v)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jac_v)[1] : ℒ.logabsdet(jac_v * jac_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -10135,7 +10126,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jac_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jac_v)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jac_v)[1] : ℒ.logabsdet(jac_v * jac_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -11023,7 +11014,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 kron_xx  = ℒ.kron(x, x)
                 kron_J_xx = ℒ.kron(J, kron_xx)
                 jac_v = 𝐒ⁱ_v + 2 * 𝐒ⁱ²ᵉ_v * kron_J_x + 3 * 𝐒ⁱ³ᵉ_v * kron_J_xx
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jac_v)[1] : ℒ.logabsdet(jac_v * jac_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -11620,6 +11611,7 @@ function rrule(::typeof(calculate_loglikelihood),
         state¹⁻_vol = vcat(state¹⁻, 1)
 
         state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
+        state²⁻_vol = vcat(state²⁻, 0)
 
         state³⁻ = state₃#[T.past_not_future_and_mixed_idx]
 
@@ -11637,7 +11629,7 @@ function rrule(::typeof(calculate_loglikelihood),
         
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
 
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
     
         𝐒ⁱ²ᵉ[i] = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
 
@@ -11929,12 +11921,13 @@ function rrule(::typeof(calculate_loglikelihood),
             ∂𝐒ⁱ³ᵉ += reshape(3 * ℒ.kron(S[1:T.nExo], ℒ.kron(ℒ.kron(x[i], x[i]), λ[i])) - ℒ.kron(kronxxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ³ᵉ))
             # ∂𝐒ⁱ³ᵉ += 3 * S[1:T.nExo] * kronxxλ[i]' - S[T.nExo + 1:end] * kronxxx[i]'
 
-            # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+            # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
             ∂kronstate¹⁻_vol *= 0
 
             state¹⁻_vol = [aug_state₁[i][1:T.nPast_not_future_and_mixed];1] # define here as it is used multiple times later
             state¹⁻ = aug_state₁[i][1:T.nPast_not_future_and_mixed]
             state²⁻ = aug_state₂[i][1:T.nPast_not_future_and_mixed]
+            state²⁻_vol = [state²⁻; 0]
             state³⁻ = aug_state₃[i][1:T.nPast_not_future_and_mixed]
 
             ∂𝐒¹ᵉ += ∂𝐒ⁱ
@@ -11949,9 +11942,13 @@ function rrule(::typeof(calculate_loglikelihood),
 
             ∂kronIstate²⁻ = 𝐒²⁻ᵛᵉ' * ∂𝐒ⁱ
 
-            fill_kron_adjoint_∂A!(∂kronIstate²⁻, ∂state[2], ℒ.I(T.nExo))
+            ∂state²⁻_vol = zeros(length(state²⁻_vol))
 
-            ∂𝐒²⁻ᵛᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state²⁻)'
+            fill_kron_adjoint_∂A!(∂kronIstate²⁻, ∂state²⁻_vol, ℒ.I(T.nExo))
+
+            ∂𝐒²⁻ᵛᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state²⁻_vol)'
+
+            ∂state[2] += ∂state²⁻_vol[1:end-1]
 
             ∂kronIstate¹⁻_volstate¹⁻_vol = 𝐒³⁻ᵉ²' * ∂𝐒ⁱ / 2
 
@@ -12186,7 +12183,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 kron_xx  = ℒ.kron(x, x)
                 kron_J_xx = ℒ.kron(J, kron_xx)
                 jac_v = 𝐒ⁱ_v + 2 * 𝐒ⁱ²ᵉ_v * kron_J_x + 3 * 𝐒ⁱ³ᵉ_v * kron_J_xx
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jac_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jac_v)[1] : ℒ.logabsdet(jac_v * jac_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)

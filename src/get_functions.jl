@@ -4188,11 +4188,12 @@ function get_loglikelihood(𝓂::ℳ,
         rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
         data
 
-    # Canonicalise to Matrix{Float64} with NaN for missing/nothing entries so
-    # the downstream filter code sees a single, type-stable representation.
+    # Canonicalise the raw observations to Float64 with NaN sentinels for
+    # missing/nothing entries, then preserve the promoted element type after
+    # subtracting steady-state values so AD inputs can flow through.
     dt::Matrix{Float64} = missing_data_to_nan(collect(data_keyed(observables)))
 
-    data_in_deviations::Matrix{Float64} = dt .- SS_and_pars[obs_indices]
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 

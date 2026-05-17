@@ -2610,6 +2610,7 @@ end
         # state¹⁻ = state₁
 
         state¹⁻_vol = vcat(state₁, 1)
+        state²⁻_vol = vcat(state₂, 0)
 
         # state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
 
@@ -2629,7 +2630,7 @@ end
         
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
 
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state₂) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
     
         𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
 
@@ -2928,13 +2929,16 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
     eff_presample_periods = presample_periods + warmup_iterations
     T = constants.post_model_macro
-    ws = workspaces.inversion
+    ws = R === Float64 ? workspaces.inversion : Inversion_workspace(R)
 
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     t⁻ = T.past_not_future_and_mixed_idx
+
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = false)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
 
     # Reduce state to past_not_future_and_mixed_idx rows (matches higher-order
     # methods); pre-slice 𝐒 to the same rows so the per-period state update
@@ -2989,10 +2993,15 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
                 if opts.verbose println("Inversion filter failed at step $i (non-finite Jacobian)") end
                 return on_failure_loglikelihood
             end
-            jacdecomp = ℒ.svd(jac_v)
-            x_v = jacdecomp \ y_v
+            JJt = jac_v * jac_v'
+            JJt_lu = ℒ.lu(JJt, check = false)
+            if !ℒ.issuccess(JJt_lu)
+                if opts.verbose println("Inversion filter failed at step $i (LU singular)") end
+                return on_failure_loglikelihood
+            end
+            x_v = jac_v' * (JJt_lu \ y_v)
             if i > eff_presample_periods
-                logabsdets += sum(s -> log(abs(s)), jacdecomp.S)
+                logabsdets += ℒ.logabsdet(JJt_lu)[1] / 2
             end
         end
 
@@ -3120,7 +3129,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -3244,7 +3253,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
                 ℒ.kron!(kron_buffer2, J, x)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -3421,7 +3430,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 2)
                 ℒ.axpby!(-1, 𝐒ⁱ_v, -1, jacc_v)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
@@ -3589,7 +3598,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2, 2, 1)
                 ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 1)
                 ℒ.rmul!(jacc_v, -1)
-                logabsdets += sum(s -> log(abs(s)), ℒ.svdvals(jacc_v))
+                logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
