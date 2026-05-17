@@ -2523,7 +2523,7 @@ end
     s_in_s⁺ = computational_constants.s_in_s
     e_in_s⁺ = computational_constants.e_in_s⁺
 
-    shockvar_idxs = so.shockvar_no_vol_idxs
+    shockvar_idxs = so.shockvar_idxs
     
     shock²_idxs = computational_constants.shock²_idxs
     shockvar²_idxs = so.shockvar²_idxs
