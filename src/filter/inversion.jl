@@ -1,21 +1,6 @@
 @stable default_mode = "disable" begin
 
 
-# ---------------------------------------------------------------------------
-# Missing-value support helpers (inversion filter)
-# ---------------------------------------------------------------------------
-# The inversion filter accepts data that may contain unobserved entries. At
-# the public API boundary `missing_data_to_nan` (defined in `get_functions.jl`,
-# shared with the Kalman filter) converts `missing` and `nothing` entries to
-# NaN, and `build_obs_index` then classifies any non-finite entry (NaN, Inf,
-# -Inf) as unobserved via `isfinite`. The resulting per-period vector of
-# observed row indices drives the filter loop: periods with `m_t == 0` are
-# pure predict-only steps; periods with `0 < m_t < n_exo` use a sliced
-# (m × n_exo) Jacobian / find_shocks call and produce a min-norm shock
-# vector; periods with `m_t > n_exo` are not supported for higher-order
-# inversion (the equality-constrained system is overdetermined) and the call
-# returns `on_failure_loglikelihood` in that case.
-
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
