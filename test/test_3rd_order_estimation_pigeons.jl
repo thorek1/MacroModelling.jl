@@ -120,3 +120,30 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
+
+# ---------------------------------------------------------------------------
+# Replicate the Pigeons estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+Caldara_lp_missing = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data_missing, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
+
+pt_missing = Pigeons.pigeons(target = Caldara_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+
+pt_missing = @time Pigeons.pigeons(target = Caldara_lp_missing,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 4,
+            n_rounds = 8,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps_missing = MCMCChains.Chains(pt_missing)
+
+sample_pigeons_missing = mean(samps_missing).nt.mean
+println("Mean variable values (Pigeons, 3rd order, missing data): $(sample_pigeons_missing)")
+
+@testset "Pigeons Estimation results (3rd order, missing data)" begin
+    n_params = length(Caldara_et_al_2012_estim.parameter_values)
+    @test length(sample_pigeons_missing) >= n_params
+    @test all(isfinite, sample_pigeons_missing[1:n_params])
+end

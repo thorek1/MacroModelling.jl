@@ -89,6 +89,50 @@ println("Mode variable values: $(modeFS2000i.params); Mode loglikelihood: $(mode
 end
 
 
+# ---------------------------------------------------------------------------
+# Replicate the estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+samps_missing = @time sample(FS2000_loglikelihood_function(data_missing, FS2000, :inversion, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+modeFS2000i_missing = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data_missing, FS2000, :inversion, -Inf),
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                        adtype = AutoMooncake(; config=nothing),
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+println("Mode variable values (missing data): $(modeFS2000i_missing.params); Mode loglikelihood: $(modeFS2000i_missing.lp)")
+
+@testset "Estimation results (1st order inversion, missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(FS2000.parameter_values)
+    @test isfinite(modeFS2000i_missing.lp)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (1st order inversion, missing data)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data_missing, x, filter = :inversion), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data_missing, x, filter = :inversion), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
+
 # # estimate highly nonlinear model
 
 

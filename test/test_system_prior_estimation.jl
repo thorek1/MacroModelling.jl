@@ -317,3 +317,90 @@ end
     println("Mooncake vs ForwardDiff gradient rel err on log posterior: $rel_err")
     @test rel_err < 1e-4
 end
+
+
+# ---------------------------------------------------------------------------
+# Replicate the system-prior estimation problem on data with missing
+# observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+gali_model_missing = Gali_estimation(data_missing, Gali_2015_chapter_3_nonlinear, :pruned_second_order, -Inf,
+                                     target_nsss, target_mean, target_std, target_irf,
+                                     nsss_vars, moment_vars, irf_var_idx)
+
+Random.seed!(123)
+
+samps_missing = @time sample(gali_model_missing,
+                     NUTS(adtype = AutoForwardDiff()),
+                     n_samples,
+                     progress = true,
+                     initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
+
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean estimated values (ForwardDiff, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_means_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+@testset "Gali pruned 2nd order estimation results (missing data)" begin
+    @test length(sample_means_missing) == 6
+    @test all(isfinite, sample_means_missing)
+    @test isapprox(sample_means_missing, true_params[estimated_param_indices], rtol = 0.5)
+end
+
+Random.seed!(123)
+
+samps_mc_missing = @time sample(gali_model_missing,
+                     NUTS(adtype = AutoMooncake(; config=nothing)),
+                     n_samples,
+                     progress = true,
+                     initial_params = Turing.InitFromParams((estimated_params = true_params[estimated_param_indices],)))
+
+posterior_summary_mc_missing = FlexiChains.summarystats(samps_mc_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_mc_missing)
+println()
+
+sample_means_mc_missing = collect(values(FlexiChains.mean(samps_mc_missing); parameters_only = true))
+println("Mean estimated values (Mooncake, missing data): $(sample_means_mc_missing)")
+
+@testset "Gali pruned 2nd order estimation results (Mooncake, missing data)" begin
+    @test length(sample_means_mc_missing) == 6
+    @test all(isfinite, sample_means_mc_missing)
+    @test isapprox(sample_means_mc_missing, true_params[estimated_param_indices], rtol = 0.5)
+end
+
+@testset "Mooncake vs ForwardDiff gradient (Gali pruned 2nd order, missing data)" begin
+    function combined_objective_mc_missing(x)
+        all_p = build_full_params(x)
+        m = Gali_2015_chapter_3_nonlinear
+        alg = :pruned_second_order
+
+        llh = get_loglikelihood(m, data_missing, all_p, algorithm = alg, on_failure_loglikelihood = -Inf)
+
+        stats_n = get_statistics(m, all_p, non_stochastic_steady_state = nsss_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_nsss, 0.1), stats_n[:non_stochastic_steady_state]))
+
+        stats_m = get_statistics(m, all_p, mean = moment_vars, standard_deviation = moment_vars, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_mean, 0.1), stats_m[:mean]))
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_std, 0.05), stats_m[:standard_deviation]))
+
+        irf_v = get_irf(m, all_p, algorithm = alg, periods = 5)
+        llh += sum(Turing.logpdf.(Turing.Normal.(target_irf, 0.1), irf_v[irf_var_idx, 1, 1]))
+
+        return llh
+    end
+
+    test_point = true_params[estimated_param_indices]
+
+    mc_grad = DifferentiationInterface.gradient(combined_objective_mc_missing, AutoMooncake(config = nothing), test_point)
+    fd_grad = ForwardDiff.gradient(combined_objective_mc_missing, test_point)
+
+    @test all(isfinite, mc_grad)
+    @test all(isfinite, fd_grad)
+
+    rel_err = maximum(abs.(mc_grad .- fd_grad) ./ max.(abs.(fd_grad), 1e-10))
+    println("Mooncake vs ForwardDiff gradient rel err (missing data): $rel_err")
+    @test rel_err < 1e-4
+end

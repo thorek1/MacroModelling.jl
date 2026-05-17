@@ -103,3 +103,31 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (second order): $(mean(samps).nt.mean)")
+
+# ---------------------------------------------------------------------------
+# Replicate the Pigeons estimation problem on data with missing observations.
+# Reuses the same `Pigeons.initialization` defined above (dispatch is on the
+# TuringLogPotential type, which is unchanged by swapping in missing data).
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+FS2000_2nd_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data_missing, FS2000, :second_order, -floatmax(Float64)+1e10))
+
+pt_missing = Pigeons.pigeons(target = FS2000_2nd_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+
+pt_missing = @time Pigeons.pigeons(target = FS2000_2nd_lp_missing,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 9,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps_missing = MCMCChains.Chains(pt_missing)
+
+sample_pigeons_missing = mean(samps_missing).nt.mean
+println("Mean variable values (Pigeons, 2nd order, missing data): $(sample_pigeons_missing)")
+
+@testset "Pigeons Estimation results (2nd order, missing data)" begin
+    @test length(sample_pigeons_missing) >= 9
+    @test all(isfinite, sample_pigeons_missing[1:9])
+end
