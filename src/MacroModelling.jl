@@ -56,7 +56,7 @@ import REPL
 import Unicode
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
-# using AxisKeys
+import AxisKeys
 
 import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 # import RecursiveFactorization as RF
