@@ -17,30 +17,6 @@
 # returns `on_failure_loglikelihood` in that case.
 
 """
-    inversion_missing_state_update_first_order!(state, state_concat, 𝐒past,
-                                                n_past, x)
-
-Apply the first-order state recursion `state ← 𝐒past * vcat(state, x)` using
-the preallocated `state_concat` buffer (length `n_past + n_exo`). Both
-`state` and `𝐒past` must already be reduced to the
-`past_not_future_and_mixed_idx` rows (size `n_past`).
-"""
-function inversion_missing_state_update_first_order!(state::AbstractVector,
-                                                     state_concat::AbstractVector,
-                                                     𝐒past::AbstractMatrix,
-                                                     n_past::Int,
-                                                     x::AbstractVector)
-    @inbounds for k in 1:n_past
-        state_concat[k] = state[k]
-    end
-    @inbounds for k in eachindex(x)
-        state_concat[n_past + k] = x[k]
-    end
-    ℒ.mul!(state, 𝐒past, state_concat)
-    return state
-end
-
-"""
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
 minimum-norm shocks search is NP-hard because feasible roots grow exponentially; starting
@@ -2983,7 +2959,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
 
         if m == 0
             fill!(x_buf, zero(R))
-            inversion_missing_state_update_first_order!(state, state_concat, 𝐒past, n_past, x_buf)
+            copyto!(state_concat, 1, state, 1, n_past)
+            copyto!(state_concat, n_past + 1, x_buf, 1, n_exo)
+            ℒ.mul!(state, 𝐒past, state_concat)
             continue
         end
 
@@ -3028,7 +3006,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
             end
         end
 
-        inversion_missing_state_update_first_order!(state, state_concat, 𝐒past, n_past, x_buf)
+        copyto!(state_concat, 1, state, 1, n_past)
+        copyto!(state_concat, n_past + 1, x_buf, 1, n_exo)
+        ℒ.mul!(state, 𝐒past, state_concat)
     end
 
     return -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
