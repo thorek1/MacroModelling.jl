@@ -152,7 +152,15 @@ println("Mode variable values (missing data): $(modeFS2000_missing.params); Mode
 end
 
 @testset "Mooncake vs FiniteDifferences gradient (1st order Kalman, missing data)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data_missing, x), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    # Pass FS2000 and data_missing as Constant contexts (not closure captures)
+    # so Mooncake doesn't run `__verify_const` against the captured globals.
+    # That check uses `==`, which returns `false` for NaN-bearing arrays even
+    # when the array is the same object — triggering an assertion failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values,
+        DifferentiationInterface.Constant(FS2000),
+        DifferentiationInterface.Constant(data_missing))
     @test !isnothing(back_grad)
     @test all(isfinite, back_grad)
 
