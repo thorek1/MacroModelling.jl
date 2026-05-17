@@ -1,6 +1,7 @@
 # Todo list
 ## High priority
 
+- [ ] for get functions that return larger arrays, add option to select variables to return and then only allocate for those variables (e.g. get_irf)
 - [ ] check dispatch doctor coverage in new functions
 - [ ] dont use variable, parameter, function names starting with _
 - [ ] add higher order variance decomposition

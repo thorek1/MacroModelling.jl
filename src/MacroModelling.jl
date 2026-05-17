@@ -65,10 +65,7 @@ using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
 import Reexport
-Reexport.@reexport import AxisKeys: KeyedArray, rekey, NamedDimsArray
-import AxisKeys
-# Local wrapper for internal call sites, without re-exporting `axiskeys` from AxisKeys.
-axiskeys(args...; kwargs...) = AxisKeys.axiskeys(args...; kwargs...)
+Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 # Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
