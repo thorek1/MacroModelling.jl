@@ -1903,19 +1903,43 @@ function rrule(::typeof(get_loglikelihood),
 
     data_in_deviations = missing_data_to_nan(dt) .- SS_and_pars[obs_indices]
 
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+
     # ── step 3: calculate_loglikelihood ──
-    llh_rrule = rrule(calculate_loglikelihood,
-                      Val(filter), Val(algorithm), obs_indices,
-                      𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
-                      warmup_iterations = warmup_iterations,
-                      presample_periods = presample_periods,
-                      initial_covariance = initial_covariance,
-                      filter_algorithm = filter_algorithm,
-                      opts = opts,
-                      on_failure_loglikelihood = on_failure_loglikelihood)
+    llh_rrule = if has_missing
+        rrule(calculate_loglikelihood_with_missing,
+              Val(filter), Val(algorithm), obs_indices,
+              𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces, obs_idx_per_t;
+              warmup_iterations = warmup_iterations,
+              presample_periods = presample_periods,
+              initial_covariance = initial_covariance,
+              filter_algorithm = filter_algorithm,
+              opts = opts,
+              on_failure_loglikelihood = on_failure_loglikelihood)
+    else
+        rrule(calculate_loglikelihood,
+              Val(filter), Val(algorithm), obs_indices,
+              𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
+              warmup_iterations = warmup_iterations,
+              presample_periods = presample_periods,
+              initial_covariance = initial_covariance,
+              filter_algorithm = filter_algorithm,
+              opts = opts,
+              on_failure_loglikelihood = on_failure_loglikelihood)
+    end
 
     if llh_rrule === nothing
-        llh = calculate_loglikelihood(Val(filter), Val(algorithm), obs_indices,
+        llh = if has_missing
+            calculate_loglikelihood_with_missing(Val(filter), Val(algorithm), obs_indices,
+                    𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces, obs_idx_per_t;
+                    warmup_iterations = warmup_iterations,
+                    presample_periods = presample_periods,
+                    initial_covariance = initial_covariance,
+                    filter_algorithm = filter_algorithm,
+                    opts = opts,
+                    on_failure_loglikelihood = on_failure_loglikelihood)
+        else
+            calculate_loglikelihood(Val(filter), Val(algorithm), obs_indices,
                     𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
                     warmup_iterations = warmup_iterations,
                     presample_periods = presample_periods,
@@ -1923,6 +1947,7 @@ function rrule(::typeof(get_loglikelihood),
                     filter_algorithm = filter_algorithm,
                     opts = opts,
                     on_failure_loglikelihood = on_failure_loglikelihood)
+        end
 
         return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
     end
@@ -8461,22 +8486,8 @@ function rrule(::typeof(find_shocks),
 end
 
 
-rrule_inversion_missing(::Val{:first_order}, args...; kwargs...) =
-    rrule_inversion_first_order_missing(args...; kwargs...)
-
-rrule_inversion_missing(::Val{:pruned_second_order}, args...; kwargs...) =
-    rrule_inversion_pruned_second_order_missing(args...; kwargs...)
-
-rrule_inversion_missing(::Val{:second_order}, args...; kwargs...) =
-    rrule_inversion_second_order_missing(args...; kwargs...)
-
-rrule_inversion_missing(::Val{:pruned_third_order}, args...; kwargs...) =
-    rrule_inversion_pruned_third_order_missing(args...; kwargs...)
-
-rrule_inversion_missing(::Val{:third_order}, args...; kwargs...) =
-    rrule_inversion_third_order_missing(args...; kwargs...)
-
-function rrule_inversion_first_order_missing(observables_index::Vector{Int},
+function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}, ::Val{:first_order},
+                                       observables_index::Vector{Int},
                                               𝐒::Matrix{Float64},
                                               data_in_deviations::Matrix{Float64},
                                               constants::constants,
@@ -8486,6 +8497,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                                               warmup_iterations::Int = 0,
                                               on_failure_loglikelihood = -Inf,
                                               presample_periods::Int = 0,
+                                              initial_covariance::Symbol = :theoretical,
                                               opts::CalculationOptions = merge_calculation_options(),
                                               filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -8496,11 +8508,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
     n_past = length(t⁻)
     Tt = size(data_in_deviations, 2)
 
-    if warmup_iterations > 0
-        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
-    else
-        eff_presample = presample_periods
-    end
+    eff_presample = presample_periods + warmup_iterations
 
     state₀ = copy(state[1])
     state_seq = [copy(state₀) for _ in 1:Tt+1]
@@ -8535,7 +8543,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                 jac_v_lu = ℒ.lu(jac_v, check = false)
                 if !ℒ.issuccess(jac_v_lu)
                     if opts.verbose println("Inversion filter rrule (missing) failed at step $t") end
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
                 xv = jac_v_lu \ y_v
                 invjac_v = inv(jac_v_lu)
@@ -8544,13 +8552,13 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                 # m < n_exo (or > n_exo handled below)
                 if m > n_exo
                     if opts.verbose println("Inversion filter rrule (missing) failed at step $t: m=$m > n_exo=$n_exo") end
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
                 JJt = jac_v * jac_v'
                 JJt_lu = ℒ.lu(JJt, check = false)
                 if !ℒ.issuccess(JJt_lu)
                     if opts.verbose println("Inversion filter rrule (missing) failed at step $t (rank-deficient row block)") end
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
                 G = inv(JJt_lu)
                 # x = jac_v' * G * y_v (min-norm solution)
@@ -8578,7 +8586,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
                 end
                 n_obs_total += m
                 if !isfinite(shocks²) || !isfinite(logabsdets)
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
             end
         end
@@ -8590,7 +8598,7 @@ function rrule_inversion_first_order_missing(observables_index::Vector{Int},
 
     llh = -(logabsdets + shocks² + n_obs_total * log(2π)) / 2
     if llh < -1e12 || !isfinite(llh)
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     function inversion_pullback_missing(∂llh)
@@ -8731,17 +8739,6 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
     # @timeit_debug timer "Inversion filter - forward" begin    
-
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-    if has_missing
-        return rrule_inversion_missing(Val(:first_order), observables_index, 𝐒, data_in_deviations,
-                                                    constants, state, workspaces, obs_idx_per_t;
-                                                    warmup_iterations = warmup_iterations,
-                                                    on_failure_loglikelihood = on_failure_loglikelihood,
-                                                    presample_periods = presample_periods,
-                                                    opts = opts,
-                                                    filter_algorithm = filter_algorithm)
-    end
 
     # first order
     state = copy(state[1])
@@ -9114,7 +9111,8 @@ function rrule(::typeof(calculate_loglikelihood),
 end
 
 
-function rrule_inversion_pruned_second_order_missing(observables_index::Vector{Int},
+function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}, ::Val{:pruned_second_order},
+                                       observables_index::Vector{Int},
                                                      𝐒::Vector{AbstractMatrix{Float64}},
                                                      data_in_deviations::Matrix{Float64},
                                                      constants::constants,
@@ -9124,6 +9122,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                                                      warmup_iterations::Int = 0,
                                                      on_failure_loglikelihood = -Inf,
                                                      presample_periods::Int = 0,
+                                                     initial_covariance::Symbol = :theoretical,
                                                      opts::CalculationOptions = merge_calculation_options(),
                                                      filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -9132,11 +9131,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
     cond_var_idx = observables_index
     Tt = size(data_in_deviations, 2)
 
-    if warmup_iterations > 0
-        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
-    else
-        eff_presample = presample_periods
-    end
+    eff_presample = presample_periods + warmup_iterations
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -9212,7 +9207,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
@@ -9223,7 +9218,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
                 if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             if t > eff_presample
                 jac_v = similar(𝐒ⁱ_v)
@@ -9234,7 +9229,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
             end
         end
@@ -9257,7 +9252,7 @@ function rrule_inversion_pruned_second_order_missing(observables_index::Vector{I
     llh = -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 
     if !isfinite(llh) || llh < -1e12
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     function pruned2_missing_pullback(∂llh)
@@ -9539,16 +9534,6 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-    if has_missing
-        return rrule_inversion_missing(Val(:pruned_second_order), observables_index, 𝐒, data_in_deviations,
-                                                            constants, state, workspaces, obs_idx_per_t;
-                                                            warmup_iterations = warmup_iterations,
-                                                            on_failure_loglikelihood = on_failure_loglikelihood,
-                                                            presample_periods = presample_periods,
-                                                            opts = opts,
-                                                            filter_algorithm = filter_algorithm)
-    end
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
                     
@@ -10043,7 +10028,8 @@ function rrule(::typeof(calculate_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule_inversion_second_order_missing(observables_index::Vector{Int},
+function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}, ::Val{:second_order},
+                                       observables_index::Vector{Int},
                                               𝐒::Vector{AbstractMatrix{Float64}},
                                               data_in_deviations::Matrix{Float64},
                                               constants::constants,
@@ -10053,6 +10039,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                                               warmup_iterations::Int = 0,
                                               on_failure_loglikelihood = -Inf,
                                               presample_periods::Int = 0,
+                                              initial_covariance::Symbol = :theoretical,
                                               opts::CalculationOptions = merge_calculation_options(),
                                               filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -10061,11 +10048,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
     cond_var_idx = observables_index
     Tt = size(data_in_deviations, 2)
 
-    if warmup_iterations > 0
-        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
-    else
-        eff_presample = presample_periods
-    end
+    eff_presample = presample_periods + warmup_iterations
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -10134,7 +10117,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ[idx, :]
@@ -10145,7 +10128,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
                 if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             if t > eff_presample
                 jac_v = similar(𝐒ⁱ_v)
@@ -10156,7 +10139,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
             end
         end
@@ -10177,7 +10160,7 @@ function rrule_inversion_second_order_missing(observables_index::Vector{Int},
     llh = -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 
     if !isfinite(llh) || llh < -1e12
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     function second_missing_pullback(∂llh)
@@ -10400,16 +10383,6 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-    if has_missing
-        return rrule_inversion_missing(Val(:second_order), observables_index, 𝐒, data_in_deviations,
-                                                      constants, state, workspaces, obs_idx_per_t;
-                                                      warmup_iterations = warmup_iterations,
-                                                      on_failure_loglikelihood = on_failure_loglikelihood,
-                                                      presample_periods = presample_periods,
-                                                      opts = opts,
-                                                     filter_algorithm = filter_algorithm)
-    end
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
     # @timeit_debug timer "Preallocation" begin
@@ -10887,7 +10860,8 @@ function rrule(::typeof(calculate_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule_inversion_pruned_third_order_missing(observables_index::Vector{Int},
+function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}, ::Val{:pruned_third_order},
+                                       observables_index::Vector{Int},
                                                     𝐒::Vector{AbstractMatrix{Float64}},
                                                     data_in_deviations::Matrix{Float64},
                                                     constants::constants,
@@ -10897,6 +10871,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood = -Inf,
                                                     presample_periods::Int = 0,
+                                                    initial_covariance::Symbol = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -10906,11 +10881,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
     n_cond = length(cond_var_idx)
     Tt = size(data_in_deviations, 2)
 
-    if warmup_iterations > 0
-        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
-    else
-        eff_presample = presample_periods
-    end
+    eff_presample = presample_periods + warmup_iterations
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
     tc = constants.third_order
@@ -11033,7 +11004,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ_full[idx, :]
@@ -11045,7 +11016,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
                 if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             if t > eff_presample
                 kron_J_x = ℒ.kron(J, x)
@@ -11056,7 +11027,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
             end
         end
@@ -11086,7 +11057,7 @@ function rrule_inversion_pruned_third_order_missing(observables_index::Vector{In
     llh = -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 
     if !isfinite(llh) || llh < -1e12
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     function pruned3_missing_pullback(∂llh)
@@ -11518,16 +11489,6 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-    if has_missing
-        return rrule_inversion_missing(Val(:pruned_third_order), observables_index, 𝐒, data_in_deviations,
-                                                          constants, state, workspaces, obs_idx_per_t;
-                                                          warmup_iterations = warmup_iterations,
-                                                          on_failure_loglikelihood = on_failure_loglikelihood,
-                                                          presample_periods = presample_periods,
-                                                          opts = opts,
-                                                          filter_algorithm = filter_algorithm)
-    end
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
@@ -12089,7 +12050,8 @@ function rrule(::typeof(calculate_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-function rrule_inversion_third_order_missing(observables_index::Vector{Int},
+function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}, ::Val{:third_order},
+                                       observables_index::Vector{Int},
                                              𝐒::Vector{AbstractMatrix{Float64}},
                                              data_in_deviations::Matrix{Float64},
                                              constants::constants,
@@ -12099,6 +12061,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                                              warmup_iterations::Int = 0,
                                              on_failure_loglikelihood = -Inf,
                                              presample_periods::Int = 0,
+                                             initial_covariance::Symbol = :theoretical,
                                              opts::CalculationOptions = merge_calculation_options(),
                                              filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -12108,11 +12071,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
     n_cond = length(cond_var_idx)
     Tt = size(data_in_deviations, 2)
 
-    if warmup_iterations > 0
-        eff_presample = effective_presample_periods(presample_periods, warmup_iterations)
-    else
-        eff_presample = presample_periods
-    end
+    eff_presample = presample_periods + warmup_iterations
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
     tc = constants.third_order
@@ -12203,7 +12162,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
         else
             if m > n_exo
                 if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t: m=$m > n_exo=$n_exo") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             𝐒ⁱ_v   = 𝐒ⁱ_full[idx, :]
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ_full[idx, :]
@@ -12220,7 +12179,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
                 if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
             end
             if t > eff_presample
                 kron_J_x = ℒ.kron(J, x)
@@ -12231,7 +12190,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
                 shocks² += sum(abs2, x)
                 n_obs_total += m
                 if !isfinite(logabsdets) || !isfinite(shocks²)
-                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
                 end
             end
         end
@@ -12249,7 +12208,7 @@ function rrule_inversion_third_order_missing(observables_index::Vector{Int},
     llh = -(logabsdets + shocks² + n_obs_total * log(2 * 3.141592653589793)) / 2
 
     if !isfinite(llh) || llh < -1e12
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     function third_order_missing_pullback(∂llh)
@@ -12561,16 +12520,6 @@ function rrule(::typeof(calculate_loglikelihood),
     T = constants.post_model_macro
     ws = workspaces.inversion
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-    if has_missing
-        return rrule_inversion_missing(Val(:third_order), observables_index, 𝐒, data_in_deviations,
-                                                   constants, state, workspaces, obs_idx_per_t;
-                                                   warmup_iterations = warmup_iterations,
-                                                   on_failure_loglikelihood = on_failure_loglikelihood,
-                                                   presample_periods = presample_periods,
-                                                   opts = opts,
-                                                   filter_algorithm = filter_algorithm)
-    end
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -13417,6 +13366,29 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     return llh, calculate_loglikelihood_pullback
+end
+
+
+# Kalman missing-data path delegates to the dense Kalman rrule because the
+# dense rrule already slices per-period via `build_obs_index` internally and
+# yields a correct gradient for missing observations. The pullback gains one
+# extra NoTangent slot for the trailing `obs_idx_per_t` argument.
+function rrule(::typeof(calculate_loglikelihood_with_missing),
+                ::Val{:kalman},
+                val_algo::Val,
+                observables_index::Vector{Int},
+                𝐒::AbstractMatrix{Float64},
+                data_in_deviations::Matrix{Float64},
+                constants::constants,
+                state,
+                workspaces::workspaces,
+                obs_idx_per_t::Vector{Vector{Int}};
+                kwargs...)
+    llh, dense_pb = rrule(calculate_loglikelihood, Val(:kalman), val_algo,
+                          observables_index, 𝐒, data_in_deviations,
+                          constants, state, workspaces; kwargs...)
+    pullback = ∂llh -> (dense_pb(∂llh)..., NoTangent())
+    return llh, pullback
 end
 
 

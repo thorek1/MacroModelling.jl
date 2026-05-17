@@ -1,77 +1,6 @@
 @stable default_mode = "disable" begin
 
 
-# ---------------------------------------------------------------------------
-# Missing-value support helpers
-# ---------------------------------------------------------------------------
-# The Kalman filter accepts data that may contain missing values. The internal
-# canonical sentinel is NaN: any input entry that is `missing` or NaN is
-# treated as unobserved. A per-period vector of available observable indices
-# is built once per call and then used by the filter loop to take views into
-# the (max-sized) workspace buffers, so all preallocation tricks are kept.
-
-"""
-    missing_data_to_nan(data) -> Matrix{Float64}
-
-Convert a matrix that may contain `missing` or `nothing` values into a
-`Matrix{Float64}` where `missing`/`nothing` become `NaN`. `Matrix{Float64}`
-inputs are returned unchanged (no copy).
-"""
-missing_data_to_nan(data::Matrix{Float64}) = data
-function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Nothing,Real}})
-    out = Matrix{Float64}(undef, size(data, 1), size(data, 2))
-    @inbounds for j in axes(data, 2), i in axes(data, 1)
-        v = data[i, j]
-        out[i, j] = (v === missing || v === nothing) ? NaN : Float64(v)
-    end
-    return out
-end
-missing_data_to_nan(data::AbstractMatrix{<:Real}) = convert(Matrix{Float64}, data)
-@unstable function missing_data_to_nan(data::KeyedArray)
-    raw = missing_data_to_nan(collect(data))::Matrix{Float64}
-    names = AxisKeys.NamedDims.dimnames(data)
-    return KeyedArray(NamedDimsArray(raw, names); NamedTuple{names}(axiskeys(data))...)
-end
-
-"""
-    build_obs_index(data) -> (Vector{Vector{Int}}, Bool)
-
-Return `(obs_idx_per_t, has_missing)` where `obs_idx_per_t[t]` is the sorted
-vector of row indices that are *observed* (finite) in column `t` of `data`,
-and `has_missing` is `true` iff at least one entry is non-finite (NaN). When
-`has_missing == false`, callers can take the dense fast path.
-"""
-function build_obs_index(data::AbstractMatrix{<:Real})
-    n, T = size(data)
-    obs = Vector{Vector{Int}}(undef, T)
-    has_missing = false
-    @inbounds for t in 1:T
-        m = 0
-        for i in 1:n
-            if isfinite(data[i, t])
-                m += 1
-            else
-                has_missing = true
-            end
-        end
-        if m == n
-            obs[t] = collect(1:n)
-        else
-            v = Vector{Int}(undef, m)
-            k = 0
-            for i in 1:n
-                if isfinite(data[i, t])
-                    k += 1
-                    v[k] = i
-                end
-            end
-            obs[t] = v
-        end
-    end
-    return obs, has_missing
-end
-
-
 function calculate_loglikelihood(::Val{:kalman},
                                 ::Val,
                                 observables_index::Vector{Int}, 
@@ -110,18 +39,52 @@ function calculate_loglikelihood(::Val{:kalman},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
     # timer = timer, 
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-
-    if has_missing
-        return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
-                                              obs_idx_per_t, kalman_ws,
-                                              presample_periods = presample_periods,
-                                              verbose = opts.verbose,
-                                              on_failure_loglikelihood = on_failure_loglikelihood)
-    end
-
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
+end
+
+
+function calculate_loglikelihood_with_missing(::Val{:kalman},
+                                ::Val,
+                                observables_index::Vector{Int},
+                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}},
+                                                data_in_deviations::Matrix{S},
+                                                constants::constants,
+                                                state,
+                                                workspaces::workspaces,
+                                                obs_idx_per_t::Vector{Vector{Int}};
+                                                warmup_iterations::Int = 0,
+                                                presample_periods::Int = 0,
+                                                initial_covariance::Symbol = :theoretical,
+                                                filter_algorithm::Symbol = :LagrangeNewton,
+                                                lyapunov_algorithm::Symbol = :doubling,
+                                                on_failure_loglikelihood::U = -Inf,
+                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
+
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
+
+    A = @views 𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end]
+
+    C = @views I_nVars[observables_sorted, observables_and_states]
+
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
+
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
+
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+
+    return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
+                                          obs_idx_per_t, kalman_ws,
+                                          presample_periods = presample_periods,
+                                          verbose = opts.verbose,
+                                          on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 # Specialization for :theoretical

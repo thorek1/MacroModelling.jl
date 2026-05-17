@@ -1,6 +1,81 @@
 @stable default_mode = "disable" begin
 
 
+# ---------------------------------------------------------------------------
+# Missing-value support helpers (shared by Kalman and inversion filters)
+# ---------------------------------------------------------------------------
+# Filters accept data that may contain unobserved entries. The internal
+# canonical sentinel is NaN: `missing_data_to_nan` converts `missing` and
+# `nothing` to NaN at the public API boundary, and `build_obs_index` then
+# classifies any non-finite entry (NaN, Inf, -Inf) as unobserved via
+# `isfinite`. A per-period vector of available observable indices is built
+# once per call and reused inside the filter loops to slice the (max-sized)
+# workspace buffers, so all preallocation tricks are kept.
+
+"""
+    missing_data_to_nan(data) -> Matrix{Float64}
+
+Convert a matrix that may contain `missing` or `nothing` values into a
+`Matrix{Float64}` where `missing`/`nothing` become `NaN`. `Matrix{Float64}`
+inputs are returned unchanged (no copy). Non-finite real values (NaN, Inf,
+-Inf) are preserved and are treated as unobserved downstream by
+`build_obs_index`.
+"""
+missing_data_to_nan(data::Matrix{Float64}) = data
+function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Nothing,Real}})
+    out = Matrix{Float64}(undef, size(data, 1), size(data, 2))
+    @inbounds for j in axes(data, 2), i in axes(data, 1)
+        v = data[i, j]
+        out[i, j] = (v === missing || v === nothing) ? NaN : Float64(v)
+    end
+    return out
+end
+missing_data_to_nan(data::AbstractMatrix{<:Real}) = convert(Matrix{Float64}, data)
+@unstable function missing_data_to_nan(data::KeyedArray)
+    raw = missing_data_to_nan(collect(data))::Matrix{Float64}
+    names = AxisKeys.NamedDims.dimnames(data)
+    return KeyedArray(NamedDimsArray(raw, names); NamedTuple{names}(axiskeys(data))...)
+end
+
+"""
+    build_obs_index(data) -> (Vector{Vector{Int}}, Bool)
+
+Return `(obs_idx_per_t, has_missing)` where `obs_idx_per_t[t]` is the sorted
+vector of row indices that are *observed* (finite) in column `t` of `data`,
+and `has_missing` is `true` iff at least one entry is non-finite (NaN, Inf
+or -Inf). When `has_missing == false`, callers can take the dense fast path.
+"""
+function build_obs_index(data::AbstractMatrix{<:Real})
+    n, T = size(data)
+    obs = Vector{Vector{Int}}(undef, T)
+    has_missing = false
+    @inbounds for t in 1:T
+        m = 0
+        for i in 1:n
+            if isfinite(data[i, t])
+                m += 1
+            else
+                has_missing = true
+            end
+        end
+        if m == n
+            obs[t] = collect(1:n)
+        else
+            v = Vector{Int}(undef, m)
+            k = 0
+            for i in 1:n
+                if isfinite(data[i, t])
+                    k += 1
+                    v[k] = i
+                end
+            end
+            obs[t] = v
+        end
+    end
+    return obs, has_missing
+end
+
+
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
@@ -4121,7 +4196,26 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter),
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+
+    llh = if has_missing
+        calculate_loglikelihood_with_missing(Val(filter),
+                                    Val(algorithm),
+                                    obs_indices,
+                                    𝐒,
+                                    data_in_deviations,
+                                    constants_obj,
+                                    state,
+                                    𝓂.workspaces,
+                                    obs_idx_per_t,
+                                    warmup_iterations = warmup_iterations,
+                                    presample_periods = presample_periods,
+                                    initial_covariance = initial_covariance,
+                                    filter_algorithm = filter_algorithm,
+                                    opts = opts,
+                                    on_failure_loglikelihood = on_failure_loglikelihood)
+    else
+        calculate_loglikelihood(Val(filter),
                                 Val(algorithm),
                                 obs_indices,
                                 𝐒,
@@ -4135,6 +4229,7 @@ function get_loglikelihood(𝓂::ℳ,
                                 filter_algorithm = filter_algorithm,
                                 opts = opts,
                                 on_failure_loglikelihood = on_failure_loglikelihood) # timer = timer
+    end
 
     # end # timeit_debug
 
