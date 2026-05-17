@@ -1,315 +1,296 @@
-# Shapley decompositions in pruned higher-order perturbation
+# Shapley decompositions for pruned higher-order perturbation
 
-This page explains, intuitively and in detail, the two Shapley algorithms
-implemented in MacroModelling.jl for pruned higher-order solutions:
+Pruned second- and third-order perturbation solutions involve cross-shock
+interactions: part of the unconditional variance, and part of the value of a
+filtered series at a given period, cannot be attributed to a single shock by
+inspection. Two routines optionally allocate this interaction term across the
+individual shocks using a marginal-contribution (Shapley value) rule:
 
-- **`get_variance_decomposition(..., marginal_contribution = true)`** — Aumann–Shapley
-  path-integral driver in `src/aumann_shapley.jl` and `src/moments.jl`.
-- **`get_shock_decomposition(..., marginal_contribution = true)`** — Aumann–Shapley
-  forward-tangent driver in `src/filter/inversion.jl`.
+- [`get_variance_decomposition`](@ref) with `marginal_contribution = true`
+  allocates the cross-shock interaction term of the **unconditional variance**.
+- [`get_shock_decomposition`](@ref) with `marginal_contribution = true`
+  allocates the cross-shock interaction term of the **fitted historical
+  series** returned by the inversion filter.
 
-Both produce the (same) Shapley value but exploit different structural facts.
+Both routines compute the same allocation rule. They differ only in what is
+being decomposed (a Lyapunov-equation solution versus a forward simulation of
+the pruned state recursion) and therefore in the numerical method used.
 
----
-
-## 1. The shared cooperative-game picture
-
-You have `nᵉ` shocks (the "players"). For any subset `S ⊆ {1,…,nᵉ}` you can
-compute a number `V(S)` — the value if only players in `S` cooperate. Two
-natural problems:
-
-- **Variance decomposition:** `V(S)` is the unconditional variance of variable
-  `v` in the model when shocks outside `S` are switched off.
-- **Shock decomposition:** `V_t(S)` is the value of variable `v` at period `t`
-  along a fixed historical path, when shocks outside `S` are switched off.
-
-The Shapley value `φᵢ(v)` is the unique allocation rule satisfying efficiency
-(`Σᵢ φᵢ = V(N) − V(∅)`), symmetry, dummy and additivity. Its definitional
-formula is a weighted average over all `nᵉ!` orderings of the shocks:
-
-```
-φᵢ = (1/nᵉ!) · Σ_{orderings π} [V(predecessors(i, π) ∪ {i}) − V(predecessors(i, π))]
-```
-
-**Intuition.** Line up the shocks in a random order and credit each shock with
-the marginal jump in `V` it causes when it joins. Shapley = the average
-marginal contribution over all orderings.
-
-That definition is intractable: it requires `2ⁿᵉ` evaluations of `V`. Both
-algorithms below use a structural fact about pruned perturbation to bypass
-enumeration entirely.
+The remainder of this page describes the underlying construction, the
+implementation in `src/aumann_shapley.jl`, `src/moments.jl`, and
+`src/filter/inversion.jl`, and how the result is reported.
 
 ---
 
-## 2. The structural fact: `V` is a low-degree polynomial in coalition indicators
+## Coalition value and Shapley allocation
 
-In pruned `k`-th-order perturbation, `V(S)` is a polynomial of total degree
-`≤ k` in the binary indicators `1_S`:
+Let `nᵉ` denote the number of structural shocks and write
+`N = {1, …, nᵉ}`. For a subset `S ⊆ N` of "active" shocks define a coalition
+value `V(S)` whose meaning depends on the routine:
+
+- For [`get_variance_decomposition`](@ref): the variance of a given variable
+  under the pruned solution when shocks outside `S` are silenced.
+- For [`get_shock_decomposition`](@ref): the value of a given variable at a
+  given period along the fitted shock path, with shocks outside `S` set to
+  zero.
+
+The Shapley value `φᵢ` of shock `i ∈ N` is the unique additive allocation
+of `V(N) − V(∅)` satisfying efficiency, symmetry, the dummy property, and
+additivity across games:
 
 ```
-V(S) = c_∅
-     + Σ_i        c_{i}    · 1_{i∈S}
-     + Σ_{i<j}    c_{ij}   · 1_{i∈S} · 1_{j∈S}
-     + Σ_{i<j<l}  c_{ijl}  · 1_{i∈S} · 1_{j∈S} · 1_{l∈S}
-     + …
+φᵢ  =  (1 / nᵉ!) · Σ_{π ∈ Π}  [ V(prev(i,π) ∪ {i}) − V(prev(i,π)) ]
 ```
-with `c_T = 0` for `|T| > k`.
 
-**Why?** Each component of the augmented shock vector `ê` in pruned
-perturbation is a Kronecker product of base shocks (`εᵢ`, `εⱼεₖ`, `εᵢεⱼεₖ`, …).
-Restricting to coalition `S` zeroes every Kronecker piece that mentions a shock
-outside `S`. So a coalition acts on `ê` as multiplication by a monomial product
-`∏_{j ∈ piece} 1_{j∈S}` of degree at most `k`.
+where the sum runs over all `nᵉ!` orderings `π` of `N`. Direct evaluation
+requires `2ⁿᵉ` evaluations of `V` and is impractical beyond very small `nᵉ`.
 
-When `V` is multilinear like this, the Shapley value has a clean closed form
-(Owen, 1972):
+Under a pruned `k`-th-order perturbation solution, `V(S)` is a polynomial of
+degree at most `k` in the indicator variables `1_{i ∈ S}` (Möbius
+decomposition):
+
 ```
-φᵢ = Σ_{T ∋ i} c_T / |T|
+V(S)  =  c_∅
+       + Σ_i        c_i      · 1_{i ∈ S}
+       + Σ_{i < j}  c_{ij}   · 1_{i ∈ S} · 1_{j ∈ S}
+       + …                                                   (terms of degree ≤ k)
 ```
-**Intuition.** Each monomial coefficient is split equally among the shocks it
-mentions: `c_{ij}` came from shocks `i` and `j` cooperating, so half the
-credit goes to each; `c_{ijl}` is split three ways; and so on.
 
-So if you have the polynomial coefficients `c_T`, you have the Shapley value —
-no orderings, no marginal contributions to enumerate. The two algorithms differ
-only in how they obtain the `c_T` (or their integrated equivalent), because in
-one setting the coefficients are easy to read off and in the other they are
-hidden behind a Lyapunov solve.
+This holds because each entry of the augmented shock vector `ê` of the pruned
+recursion is a Kronecker product of base shocks of length at most `k`, and
+silencing a shock outside `S` zeroes every entry that contains it. The
+Shapley value of a polynomial in indicators admits the closed form
+([Owen, 1972](@cite owen1972multilinear)):
+
+```
+φᵢ  =  Σ_{T ∋ i}  c_T / |T|
+```
+
+Reading off the coefficients `c_T` directly still requires up to
+`Σ_{j ≤ k} C(nᵉ, j)` evaluations of `V`. The implementation avoids this
+enumeration by evaluating an equivalent path integral on the multilinear
+extension of `V` instead.
 
 ---
 
-## 3. Variance decomposition: Aumann–Shapley path integral
+## Aumann–Shapley path integral on the multilinear extension
 
-### Why the polynomial coefficients are hidden here
+Extend `V` to a continuous function `Ṽ` on the unit cube `[0,1]ⁿᵉ` by
+replacing every indicator `1_{i ∈ S}` in the polynomial above by `xᵢ`
+(multilinear extension). The Aumann–Shapley identity
+([Aumann and Shapley, 1974](@cite aumannshapley1974)) gives the Shapley value
+as a path integral along the diagonal of the cube:
 
-Computing `V(S)` requires solving a discrete Lyapunov equation
 ```
-Σ(S) = A · Σ(S) · Aᵀ + C(S)
-```
-where `A` is the pruned-state transition (the same for every `S` — this
-matters) and `C(S)` is the masked shock-cumulant block. Then
-`V(S) = diag(ŝ_to_y · Σ(S) · ŝ_to_yᵀ + boundary terms)`.
-
-The Lyapunov solve is linear in `C`, but `V` is the diagonal of a
-sum-of-squares object, so the polynomial coefficients in `1_S` only emerge
-*after* you solve. Reading off one coefficient `c_T` requires evaluating `V`
-at enough subsets to invert Möbius — i.e. one Lyapunov solve per monomial.
-
-For `nᵉ` shocks at order `k` that costs `Σ_{j ≤ k} C(nᵉ, j)` solves. SW07:
-98 solves at second order, 126 at third. Doable but expensive.
-
-### The Aumann–Shapley trick
-
-Instead of recovering each `c_T` and then summing `c_T / |T|`, integrate the
-directional derivative along a path. Aumann & Shapley (1974): for any smooth
-extension `Ṽ` of `V` from the cube vertices `{0,1}ⁿᵉ` to the unit cube
-`[0,1]ⁿᵉ`,
-```
-φᵢ = ∫₀¹ ∂Ṽ(t · 𝟙)/∂xᵢ  dt
+φᵢ  =  ∫₀¹  ∂Ṽ(t · 𝟙) / ∂xᵢ   dt
 ```
 
-**Intuition.** Walk in a straight line from "no shocks active" `(0,…,0)` to
-"all shocks active" `(1,…,1)`. At each point on the path, ask: *if I nudge
-shock i alone, how much does V change?* — that is the directional derivative
-`∂Ṽ/∂xᵢ`. Average that nudge response over the whole walk. That average IS
-shock i's Shapley share.
+The integrand `∂Ṽ(t · 𝟙) / ∂xᵢ` is a univariate polynomial in `t` of degree
+at most `k − 1`. Gauss–Legendre quadrature with `⌈k/2⌉` nodes integrates
+such a polynomial exactly: two nodes at second order, three at third order.
 
-Picture it as a hike from valley to summit:
-
-- The path is a straight diagonal line in shock-activity-space.
-- At every point you stop and measure the slope in each shock's direction.
-- Each shock's Shapley value = the average slope along the hike in that
-  shock's direction.
-
-This is just the integral form of the equal-share splitting from §2.
-
-### Why this beats enumeration
-
-Use the multilinear extension: replace each `1_{i∈S}` with `xᵢ ∈ [0,1]`. Then
-
-- `Ṽ(t · 𝟙)` is a univariate polynomial in `t` of degree `≤ k`.
-- `∂Ṽ(t · 𝟙)/∂xᵢ` is a polynomial in `t` of degree `≤ k − 1`.
-- Gauss–Legendre quadrature with `⌈k/2⌉` nodes integrates a polynomial of
-  degree `≤ k − 1` *exactly*.
-
-So you replace `Σ_{j ≤ k} C(nᵉ, j)` Lyapunov solves with **`⌈k/2⌉ · nᵉ`
-Lyapunov solves**, with *no quadrature error*. SW07: 14 (k=2) vs 98; 21
-(k=3) vs 126. Empirical wall-clock on SW07: 5.03× speedup at second order,
-~10× at third (max abs diff vs polynomial driver: 3.9e-14 at second order).
-
-### What the code does, step by step
-
-For each Gauss–Legendre node `tₖ ∈ (0,1)` and each shock direction `eᵢ`:
-
-1. **Continuous coalition mask `m(x) ∈ ℝᴺ` at `x = tₖ · 𝟙`.** Each entry of
-   `ê`'s mask becomes `∏_{j ∈ unique-shock-indices} xⱼ` instead of the boolean
-   indicator. Implemented in
-   `continuous_coalition_mask_{second,third}_order`.
-
-2. **Directional derivative `ṁ = ∂m/∂xᵢ` at `x = tₖ · 𝟙`.** Sparse: only
-   entries whose monomial mentions shock `i` are nonzero. Implemented in
-   `mask_directional_derivative_{second,third}_order`.
-
-3. **Directional derivative of `C`:**
-   ```
-   Ċ = ê·diag(ṁ)·Γ·êᵀ + ê·diag(m)·Γ·diag(ṁ)·êᵀ + (Eᴸᶻ cross term at 3rd order)
-   ```
-
-4. **One Lyapunov solve:**
-   ```
-   Σ̇(tₖ, eᵢ) = A · Σ̇(tₖ, eᵢ) · Aᵀ + Ċ
-   ```
-   with the same `A` as the unmasked problem (so a Schur factorisation is in
-   principle reusable across all nodes/directions).
-
-5. **Convert to variable space and accumulate with the Gauss–Legendre weight:**
-   ```
-   φᵢ(v)  +=  wₖ · diag(ŝ_to_y · Σ̇ · ŝ_to_yᵀ + boundary terms)[v]
-   ```
-
-After all `n_nodes · nᵉ` solves you have `φᵢ(v)`. Normalise by
-`total_var(v)` to get shares (rows of the output sum to 1).
-
-### How to interpret the output
-
-Rows are variables, columns are shocks. There is no `:Cross_shock_interaction`
-column when `marginal_contribution = true`. Entry `[v, i]` is the fraction of
-variable `v`'s pruned-higher-order variance attributable to shock `i`, with
-all cross-shock interactions allocated by the Shapley rule.
-
-Cross-shock interactions like `c_{ij}` (the variance contribution that emerges
-only when shocks `i` and `j` cooperate, e.g. through products of shocks in the
-policy function) are split 50/50 between `i` and `j`. Triples are split three
-ways. So a shock's share of the variance includes its own "own-shock"
-contribution plus its fair share of every interaction pot it is a member of.
-
-Negative shares or shares > 1 are possible (`V` need not be monotone in `S` at
-higher order), but they remain the unique fair allocation in the Shapley
-axiomatic sense.
+This collapses the cost from `2ⁿᵉ` evaluations of `V` to at most
+`⌈k/2⌉ · nᵉ` evaluations of `∂Ṽ / ∂xᵢ` along the diagonal. The quadrature
+nodes and weights on `(0, 1)` are returned by
+`gausslegendre_unit_interval` in `src/aumann_shapley.jl`. The remainder of
+the implementation differs by routine.
 
 ---
 
-## 4. Shock decomposition: Aumann–Shapley forward tangents
+## Variance decomposition
 
-### Why AS is also the right tool here
+### Coalition value
 
-Per period `t`, given a fixed historical shock sequence `{ε₁, …, ε_T}`, the
-pruned-state recursion is deterministic:
-```
-ŝ_{t+1} = 𝐒₁ · ŝ_t  +  𝐒₂ · (ŝ_t ⊗ ŝ_t) / 2  +  𝐒₃ · (ŝ_t ⊗ ŝ_t ⊗ ŝ_t) / 6  +  …
-```
-A coalition `S` corresponds to keeping each `εⱼ` if `j ∈ S` and zeroing it
-otherwise. So `V_t(S)` equals `ŝ_t(S)` evaluated under coalition `S`, and is
-a polynomial of degree `≤ k` in `1_S`.
-
-We could either (a) propagate every Möbius coefficient `c_T` directly through
-the recursion via wide Kronecker bundles, or (b) compute the AS path integral
-along the diagonal `x = s · 𝟙` using forward-mode tangents through the
-ordinary pruned recursion. The Kronecker-bundle approach is BLAS-friendly but
-its bundle width grows as `Σ_{j ≤ k} C(nᵉ, j)` — at SW07 (`nᵉ = 7, k = 3`)
-that is 120 columns. The forward-tangent AS approach instead carries
-`n_nodes · nᵉ` plain vector recursions per period — at SW07 that is 21
-vectors. For models beyond very small `nᵉ` the AS path is faster.
-
-### The trick: scaled-shock primal + per-direction tangents
-
-The same identity from §3 applies:
-```
-φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s · 𝟙)/∂xᵢ ds  ≈  Σ_k w_k · ∂Ṽ_t(s_k · 𝟙)/∂xᵢ
-```
-For each Gauss–Legendre node `s_k` we run two recursions:
-
-1. A **primal** trajectory under shocks scaled by `s_k`: `ŝ_t(s_k)` evolves
-   with effective shock vector `s_k · ε_t`.
-2. For each shock direction `i = 1, …, nᵉ`, a **tangent** trajectory
-   `v_t = ∂ŝ_t / ∂xᵢ` evaluated at `x = s_k · 𝟙`. The tangent recursion is
-   the chain-rule lift of the primal:
-```
-ȧ₁_t = [v_t[past_idx]; 0; εᵢ_t · eᵢ]
-v_{t+1} = 𝐒₁ · ȧ₁_t  +  𝐒₂ · (ȧ₁_t ⊗ a₁_t  +  a₁_t ⊗ ȧ₁_t) / 2  +  …
-```
-(the only non-trivial step is recognising that `∂(xᵢ · εᵢ_t)/∂xᵢ = εᵢ_t`,
-so the tangent's shock slot is `εᵢ_t · eᵢ`, *not* `s_k · εᵢ_t · eᵢ`).
-
-A separate `s = 0` primal trajectory provides `V_t(∅)` for the residual
-column.
-
-### Per-period Shapley accumulation
+For a given variable `v`, `V(S)` is the `v`-th diagonal entry of the
+unconditional covariance produced by the pruned-state Lyapunov equation when
+shocks outside `S` are silenced. With pruned state transition `A` and
+cumulant block `C(S)`, the inner Lyapunov system is
 
 ```
-φᵢ(v, t) ≈ Σ_k w_k · v_{k,i,t}[v]   (plus higher-order tangents at k = 3)
+Σ(S)  =  A · Σ(S) · Aᵀ  +  C(S)
 ```
 
-Two Gauss–Legendre nodes suffice at second order (the integrand is degree
-`≤ 1` in `s`); three nodes at third order (degree `≤ 2`).
+and the variable-space covariance equals `ŝ_to_y · Σ(S) · ŝ_to_yᵀ` plus the
+fixed boundary terms documented in `calculate_second_order_moments_with_covariance`
+and `calculate_third_order_moments_with_autocorrelation`. Silencing shocks
+outside `S` is implemented as a binary mask on the augmented shock vector
+`ê`: at third order an `ê`-component is retained only when all its
+exogenous-shock indices belong to `S` (see the docstring of
+[`get_variance_decomposition`](@ref)).
 
-### Cost picture
+### Continuous mask and its directional derivative
 
-| Per period           | Polynomial bundle (alternative) | Forward-tangent AS (this driver) |
-|----------------------|---------------------------------|----------------------------------|
-| Primal work          | One gemm of width `C(nᵉ+k, k)`  | `n_nodes` plain recursions       |
-| Tangent work         | folded into the bundle          | `n_nodes · nᵉ` plain recursions  |
-| Memory               | `state × C(nᵉ+k, k)` bundle     | `state × n_nodes · (nᵉ + 1)`     |
+The multilinear extension corresponds to replacing the binary mask by the
+continuous one returned by `continuous_coalition_mask_second_order` and
+`continuous_coalition_mask_third_order`: the mask entry attached to an
+`ê`-component is the product of the activation levels `xⱼ` over the unique
+base shocks the component mentions. Its derivative
+`ṁ = ∂m / ∂xᵢ` is computed by
+`mask_directional_derivative_{second,third}_order!` and is sparse — only
+mask entries that mention shock `i` are non-zero.
 
-For SW07 (`nᵉ = 7, k = 3`) the forward-tangent driver runs ~2.6× faster than
-the polynomial bundle.
+### Per node and per direction
 
-### Exactness caveat at third order
+For each Gauss–Legendre node `tₖ` on `(0, 1)` and each shock direction
+`i ∈ {1, …, nᵉ}`, the drivers
+`calculate_aumann_shapley_second_order_at_nodes` and
+`calculate_aumann_shapley_third_order_at_nodes` in `src/moments.jl`:
 
-At second order, AS via the scaled-shock primal produces the *exact* Shapley
-value (matches the multilinear-extension answer to machine precision; verified
-to `≤ 3·10⁻¹⁵` on RBC_CME and SW07). The reason is a fortuitous integral
-identity: `∫₀¹ 2s ds = 1 = ∫₀¹ 1 ds`, so the diagonal Kronecker term
-`x[i]² · ε[i]²` (from the recursion) and the multilinear-extension term
-`x[i] · ε[i]²` integrate to the same value under `∫ ∂/∂x[i]`.
+1. Evaluate `m` and `ṁ` at `x = tₖ · 𝟙`.
+2. Apply the product rule to the cumulant block. With
+   `C = ê · diag(m) · Γ · diag(m) · êᵀ`,
+   ```
+   Ċ  =  ê · diag(ṁ) · Γ · diag(m) · êᵀ
+       + ê · diag(m)  · Γ · diag(ṁ) · êᵀ
+       (+ cross terms involving the autocorrelation block Eᴸᶻ at third order)
+   ```
+   Sparsity of `Γ` and `ṁ` is preserved throughout; the right-hand side
+   `Ċ` is passed sparse to `solve_lyapunov_equation`.
+3. Solve the tangent Lyapunov system with the same transition `A` (so the
+   Schur factorisation of `A` is reusable across all nodes and directions):
+   ```
+   Σ̇(tₖ, i)  =  A · Σ̇(tₖ, i) · Aᵀ  +  Ċ
+   ```
+4. Accumulate the Gauss–Legendre contribution to the per-variable Shapley
+   value
+   ```
+   φᵢ(v)  +=  wₖ · diag( ŝ_to_y · Σ̇(tₖ, i) · ŝ_to_yᵀ  +  boundary terms )[v]
+   ```
 
-At third order this identity breaks for diagonal-times-distinct mixed terms
-like `c · x[i]² · x[j]`: AS via the scaled-shock primal attributes `2c/3` to
-shock `i` and `c/3` to shock `j`, while the multilinear-extension Shapley
-value would attribute `c/2` each. **Shapley efficiency holds exactly for both
-splits** (the totals match), only the per-shock allocation differs by an
-amount controlled by the magnitude of `𝐒₃`'s diagonal entries — empirically
-≈ 10⁻⁸ relative on SW07.
+The per-variable totals are divided by the unconditional variance from the
+standard moment routines to obtain shares.
 
-### How to interpret the output
+### Cost
 
-The output has dimensions `(variables × shocks × periods)`. Entry `[v, i, t]`
-is the contribution of shock `i` to the value of variable `v` at period `t`,
-with all cross-shock interactions in the per-period polynomial allocated by
-the Shapley rule.
+| Order | Coefficient enumeration | Aumann–Shapley path integral |
+|-------|--------------------------|------------------------------|
+| 2     | `C(nᵉ, 1) + C(nᵉ, 2)` Lyapunov solves | `2 · nᵉ` Lyapunov solves |
+| 3     | up to `Σ_{j ≤ 3} C(nᵉ, j)` Lyapunov solves | `3 · nᵉ` Lyapunov solves |
 
-Concretely, at period `t`:
+For `Smets_Wouters_2007` (`nᵉ = 7`) the second-order count is `14` versus
+`28`, and the third-order count is `21` versus up to `126`.
 
-- **Linear parts** (contributions like `α · εᵢ_τ` for past `τ ≤ t`) are
-  fully credited to shock `i`.
-- **Quadratic cross-shock parts** like `β · εᵢ_τ · εⱼ_σ` are split 50/50 between
-  `i` and `j`.
-- **Cubic three-distinct-shock parts** are split three ways.
-- **Squared-of-same-shock terms** `γ · εᵢ_τ²` go entirely to shock `i`.
+### Convergence safeguard
 
-Row sums (sum over shocks at fixed `t`) reproduce the model variable's value
-at `t` — Shapley efficiency.
+`calculate_aumann_shapley_{second,third}_order` start from the low-order
+Gauss–Legendre rule and rerun with one additional node up to a maximum of
+seven whenever the relative Shapley-efficiency closure error exceeds
+`AUMANN_SHAPLEY_REFINEMENT_RTOL = 1e-3`. The closure error is the maximum
+relative deviation of the row sums from one (efficiency:
+`Σᵢ φᵢ(v) = V(N)(v) − V(∅)(v)`).
+
+### Output
+
+With `marginal_contribution = true` the returned `KeyedArray` is
+`nVars × nᵉ` and omits the `:Cross_shock_interaction` column. Row sums equal
+one up to numerical noise; rows whose unconditional variance is below `eps()`
+are reported as zero. Because the polynomial `V(S)` need not be monotone in
+`S`, individual entries may fall outside `[0, 1]`.
 
 ---
 
-## 5. Side-by-side
+## Shock decomposition
 
-|  | Variance decomposition | Shock decomposition |
+### Coalition value
+
+For a fixed shock path `{ε₁, …, ε_T}` produced by the inversion filter and
+for a variable `v`, `V_t(S)` is the value of `v` at period `t` along the
+pruned state trajectory when shocks outside `S` are zeroed. The pruned
+second-order recursion reads
+
+```
+ŝ_{t+1}  =  𝐒₁ · âₜ  +  ½ · 𝐒₂ · (âₜ ⊗ âₜ)
+```
+
+with the augmented vector `âₜ = [ŝₜ[past_idx]; 1; εₜ]`; the third-order
+recursion adds a cubic Kronecker block. The mapping from active shocks to
+`ŝₜ` is a polynomial of degree at most `k` in the indicators
+`1_{i ∈ S}`, so the multilinear extension and the path-integral identity
+apply unchanged.
+
+### Forward-mode tangents
+
+Materialising the polynomial coefficients explicitly would require carrying a
+Kronecker bundle of width `C(nᵉ + k, k)` through every period. The drivers
+`aumann_shapley_shock_decomposition_pruned_{2nd,3rd}_order!` in
+`src/filter/inversion.jl` evaluate the path integral instead by running, at
+each Gauss–Legendre node `sₖ`, one primal pruned trajectory with shocks
+scaled by `sₖ` together with `nᵉ` forward-mode directional-derivative
+trajectories.
+
+For each shock direction `i`, the tangent trajectory `v_t = ∂ŝₜ / ∂xᵢ`
+satisfies the chain-rule lift of the recursion. At second order,
+
+```
+ȧ₁,ₜ      =  [ v_t[past_idx];  0;  εᵢ,ₜ · eᵢ ]
+v_{t+1}   =  𝐒₁ · ȧ₁,ₜ  +  ½ · 𝐒₂ · (ȧ₁,ₜ ⊗ a₁,ₜ + a₁,ₜ ⊗ ȧ₁,ₜ)
+```
+
+where `eᵢ` is the `i`-th unit vector. The shock slot of the tangent
+contains the *un-scaled* `εᵢ,ₜ` because `∂(xᵢ · εᵢ,ₜ) / ∂xᵢ = εᵢ,ₜ`.
+The third-order driver adds the analogous cubic Kronecker tangents.
+
+An additional `s = 0` primal trajectory supplies `V_t(∅)` and is stored as
+the `:Initial_values` column.
+
+### Per-period accumulation
+
+```
+φᵢ(v, t)  =  Σ_k  wₖ · v_{k, i, t}[v]    (plus higher-order tangents at k = 3)
+```
+
+Two Gauss–Legendre nodes suffice for the second-order recursion (the
+integrand is degree at most one in `s`); three suffice for the third-order
+recursion. Both drivers wrap the per-node routine in the same closure-error
+refinement loop used by the variance decomposition, up to seven nodes.
+
+### Cost
+
+| Quantity per period | Polynomial bundle | Forward-tangent path integral |
+|---------------------|-------------------|-------------------------------|
+| Primal recursions   | one matrix-matrix product of width `C(nᵉ + k, k)` | `n_nodes` plain recursions |
+| Tangent recursions  | folded into the bundle | `n_nodes · nᵉ` plain recursions |
+| Memory              | `nState × C(nᵉ + k, k)` | `nState × n_nodes · (nᵉ + 1)` |
+
+### Exactness
+
+At second order the recursion-based path integral reproduces the Shapley
+value of the multilinear extension exactly: the diagonal Kronecker term
+`xᵢ² · εᵢ²` from the recursion and the multilinear-extension term
+`xᵢ · εᵢ²` integrate to the same value under `∫₀¹ ∂/∂xᵢ`. Empirically the
+closure error on `RBC_CME` and `Smets_Wouters_2007` is at machine precision.
+
+At third order the same identity does not hold for mixed terms of the form
+`c · xᵢ² · xⱼ`: the scaled-shock primal attributes `2c/3` to shock `i` and
+`c/3` to shock `j`, whereas the strict multilinear-extension Shapley value
+splits it `c/2`–`c/2`. Efficiency (row sums) is preserved exactly; only the
+per-shock split differs by an amount controlled by the diagonal entries of
+`𝐒₃`. The discrepancy is empirically of order `1e-8` relative on
+`Smets_Wouters_2007`.
+
+### Output
+
+With `marginal_contribution = true` the returned `KeyedArray` has shape
+`nVars × (nᵉ + 1) × T` and contains the `nᵉ` per-shock columns plus
+`:Initial_values`. The `:Nonlinearities` column produced under
+`marginal_contribution = false` is absorbed into the per-shock columns.
+Slice sums over the shock axis at fixed `(v, t)` reproduce the fitted value
+of variable `v` at period `t` minus the `:Initial_values` contribution
+(Shapley efficiency).
+
+---
+
+## Summary
+
+| | Variance decomposition | Shock decomposition |
 |---|---|---|
-| What `V(S)` is | Unconditional variance with shocks-outside-`S` = 0 | Per-period state value with shocks-outside-`S` = 0 |
-| Cost of one `V` evaluation | One Lyapunov solve | One vector recursion per period |
-| Driver | **Aumann–Shapley path integral** + Lyapunov solves at each Gauss–Legendre node | **Aumann–Shapley path integral** + forward tangents at each Gauss–Legendre node |
-| Solves needed | `n_nodes · nᵉ` Lyapunov solves with shared `A` | Zero solves (just `(n_nodes · (nᵉ + 1)) × T` plain matrix-vector products) |
-| Quadrature error | Zero (integrand is polynomial of degree `≤ k − 1` in the diagonal-path parameter) | Zero at `k = 2`; ≈10⁻⁸ split-only perturbation at `k = 3` from the V-vs-MLE diagonal-kron mismatch |
-
-The unifying mental model:
-
-> *In pruned k-th-order perturbation, `V` is a low-degree polynomial in
-> coalition indicators. The Aumann–Shapley path integral collapses the
-> 2ⁿᵉ-coalition definition of Shapley to a handful of derivative
-> evaluations along the diagonal. Variance decomposition uses the integral
-> via Lyapunov-solve characteristic functions; shock decomposition uses it
-> via forward-mode tangent recursions through the pruned state.*
+| Routine | [`get_variance_decomposition`](@ref) | [`get_shock_decomposition`](@ref) |
+| Coalition value `V(S)` | Unconditional variance under active set `S` | Fitted value at period `t` under active set `S` |
+| Cost per `V` evaluation | One Lyapunov solve | One vector recursion per period |
+| Quadrature work | `n_nodes · nᵉ` Lyapunov solves with shared `A` | `n_nodes · (nᵉ + 1) · T` plain matrix-vector products |
+| Quadrature error | Zero (integrand of degree ≤ `k − 1`) | Zero at `k = 2`; `O(1e-8)` split-only perturbation at `k = 3` |
+| Driver | `calculate_aumann_shapley_{second,third}_order` in `src/moments.jl` | `aumann_shapley_shock_decomposition_pruned_{2nd,3rd}_order!` in `src/filter/inversion.jl` |
+| Shared primitives | `gausslegendre_unit_interval`, `continuous_coalition_mask_*`, `mask_directional_derivative_*` in `src/aumann_shapley.jl` |
 
 ---
 
@@ -317,5 +298,7 @@ The unifying mental model:
 
 - Aumann, R. J. and Shapley, L. S. (1974). *Values of Non-Atomic Games*.
   Princeton University Press.
-- Owen, G. (1972). *Multilinear Extensions of Games*. Management Science
-  18(5): 64–79.
+- Owen, G. (1972). Multilinear Extensions of Games. *Management Science*
+  18(5), 64–79.
+- Shapley, L. S. (1953). A Value for n-Person Games. In *Contributions to
+  the Theory of Games II*, 307–317.

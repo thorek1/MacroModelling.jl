@@ -36,20 +36,32 @@ Multilinear extension of the second-order coalition indicator mask evaluated
 at `x ∈ [0,1]^nᵉ`. Block layout: `[nᵉ, nᵉ², nˢ·nᵉ]`. For each block
 entry indexed by tuple `I` of shock indices, `m_I(x) = ∏_{j ∈ unique(I)} x_j`
 so that on `x ∈ {0,1}^nᵉ` the result equals the original `BitVector` mask.
+
+In plain math, the three blocks of the augmented shock vector ê at second
+order are `(eⱼ)`, `(eⱼ·eₖ)`, `(sₐ·eⱼ)`. The continuous mask m(x) returns,
+component by component:
+  block 1 (size nᵉ):   m[j]        = xⱼ
+  block 2 (size nᵉ²):  m[j,k]      = xⱼ · xₖ      (= xⱼ on the diagonal j=k)
+  block 3 (size nˢnᵉ): m[a,j]      = xⱼ           (state index a does not enter)
+At x ∈ {0,1}ⁿᵉ this collapses to the indicator of "every shock index in the
+component lies in the coalition S", recovering the discrete coalition mask.
 """
 function continuous_coalition_mask_second_order(x::AbstractVector{T}, nᵉ::Int, nˢ::Int) where T <: Real
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
     N = sum(block_sizes)
     m = zeros(T, N)
     off = 0
+    # Block 1: single shock eⱼ → mask value xⱼ.
     @inbounds for j in 1:nᵉ
         m[off + j] = x[j]
     end
     off += block_sizes[1]
+    # Block 2: shock-by-shock kron eⱼ·eₖ → product over unique indices.
     @inbounds for j in 1:nᵉ, k in 1:nᵉ
         m[off + (j - 1) * nᵉ + k] = (j == k) ? x[j] : x[j] * x[k]
     end
     off += block_sizes[2]
+    # Block 3: state-by-shock kron sₐ·eⱼ → only shock index j matters.
     @inbounds for a in 1:nˢ, j in 1:nᵉ
         m[off + (a - 1) * nᵉ + j] = x[j]
     end
@@ -75,14 +87,23 @@ end
 $(SIGNATURES)
 In-place version of `mask_directional_derivative_second_order`. Writes into
 pre-allocated output vector `dm` (length `nᵉ + nᵉ² + nˢ·nᵉ`).
+
+In plain math, this is ∂m(x)/∂xᵢ for the second-order mask. Per block:
+  block 1:  ∂m[j]/∂xᵢ   = δⱼᵢ
+  block 2:  ∂m[j,k]/∂xᵢ = δⱼᵢ·xₖ + δₖᵢ·xⱼ              (= δⱼᵢ on diag j=k)
+  block 3:  ∂m[a,j]/∂xᵢ = δⱼᵢ
+Note the support is sparse: only components whose index tuple contains shock i
+have a nonzero derivative.
 """
 function mask_directional_derivative_second_order!(dm::AbstractVector{T}, x::AbstractVector{T}, i::Int, nᵉ::Int, nˢ::Int) where T <: Real
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ)
     fill!(dm, zero(T))
     off = 0
-    @inbounds dm[off + i] = one(T)                                       # block 1
+    # Block 1: ∂(xⱼ)/∂xᵢ = δⱼᵢ.
+    @inbounds dm[off + i] = one(T)
     off += block_sizes[1]
-    @inbounds for j in 1:nᵉ, k in 1:nᵉ                         # block 2
+    # Block 2: ∂(xⱼxₖ)/∂xᵢ = δⱼᵢxₖ + δₖᵢxⱼ; on the diagonal j=k=i it is 1.
+    @inbounds for j in 1:nᵉ, k in 1:nᵉ
         if j == k && j == i
             dm[off + (j - 1) * nᵉ + k] = one(T)
         elseif j != k
@@ -94,7 +115,8 @@ function mask_directional_derivative_second_order!(dm::AbstractVector{T}, x::Abs
         end
     end
     off += block_sizes[2]
-    @inbounds for a in 1:nˢ                                    # block 3
+    # Block 3: ∂(xⱼ)/∂xᵢ = δⱼᵢ, independent of the state index a.
+    @inbounds for a in 1:nˢ
         dm[off + (a - 1) * nᵉ + i] = one(T)
     end
     return dm
@@ -107,38 +129,56 @@ layout:
 `(nᵉ, nᵉ², nˢ·nᵉ, nˢ·nᵉ, nˢ²·nᵉ, nˢ·nᵉ², nᵉ³)`. Each entry's mask value
 equals the product of `x[j]` over the unique shock indices appearing in that
 entry's index tuple.
+
+In plain math, the seven blocks of the augmented shock vector ê at third
+order are `(eⱼ), (eⱼ·eₖ), (sₐ·eⱼ), (sₐ·eⱼ), (sₐ·sᵦ·eⱼ), (sₐ·eⱼ·eₖ), (eⱼ·eₖ·eₗ)`.
+The continuous mask m(x) returns, block by block:
+  block 1: xⱼ
+  block 2: xⱼ·xₖ                     (= xⱼ on the diagonal)
+  block 3: xⱼ                         (state indices ignored)
+  block 4: xⱼ                         (same shape as block 3)
+  block 5: xⱼ                         (two state indices ignored)
+  block 6: xⱼ·xₖ                     (state index ignored)
+  block 7: xⱼ·xₖ·xₗ                  (product over unique({j,k,l}))
+At x ∈ {0,1}ⁿᵉ this matches the discrete coalition indicator.
 """
 function continuous_coalition_mask_third_order(x::AbstractVector{T}, nᵉ::Int, nˢ::Int) where T <: Real
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
     N = sum(block_sizes)
     m = zeros(T, N)
     off = 0
+    # Block 1 — eⱼ: m = xⱼ
     @inbounds for j in 1:nᵉ
         m[off + j] = x[j]
     end
     off += block_sizes[1]
+    # Block 2 — eⱼ·eₖ: m = xⱼ·xₖ (xⱼ on the diagonal)
     @inbounds for j in 1:nᵉ, k in 1:nᵉ
         m[off + (j - 1) * nᵉ + k] = (j == k) ? x[j] : x[j] * x[k]
     end
     off += block_sizes[2]
+    # Block 3 — sₐ·eⱼ: m = xⱼ (state index a irrelevant)
     @inbounds for a in 1:nˢ, j in 1:nᵉ
         m[off + (a - 1) * nᵉ + j] = x[j]
     end
     off += block_sizes[3]
+    # Block 4 — same shape as block 3
     @inbounds for a in 1:nˢ, j in 1:nᵉ
         m[off + (a - 1) * nᵉ + j] = x[j]
     end
     off += block_sizes[4]
+    # Block 5 — sₐ·sᵦ·eⱼ: m = xⱼ (two state indices irrelevant)
     @inbounds for p in 1:nˢ^2, j in 1:nᵉ
         m[off + (p - 1) * nᵉ + j] = x[j]
     end
     off += block_sizes[5]
+    # Block 6 — sₐ·eⱼ·eₖ: m = xⱼ·xₖ (state index irrelevant)
     @inbounds for a in 1:nˢ, j in 1:nᵉ, k in 1:nᵉ
         m[off + (a - 1) * nᵉ^2 + (j - 1) * nᵉ + k] = (j == k) ? x[j] : x[j] * x[k]
     end
     off += block_sizes[6]
+    # Block 7 — eⱼ·eₖ·eₗ: m = ∏_{q ∈ unique({j,k,l})} x_q
     @inbounds for j in 1:nᵉ, k in 1:nᵉ, l in 1:nᵉ
-        # multilinear extension over unique({j,k,l})
         if j == k == l
             v = x[j]
         elseif j == k
@@ -172,6 +212,13 @@ end
 $(SIGNATURES)
 In-place version of `mask_directional_derivative_third_order`. Writes into
 pre-allocated output vector `dm`.
+
+In plain math, this is ∂m(x)/∂xᵢ for the third-order mask. The general rule
+is the product rule applied to the multilinear monomial of each component:
+∂(∏_{j∈U} xⱼ)/∂xᵢ = ∏_{j∈U\\{i}} xⱼ if i ∈ U, else 0, where U is the set
+of unique shock indices in that component.  Block 7 (triple e·e·e) is the
+only place where three indices can coincide, so it splits into three sub-cases
+(all equal / two equal / all distinct) of the same product rule.
 """
 function mask_directional_derivative_third_order!(dm::AbstractVector{T}, x::AbstractVector{T}, i::Int, nᵉ::Int, nˢ::Int) where T <: Real
     block_sizes = (nᵉ, nᵉ^2, nˢ * nᵉ, nˢ * nᵉ, nˢ^2 * nᵉ, nˢ * nᵉ^2, nᵉ^3)
@@ -242,6 +289,12 @@ $(SIGNATURES)
 Hand-coded Gauss–Legendre nodes/weights on the unit interval `[0, 1]` for
 `n ∈ {1, 2, 3, 4}`. Avoids a runtime dependency on `FastGaussQuadrature`. The
 nodes and weights integrate polynomials of degree ≤ `2n − 1` exactly.
+
+In plain math, this returns `(t_k, w_k)` such that
+    ∫₀¹ p(t) dt ≈ Σ_k w_k · p(t_k)
+is exact for every polynomial p of degree ≤ 2n−1. We obtain the unit-interval
+rule by affinely mapping the standard `[-1,1]` Gauss–Legendre rule:
+`t = (ξ + 1)/2` with weights halved accordingly.
 """
 function gausslegendre_unit_interval(n::Int)
     if n == 1

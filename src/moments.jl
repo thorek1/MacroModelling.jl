@@ -1009,42 +1009,30 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
     per_shock_var = zeros(R, nVars, nᵉ)
     all_ok = true
 
-    Γ₃_dense = Matrix(Γ₃)
-    Eᴸᶻ_dense = Matrix(Eᴸᶻ)
-    ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
-    ê_to_y₃_dense = Matrix(ê_to_y₃)
-    N_ŝ₃_cols = size(Eᴸᶻ_dense, 2)
-
-    # Pre-allocate loop buffers
-    Γᵢ_buf = zeros(R, N_e_aug, N_e_aug)
-    Eᴸᶻᵢ_buf = zeros(R, N_e_aug, N_ŝ₃_cols)
-    Cᵢ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
-    Aᵢ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
-    tmp_ŝ_Γ = Matrix{R}(undef, n_ŝ₃, N_e_aug)
-    tmp_ŝ_E = Matrix{R}(undef, n_ŝ₃, N_ŝ₃_cols)
+    # Γ₃ and Eᴸᶻ stay sparse (densifying them costs too much for large nᵉ/nˢ).
+    # Per shock i we subset the sparse matrices to the mask support `midx` and
+    # keep everything sparse all the way through `solve_lyapunov_equation` and
+    # the final Σʸᵢ contraction (mirrors the pattern used in
+    # `calculate_third_order_moments_with_autocorrelation`).
+    # In plain math: Γ⁽ⁱ⁾ = diag(m) · Γ₃ · diag(m) = Γ₃[midx, midx] padded with
+    # zeros, and ê · Γ⁽ⁱ⁾ · ê' = ê[:, midx] · Γ₃[midx, midx] · ê[:, midx]'.
 
     for i in 1:nᵉ
         m = build_per_shock_mask(i)
         midx = findall(m)
 
-        # Γ⁽ⁱ⁾ = diag(m) Γ₃ diag(m): only rows/cols in midx survive.
-        fill!(Γᵢ_buf, zero(R))
-        @inbounds Γᵢ_buf[midx, midx] = Γ₃_dense[midx, midx]
+        Γᵢ_sp     = Γ₃[midx, midx]            # sparse, |midx|×|midx|
+        Eᵢ_sp     = Eᴸᶻ[midx, :]              # sparse, narrow rows of Eᴸᶻ
+        ê_ŝ_cols  = ê_to_ŝ₃[:, midx]          # sparse subset of ê_to_ŝ₃
+        ê_y_cols  = ê_to_y₃[:, midx]          # sparse subset of ê_to_y₃
 
-        # Eᴸᶻ⁽ⁱ⁾ = diag(m) Eᴸᶻ: only rows in midx survive.
-        fill!(Eᴸᶻᵢ_buf, zero(R))
-        @inbounds Eᴸᶻᵢ_buf[midx, :] = Eᴸᶻ_dense[midx, :]
+        # Aᵢ = ê_to_ŝ₃ · Eᴸᶻ⁽ⁱ⁾ · ŝ_to_ŝ₃' (= ê_to_ŝ₃[:, midx] · Eᴸᶻ[midx, :] · ŝ_to_ŝ₃')
+        Aᵢ_sp = ê_ŝ_cols * Eᵢ_sp * ŝ_to_ŝ₃'
+        # Cᵢ = ê_to_ŝ₃ · Γ⁽ⁱ⁾ · ê_to_ŝ₃' + Aᵢ + Aᵢ' (kept sparse; solver collects internally)
+        Cᵢ_sp = sparse_ABAt(ê_ŝ_cols, Γᵢ_sp) + Aᵢ_sp + Aᵢ_sp'
+        droptol!(Cᵢ_sp, eps())
 
-        # Cᵢ = ê_to_ŝ₃ * Γᵢ * ê_to_ŝ₃' + Aᵢ + Aᵢ'  where Aᵢ = ê_to_ŝ₃ * Eᴸᶻᵢ * ŝ_to_ŝ₃'
-        ℒ.mul!(tmp_ŝ_E, ê_to_ŝ₃_dense, Eᴸᶻᵢ_buf)
-        ℒ.mul!(Aᵢ_buf, tmp_ŝ_E, ŝ_to_ŝ₃')
-        ℒ.mul!(tmp_ŝ_Γ, ê_to_ŝ₃_dense, Γᵢ_buf)
-        ℒ.mul!(Cᵢ_buf, tmp_ŝ_Γ, ê_to_ŝ₃_dense')
-        @inbounds for idx in eachindex(Cᵢ_buf)
-            Cᵢ_buf[idx] += Aᵢ_buf[idx] + Aᵢ_buf'[idx]
-        end
-
-        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Cᵢ_buf, lyap_ws_3rd,
+        Σᶻᵢ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Cᵢ_sp, lyap_ws_3rd,
                                             lyapunov_algorithm = opts.lyapunov_algorithm,
                                             tol = opts.tol.third_order.lyapunov,
                                             verbose = opts.verbose,
@@ -1056,12 +1044,12 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
             continue
         end
 
-        Σʸᵢ = ŝ_to_y₃ * Σᶻᵢ * ŝ_to_y₃' + ê_to_y₃_dense * Γᵢ_buf * ê_to_y₃_dense'
-        tmp_cross = ê_to_y₃_dense * Eᴸᶻᵢ_buf * ŝ_to_y₃'
-        Σʸᵢ .+= tmp_cross .+ tmp_cross'
-        @inbounds for j in 1:nVars
-            per_shock_var[j, i] = Σʸᵢ[j, j]
-        end
+        # Σʸᵢ = ŝ_to_y₃ · Σᶻᵢ · ŝ_to_y₃' + ê_to_y₃ · Γ⁽ⁱ⁾ · ê_to_y₃'
+        #       + ê_to_y₃ · Eᴸᶻ⁽ⁱ⁾ · ŝ_to_y₃' + ŝ_to_y₃ · Eᴸᶻ⁽ⁱ⁾' · ê_to_y₃'
+        # Same structure as Σʸ₃ in `calculate_third_order_moments_with_autocorrelation`.
+        Σʸᵢ = ŝ_to_y₃ * Σᶻᵢ * ŝ_to_y₃' + sparse_ABAt(ê_y_cols, Γᵢ_sp) +
+              ê_y_cols * Eᵢ_sp * ŝ_to_y₃' + ŝ_to_y₃ * Eᵢ_sp' * ê_y_cols'
+        per_shock_var[:, i] .= ℒ.diag(Σʸᵢ)
     end
 
     return per_shock_var, ℒ.diag(Σʸ₃_total), all_ok
@@ -1165,38 +1153,34 @@ function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
     Γ_full = sparse([ ℒ.I(nᵉ)                spzeros(R, nᵉ, nᵉ^2)         spzeros(R, nᵉ, nˢ * nᵉ)
                       spzeros(R, nᵉ^2, nᵉ)   so.e4_minus_vecIₑ_outer      spzeros(R, nᵉ^2, nˢ * nᵉ)
                       spzeros(R, nˢ * nᵉ, nᵉ)   spzeros(R, nˢ * nᵉ, nᵉ^2)   ℒ.kron(Σᶻ₁, ℒ.I(nᵉ)) ])
-    Γ_full_dense = Matrix(Γ_full)
-    ê_to_ŝ₂_dense = Matrix(ê_to_ŝ₂)
-    ê_to_y₂_dense = Matrix(ê_to_y₂)
 
     nodes, weights = gausslegendre_unit_interval(n_nodes)
     shares = zeros(R, nVars, nᵉ)
 
     N_ê₂ = nᵉ + nᵉ^2 + nˢ * nᵉ
-    # Pre-allocate inner-loop buffers
-    inner_buf = Matrix{R}(undef, N_ê₂, N_ê₂)
-    Ċ_buf = Matrix{R}(undef, n_ŝ₂, n_ŝ₂)
-    tmp_ŝ_inner = Matrix{R}(undef, n_ŝ₂, N_ê₂)
-    tmp_y_inner = Matrix{R}(undef, nVars, N_ê₂)
-    Σ̇ʸ_buf = Matrix{R}(undef, nVars, nVars)
     ṁ_buf = Vector{R}(undef, N_ê₂)
 
+    # Keep Γ_full, ê_to_ŝ₂, ê_to_y₂ sparse end-to-end. Per node t: Γ·Dm and Dm·Γ
+    # are sparse (column/row scalings of Γ_full). Per direction i: Dṁ is a
+    # diagonal with very few nonzeros so `inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ` stays
+    # extremely sparse. The Lyapunov RHS Ċ is passed sparse — `solve_lyapunov_equation`
+    # collects internally — and Σ̇ʸ is also assembled sparsely; only its diagonal
+    # is read. Mirrors the pattern used in `calculate_third_order_moments_with_autocorrelation`.
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_second_order(x, nᵉ, nˢ)
         Dm = ℒ.Diagonal(m)
-        Γ_Dm = Γ_full_dense * Dm                               # cache once per node
-        Dm_Γ = Dm * Γ_full_dense
+        Γ_Dm = Γ_full * Dm                                     # sparse: column scaling
+        Dm_Γ = Dm * Γ_full                                     # sparse: row scaling
         for i in 1:nᵉ
             mask_directional_derivative_second_order!(ṁ_buf, x, i, nᵉ, nˢ)
             Dṁ = ℒ.Diagonal(ṁ_buf)
-            # inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ (in-place)
-            ℒ.mul!(inner_buf, Dṁ, Γ_Dm)
-            ℒ.mul!(inner_buf, Dm_Γ, Dṁ, one(R), one(R))
-            # Ċ = ê_to_ŝ₂ * inner * ê_to_ŝ₂' (in-place)
-            ℒ.mul!(tmp_ŝ_inner, ê_to_ŝ₂_dense, inner_buf)
-            ℒ.mul!(Ċ_buf, tmp_ŝ_inner, ê_to_ŝ₂_dense')
-            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Ċ_buf, lyap_ws,
+            # inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ — sparse (support ⊆ rows/cols where ṁ≠0)
+            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ
+            # Ċ = ê_to_ŝ₂ · inner · ê_to_ŝ₂' — kept sparse
+            Ċ_sp = ê_to_ŝ₂ * inner * ê_to_ŝ₂'
+            droptol!(Ċ_sp, eps())
+            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Ċ_sp, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                                 tol = opts.tol.second_order.lyapunov,
                                                 verbose = opts.verbose,
@@ -1204,13 +1188,9 @@ function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
-            # Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂' (in-place)
-            ℒ.mul!(tmp_y_inner, ê_to_y₂_dense, inner_buf)
-            ℒ.mul!(Σ̇ʸ_buf, tmp_y_inner, ê_to_y₂_dense')
-            Σ̇ʸ_buf .+= ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂'
-            @inbounds for j in 1:nVars
-                shares[j, i] += R(w) * Σ̇ʸ_buf[j, j]
-            end
+            # Σ̇ʸ = ŝ_to_y₂ · Σ̇ᶻ · ŝ_to_y₂' + ê_to_y₂ · inner · ê_to_y₂'
+            Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂'
+            shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
         end
     end
     closure_residual = vec(sum(shares, dims = 2)) .- total_var
@@ -1449,52 +1429,36 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
     n_ŝ₃ = size(ŝ_to_ŝ₃, 1)
     lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, n_ŝ₃, :third_order)
 
-    Γ₃_dense = Matrix(Γ₃)
-    Eᴸᶻ_dense = Matrix(Eᴸᶻ)
-    ê_to_ŝ₃_dense = Matrix(ê_to_ŝ₃)
-    ê_to_y₃_dense = Matrix(ê_to_y₃)
-
     nodes, weights = gausslegendre_unit_interval(n_nodes)
     shares = zeros(R, nVars, nᵉ)
 
-    N_ê₃ = size(Γ₃_dense, 1)
-    N_ŝ₃_cols = size(Eᴸᶻ_dense, 2)
-    # Pre-allocate inner-loop buffers
-    inner_buf = Matrix{R}(undef, N_ê₃, N_ê₃)
-    Dṁ_EL_buf = Matrix{R}(undef, N_ê₃, N_ŝ₃_cols)
-    Ȧᴿ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
-    Ċ_buf = Matrix{R}(undef, n_ŝ₃, n_ŝ₃)
-    tmp_ŝ_inner = Matrix{R}(undef, n_ŝ₃, N_ê₃)
-    tmp_ŝ_EL = Matrix{R}(undef, n_ŝ₃, N_ŝ₃_cols)
-    Σ̇ʸ_buf = Matrix{R}(undef, nVars, nVars)
-    tmp_y_inner = Matrix{R}(undef, nVars, N_ê₃)
-    cross_y_buf = Matrix{R}(undef, nVars, nVars)
+    N_ê₃ = size(Γ₃, 1)
     ṁ_buf = Vector{R}(undef, N_ê₃)
 
+    # Keep Γ₃, Eᴸᶻ, ê_to_ŝ₃, ê_to_y₃ sparse end-to-end. The Lyapunov RHS Ċ is
+    # potentially very large (n_ŝ₃ × n_ŝ₃) but extremely sparse — pass it sparse;
+    # `solve_lyapunov_equation` collects internally. Σ̇ʸ is assembled sparsely too
+    # and only its diagonal is read. Mirrors the pattern from
+    # `calculate_third_order_moments_with_autocorrelation`.
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_third_order(x, nᵉ, nˢ)
         Dm = ℒ.Diagonal(m)
-        Γ_Dm = Γ₃_dense * Dm                                   # cache once per node
-        Dm_Γ = Dm * Γ₃_dense
+        Γ_Dm = Γ₃ * Dm                                         # sparse: column scaling
+        Dm_Γ = Dm * Γ₃                                         # sparse: row scaling
         for i in 1:nᵉ
             mask_directional_derivative_third_order!(ṁ_buf, x, i, nᵉ, nˢ)
             Dṁ = ℒ.Diagonal(ṁ_buf)
-            # inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ (in-place)
-            ℒ.mul!(inner_buf, Dṁ, Γ_Dm)
-            ℒ.mul!(inner_buf, Dm_Γ, Dṁ, one(R), one(R))
-            # Dṁ_EL = Dṁ * Eᴸᶻ_dense (in-place)
-            ℒ.mul!(Dṁ_EL_buf, Dṁ, Eᴸᶻ_dense)
-            # Ȧᴿ = ê_to_ŝ₃ * Dṁ_EL * ŝ_to_ŝ₃'
-            ℒ.mul!(tmp_ŝ_EL, ê_to_ŝ₃_dense, Dṁ_EL_buf)
-            ℒ.mul!(Ȧᴿ_buf, tmp_ŝ_EL, ŝ_to_ŝ₃')
-            # Ċ = ê_to_ŝ₃ * inner * ê_to_ŝ₃' + Ȧᴿ + Ȧᴿ'
-            ℒ.mul!(tmp_ŝ_inner, ê_to_ŝ₃_dense, inner_buf)
-            ℒ.mul!(Ċ_buf, tmp_ŝ_inner, ê_to_ŝ₃_dense')
-            @inbounds for idx in eachindex(Ċ_buf)
-                Ċ_buf[idx] += Ȧᴿ_buf[idx] + Ȧᴿ_buf'[idx]
-            end
-            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Ċ_buf, lyap_ws_3rd,
+            # inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ (sparse)
+            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ
+            # Dṁ_EL = Dṁ · Eᴸᶻ (sparse, only rows with ṁ≠0 survive)
+            Dṁ_EL = Dṁ * Eᴸᶻ
+            # Ȧᴿ = ê_to_ŝ₃ · Dṁ_EL · ŝ_to_ŝ₃' (sparse)
+            Ȧᴿ_sp = ê_to_ŝ₃ * Dṁ_EL * ŝ_to_ŝ₃'
+            # Ċ = ê_to_ŝ₃ · inner · ê_to_ŝ₃' + Ȧᴿ + Ȧᴿ' (kept sparse)
+            Ċ_sp = ê_to_ŝ₃ * inner * ê_to_ŝ₃' + Ȧᴿ_sp + Ȧᴿ_sp'
+            droptol!(Ċ_sp, eps())
+            Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Ċ_sp, lyap_ws_3rd,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
                                                 tol = opts.tol.third_order.lyapunov,
                                                 verbose = opts.verbose,
@@ -1502,19 +1466,12 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
-            # Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' + cross + cross'
-            ℒ.mul!(tmp_y_inner, ê_to_y₃_dense, inner_buf)
-            ℒ.mul!(Σ̇ʸ_buf, tmp_y_inner, ê_to_y₃_dense')
-            Σ̇ʸ_buf .+= ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃'
-            # cross_y = ê_to_y₃ * Dṁ_EL * ŝ_to_y₃'
-            tmp_y_EL = ê_to_y₃_dense * Dṁ_EL_buf
-            ℒ.mul!(cross_y_buf, tmp_y_EL, ŝ_to_y₃')
-            @inbounds for idx in eachindex(Σ̇ʸ_buf)
-                Σ̇ʸ_buf[idx] += cross_y_buf[idx] + cross_y_buf'[idx]
-            end
-            @inbounds for j in 1:nVars
-                shares[j, i] += R(w) * Σ̇ʸ_buf[j, j]
-            end
+            # Σ̇ʸ = ŝ_to_y₃ · Σ̇ᶻ · ŝ_to_y₃' + ê_to_y₃ · inner · ê_to_y₃'
+            #       + ê_to_y₃ · Dṁ_EL · ŝ_to_y₃' + ŝ_to_y₃ · Dṁ_EL' · ê_to_y₃'
+            cross_sp = ê_to_y₃ * Dṁ_EL * ŝ_to_y₃'
+            Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' +
+                  cross_sp + cross_sp'
+            shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
         end
     end
     closure_residual = vec(sum(shares, dims = 2)) .- total_var
