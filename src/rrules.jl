@@ -8510,6 +8510,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     eff_presample = presample_periods + warmup_iterations
 
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, n_exo, n_past)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_obs_full)
+
     state₀ = copy(state[1])
     state_seq = [copy(state₀) for _ in 1:Tt+1]
 
@@ -8525,20 +8529,26 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     n_obs_total = 0
     shocks² = 0.0
     logabsdets = 0.0
-    concat_buf = zeros(n_past + n_exo)
+    concat_buf = ws.state_concat
 
     for t in 1:Tt
         idx = idx_seq[t]
         m = length(idx)
         # y_full = data[:,t] - 𝐒obs_past_full * state[t][t⁻]
-        y_full = data_in_deviations[:, t] - 𝐒obs_past_full * state_seq[t][t⁻]
+        y_full_view = view(ws.obs_sub_buf, 1:n_obs_full)
+        copyto!(y_full_view, view(data_in_deviations, :, t))
+        ℒ.mul!(y_full_view, 𝐒obs_past_full, view(state_seq[t], t⁻), -1.0, 1.0)
         if m == 0
             fill!(x_seq[t], 0.0)
             invjac_v_seq[t] = zeros(0, 0)
             G_seq[t] = zeros(0, 0)
         else
-            jac_v = jac_full[idx, :]
-            y_v   = y_full[idx]
+            jac_v_buf = view(ws.jacc_v_buf, 1:m, 1:n_exo)
+            @inbounds for j in 1:n_exo, i in 1:m
+                jac_v_buf[i, j] = jac_full[idx[i], j]
+            end
+            jac_v = jac_v_buf
+            y_v   = view(y_full_view, idx)
             logabsdet_t = 0.0
             if m == n_exo
                 jac_v_lu = ℒ.lu(jac_v, check = false)
@@ -9120,9 +9130,14 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     n_exo  = Tcc.nExo
     n_past = Tcc.nPast_not_future_and_mixed
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
     Tt = size(data_in_deviations, 2)
 
     eff_presample = presample_periods + warmup_iterations
+
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, n_exo, n_past)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -9156,21 +9171,21 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     aug_state₁_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
     aug_state₂_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
     x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(length(cond_var_idx), n_exo) for _ in 1:Tt]
+    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
 
     shocks² = 0.0
     logabsdets = 0.0
     n_obs_total = 0
 
-    state¹⁻_vol = zeros(n_past + 1)
-    shock_independent = zeros(length(cond_var_idx))
-    kronstate¹⁻_vol = zeros((n_past + 1)^2)
-    kron_buffer3 = zeros(n_exo * (n_past + 1), n_exo)
-    𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
-    kronaug_state₁ = zeros((n_past + 1 + n_exo)^2)
-    init_guess = zeros(n_exo)
-    kron_buffer = zeros(n_exo^2)
-    kron_buffer2 = zeros(n_exo^2, n_exo)
+    state¹⁻_vol       = ws.state_vol
+    shock_independent = ws.shock_independent
+    kronstate¹⁻_vol   = ws.kronstate_vol
+    kron_buffer3      = ws.kron_buffer_state
+    𝐒ⁱ_full          = ws.Si_buffer
+    kronaug_state₁    = ws.kronaug_state
+    init_guess        = ws.init_guess
+    kron_buffer       = ws.kron_buffer
+    kron_buffer2      = ws.kron_buffer2
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -10037,9 +10052,14 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     n_exo  = Tcc.nExo
     n_past = Tcc.nPast_not_future_and_mixed
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
     Tt = size(data_in_deviations, 2)
 
     eff_presample = presample_periods + warmup_iterations
+
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, n_exo, n_past)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -10067,21 +10087,21 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     state¹⁻_vol_seq = [zeros(n_past + 1) for _ in 1:Tt]
     aug_state_seq   = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
     x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(length(cond_var_idx), n_exo) for _ in 1:Tt]
+    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
 
     shocks² = 0.0
     logabsdets = 0.0
     n_obs_total = 0
 
-    state¹⁻_vol = zeros(n_past + 1)
-    shock_independent = zeros(length(cond_var_idx))
-    kronstate¹⁻_vol = zeros((n_past + 1)^2)
-    kron_buffer3 = zeros(n_exo * (n_past + 1), n_exo)
-    𝐒ⁱ_full = zeros(length(cond_var_idx), n_exo)
-    kronaug_state = zeros((n_past + 1 + n_exo)^2)
-    init_guess = zeros(n_exo)
-    kron_buffer = zeros(n_exo^2)
-    kron_buffer2 = zeros(n_exo^2, n_exo)
+    state¹⁻_vol      = ws.state_vol
+    shock_independent = ws.shock_independent
+    kronstate¹⁻_vol  = ws.kronstate_vol
+    kron_buffer3     = ws.kron_buffer_state
+    𝐒ⁱ_full         = ws.Si_buffer
+    kronaug_state    = ws.kronaug_state
+    init_guess       = ws.init_guess
+    kron_buffer      = ws.kron_buffer
+    kron_buffer2     = ws.kron_buffer2
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -10874,6 +10894,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     eff_presample = presample_periods + warmup_iterations
 
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_cond; third_order = true)
+
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
     tc = constants.third_order
     shockvar_idxs   = cc.shockvar_idxs
@@ -10931,23 +10955,23 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     logabsdets = 0.0
     n_obs_total = 0
 
-    state¹⁻_vol = zeros(n_past + 1)
-    state²⁻_vol = zeros(n_past + 1)
-    shock_independent = zeros(n_cond)
-    kronstate¹⁻_vol = zeros((n_past + 1)^2)
-    kron_kron_state¹⁻_vol = zeros((n_past + 1)^3)
-    𝐒ⁱ_full = zeros(n_cond, n_exo)
-    𝐒ⁱ²ᵉ_full = zeros(n_cond, n_exo^2)
+    state¹⁻_vol       = ws.state_vol
+    state²⁻_vol       = ws.state²⁻_vol
+    shock_independent = ws.shock_independent
+    kronstate¹⁻_vol   = ws.kronstate_vol
+    kron_kron_state¹⁻_vol = ws.kronstate_vol³
+    𝐒ⁱ_full          = ws.Si_buffer
+    𝐒ⁱ²ᵉ_full        = ws.Si2e_buffer
     kron_buffer3sv = zeros(n_exo * (n_past + 1)^2, n_exo)
     kron_buffer4sv = zeros(n_exo^2 * (n_past + 1), n_exo^2)
-    kron_aug_state₁ = zeros((n_past + 1 + n_exo)^2)
-    kron_kron_aug_state₁ = zeros((n_past + 1 + n_exo)^3)
-    init_guess = zeros(n_exo)
-    kb1 = zeros(n_exo^2)
-    kb2 = zeros(n_exo^3)
-    kb3 = zeros(n_exo^2, n_exo)
-    kb4 = zeros(n_exo^3, n_exo)
-    kb5 = zeros(n_exo^3, n_exo^2)
+    kron_aug_state₁      = ws.kronaug_state
+    kron_kron_aug_state₁ = ws.kron_kron_aug_state
+    init_guess = ws.init_guess
+    kb1 = ws.kron_buffer
+    kb2 = ws.kron_buffer²
+    kb3 = ws.kron_buffer2
+    kb4 = ws.kron_buffer3
+    kb5 = ws.kron_buffer4
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -12070,6 +12094,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     eff_presample = presample_periods + warmup_iterations
 
+    ws = workspaces.inversion
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_cond; third_order = true)
+
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
     tc = constants.third_order
     shock²_idxs     = cc.shock²_idxs
@@ -12112,16 +12140,22 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     logabsdets = 0.0
     n_obs_total = 0
 
-    state¹⁻_vol = zeros(n_past + 1)
-    shock_independent = zeros(n_cond)
-    kronstate¹⁻_vol = zeros((n_past + 1)^2)
-    kron_kron_state¹⁻_vol = zeros((n_past + 1)^3)
-    𝐒ⁱ_full = zeros(n_cond, n_exo)
-    𝐒ⁱ²ᵉ_full = zeros(n_cond, n_exo^2)
+    state¹⁻_vol           = ws.state_vol
+    shock_independent     = ws.shock_independent
+    kronstate¹⁻_vol       = ws.kronstate_vol
+    kron_kron_state¹⁻_vol = ws.kronstate_vol³
+    𝐒ⁱ_full              = ws.Si_buffer
+    𝐒ⁱ²ᵉ_full            = ws.Si2e_buffer
     kron_buffer3sv = zeros(n_exo * (n_past + 1)^2, n_exo)
     kron_buffer4sv = zeros(n_exo^2 * (n_past + 1), n_exo^2)
-    kron_aug_state = zeros((n_past + 1 + n_exo)^2)
-    kron_kron_aug_state = zeros((n_past + 1 + n_exo)^3)
+    kron_aug_state      = ws.kronaug_state
+    kron_kron_aug_state = ws.kron_kron_aug_state
+    init_guess = ws.init_guess
+    kb1 = ws.kron_buffer
+    kb2 = ws.kron_buffer²
+    kb3 = ws.kron_buffer2
+    kb4 = ws.kron_buffer3
+    kb5 = ws.kron_buffer4
 
     for t in 1:Tt
         idx = obs_idx_per_t[t]
@@ -12165,12 +12199,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             𝐒ⁱ²ᵉ_v = 𝐒ⁱ²ᵉ_full[idx, :]
             𝐒ⁱ³ᵉ_v = 𝐒ⁱ³ᵉ[idx, :]
             si_v   = shock_independent[idx]
-            init_guess = zeros(n_exo)
-            kb1 = zeros(n_exo^2)
-            kb2 = zeros(n_exo^3)
-            kb3 = zeros(n_exo^2, n_exo)
-            kb4 = zeros(n_exo^3, n_exo)
-            kb5 = zeros(n_exo^3, n_exo^2)
+            fill!(init_guess, 0.0)
             x, matched = find_shocks(Val(filter_algorithm),
                                      init_guess, kb1, kb2, kb3, kb4, kb5, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
