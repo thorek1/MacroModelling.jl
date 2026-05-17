@@ -66,6 +66,12 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglike
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat} true
 
+# get_filter_free_loglikelihood:
+#   (𝓂, data, parameter_values::Vector{T}, shocks::Matrix{T}, me_std::T_or_Vector{T})
+# Two narrow @from_rrule generations cover scalar and vector me_std cases.
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}} where {T<:Base.IEEEFloat} true
+
 # ── DynamicPPL compatibility: wider @is_primitive declarations ──
 # Inside a Turing @model evaluated through DynamicPPL.logdensity_at,
 # tilde_assume!! returns Any, so Julia's type inference widens the params
@@ -83,6 +89,12 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), M
 
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Any}
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_irf), MacroModelling.ℳ, Any}
+
+# Wide primitive declarations for get_filter_free_loglikelihood so that the
+# Turing/DynamicPPL call site (which widens argument types to Any) still
+# matches the registered Mooncake primitive.
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
 
 # ── get_statistics: manual rrule!! ──
 # Returns Dict{Symbol,...} whose MutableTangent cannot be converted by to_cr_tangent.

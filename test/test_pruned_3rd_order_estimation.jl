@@ -330,3 +330,52 @@ end
 
 # p
 
+
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# Pruned third order — verify forward, analytical rrule, Mooncake gradient
+# (Full NUTS sampling is too expensive for this large model in CI.)
+# ---------------------------------------------------------------------------
+import ADTypes: AutoForwardDiff
+import ChainRulesCore as CRC
+
+const T_ff_p3 = 10
+const data_ff_p3 = data[:, 1:T_ff_p3]
+const nExo_ff_p3 = length(get_shocks(Caldara_et_al_2012_estim))
+
+@testset "Filter-free rrule (pruned third order)" begin
+    Random.seed!(42)
+    parsP3 = copy(Caldara_et_al_2012_estim.parameter_values)
+    shocksP3 = 0.01 .* randn(nExo_ff_p3, T_ff_p3)
+    me_stdP3 = 0.05
+
+    llh_fwd = get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_p3,
+                                            parsP3, shocksP3, me_stdP3;
+                                            algorithm = :pruned_third_order)
+    @test isfinite(llh_fwd)
+
+    llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, Caldara_et_al_2012_estim,
+                          data_ff_p3, parsP3, shocksP3, me_stdP3;
+                          algorithm = :pruned_third_order)
+    @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
+    _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
+
+    nP = length(parsP3)
+    z0 = vcat(parsP3, vec(shocksP3), me_stdP3)
+    obj = function (z)
+        p = z[1:nP]
+        s = reshape(z[nP+1:nP+nExo_ff_p3*T_ff_p3], nExo_ff_p3, T_ff_p3)
+        m = z[end]
+        get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_p3, p, s, m;
+                                       algorithm = :pruned_third_order)
+    end
+    g_mc = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)
+    dpars_mc = g_mc[1:nP]
+    dshk_mc  = reshape(g_mc[nP+1:nP+nExo_ff_p3*T_ff_p3], nExo_ff_p3, T_ff_p3)
+    dme_mc   = g_mc[end]
+
+    @test isapprox(dpars_mc, dpars_a; rtol = 1e-8)
+    @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
+    @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
+end

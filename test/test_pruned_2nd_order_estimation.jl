@@ -302,3 +302,45 @@ end
 
 # p
 
+
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# Using NUTS with ForwardDiff (Mooncake AD through the perturbation rrule
+# is currently unstable on this path; ForwardDiff is reliable here).
+# ---------------------------------------------------------------------------
+import ADTypes: AutoForwardDiff, AutoMooncake
+import Distributions: MvNormal
+import LinearAlgebra: I as LinearAlgebraI
+
+# Subsample data to keep CI run-time bounded — joint state-space sampling has
+# nExo * T_ff latent variables in addition to the model parameters.
+const T_ff_pruned2nd = 20
+const data_ff_pruned2nd = data[:, 1:T_ff_pruned2nd]
+const nExo_ff_pruned2nd = length(get_shocks(FS2000))
+
+Turing.@model function FS2000_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    shocks      = collect(reshape(shocks_vec, nExo, nT))
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+Random.seed!(30)
+
+@testset "Filter-free NUTS (pruned second order)" begin
+    n_ff_samples = 5
+    init_ff = (; all_params = FS2000.parameter_values,
+                 me_std     = 0.05,
+                 shocks_vec = zeros(nExo_ff_pruned2nd * T_ff_pruned2nd))
+    ff_samps = @time sample(
+        FS2000_filter_free_function(data_ff_pruned2nd, FS2000, :pruned_second_order, nExo_ff_pruned2nd, T_ff_pruned2nd, -Inf),
+        NUTS(adtype = AutoMooncake(; config=nothing)),
+        n_ff_samples,
+        progress = false,
+        initial_params = Turing.InitFromParams(init_ff))
+    @test size(ff_samps, 1) == n_ff_samples
+end

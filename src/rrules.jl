@@ -12207,3 +12207,665 @@ function rrule(::typeof(get_solution),
         return result, pullback_1st
     end
 end
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rrule for get_filter_free_loglikelihood
+#
+# Joint sampling of parameters + latent shocks per Childers, Fernández-Villaverde,
+# Perla, Rackauckas & Wu (2025). The forward pass solves the model, then runs
+# a deterministic forward simulation under user-supplied shocks. The pullback
+# is analytical: backward through the per-period quadratic recursion gives the
+# adjoints for shocks, me_std, S1, S2, the initial state, and SS_and_pars; the
+# captured pullback of get_relevant_steady_state_and_state_update converts the
+# matrix/state cotangents back to parameter cotangents.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Adjoint of Y = 𝐒₂ · kron(aug, aug) / 2 wrt aug, given d_new_state.
+# Returns (d_aug_contribution, d_𝐒₂_contribution).
+@inline function quad_adjoint(𝐒₂, aug::AbstractVector, d_new_state::AbstractVector)
+    n_aug = length(aug)
+    g = 𝐒₂' * d_new_state                       # length n_aug²
+    G = reshape(Vector(g), n_aug, n_aug) ./ 2   # halve to fold in the /2 factor
+    d_aug = G * aug .+ G' * aug
+    kaa   = kron(aug, aug)
+    d_𝐒₂  = (d_new_state * kaa') ./ 2
+    return d_aug, d_𝐒₂
+end
+
+# Split a length-(npast+1+nExo) augmented adjoint back into past-state /
+# constant / shock contributions.
+@inline function split_aug_adjoint(d_aug::AbstractVector, npast::Int, nExo::Int)
+    d_past  = d_aug[1:npast]
+    d_shock = d_aug[npast+2:npast+1+nExo]
+    return d_past, d_shock
+end
+
+function filter_free_pullback_2nd(
+        Δllh::Real, intermediates, 𝐒₁, 𝐒₂, past_idx, obs_indices,
+        nVars::Int, npast::Int, nExo::Int, nT::Int,
+        me_std,
+    )
+    me_std_is_vec = me_std isa AbstractVector
+    d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
+    d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
+    d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
+    d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
+    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
+
+    @inbounds for t in nT:-1:1
+        it       = intermediates[t]
+        residual = it.residual
+        aug      = it.aug
+        n        = length(residual)
+        # Logpdf adjoints
+        if me_std_is_vec
+            σ²       = me_std .^ 2
+            d_residual = (.-residual ./ σ²) .* Δllh
+            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+        else
+            σ²         = me_std^2
+            d_residual = (-residual ./ σ²) .* Δllh
+            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
+        end
+        # residual = data_dev - new_state[obs_indices]
+        d_obs_dev   = -d_residual
+        # data_dev = data - SS_and_pars[obs_indices]
+        d_SS_obs  .-= d_residual
+        # Scatter into d_new_state (length nVars)
+        d_new_state = copy(d_cur_state_next)
+        @inbounds for k in eachindex(obs_indices)
+            d_new_state[obs_indices[k]] += d_obs_dev[k]
+        end
+        # Linear part: 𝐒₁ * aug
+        d_𝐒₁ .+= d_new_state * aug'
+        d_aug_lin = 𝐒₁' * d_new_state
+        # Quadratic part: 𝐒₂ * kron(aug, aug) / 2
+        d_aug_quad, d_𝐒₂_t = quad_adjoint(𝐒₂, aug, d_new_state)
+        d_𝐒₂ .+= d_𝐒₂_t
+        d_aug = d_aug_lin .+ d_aug_quad
+        d_past, d_shock = split_aug_adjoint(d_aug, npast, nExo)
+        d_shocks[:, t] .= d_shock
+        # Feed past-state adjoint back as next iteration's d_cur_state_next
+        d_cur_state_next = zeros(eltype(d_aug), nVars)
+        @inbounds for k in eachindex(past_idx)
+            d_cur_state_next[past_idx[k]] += d_past[k]
+        end
+    end
+    return d_𝐒₁, d_𝐒₂, d_cur_state_next, d_SS_obs, d_shocks, d_me_std
+end
+
+function filter_free_pullback_pruned2nd(
+        Δllh::Real, intermediates, 𝐒₁, 𝐒₂, past_idx, obs_indices,
+        nVars::Int, npast::Int, nExo::Int, nT::Int,
+        me_std,
+    )
+    me_std_is_vec = me_std isa AbstractVector
+    d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
+    d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
+    d_shocks = zeros(eltype(intermediates[1].aug₁), nExo, nT)
+    d_SS_obs = zeros(eltype(intermediates[1].aug₁), length(obs_indices))
+    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_cur_state_next = [zeros(eltype(intermediates[1].aug₁), nVars),
+                        zeros(eltype(intermediates[1].aug₁), nVars)]
+
+    @inbounds for t in nT:-1:1
+        it       = intermediates[t]
+        residual = it.residual
+        aug₁     = it.aug₁
+        aug₂     = it.aug₂
+        n        = length(residual)
+        if me_std_is_vec
+            σ²       = me_std .^ 2
+            d_residual = (.-residual ./ σ²) .* Δllh
+            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+        else
+            σ²         = me_std^2
+            d_residual = (-residual ./ σ²) .* Δllh
+            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
+        end
+        d_obs_dev = -d_residual
+        d_SS_obs .-= d_residual    # obs_dev = new[1][obs] + new[2][obs]
+        # Scatter into d_new[1] and d_new[2]
+        d_new_1 = copy(d_cur_state_next[1])
+        d_new_2 = copy(d_cur_state_next[2])
+        @inbounds for k in eachindex(obs_indices)
+            d_new_1[obs_indices[k]] += d_obs_dev[k]
+            d_new_2[obs_indices[k]] += d_obs_dev[k]
+        end
+        # Component 2: 𝐒₁·aug₂ + 𝐒₂·kron(aug₁,aug₁)/2
+        d_𝐒₁ .+= d_new_2 * aug₂'
+        d_aug₂  = 𝐒₁' * d_new_2
+        d_aug₁_from_quad, d_𝐒₂_t = quad_adjoint(𝐒₂, aug₁, d_new_2)
+        d_𝐒₂ .+= d_𝐒₂_t
+        # Component 1: 𝐒₁·aug₁
+        d_𝐒₁ .+= d_new_1 * aug₁'
+        d_aug₁_from_lin = 𝐒₁' * d_new_1
+        d_aug₁ = d_aug₁_from_lin .+ d_aug₁_from_quad
+        d_past₁, d_shock = split_aug_adjoint(d_aug₁, npast, nExo)
+        d_past₂, _       = split_aug_adjoint(d_aug₂, npast, nExo)  # shock part has zero primal dep
+        d_shocks[:, t] .= d_shock
+        d_cur_state_next = [zeros(eltype(d_aug₁), nVars), zeros(eltype(d_aug₁), nVars)]
+        @inbounds for k in eachindex(past_idx)
+            d_cur_state_next[1][past_idx[k]] += d_past₁[k]
+            d_cur_state_next[2][past_idx[k]] += d_past₂[k]
+        end
+    end
+    return d_𝐒₁, d_𝐒₂, d_cur_state_next, d_SS_obs, d_shocks, d_me_std
+end
+
+
+function filter_free_pullback_1st(
+        Δllh::Real, intermediates, 𝐒₁, past_idx, obs_indices,
+        nVars::Int, npast::Int, nExo::Int, nT::Int,
+        me_std,
+    )
+    me_std_is_vec = me_std isa AbstractVector
+    d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
+    d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
+    d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
+    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
+
+    @inbounds for t in nT:-1:1
+        it       = intermediates[t]
+        residual = it.residual
+        aug      = it.aug
+        n        = length(residual)
+        if me_std_is_vec
+            σ²       = me_std .^ 2
+            d_residual = (.-residual ./ σ²) .* Δllh
+            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+        else
+            σ²         = me_std^2
+            d_residual = (-residual ./ σ²) .* Δllh
+            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
+        end
+        d_obs_dev   = -d_residual
+        d_SS_obs  .-= d_residual
+        d_new_state = copy(d_cur_state_next)
+        @inbounds for k in eachindex(obs_indices)
+            d_new_state[obs_indices[k]] += d_obs_dev[k]
+        end
+        # new_state = 𝐒₁ * aug, aug = [past_state; ϵ]
+        d_𝐒₁ .+= d_new_state * aug'
+        d_aug = 𝐒₁' * d_new_state
+        d_past  = d_aug[1:npast]
+        d_shock = d_aug[npast+1:npast+nExo]
+        d_shocks[:, t] .= d_shock
+        d_cur_state_next = zeros(eltype(d_aug), nVars)
+        @inbounds for k in eachindex(past_idx)
+            d_cur_state_next[past_idx[k]] += d_past[k]
+        end
+    end
+    return d_𝐒₁, d_cur_state_next, d_SS_obs, d_shocks, d_me_std
+end
+
+function filter_free_pullback_3rd(
+        Δllh::Real, intermediates, 𝐒₁, 𝐒₂, 𝐒₃, past_idx, obs_indices,
+        nVars::Int, npast::Int, nExo::Int, nT::Int,
+        me_std,
+    )
+    me_std_is_vec = me_std isa AbstractVector
+    d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
+    d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
+    d_𝐒₃  = zeros(eltype(𝐒₃), size(𝐒₃))
+    n_aug = npast + 1 + nExo
+    d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
+    d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
+    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
+
+    @inbounds for t in nT:-1:1
+        it       = intermediates[t]
+        residual = it.residual
+        aug      = it.aug
+        kaug     = it.kaug
+        n        = length(residual)
+        if me_std_is_vec
+            σ²       = me_std .^ 2
+            d_residual = (.-residual ./ σ²) .* Δllh
+            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+        else
+            σ²         = me_std^2
+            d_residual = (-residual ./ σ²) .* Δllh
+            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
+        end
+        d_obs_dev   = -d_residual
+        d_SS_obs  .-= d_residual
+        d_new_state = copy(d_cur_state_next)
+        @inbounds for k in eachindex(obs_indices)
+            d_new_state[obs_indices[k]] += d_obs_dev[k]
+        end
+        # Linear: 𝐒₁ * aug
+        d_𝐒₁ .+= d_new_state * aug'
+        d_aug = 𝐒₁' * d_new_state
+        # Quadratic: 𝐒₂ * kaug / 2
+        d_𝐒₂ .+= (d_new_state * kaug') ./ 2
+        d_kaug = (𝐒₂' * d_new_state) ./ 2
+        # Cubic: 𝐒₃ * kron(kaug, aug) / 6
+        d_𝐒₃ .+= (d_new_state * kron(kaug, aug)') ./ 6
+        d_kaug3 = (𝐒₃' * d_new_state) ./ 6
+        # ∂kron(kaug, aug) → ∂kaug and ∂aug
+        # Using convention: kron(A,B)[(i-1)*nB+j] = A[i]*B[j];
+        # reshape(d_k, nB, nA)[j,i] gives the gradient; d_A = mat' * B, d_B = mat * A.
+        d_kaug3_mat = reshape(d_kaug3, n_aug, n_aug^2)   # nB=n_aug, nA=n_aug^2
+        d_kaug .+= d_kaug3_mat' * aug                    # gradient wrt outer A=kaug
+        d_aug  .+= d_kaug3_mat * kaug                    # gradient wrt inner B=aug
+        # ∂kron(aug, aug) → ∂aug (×2 via symmetric outer product)
+        G = reshape(d_kaug, n_aug, n_aug)
+        d_aug .+= (G + G') * aug
+        # Split aug back
+        d_past, d_shock = split_aug_adjoint(d_aug, npast, nExo)
+        d_shocks[:, t] .= d_shock
+        d_cur_state_next = zeros(eltype(d_aug), nVars)
+        @inbounds for k in eachindex(past_idx)
+            d_cur_state_next[past_idx[k]] += d_past[k]
+        end
+    end
+    return d_𝐒₁, d_𝐒₂, d_𝐒₃, d_cur_state_next, d_SS_obs, d_shocks, d_me_std
+end
+
+function filter_free_pullback_pruned3rd(
+        Δllh::Real, intermediates, 𝐒₁, 𝐒₂, 𝐒₃, past_idx, obs_indices,
+        nVars::Int, npast::Int, nExo::Int, nT::Int,
+        me_std,
+    )
+    me_std_is_vec = me_std isa AbstractVector
+    d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
+    d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
+    d_𝐒₃  = zeros(eltype(𝐒₃), size(𝐒₃))
+    n_aug = npast + 1 + nExo
+    d_shocks = zeros(eltype(intermediates[1].aug₁), nExo, nT)
+    d_SS_obs = zeros(eltype(intermediates[1].aug₁), length(obs_indices))
+    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_cur_state_next = [zeros(eltype(intermediates[1].aug₁), nVars),
+                        zeros(eltype(intermediates[1].aug₁), nVars),
+                        zeros(eltype(intermediates[1].aug₁), nVars)]
+
+    @inbounds for t in nT:-1:1
+        it       = intermediates[t]
+        residual = it.residual
+        aug₁     = it.aug₁
+        aug₁̂    = it.aug₁̂
+        aug₂     = it.aug₂
+        aug₃     = it.aug₃
+        kaug₁    = it.kaug₁
+        n        = length(residual)
+        if me_std_is_vec
+            σ²       = me_std .^ 2
+            d_residual = (.-residual ./ σ²) .* Δllh
+            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+        else
+            σ²         = me_std^2
+            d_residual = (-residual ./ σ²) .* Δllh
+            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
+        end
+        d_obs_dev = -d_residual
+        d_SS_obs .-= d_residual
+        d_new_1 = copy(d_cur_state_next[1])
+        d_new_2 = copy(d_cur_state_next[2])
+        d_new_3 = copy(d_cur_state_next[3])
+        @inbounds for k in eachindex(obs_indices)
+            d_new_1[obs_indices[k]] += d_obs_dev[k]
+            d_new_2[obs_indices[k]] += d_obs_dev[k]
+            d_new_3[obs_indices[k]] += d_obs_dev[k]
+        end
+        # Component 1: y_new = 𝐒₁ * aug₁
+        d_𝐒₁ .+= d_new_1 * aug₁'
+        d_aug₁ = 𝐒₁' * d_new_1
+        # Component 2: δ_new = 𝐒₁ * aug₂ + 𝐒₂ * kron(aug₁, aug₁) / 2
+        d_𝐒₁ .+= d_new_2 * aug₂'
+        d_aug₂ = 𝐒₁' * d_new_2
+        d_aug₁_from_2quad, d_𝐒₂_t = quad_adjoint(𝐒₂, aug₁, d_new_2)
+        d_𝐒₂ .+= d_𝐒₂_t
+        d_aug₁ .+= d_aug₁_from_2quad
+        # Component 3: ξ_new = 𝐒₁ * aug₃ + 𝐒₂ * kron(aug₁̂, aug₂) + 𝐒₃ * kron(kaug₁, aug₁) / 6
+        d_𝐒₁ .+= d_new_3 * aug₃'
+        d_aug₃ = 𝐒₁' * d_new_3
+        # 𝐒₂ * kron(aug₁̂, aug₂)  (no /2 factor here)
+        k12 = kron(aug₁̂, aug₂)
+        d_𝐒₂ .+= d_new_3 * k12'
+        d_k12 = 𝐒₂' * d_new_3
+        # reshape(d_k12, len(B)=n_aug, len(A)=n_aug); d_A=mat'*B, d_B=mat*A
+        d_k12_mat = reshape(d_k12, n_aug, n_aug)
+        d_aug₁̂  = d_k12_mat' * aug₂
+        d_aug₂ .+= d_k12_mat * aug₁̂
+        # 𝐒₃ * kron(kaug₁, aug₁) / 6
+        kaug3 = kron(kaug₁, aug₁)
+        d_𝐒₃ .+= (d_new_3 * kaug3') ./ 6
+        d_kaug3 = (𝐒₃' * d_new_3) ./ 6
+        # kron(kaug₁, aug₁): A=kaug₁ (n²), B=aug₁ (n); reshape (n, n²)
+        d_kaug3_mat = reshape(d_kaug3, n_aug, n_aug^2)
+        d_kaug₁_from_3 = d_kaug3_mat' * aug₁
+        d_aug₁_from_3 = d_kaug3_mat * kaug₁
+        d_aug₁ .+= d_aug₁_from_3
+        # ∂kron(aug₁, aug₁) → ∂aug₁ (symmetric)
+        G1 = reshape(d_kaug₁_from_3, n_aug, n_aug)
+        d_aug₁ .+= (G1 + G1') * aug₁
+        # Combine aug₁̂ into aug₁: aug₁̂ shares past_idx and shock with aug₁, constant slot is 0
+        d_aug₁[1:npast] .+= d_aug₁̂[1:npast]
+        d_aug₁[npast+2:npast+1+nExo] .+= d_aug₁̂[npast+2:npast+1+nExo]
+        # Split each augmented adjoint
+        d_past₁, d_shock = split_aug_adjoint(d_aug₁, npast, nExo)
+        d_past₂, _       = split_aug_adjoint(d_aug₂, npast, nExo)
+        d_past₃, _       = split_aug_adjoint(d_aug₃, npast, nExo)
+        d_shocks[:, t] .= d_shock
+        d_cur_state_next = [zeros(eltype(d_aug₁), nVars),
+                            zeros(eltype(d_aug₁), nVars),
+                            zeros(eltype(d_aug₁), nVars)]
+        @inbounds for k in eachindex(past_idx)
+            d_cur_state_next[1][past_idx[k]] += d_past₁[k]
+            d_cur_state_next[2][past_idx[k]] += d_past₂[k]
+            d_cur_state_next[3][past_idx[k]] += d_past₃[k]
+        end
+    end
+    return d_𝐒₁, d_𝐒₂, d_𝐒₃, d_cur_state_next, d_SS_obs, d_shocks, d_me_std
+end
+
+
+function rrule(::typeof(get_filter_free_loglikelihood),
+                𝓂::ℳ,
+                data::KeyedArray{Float64},
+                parameter_values::Vector{S},
+                shocks::AbstractMatrix{T},
+                measurement_error_std::Union{T, AbstractVector{T}};
+                steady_state_function::SteadyStateFunctionType = missing,
+                algorithm::Symbol = :second_order,
+                on_failure_loglikelihood::U = -Inf,
+                tol::Tolerances = Tolerances(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                verbose::Bool = DEFAULT_VERBOSE,
+                caching::Bool = DEFAULT_CACHING,
+                use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {S <: Real, T <: Real, U <: AbstractFloat}
+
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "rrule for `get_filter_free_loglikelihood` supports `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`."
+
+    R = promote_type(S, T)
+
+    nP = length(parameter_values)
+    on_failure = (
+        convert(R, on_failure_loglikelihood),
+        _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+              measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T))
+    )
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            lyapunov_algorithm = lyapunov_algorithm)
+
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
+
+    solve!(𝓂, opts = opts, steady_state_function = steady_state_function, algorithm = algorithm)
+
+    if check_bounds(parameter_values, 𝓂)
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return on_failure
+    end
+
+    me_std_vec = measurement_error_std isa AbstractVector ? measurement_error_std : nothing
+    if me_std_vec !== nothing
+        if any(x -> !isfinite(x) || x <= zero(T), me_std_vec)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return on_failure
+        end
+    else
+        if !isfinite(measurement_error_std) || measurement_error_std <= zero(T)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return on_failure
+        end
+    end
+
+    # Capture rrule of solve so we can re-use its pullback later.
+    ss_y, ss_pb = rrule(get_relevant_steady_state_and_state_update,
+                        Val(algorithm), parameter_values, 𝓂;
+                        opts = opts, estimation = true)
+    _, SS_and_pars, 𝐒, state, solved = ss_y
+
+    if !solved
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return on_failure
+    end
+
+    if collect(axiskeys(data,1)) isa Vector{String}
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+    end
+
+    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    obs_indices       = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
+    dt                = collect(data(observables))
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
+
+    nExo  = 𝓂.constants.post_model_macro.nExo
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    npast = length(past_idx)
+    nT    = size(data_in_deviations, 2)
+
+    @assert size(shocks, 1) == nExo
+    @assert size(shocks, 2) == nT
+
+    llh = zero(R)
+
+    if algorithm == :first_order
+        𝐒₁_mat = Matrix(𝐒)
+        intermediates = Vector{NamedTuple{(:aug, :new_state, :residual),
+                                          Tuple{Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
+        cur_state = convert(Vector{R}, state[1])
+        nVars = length(cur_state)
+        @inbounds for t in 1:nT
+            aug = vcat(cur_state[past_idx], Vector{R}(shocks[:, t]))
+            new_state = 𝐒₁_mat * aug
+            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
+            cur_state = new_state
+        end
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        pullback = function (Δ)
+            Δllh = unthunk(Δ)
+            if Δllh isa AbstractZero
+                return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+            end
+            d_𝐒₁, d_state, d_SS_obs, d_shocks, d_me_std =
+                filter_free_pullback_1st(Δllh, intermediates, 𝐒₁_mat,
+                                          past_idx, obs_indices,
+                                          nVars, npast, nExo, nT,
+                                          measurement_error_std)
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            # first_order ss rrule expects bare 𝐒₁ cotangent and ignores Δstate
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
+        end
+        return llh, pullback
+
+    elseif algorithm == :second_order
+        𝐒₁ = Matrix(𝐒[1])
+        𝐒₂ = Matrix(𝐒[2])
+        intermediates = Vector{NamedTuple{(:aug, :new_state, :residual),
+                                          Tuple{Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
+        cur_state = convert(Vector{R}, state)
+        nVars = length(cur_state)
+        @inbounds for t in 1:nT
+            aug = vcat(cur_state[past_idx], one(R), Vector{R}(shocks[:, t]))
+            new_state = 𝐒₁ * aug + (𝐒₂ * kron(aug, aug)) ./ R(2)
+            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
+            cur_state = new_state
+        end
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        pullback = function (Δ)
+            Δllh = unthunk(Δ)
+            if Δllh isa AbstractZero
+                return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+            end
+            d_𝐒₁, d_𝐒₂, d_state, d_SS_obs, d_shocks, d_me_std =
+                filter_free_pullback_2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
+                                          past_idx, obs_indices,
+                                          nVars, npast, nExo, nT,
+                                          measurement_error_std)
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
+        end
+        return llh, pullback
+
+    elseif algorithm == :pruned_second_order
+        𝐒₁ = Matrix(𝐒[1])
+        𝐒₂ = Matrix(𝐒[2])
+        intermediates = Vector{NamedTuple{(:aug₁, :aug₂, :new_state, :residual),
+                                          Tuple{Vector{R}, Vector{R}, Vector{Vector{R}}, Vector{R}}}}(undef, nT)
+        nVars = length(state[1])
+        cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2])]
+        @inbounds for t in 1:nT
+            ϵ = Vector{R}(shocks[:, t])
+            aug₁ = vcat(cur_state[1][past_idx], one(R), ϵ)
+            aug₂ = vcat(cur_state[2][past_idx], zero(R), zeros(R, nExo))
+            new1 = 𝐒₁ * aug₁
+            new2 = 𝐒₁ * aug₂ + (𝐒₂ * kron(aug₁, aug₁)) ./ R(2)
+            new_state = [new1, new2]
+            residual  = data_in_deviations[:, t] - (new1[obs_indices] + new2[obs_indices])
+            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            intermediates[t] = (; aug₁ = aug₁, aug₂ = aug₂, new_state = new_state, residual = residual)
+            cur_state = new_state
+        end
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        pullback = function (Δ)
+            Δllh = unthunk(Δ)
+            if Δllh isa AbstractZero
+                return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+            end
+            d_𝐒₁, d_𝐒₂, d_state, d_SS_obs, d_shocks, d_me_std =
+                filter_free_pullback_pruned2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
+                                                past_idx, obs_indices,
+                                                nVars, npast, nExo, nT,
+                                                measurement_error_std)
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
+        end
+        return llh, pullback
+
+    elseif algorithm == :third_order
+        𝐒₁ = Matrix(𝐒[1])
+        𝐒₂ = Matrix(𝐒[2])
+        𝐒₃ = Matrix(𝐒[3])
+        intermediates = Vector{NamedTuple{(:aug, :kaug, :new_state, :residual),
+                                          Tuple{Vector{R}, Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
+        cur_state = convert(Vector{R}, state)
+        nVars = length(cur_state)
+        @inbounds for t in 1:nT
+            aug = vcat(cur_state[past_idx], one(R), Vector{R}(shocks[:, t]))
+            kaug = kron(aug, aug)
+            new_state = 𝐒₁ * aug + (𝐒₂ * kaug) ./ R(2) + (𝐒₃ * kron(kaug, aug)) ./ R(6)
+            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            intermediates[t] = (; aug = aug, kaug = kaug, new_state = new_state, residual = residual)
+            cur_state = new_state
+        end
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        pullback = function (Δ)
+            Δllh = unthunk(Δ)
+            if Δllh isa AbstractZero
+                return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+            end
+            d_𝐒₁, d_𝐒₂, d_𝐒₃, d_state, d_SS_obs, d_shocks, d_me_std =
+                filter_free_pullback_3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
+                                          past_idx, obs_indices,
+                                          nVars, npast, nExo, nT,
+                                          measurement_error_std)
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
+        end
+        return llh, pullback
+
+    else  # :pruned_third_order
+        𝐒₁ = Matrix(𝐒[1])
+        𝐒₂ = Matrix(𝐒[2])
+        𝐒₃ = Matrix(𝐒[3])
+        intermediates = Vector{NamedTuple{(:aug₁, :aug₁̂, :aug₂, :aug₃, :kaug₁, :new_state, :residual),
+                                          Tuple{Vector{R}, Vector{R}, Vector{R}, Vector{R}, Vector{R}, Vector{Vector{R}}, Vector{R}}}}(undef, nT)
+        nVars = length(state[1])
+        cur_state = [convert(Vector{R}, state[1]),
+                     convert(Vector{R}, state[2]),
+                     convert(Vector{R}, state[3])]
+        @inbounds for t in 1:nT
+            ϵ = Vector{R}(shocks[:, t])
+            aug₁  = vcat(cur_state[1][past_idx], one(R), ϵ)
+            aug₁̂ = vcat(cur_state[1][past_idx], zero(R), ϵ)
+            aug₂  = vcat(cur_state[2][past_idx], zero(R), zeros(R, nExo))
+            aug₃  = vcat(cur_state[3][past_idx], zero(R), zeros(R, nExo))
+            kaug₁ = kron(aug₁, aug₁)
+            new1 = 𝐒₁ * aug₁
+            new2 = 𝐒₁ * aug₂ + (𝐒₂ * kaug₁) ./ R(2)
+            new3 = 𝐒₁ * aug₃ + 𝐒₂ * kron(aug₁̂, aug₂) + (𝐒₃ * kron(kaug₁, aug₁)) ./ R(6)
+            new_state = [new1, new2, new3]
+            residual  = data_in_deviations[:, t] - (new1[obs_indices] + new2[obs_indices] + new3[obs_indices])
+            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            intermediates[t] = (; aug₁ = aug₁, aug₁̂ = aug₁̂, aug₂ = aug₂, aug₃ = aug₃,
+                                  kaug₁ = kaug₁, new_state = new_state, residual = residual)
+            cur_state = new_state
+        end
+
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+        pullback = function (Δ)
+            Δllh = unthunk(Δ)
+            if Δllh isa AbstractZero
+                return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
+                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+            end
+            d_𝐒₁, d_𝐒₂, d_𝐒₃, d_state, d_SS_obs, d_shocks, d_me_std =
+                filter_free_pullback_pruned3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
+                                                past_idx, obs_indices,
+                                                nVars, npast, nExo, nT,
+                                                measurement_error_std)
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
+        end
+        return llh, pullback
+    end
+end

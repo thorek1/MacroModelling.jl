@@ -4334,6 +4334,300 @@ function get_loglikelihood(𝓂::ℳ,
     return llh
 end
 
+"""
+$(SIGNATURES)
+Return the *filter-free* loglikelihood of the model given the data, parameters, and a path of latent structural shocks. Unlike [`get_loglikelihood`](@ref) — which integrates out the latent shocks via a Kalman or inversion filter — this function evaluates the joint likelihood of data and shocks by forward-simulating the model with the supplied `shocks` and comparing the implied observable path to the data under a Gaussian measurement-error model. This is the building block needed to estimate (potentially nonlinear, non-Gaussian) DSGE models with HMC samplers by treating the shocks as additional latent parameters (Childers, Fernández-Villaverde, Perla, Rackauckas & Wu, 2025).
+
+Only the *measurement* part of the joint loglikelihood is returned. The prior on the shocks (typically standard Normal) and the prior on `measurement_error_std` are expected to be declared by the user in their probabilistic-programming model.
+
+Supported solution algorithms: `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
+
+# Arguments
+- $MODEL®
+- $DATA®
+- `parameter_values` [Type: `Vector`]: Parameter values.
+- `shocks` [Type: `AbstractMatrix`]: Matrix of latent structural shocks with shape `nExo × T` where `T` matches the number of observations in `data`.
+- `measurement_error_std` [Type: `Real` or `AbstractVector`]: Standard deviation(s) of the Gaussian measurement error added to each observable. Pass a scalar to use the same measurement-error std-dev on every observable, or a vector of length equal to the number of observables to use a different std-dev per observable.
+
+# Keyword Arguments
+- $STEADY_STATE_FUNCTION®
+- `algorithm` [Default: `:second_order`, Type: `Symbol`]: solution algorithm. Only higher-order perturbation algorithms are supported.
+- `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails (e.g. solution did not converge or measurement-error std-dev is non-positive).
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `<:AbstractFloat` loglikelihood
+"""
+@unstable function get_filter_free_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{Float64},
+                            parameter_values::Vector{S},
+                            shocks::AbstractMatrix{T},
+                            measurement_error_std::Union{T, AbstractVector{T}};
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = :second_order,
+                            on_failure_loglikelihood::U = -Inf,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {S <: Real, T <: Real, U <: AbstractFloat}
+
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_filter_free_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+
+    @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
+
+    R = promote_type(S, T)
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            lyapunov_algorithm = lyapunov_algorithm)
+
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
+
+    solve!(𝓂,
+           opts = opts,
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
+
+    bounds_violated = check_bounds(parameter_values, 𝓂)
+
+    if bounds_violated
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return convert(R, on_failure_loglikelihood)
+    end
+
+    me_std_vec = measurement_error_std isa AbstractVector ? measurement_error_std : nothing
+    if me_std_vec !== nothing
+        @assert length(me_std_vec) == length(observables) "`measurement_error_std` vector must have one entry per observable."
+        if any(x -> !isfinite(x) || x <= zero(T), me_std_vec)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    else
+        if !isfinite(measurement_error_std) || measurement_error_std <= zero(T)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    end
+
+    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
+
+    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = true)
+
+    if !solved
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return convert(R, on_failure_loglikelihood)
+    end
+
+    if collect(axiskeys(data,1)) isa Vector{String}
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+    end
+
+    dt = collect(data(observables))
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
+
+    nExo = 𝓂.constants.post_model_macro.nExo
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    nT = size(data_in_deviations, 2)
+
+    @assert size(shocks, 1) == nExo "`shocks` must have one row per exogenous shock (got $(size(shocks, 1)), expected $nExo)."
+    @assert size(shocks, 2) == nT "`shocks` must have one column per data observation (got $(size(shocks, 2)), expected $nT)."
+
+    llh = filter_free_loglikelihood_loop(Val(algorithm), 𝐒, state, shocks, data_in_deviations, obs_indices, past_idx, measurement_error_std)
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+    return llh
+end
+
+
+@inline function filter_free_obs_logpdf(residual::AbstractVector{R}, me_std::Real) where R <: Real
+    n = length(residual)
+    σ² = abs2(me_std)
+    return -R(0.5) * n * log(R(2π)) - n * log(me_std) - sum(abs2, residual) / (R(2) * σ²)
+end
+
+@inline function filter_free_obs_logpdf(residual::AbstractVector{R}, me_std::AbstractVector{<:Real}) where R <: Real
+    n = length(residual)
+    ll = -R(0.5) * n * log(R(2π))
+    @inbounds for i in 1:n
+        σᵢ = me_std[i]
+        ll += -log(σᵢ) - abs2(residual[i]) / (R(2) * abs2(σᵢ))
+    end
+    return ll
+end
+
+
+@unstable function filter_free_loglikelihood_loop(::Val{:first_order},
+                                        𝐒::AbstractMatrix,
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        me_std)where T <: Real
+    𝐒₁ = 𝐒
+
+    R = promote_type(eltype(state[1]), T, eltype(data_in_deviations))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state[1])
+    llh = zero(R)
+
+    for t in 1:nT
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], ϵ)
+        new_state = 𝐒₁ * aug
+        obs_dev = new_state[obs_indices]
+        residual = data_in_deviations[:, t] - obs_dev
+        llh += filter_free_obs_logpdf(residual, me_std)
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+@unstable function filter_free_loglikelihood_loop(::Val{:second_order},
+                                        𝐒::Vector{<:AbstractMatrix},
+                                        state::AbstractVector{<:Real},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        me_std)where T <: Real
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+
+    R = promote_type(eltype(state), T, eltype(data_in_deviations))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state)
+    llh = zero(R)
+
+    for t in 1:nT
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        new_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+        obs_dev = new_state[obs_indices]
+        residual = data_in_deviations[:, t] - obs_dev
+        llh += filter_free_obs_logpdf(residual, me_std)
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+@unstable function filter_free_loglikelihood_loop(::Val{:third_order},
+                                        𝐒::Vector{<:AbstractMatrix},
+                                        state::AbstractVector{<:Real},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        me_std)where T <: Real
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    𝐒₃ = 𝐒[3]
+
+    R = promote_type(eltype(state), T, eltype(data_in_deviations))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state)
+    llh = zero(R)
+
+    for t in 1:nT
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        kaug = ℒ.kron(aug, aug)
+        new_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+        obs_dev = new_state[obs_indices]
+        residual = data_in_deviations[:, t] - obs_dev
+        llh += filter_free_obs_logpdf(residual, me_std)
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+@unstable function filter_free_loglikelihood_loop(::Val{:pruned_second_order},
+                                        𝐒::Vector{<:AbstractMatrix},
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        me_std)where T <: Real
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+
+    R = promote_type(eltype(state[1]), T, eltype(data_in_deviations))
+    nVars = length(state[1])
+    nT = size(data_in_deviations, 2)
+
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2])]
+    llh = zero(R)
+
+    for t in 1:nT
+        ϵ = collect(view(shocks, :, t))
+        new_state = pruned_second_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂)
+        obs_dev = new_state[1][obs_indices] + new_state[2][obs_indices]
+        residual = data_in_deviations[:, t] - obs_dev
+        llh += filter_free_obs_logpdf(residual, me_std)
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+@unstable function filter_free_loglikelihood_loop(::Val{:pruned_third_order},
+                                        𝐒::Vector{<:AbstractMatrix},
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        me_std)where T <: Real
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    𝐒₃ = 𝐒[3]
+
+    R = promote_type(eltype(state[1]), T, eltype(data_in_deviations))
+    nVars = length(state[1])
+    nT = size(data_in_deviations, 2)
+
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
+    llh = zero(R)
+
+    for t in 1:nT
+        ϵ = collect(view(shocks, :, t))
+        new_state = pruned_third_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+        obs_dev = new_state[1][obs_indices] + new_state[2][obs_indices] + new_state[3][obs_indices]
+        residual = data_in_deviations[:, t] - obs_dev
+        llh += filter_free_obs_logpdf(residual, me_std)
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
     if !all(isfinite,parameter_values) return true end
 

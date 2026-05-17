@@ -213,7 +213,7 @@ export get_autocorrelation, get_correlation, get_variance_decomposition, get_cor
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
-export get_shock_decomposition, get_model_estimates, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
+export get_shock_decomposition, get_model_estimates, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood, get_filter_free_loglikelihood
 export Tolerances, SolverTolerances, NsssTolerances, AdTolerances, FirstOrderTolerances, HigherOrderTolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare

@@ -321,3 +321,53 @@ end
 
 # p
 
+
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# Third order — verify forward, analytical rrule, and Mooncake gradient
+# (Full NUTS sampling is too expensive for this large model in CI; instead
+# we verify gradient consistency with the analytical rrule.)
+# ---------------------------------------------------------------------------
+import ADTypes: AutoForwardDiff
+import ChainRulesCore as CRC
+
+const T_ff_3rd = 10
+const data_ff_3rd = data[:, 1:T_ff_3rd]
+const nExo_ff_3rd = length(get_shocks(Caldara_et_al_2012_estim))
+
+@testset "Filter-free rrule (third order)" begin
+    Random.seed!(42)
+    pars3rd = copy(Caldara_et_al_2012_estim.parameter_values)
+    shocks3rd = 0.01 .* randn(nExo_ff_3rd, T_ff_3rd)
+    me_std3rd = 0.05
+
+    llh_fwd = get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_3rd,
+                                            pars3rd, shocks3rd, me_std3rd;
+                                            algorithm = :third_order)
+    @test isfinite(llh_fwd)
+
+    llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, Caldara_et_al_2012_estim,
+                          data_ff_3rd, pars3rd, shocks3rd, me_std3rd;
+                          algorithm = :third_order)
+    @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
+    _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
+
+    nP = length(pars3rd)
+    z0 = vcat(pars3rd, vec(shocks3rd), me_std3rd)
+    obj = function (z)
+        p = z[1:nP]
+        s = reshape(z[nP+1:nP+nExo_ff_3rd*T_ff_3rd], nExo_ff_3rd, T_ff_3rd)
+        m = z[end]
+        get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_3rd, p, s, m;
+                                       algorithm = :third_order)
+    end
+    g_mc = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)
+    dpars_mc = g_mc[1:nP]
+    dshk_mc  = reshape(g_mc[nP+1:nP+nExo_ff_3rd*T_ff_3rd], nExo_ff_3rd, T_ff_3rd)
+    dme_mc   = g_mc[end]
+
+    @test isapprox(dpars_mc, dpars_a; rtol = 1e-8)
+    @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
+    @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
+end
