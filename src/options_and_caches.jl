@@ -936,6 +936,9 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # y_obs (n_cond_var)
         zeros(TT, 0),            # x_shocks (n_exo)
         zeros(TT, 0),            # state_concat (n_past + n_exo)
+        zeros(TT, 0, 0),         # JJt_buf (n_cond_var × n_cond_var)
+        zeros(TT, 0),            # obs_sub_buf (n_cond_var)
+        zeros(TT, 0, 0),         # jacc_v_buf (n_cond_var × n_exo)
         zeros(TT, 0),            # aug_state₃ (n_past+1+n_exo)
         zeros(TT, 0),            # aug_state₁̂ (n_past+1+n_exo)
         zeros(TT, 0),            # state²⁻_vol (n_past+1)
@@ -1056,8 +1059,13 @@ Ensure observation-dimension-dependent estimation buffers are allocated.
 Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
 """
 function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
+    n_exo² = n_exo^2
     if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
-       size(ws.Si_buffer) == (n_cond_var, n_exo)
+       size(ws.Si_buffer) == (n_cond_var, n_exo) &&
+       size(ws.JJt_buf) == (n_cond_var, n_cond_var) &&
+       length(ws.obs_sub_buf) == n_cond_var &&
+       size(ws.jacc_v_buf) == (n_cond_var, n_exo) &&
+       (!third_order || size(ws.Si2e_buffer) == (n_cond_var, n_exo²))
         return ws
     end
     
@@ -1075,8 +1083,16 @@ function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo:
     if size(ws.jacc_buffer) != (n_cond_var, n_exo)
         ws.jacc_buffer = zeros(T, n_cond_var, n_exo)
     end
+    if size(ws.JJt_buf) != (n_cond_var, n_cond_var)
+        ws.JJt_buf = zeros(T, n_cond_var, n_cond_var)
+    end
+    if length(ws.obs_sub_buf) != n_cond_var
+        ws.obs_sub_buf = zeros(T, n_cond_var)
+    end
+    if size(ws.jacc_v_buf) != (n_cond_var, n_exo)
+        ws.jacc_v_buf = zeros(T, n_cond_var, n_exo)
+    end
     if third_order
-        n_exo² = n_exo^2
         if size(ws.Si2e_buffer) != (n_cond_var, n_exo²)
             ws.Si2e_buffer = zeros(T, n_cond_var, n_exo²)
         end

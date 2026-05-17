@@ -1134,6 +1134,10 @@ mutable struct inversion_workspace{T <: Real}
     y_obs::Vector{T}                 # n_cond_var - observation prediction
     x_shocks::Vector{T}              # n_exo - recovered shocks
     state_concat::Vector{T}          # n_past + n_exo - for vcat-free concatenation in 1st order
+    # Missing-data variant scratch buffers
+    JJt_buf::Matrix{T}               # (n_cond_var, n_cond_var) - scratch for non-square sub-LU
+    obs_sub_buf::Vector{T}           # n_cond_var - compact sub-observation buffer
+    jacc_v_buf::Matrix{T}            # (n_cond_var, n_exo) - per-period sub-Jacobian scratch
     # Pruned third-order augmented state buffers
     aug_state₃::Vector{T}            # n_past+1+n_exo - third state component
     aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
