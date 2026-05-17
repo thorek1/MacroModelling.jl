@@ -12653,18 +12653,30 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     @assert size(shocks, 1) == nExo
     @assert size(shocks, 2) == nT
 
+    # Keep only the rows of the policy functions strictly required to
+    # propagate the state (past_idx slots) and to form the residual
+    # (observable rows). Everything else is discarded for the forward
+    # recursion and re-inserted as zero cotangents before the captured
+    # solve-pullback is invoked.
+    needed = sort(unique(vcat(past_idx, obs_indices)))
+    past_in_needed = convert(Vector{Int}, indexin(past_idx, needed))
+    obs_in_needed  = convert(Vector{Int}, indexin(obs_indices, needed))
+    nNeeded = length(needed)
+
     llh = zero(R)
 
     if algorithm == :first_order
-        𝐒₁_mat = Matrix(𝐒)
+        𝐒₁_full = Matrix(𝐒)
+        nVars_full = size(𝐒₁_full, 1)
+        ncols₁ = size(𝐒₁_full, 2)
+        𝐒₁_mat = 𝐒₁_full[needed, :]
         intermediates = Vector{NamedTuple{(:aug, :new_state, :residual),
                                           Tuple{Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
-        cur_state = convert(Vector{R}, state[1])
-        nVars = length(cur_state)
+        cur_state = convert(Vector{R}, state[1])[needed]
         @inbounds for t in 1:nT
-            aug = vcat(cur_state[past_idx], Vector{R}(shocks[:, t]))
+            aug = vcat(cur_state[past_in_needed], Vector{R}(shocks[:, t]))
             new_state = 𝐒₁_mat * aug
-            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
             llh += filter_free_obs_logpdf(residual, measurement_error_std)
             intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
             cur_state = new_state
@@ -12678,33 +12690,39 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
             end
-            d_𝐒₁, d_state, d_SS_obs, d_shocks, d_me_std =
+            d_𝐒₁_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_1st(Δllh, intermediates, 𝐒₁_mat,
-                                          past_idx, obs_indices,
-                                          nVars, npast, nExo, nT,
+                                          past_in_needed, obs_in_needed,
+                                          nNeeded, npast, nExo, nT,
                                           measurement_error_std)
+            d_𝐒₁_full_cot = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁)
+            @inbounds d_𝐒₁_full_cot[needed, :] .= d_𝐒₁_red
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
             # first_order ss rrule expects bare 𝐒₁ cotangent and ignores Δstate
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁, NoTangent()))
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁_full_cot, NoTangent()))
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
         return llh, pullback
 
     elseif algorithm == :second_order
-        𝐒₁ = Matrix(𝐒[1])
-        𝐒₂ = Matrix(𝐒[2])
+        𝐒₁_full = Matrix(𝐒[1])
+        𝐒₂_full = Matrix(𝐒[2])
+        nVars_full = size(𝐒₁_full, 1)
+        ncols₁ = size(𝐒₁_full, 2)
+        ncols₂ = size(𝐒₂_full, 2)
+        𝐒₁ = 𝐒₁_full[needed, :]
+        𝐒₂ = 𝐒₂_full[needed, :]
         intermediates = Vector{NamedTuple{(:aug, :new_state, :residual),
                                           Tuple{Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
-        cur_state = convert(Vector{R}, state)
-        nVars = length(cur_state)
+        cur_state = convert(Vector{R}, state)[needed]
         @inbounds for t in 1:nT
-            aug = vcat(cur_state[past_idx], one(R), Vector{R}(shocks[:, t]))
+            aug = vcat(cur_state[past_in_needed], one(R), Vector{R}(shocks[:, t]))
             new_state = 𝐒₁ * aug + (𝐒₂ * kron(aug, aug)) ./ R(2)
-            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
             llh += filter_free_obs_logpdf(residual, measurement_error_std)
             intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
             cur_state = new_state
@@ -12718,11 +12736,14 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
             end
-            d_𝐒₁, d_𝐒₂, d_state, d_SS_obs, d_shocks, d_me_std =
+            d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
-                                          past_idx, obs_indices,
-                                          nVars, npast, nExo, nT,
+                                          past_in_needed, obs_in_needed,
+                                          nNeeded, npast, nExo, nT,
                                           measurement_error_std)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
@@ -12734,20 +12755,24 @@ function rrule(::typeof(get_filter_free_loglikelihood),
         return llh, pullback
 
     elseif algorithm == :pruned_second_order
-        𝐒₁ = Matrix(𝐒[1])
-        𝐒₂ = Matrix(𝐒[2])
+        𝐒₁_full = Matrix(𝐒[1])
+        𝐒₂_full = Matrix(𝐒[2])
+        nVars_full = size(𝐒₁_full, 1)
+        ncols₁ = size(𝐒₁_full, 2)
+        ncols₂ = size(𝐒₂_full, 2)
+        𝐒₁ = 𝐒₁_full[needed, :]
+        𝐒₂ = 𝐒₂_full[needed, :]
         intermediates = Vector{NamedTuple{(:aug₁, :aug₂, :new_state, :residual),
                                           Tuple{Vector{R}, Vector{R}, Vector{Vector{R}}, Vector{R}}}}(undef, nT)
-        nVars = length(state[1])
-        cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2])]
+        cur_state = [convert(Vector{R}, state[1])[needed], convert(Vector{R}, state[2])[needed]]
         @inbounds for t in 1:nT
             ϵ = Vector{R}(shocks[:, t])
-            aug₁ = vcat(cur_state[1][past_idx], one(R), ϵ)
-            aug₂ = vcat(cur_state[2][past_idx], zero(R), zeros(R, nExo))
+            aug₁ = vcat(cur_state[1][past_in_needed], one(R), ϵ)
+            aug₂ = vcat(cur_state[2][past_in_needed], zero(R), zeros(R, nExo))
             new1 = 𝐒₁ * aug₁
             new2 = 𝐒₁ * aug₂ + (𝐒₂ * kron(aug₁, aug₁)) ./ R(2)
             new_state = [new1, new2]
-            residual  = data_in_deviations[:, t] - (new1[obs_indices] + new2[obs_indices])
+            residual  = data_in_deviations[:, t] - (new1[obs_in_needed] + new2[obs_in_needed])
             llh += filter_free_obs_logpdf(residual, measurement_error_std)
             intermediates[t] = (; aug₁ = aug₁, aug₂ = aug₂, new_state = new_state, residual = residual)
             cur_state = new_state
@@ -12761,11 +12786,17 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
             end
-            d_𝐒₁, d_𝐒₂, d_state, d_SS_obs, d_shocks, d_me_std =
+            d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
-                                                past_idx, obs_indices,
-                                                nVars, npast, nExo, nT,
+                                                past_in_needed, obs_in_needed,
+                                                nNeeded, npast, nExo, nT,
                                                 measurement_error_std)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
+                       zeros(eltype(d_state_red[2]), nVars_full)]
+            @inbounds d_state[1][needed] .= d_state_red[1]
+            @inbounds d_state[2][needed] .= d_state_red[2]
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
@@ -12777,18 +12808,24 @@ function rrule(::typeof(get_filter_free_loglikelihood),
         return llh, pullback
 
     elseif algorithm == :third_order
-        𝐒₁ = Matrix(𝐒[1])
-        𝐒₂ = Matrix(𝐒[2])
-        𝐒₃ = Matrix(𝐒[3])
+        𝐒₁_full = Matrix(𝐒[1])
+        𝐒₂_full = Matrix(𝐒[2])
+        𝐒₃_full = Matrix(𝐒[3])
+        nVars_full = size(𝐒₁_full, 1)
+        ncols₁ = size(𝐒₁_full, 2)
+        ncols₂ = size(𝐒₂_full, 2)
+        ncols₃ = size(𝐒₃_full, 2)
+        𝐒₁ = 𝐒₁_full[needed, :]
+        𝐒₂ = 𝐒₂_full[needed, :]
+        𝐒₃ = 𝐒₃_full[needed, :]
         intermediates = Vector{NamedTuple{(:aug, :kaug, :new_state, :residual),
                                           Tuple{Vector{R}, Vector{R}, Vector{R}, Vector{R}}}}(undef, nT)
-        cur_state = convert(Vector{R}, state)
-        nVars = length(cur_state)
+        cur_state = convert(Vector{R}, state)[needed]
         @inbounds for t in 1:nT
-            aug = vcat(cur_state[past_idx], one(R), Vector{R}(shocks[:, t]))
+            aug = vcat(cur_state[past_in_needed], one(R), Vector{R}(shocks[:, t]))
             kaug = kron(aug, aug)
             new_state = 𝐒₁ * aug + (𝐒₂ * kaug) ./ R(2) + (𝐒₃ * kron(kaug, aug)) ./ R(6)
-            residual  = data_in_deviations[:, t] - new_state[obs_indices]
+            residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
             llh += filter_free_obs_logpdf(residual, measurement_error_std)
             intermediates[t] = (; aug = aug, kaug = kaug, new_state = new_state, residual = residual)
             cur_state = new_state
@@ -12802,11 +12839,15 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
             end
-            d_𝐒₁, d_𝐒₂, d_𝐒₃, d_state, d_SS_obs, d_shocks, d_me_std =
+            d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
-                                          past_idx, obs_indices,
-                                          nVars, npast, nExo, nT,
+                                          past_in_needed, obs_in_needed,
+                                          nNeeded, npast, nExo, nT,
                                           measurement_error_std)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
+            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
@@ -12818,27 +12859,33 @@ function rrule(::typeof(get_filter_free_loglikelihood),
         return llh, pullback
 
     else  # :pruned_third_order
-        𝐒₁ = Matrix(𝐒[1])
-        𝐒₂ = Matrix(𝐒[2])
-        𝐒₃ = Matrix(𝐒[3])
+        𝐒₁_full = Matrix(𝐒[1])
+        𝐒₂_full = Matrix(𝐒[2])
+        𝐒₃_full = Matrix(𝐒[3])
+        nVars_full = size(𝐒₁_full, 1)
+        ncols₁ = size(𝐒₁_full, 2)
+        ncols₂ = size(𝐒₂_full, 2)
+        ncols₃ = size(𝐒₃_full, 2)
+        𝐒₁ = 𝐒₁_full[needed, :]
+        𝐒₂ = 𝐒₂_full[needed, :]
+        𝐒₃ = 𝐒₃_full[needed, :]
         intermediates = Vector{NamedTuple{(:aug₁, :aug₁̂, :aug₂, :aug₃, :kaug₁, :new_state, :residual),
                                           Tuple{Vector{R}, Vector{R}, Vector{R}, Vector{R}, Vector{R}, Vector{Vector{R}}, Vector{R}}}}(undef, nT)
-        nVars = length(state[1])
-        cur_state = [convert(Vector{R}, state[1]),
-                     convert(Vector{R}, state[2]),
-                     convert(Vector{R}, state[3])]
+        cur_state = [convert(Vector{R}, state[1])[needed],
+                     convert(Vector{R}, state[2])[needed],
+                     convert(Vector{R}, state[3])[needed]]
         @inbounds for t in 1:nT
             ϵ = Vector{R}(shocks[:, t])
-            aug₁  = vcat(cur_state[1][past_idx], one(R), ϵ)
-            aug₁̂ = vcat(cur_state[1][past_idx], zero(R), ϵ)
-            aug₂  = vcat(cur_state[2][past_idx], zero(R), zeros(R, nExo))
-            aug₃  = vcat(cur_state[3][past_idx], zero(R), zeros(R, nExo))
+            aug₁  = vcat(cur_state[1][past_in_needed], one(R), ϵ)
+            aug₁̂ = vcat(cur_state[1][past_in_needed], zero(R), ϵ)
+            aug₂  = vcat(cur_state[2][past_in_needed], zero(R), zeros(R, nExo))
+            aug₃  = vcat(cur_state[3][past_in_needed], zero(R), zeros(R, nExo))
             kaug₁ = kron(aug₁, aug₁)
             new1 = 𝐒₁ * aug₁
             new2 = 𝐒₁ * aug₂ + (𝐒₂ * kaug₁) ./ R(2)
             new3 = 𝐒₁ * aug₃ + 𝐒₂ * kron(aug₁̂, aug₂) + (𝐒₃ * kron(kaug₁, aug₁)) ./ R(6)
             new_state = [new1, new2, new3]
-            residual  = data_in_deviations[:, t] - (new1[obs_indices] + new2[obs_indices] + new3[obs_indices])
+            residual  = data_in_deviations[:, t] - (new1[obs_in_needed] + new2[obs_in_needed] + new3[obs_in_needed])
             llh += filter_free_obs_logpdf(residual, measurement_error_std)
             intermediates[t] = (; aug₁ = aug₁, aug₁̂ = aug₁̂, aug₂ = aug₂, aug₃ = aug₃,
                                   kaug₁ = kaug₁, new_state = new_state, residual = residual)
@@ -12853,11 +12900,20 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
             end
-            d_𝐒₁, d_𝐒₂, d_𝐒₃, d_state, d_SS_obs, d_shocks, d_me_std =
+            d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
-                                                past_idx, obs_indices,
-                                                nVars, npast, nExo, nT,
+                                                past_in_needed, obs_in_needed,
+                                                nNeeded, npast, nExo, nT,
                                                 measurement_error_std)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
+            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
+                       zeros(eltype(d_state_red[2]), nVars_full),
+                       zeros(eltype(d_state_red[3]), nVars_full)]
+            @inbounds d_state[1][needed] .= d_state_red[1]
+            @inbounds d_state[2][needed] .= d_state_red[2]
+            @inbounds d_state[3][needed] .= d_state_red[3]
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]

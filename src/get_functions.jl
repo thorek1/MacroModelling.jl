@@ -4446,7 +4446,27 @@ Supported solution algorithms: `:second_order`, `:pruned_second_order`, `:third_
     @assert size(shocks, 1) == nExo "`shocks` must have one row per exogenous shock (got $(size(shocks, 1)), expected $nExo)."
     @assert size(shocks, 2) == nT "`shocks` must have one column per data observation (got $(size(shocks, 2)), expected $nT)."
 
-    llh = filter_free_loglikelihood_loop(Val(algorithm), 𝐒, state, shocks, data_in_deviations, obs_indices, past_idx, measurement_error_std)
+    # Keep only the rows of the policy functions that we actually need:
+    # the past-state slots required to propagate the recursion and the
+    # observable rows required to form the residual. Everything else is
+    # discarded so that the matmul, the kron, and the higher-order terms
+    # operate on the minimum-necessary fraction of the policy functions.
+    needed = sort(unique(vcat(past_idx, obs_indices)))
+    past_in_needed = convert(Vector{Int}, indexin(past_idx, needed))
+    obs_in_needed  = convert(Vector{Int}, indexin(obs_indices, needed))
+
+    if algorithm == :first_order
+        𝐒_red     = 𝐒[needed, :]
+        state_red = [state[1][needed]]
+    elseif algorithm ∈ (:second_order, :third_order)
+        𝐒_red     = [m[needed, :] for m in 𝐒]
+        state_red = state[needed]
+    else  # :pruned_second_order, :pruned_third_order
+        𝐒_red     = [m[needed, :] for m in 𝐒]
+        state_red = [s[needed] for s in state]
+    end
+
+    llh = filter_free_loglikelihood_loop(Val(algorithm), 𝐒_red, state_red, shocks, data_in_deviations, obs_in_needed, past_in_needed, measurement_error_std)
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
