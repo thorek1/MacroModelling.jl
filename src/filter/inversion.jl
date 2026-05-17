@@ -2939,8 +2939,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
     𝐒obs    = 𝐒[cond_var_idx, 1:end-n_exo]
 
     state_concat = ws.state_concat
-    y_full = Vector{R}(undef, n_cond)
-    x_buf  = zeros(R, n_exo)
+    y_full = ws.y_obs
+    x_buf  = ws.x_shocks
+    fill!(x_buf, zero(R))
 
     for i in axes(data_in_deviations, 2)
         idx = obs_idx_per_t[i]
@@ -3030,25 +3031,28 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
     cond_var_idx = observables_index
 
     cc = ensure_computational_constants!(constants)
-    e_in_s⁺  = cc.e_in_s⁺
-    sv_in_s⁺ = cc.s_in_s⁺
-    s_in_s⁺  = cc.s_in_s
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse;  shock_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse;             shock²_idxs = tmp.nzind
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse;           var_vol²_idxs = tmp.nzind
-    tmp = ℒ.kron(s_in_s⁺,  s_in_s⁺)  |> sparse;           var²_idxs    = tmp.nzind
+    so = ensure_conditional_forecast_constants!(constants)
+    shock²_idxs    = cc.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs  = cc.var_vol²_idxs
+    var²_idxs      = so.var²_idxs
 
     𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:n_past]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs] |> collect
-    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]     |> collect
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
-    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
+    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
+    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
+
+    𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
+    𝐒²⁻  = nnz(𝐒²⁻)  / length(𝐒²⁻)  > .1 ? collect(𝐒²⁻)  : 𝐒²⁻
+    𝐒²⁻ᵉ = nnz(𝐒²⁻ᵉ) / length(𝐒²⁻ᵉ) > .1 ? collect(𝐒²⁻ᵉ) : 𝐒²⁻ᵉ
+    𝐒²ᵉ  = nnz(𝐒²ᵉ)  / length(𝐒²ᵉ)  > .1 ? collect(𝐒²ᵉ)  : 𝐒²ᵉ
+    𝐒⁻²  = nnz(𝐒⁻²)  / length(𝐒⁻²)  > .1 ? collect(𝐒⁻²)  : 𝐒⁻²
 
     state₁ = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
     state₂ = convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx])
@@ -3161,21 +3165,24 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
     cond_var_idx = observables_index
 
     cc = ensure_computational_constants!(constants)
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺  = cc.e_in_s⁺
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse;  shock_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse;             shock²_idxs = tmp.nzind
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse;           var_vol²_idxs = tmp.nzind
+    so = ensure_conditional_forecast_constants!(constants)
+    shock²_idxs    = cc.shock²_idxs
+    shockvar²_idxs = so.shockvar²_idxs
+    var_vol²_idxs  = cc.var_vol²_idxs
 
     𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs] |> collect
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
-    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
+
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
+    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
+
+    𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
+    𝐒²⁻ᵉ = nnz(𝐒²⁻ᵉ) / length(𝐒²⁻ᵉ) > .1 ? collect(𝐒²⁻ᵉ) : 𝐒²⁻ᵉ
+    𝐒²ᵉ  = nnz(𝐒²ᵉ)  / length(𝐒²ᵉ)  > .1 ? collect(𝐒²ᵉ)  : 𝐒²ᵉ
+    𝐒⁻²  = nnz(𝐒⁻²)  / length(𝐒⁻²)  > .1 ? collect(𝐒⁻²)  : 𝐒⁻²
 
     st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
@@ -3282,41 +3289,45 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     n_cond = length(cond_var_idx)
 
     cc = ensure_computational_constants!(constants)
-    s_in_s⁺  = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺  = cc.e_in_s⁺
-    shockvar_idxs = cc.shockvar_idxs
-    shock_idxs    = cc.shock_idxs
-    shock²_idxs   = cc.shock²_idxs
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-    var_vol²_idxs  = cc.var_vol²_idxs
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse; var²_idxs = tmp.nzind
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse; var_vol³_idxs = tmp.nzind
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs2 = tmp.nzind
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs3 = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shock³_idxs = tmp.nzind
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shockvar1_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse; shockvar2_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse; shockvar3_idxs = tmp.nzind
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-    shockvar³_idxs  = setdiff(shock_idxs3, shock³_idxs)
+    so = ensure_conditional_forecast_constants!(constants; third_order = true)
+    shockvar_idxs   = cc.shockvar_idxs
+    shock²_idxs     = cc.shock²_idxs
+    shockvar²_idxs  = so.shockvar²_idxs
+    var_vol²_idxs   = cc.var_vol²_idxs
+    var²_idxs       = so.var²_idxs
+    to = constants.third_order
+    var_vol³_idxs   = to.var_vol³_idxs
+    shock³_idxs     = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs  = to.shockvar³_idxs
 
     𝐒⁻¹   = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻   = 𝐒[1][cond_var_idx, 1:n_past]
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
-    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]  |> collect
-    𝐒²⁻   = 𝐒[2][cond_var_idx, var²_idxs]      |> collect
-    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, shockvar_idxs]  |> collect
-    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
-    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]  |> collect
+
+    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]
+    𝐒²⁻   = 𝐒[2][cond_var_idx, var²_idxs]
+    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, shockvar_idxs]
+    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]
+    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
+    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs] |> collect
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]    |> collect
-    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :] |> collect
+    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs]
+    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]
+    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
+
+    𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ
+    𝐒²⁻   = nnz(𝐒²⁻)   / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)   : 𝐒²⁻
+    𝐒²⁻ᵉ  = nnz(𝐒²⁻ᵉ)  / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)  : 𝐒²⁻ᵉ
+    𝐒²⁻ᵛᵉ = nnz(𝐒²⁻ᵛᵉ) / length(𝐒²⁻ᵛᵉ) > .1 ? collect(𝐒²⁻ᵛᵉ) : 𝐒²⁻ᵛᵉ
+    𝐒²ᵉ   = nnz(𝐒²ᵉ)   / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)   : 𝐒²ᵉ
+    𝐒⁻²   = nnz(𝐒⁻²)   / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)   : 𝐒⁻²
+    𝐒³⁻ᵛ  = nnz(𝐒³⁻ᵛ)  / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)  : 𝐒³⁻ᵛ
+    𝐒³⁻ᵉ  = nnz(𝐒³⁻ᵉ)  / length(𝐒³⁻ᵉ)  > .1 ? collect(𝐒³⁻ᵉ)  : 𝐒³⁻ᵉ
+    𝐒³ᵉ   = nnz(𝐒³ᵉ)   / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)   : 𝐒³ᵉ
+    𝐒⁻³   = nnz(𝐒⁻³)   / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)   : 𝐒⁻³
 
     st1 = convert(Vector{R}, state[1][T.past_not_future_and_mixed_idx])
     st2 = convert(Vector{R}, state[2][T.past_not_future_and_mixed_idx])
@@ -3466,37 +3477,38 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     n_cond = length(cond_var_idx)
 
     cc = ensure_computational_constants!(constants)
-    s_in_s⁺  = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺  = cc.e_in_s⁺
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse; shock²_idxs = tmp.nzind
-    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse; var_vol²_idxs = tmp.nzind
-    tmp = ℒ.kron(s_in_s⁺,  s_in_s⁺)  |> sparse; var²_idxs    = tmp.nzind
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse; var_vol³_idxs = tmp.nzind
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs2 = tmp.nzind
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse; shock_idxs3 = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shock³_idxs = tmp.nzind
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse; shockvar1_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse; shockvar2_idxs = tmp.nzind
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse; shockvar3_idxs = tmp.nzind
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-    shockvar³_idxs  = setdiff(shock_idxs3, shock³_idxs)
+    so = ensure_conditional_forecast_constants!(constants; third_order = true)
+    shock²_idxs     = cc.shock²_idxs
+    shockvar²_idxs  = so.shockvar²_idxs
+    var_vol²_idxs   = cc.var_vol²_idxs
+    to = constants.third_order
+    var_vol³_idxs   = to.var_vol³_idxs
+    shock³_idxs     = to.shock³_idxs
+    shockvar³2_idxs = to.shockvar³2_idxs
+    shockvar³_idxs  = to.shockvar³_idxs
 
     𝐒⁻¹   = 𝐒[1][T.past_not_future_and_mixed_idx, :]
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
-    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]  |> collect
-    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs] |> collect
-    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]    |> collect
-    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :] |> collect
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]  |> collect
+
+    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]
+    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs]
+    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]
+    𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
+    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]
     𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs] |> collect
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]    |> collect
-    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :] |> collect
+    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs]
+    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]
+    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
+
+    𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ
+    𝐒²⁻ᵉ  = nnz(𝐒²⁻ᵉ)  / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)  : 𝐒²⁻ᵉ
+    𝐒²ᵉ   = nnz(𝐒²ᵉ)   / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)   : 𝐒²ᵉ
+    𝐒⁻²   = nnz(𝐒⁻²)   / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)   : 𝐒⁻²
+    𝐒³⁻ᵛ  = nnz(𝐒³⁻ᵛ)  / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)  : 𝐒³⁻ᵛ
+    𝐒³⁻ᵉ  = nnz(𝐒³⁻ᵉ)  / length(𝐒³⁻ᵉ)  > .1 ? collect(𝐒³⁻ᵉ)  : 𝐒³⁻ᵉ
+    𝐒³ᵉ   = nnz(𝐒³ᵉ)   / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)   : 𝐒³ᵉ
+    𝐒⁻³   = nnz(𝐒⁻³)   / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)   : 𝐒⁻³
 
     st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
