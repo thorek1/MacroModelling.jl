@@ -157,7 +157,12 @@ sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters
 end
 
 @testset "Mooncake vs FiniteDifferences gradient (3rd order, missing data)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data_missing, x, algorithm = :third_order), ADTypes.AutoMooncake(config = nothing), init_params_missing)
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, algorithm = :third_order)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), init_params_missing,
+        DifferentiationInterface.Constant(Caldara_et_al_2012_estim),
+        DifferentiationInterface.Constant(data_missing))
     @test !isnothing(back_grad)
     @test all(isfinite, back_grad)
 

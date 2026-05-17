@@ -108,7 +108,12 @@ sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters
 end
 
 @testset "Mooncake vs FiniteDifferences gradient (pruned 2nd order, missing data)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data_missing, x, algorithm = :pruned_second_order), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, algorithm = :pruned_second_order)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values,
+        DifferentiationInterface.Constant(FS2000),
+        DifferentiationInterface.Constant(data_missing))
     @test !isnothing(back_grad)
     @test all(isfinite, back_grad)
 

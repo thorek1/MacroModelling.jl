@@ -225,7 +225,12 @@ sample_nuts_linear_missing = collect(values(FlexiChains.mean(samps_missing_linea
 end
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 linear, missing data)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007_linear, data_missing, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values)
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values,
+        DifferentiationInterface.Constant(Smets_Wouters_2007_linear),
+        DifferentiationInterface.Constant(data_missing))
     @test !isnothing(back_grad)
     @test all(isfinite, back_grad)
 
@@ -258,7 +263,12 @@ sample_nuts_nonlinear_missing = collect(values(FlexiChains.mean(samps_missing_no
 end
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 nonlinear, missing data)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007, data_missing, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007.parameter_values)
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007.parameter_values,
+        DifferentiationInterface.Constant(Smets_Wouters_2007),
+        DifferentiationInterface.Constant(data_missing))
     @test !isnothing(back_grad)
     @test all(isfinite, back_grad)
 
