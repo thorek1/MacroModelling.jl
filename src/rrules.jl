@@ -1929,27 +1929,9 @@ function rrule(::typeof(get_loglikelihood),
     end
 
     if llh_rrule === nothing
-        llh = if has_missing
-            calculate_loglikelihood_with_missing(Val(filter), Val(algorithm), obs_indices,
-                    𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces, obs_idx_per_t;
-                    warmup_iterations = warmup_iterations,
-                    presample_periods = presample_periods,
-                    initial_covariance = initial_covariance,
-                    filter_algorithm = filter_algorithm,
-                    opts = opts,
-                    on_failure_loglikelihood = on_failure_loglikelihood)
-        else
-            calculate_loglikelihood(Val(filter), Val(algorithm), obs_indices,
-                    𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
-                    warmup_iterations = warmup_iterations,
-                    presample_periods = presample_periods,
-                    initial_covariance = initial_covariance,
-                    filter_algorithm = filter_algorithm,
-                    opts = opts,
-                    on_failure_loglikelihood = on_failure_loglikelihood)
-        end
-
-        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        # When the inner rrule cannot run, we cannot supply a gradient anyway, so
+        # short-circuit to the failure path instead of recomputing the primal.
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
     end
 
     llh, llh_pb = llh_rrule
@@ -8602,16 +8584,27 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    function inversion_pullback_missing(∂llh)
-        ∂𝐒 = zero(𝐒)
-        ∂data_in_deviations = zero(data_in_deviations)
-        ∂state_t⁻ = zeros(n_past)
+    n_vars = size(𝐒, 1)
+    n_cols = size(𝐒, 2)
 
-        n_vars = size(𝐒, 1)
-        n_cols = size(𝐒, 2)
-        v_buf = zeros(n_cols)
-        ∂state_full_next = zeros(n_vars)
-        ∂v = zeros(n_cols)
+    # Pre-allocate adjoint buffers outside the pullback closure (mirrors the
+    # dense rrule pattern). The closure resets them with fill! on each call.
+    ∂𝐒 = zero(𝐒)
+    ∂data_in_deviations = zero(data_in_deviations)
+    ∂state_t⁻ = zeros(n_past)
+    v_buf = zeros(n_cols)
+    ∂state_full_next = zeros(n_vars)
+    ∂v = zeros(n_cols)
+    ∂state₀_full = zeros(size(state₀))
+
+    function inversion_pullback_missing(∂llh)
+        fill!(∂𝐒, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂state_t⁻, 0)
+        fill!(v_buf, 0)
+        fill!(∂state_full_next, 0)
+        fill!(∂v, 0)
+        fill!(∂state₀_full, 0)
 
         # Backward pass over periods
         for t in Tt:-1:1
@@ -8711,7 +8704,6 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         end
 
         # Initial state cotangent: ∂state[1] is zero except at t⁻ entries.
-        ∂state₀_full = zeros(size(state₀))
         ∂state₀_full[t⁻] .= ∂state_t⁻
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), [∂state₀_full], NoTangent()
@@ -9261,39 +9253,56 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # Pre-allocate adjoint buffers outside the pullback closure (mirrors the
+    # dense non-missing rrule pattern at L9778+). The closure resets them with
+    # fill! on each invocation.
+    ∂𝐒_1 = zeros(size(𝐒[1]))
+    ∂𝐒_2 = zeros(size(𝐒[2]))
+    ∂𝐒⁻¹  = zero(𝐒⁻¹)
+    ∂𝐒⁻²  = zero(𝐒⁻²)
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+    ∂𝐒¹⁻  = zero(𝐒¹⁻)
+    ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+    ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+    ∂data_in_deviations = zeros(size(data_in_deviations))
+
+    ∂state₁_next = zeros(n_past)
+    ∂state₂_next = zeros(n_past)
+
+    kronaug_buf = zeros((n_past + 1 + n_exo)^2)
+    ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
+    ∂aug_state₁ = zeros(n_past + 1 + n_exo)
+    ∂aug_state₂ = zeros(n_past + 1 + n_exo)
+    ∂kronstate  = zeros((n_past + 1)^2)
+    ∂state¹⁻_vol = zeros(n_past + 1)
+    ∂kronIstate = zeros(n_exo * (n_past + 1))
+    # Hoisted per-period pullback buffers (max-size, used via views when m varies)
+    ∂𝐒ⁱ_full_buf       = zeros(length(cond_var_idx), n_exo)
+    ∂shock_independent  = zeros(length(cond_var_idx))
+    jac_v_buf           = zeros(n_exo, n_exo)
+    ∂jac_v_buf          = zeros(n_exo, n_exo)
+    kron_Isv_buf        = zeros(n_exo * (n_past + 1), n_exo)
+    ∂state₂_contrib     = zeros(n_past)
+    ∂kron_sv            = zeros((n_past + 1)^2)
+    kron_sv             = zeros((n_past + 1)^2)
+    ∂kronIstate_local   = zeros(n_exo * (n_past + 1), n_exo)
+
     function pruned2_missing_pullback(∂llh)
-        ∂𝐒_1 = zeros(size(𝐒[1]))
-        ∂𝐒_2 = zeros(size(𝐒[2]))
-        ∂𝐒⁻¹  = zero(𝐒⁻¹)
-        ∂𝐒⁻²  = zero(𝐒⁻²)
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒¹⁻  = zero(𝐒¹⁻)
-        ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
-        ∂data_in_deviations = zeros(size(data_in_deviations))
-
-        ∂state₁_next = zeros(n_past)
-        ∂state₂_next = zeros(n_past)
-
-        kronaug_buf = zeros((n_past + 1 + n_exo)^2)
-        ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
-        ∂aug_state₁ = zeros(n_past + 1 + n_exo)
-        ∂aug_state₂ = zeros(n_past + 1 + n_exo)
-        ∂kronstate  = zeros((n_past + 1)^2)
-        ∂state¹⁻_vol = zeros(n_past + 1)
-        ∂kronIstate = zeros(n_exo * (n_past + 1))
-        # Hoisted per-period pullback buffers (max-size, used via views when m varies)
-        ∂𝐒ⁱ_full_buf       = zeros(length(cond_var_idx), n_exo)
-        ∂shock_independent  = zeros(length(cond_var_idx))
-        jac_v_buf           = zeros(n_exo, n_exo)
-        ∂jac_v_buf          = zeros(n_exo, n_exo)
-        kron_Isv_buf        = zeros(n_exo * (n_past + 1), n_exo)
-        ∂state₂_contrib     = zeros(n_past)
-        ∂kron_sv            = zeros((n_past + 1)^2)
-        kron_sv             = zeros((n_past + 1)^2)
-        ∂kronIstate_local   = zeros(n_exo * (n_past + 1), n_exo)
+        fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0)
+        fill!(∂𝐒⁻¹, 0); fill!(∂𝐒⁻², 0)
+        fill!(∂𝐒¹⁻ᵛ, 0); fill!(∂𝐒¹⁻, 0); fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0); fill!(∂𝐒²⁻ᵉ, 0); fill!(∂𝐒ⁱ²ᵉ, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂state₁_next, 0); fill!(∂state₂_next, 0)
+        fill!(kronaug_buf, 0); fill!(∂kronaug, 0)
+        fill!(∂aug_state₁, 0); fill!(∂aug_state₂, 0)
+        fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0); fill!(∂kronIstate, 0)
+        fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂shock_independent, 0)
+        fill!(jac_v_buf, 0); fill!(∂jac_v_buf, 0)
+        fill!(kron_Isv_buf, 0); fill!(∂state₂_contrib, 0)
+        fill!(∂kron_sv, 0); fill!(kron_sv, 0); fill!(∂kronIstate_local, 0)
 
         for t in Tt:-1:1
             aug_state₁ = aug_state₁_seq[t]
@@ -10174,30 +10183,39 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # Pre-allocate adjoint buffers outside the pullback closure.
+    ∂𝐒_1 = zeros(size(𝐒[1]))
+    ∂𝐒_2 = zeros(size(𝐒[2]))
+    ∂𝐒⁻¹  = zero(𝐒⁻¹)
+    ∂𝐒⁻²  = zero(𝐒⁻²)
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+    ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+    ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+    ∂data_in_deviations = zeros(size(data_in_deviations))
+    ∂st_next = zeros(n_past)
+    kronaug_buf = zeros((n_past + 1 + n_exo)^2)
+    ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
+    ∂aug_state  = zeros(n_past + 1 + n_exo)
+    ∂kronstate  = zeros((n_past + 1)^2)
+    ∂state¹⁻_vol = zeros(n_past + 1)
+    ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
+    ∂shock_independent = zeros(length(cond_var_idx))
+    kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
+    ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
+
     function second_missing_pullback(∂llh)
-        ∂𝐒_1 = zeros(size(𝐒[1]))
-        ∂𝐒_2 = zeros(size(𝐒[2]))
-        ∂𝐒⁻¹  = zero(𝐒⁻¹)
-        ∂𝐒⁻²  = zero(𝐒⁻²)
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
-        ∂data_in_deviations = zeros(size(data_in_deviations))
-
-        ∂st_next = zeros(n_past)
-
-        kronaug_buf = zeros((n_past + 1 + n_exo)^2)
-        ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
-        ∂aug_state  = zeros(n_past + 1 + n_exo)
-        ∂kronstate  = zeros((n_past + 1)^2)
-        ∂state¹⁻_vol = zeros(n_past + 1)
-        # Hoisted per-period pullback buffers
-        ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
-        ∂shock_independent = zeros(length(cond_var_idx))
-        kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
-        ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
+        fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0)
+        fill!(∂𝐒⁻¹, 0); fill!(∂𝐒⁻², 0)
+        fill!(∂𝐒¹⁻ᵛ, 0); fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0); fill!(∂𝐒²⁻ᵉ, 0); fill!(∂𝐒ⁱ²ᵉ, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂st_next, 0)
+        fill!(kronaug_buf, 0); fill!(∂kronaug, 0)
+        fill!(∂aug_state, 0); fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
+        fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂shock_independent, 0)
+        fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
 
         for t in Tt:-1:1
             aug_state = aug_state_seq[t]
@@ -11075,43 +11093,53 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # Pre-allocate adjoint buffers outside the pullback closure.
+    ∂𝐒_1 = zeros(size(𝐒[1]))
+    ∂𝐒_2 = zeros(size(𝐒[2]))
+    ∂𝐒_3 = zeros(size(𝐒[3]))
+    ∂𝐒⁻¹  = zero(𝐒⁻¹)
+    ∂𝐒⁻²  = zero(𝐒⁻²)
+    ∂𝐒⁻³  = zero(𝐒⁻³)
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+    ∂𝐒¹⁻  = zero(𝐒¹⁻)
+    ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+    ∂𝐒²⁻  = zero(𝐒²⁻)
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+    ∂𝐒²⁻ᵛᵉ = zero(𝐒²⁻ᵛᵉ)
+    ∂𝐒²ᵉ  = zero(𝐒²ᵉ)
+    ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+    ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+    ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
+    ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+    ∂data_in_deviations = zeros(size(data_in_deviations))
+    ∂state₁_next = zeros(n_past)
+    ∂state₂_next = zeros(n_past)
+    ∂state₃_next = zeros(n_past)
+    kronaug_buf = zeros((n_past + 1 + n_exo)^2)
+    ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
+    ∂aug_state₁ = zeros(n_past + 1 + n_exo)
+    ∂aug_state₁̂ = zeros(n_past + 1 + n_exo)
+    ∂aug_state₂ = zeros(n_past + 1 + n_exo)
+    ∂aug_state₃ = zeros(n_past + 1 + n_exo)
+    ∂kronstate  = zeros((n_past + 1)^2)
+    ∂state¹⁻_vol = zeros(n_past + 1)
+    ∂𝐒ⁱ_full_buf       = zeros(n_cond, n_exo)
+    ∂𝐒ⁱ²ᵉ_full_buf     = zeros(n_cond, n_exo^2)
+    ∂shock_independent  = zeros(n_cond)
+
     function pruned3_missing_pullback(∂llh)
-        ∂𝐒_1 = zeros(size(𝐒[1]))
-        ∂𝐒_2 = zeros(size(𝐒[2]))
-        ∂𝐒_3 = zeros(size(𝐒[3]))
-        ∂𝐒⁻¹  = zero(𝐒⁻¹)
-        ∂𝐒⁻²  = zero(𝐒⁻²)
-        ∂𝐒⁻³  = zero(𝐒⁻³)
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒¹⁻  = zero(𝐒¹⁻)
-        ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒²⁻  = zero(𝐒²⁻)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒²⁻ᵛᵉ = zero(𝐒²⁻ᵛᵉ)
-        ∂𝐒²ᵉ  = zero(𝐒²ᵉ)
-        ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
-        ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
-        ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
-        ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
-        ∂data_in_deviations = zeros(size(data_in_deviations))
-
-        ∂state₁_next = zeros(n_past)
-        ∂state₂_next = zeros(n_past)
-        ∂state₃_next = zeros(n_past)
-
-        kronaug_buf = zeros((n_past + 1 + n_exo)^2)
-        ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
-        ∂aug_state₁ = zeros(n_past + 1 + n_exo)
-        ∂aug_state₁̂ = zeros(n_past + 1 + n_exo)
-        ∂aug_state₂ = zeros(n_past + 1 + n_exo)
-        ∂aug_state₃ = zeros(n_past + 1 + n_exo)
-        ∂kronstate  = zeros((n_past + 1)^2)
-        ∂state¹⁻_vol = zeros(n_past + 1)
-        # Hoisted per-period pullback buffers
-        ∂𝐒ⁱ_full_buf       = zeros(n_cond, n_exo)
-        ∂𝐒ⁱ²ᵉ_full_buf     = zeros(n_cond, n_exo^2)
-        ∂shock_independent  = zeros(n_cond)
+        fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
+        fill!(∂𝐒⁻¹, 0); fill!(∂𝐒⁻², 0); fill!(∂𝐒⁻³, 0)
+        fill!(∂𝐒¹⁻ᵛ, 0); fill!(∂𝐒¹⁻, 0); fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0); fill!(∂𝐒²⁻, 0); fill!(∂𝐒²⁻ᵉ, 0); fill!(∂𝐒²⁻ᵛᵉ, 0); fill!(∂𝐒²ᵉ, 0)
+        fill!(∂𝐒³⁻ᵛ, 0); fill!(∂𝐒³⁻ᵉ², 0); fill!(∂𝐒³⁻ᵉ, 0); fill!(∂𝐒ⁱ³ᵉ, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂state₁_next, 0); fill!(∂state₂_next, 0); fill!(∂state₃_next, 0)
+        fill!(kronaug_buf, 0); fill!(∂kronaug, 0)
+        fill!(∂aug_state₁, 0); fill!(∂aug_state₁̂, 0); fill!(∂aug_state₂, 0); fill!(∂aug_state₃, 0)
+        fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
+        fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
 
         for t in Tt:-1:1
             aug_state₁  = aug_state₁_seq[t]
@@ -12237,37 +12265,47 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
+    # Pre-allocate adjoint buffers outside the pullback closure.
+    ∂𝐒_1 = zeros(size(𝐒[1]))
+    ∂𝐒_2 = zeros(size(𝐒[2]))
+    ∂𝐒_3 = zeros(size(𝐒[3]))
+    ∂𝐒⁻¹  = zero(𝐒⁻¹)
+    ∂𝐒⁻²  = zero(𝐒⁻²)
+    ∂𝐒⁻³  = zero(𝐒⁻³)
+    ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+    ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
+    ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+    ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+    ∂𝐒²ᵉ  = zero(𝐒²ᵉ)
+    ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
+    ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
+    ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
+    ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
+    ∂data_in_deviations = zeros(size(data_in_deviations))
+    ∂st_next = zeros(n_past)
+    kronaug_buf = zeros((n_past + 1 + n_exo)^2)
+    ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
+    ∂aug_state  = zeros(n_past + 1 + n_exo)
+    ∂kronstate  = zeros((n_past + 1)^2)
+    ∂state¹⁻_vol = zeros(n_past + 1)
+    ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
+    ∂𝐒ⁱ²ᵉ_full_buf    = zeros(length(cond_var_idx), n_exo^2)
+    ∂shock_independent = zeros(length(cond_var_idx))
+    kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
+    ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
+
     function third_order_missing_pullback(∂llh)
-        ∂𝐒_1 = zeros(size(𝐒[1]))
-        ∂𝐒_2 = zeros(size(𝐒[2]))
-        ∂𝐒_3 = zeros(size(𝐒[3]))
-        ∂𝐒⁻¹  = zero(𝐒⁻¹)
-        ∂𝐒⁻²  = zero(𝐒⁻²)
-        ∂𝐒⁻³  = zero(𝐒⁻³)
-        ∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
-        ∂𝐒¹ᵉ  = zero(𝐒¹ᵉ)
-        ∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
-        ∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-        ∂𝐒²ᵉ  = zero(𝐒²ᵉ)
-        ∂𝐒³⁻ᵛ = zero(𝐒³⁻ᵛ)
-        ∂𝐒³⁻ᵉ² = zero(𝐒³⁻ᵉ²)
-        ∂𝐒³⁻ᵉ = zero(𝐒³⁻ᵉ)
-        ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
-        ∂data_in_deviations = zeros(size(data_in_deviations))
-
-        ∂st_next = zeros(n_past)
-
-        kronaug_buf = zeros((n_past + 1 + n_exo)^2)
-        ∂kronaug    = zeros((n_past + 1 + n_exo)^2)
-        ∂aug_state  = zeros(n_past + 1 + n_exo)
-        ∂kronstate  = zeros((n_past + 1)^2)
-        ∂state¹⁻_vol = zeros(n_past + 1)
-        # Hoisted per-period pullback buffers
-        ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
-        ∂𝐒ⁱ²ᵉ_full_buf    = zeros(length(cond_var_idx), n_exo^2)
-        ∂shock_independent = zeros(length(cond_var_idx))
-        kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
-        ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
+        fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
+        fill!(∂𝐒⁻¹, 0); fill!(∂𝐒⁻², 0); fill!(∂𝐒⁻³, 0)
+        fill!(∂𝐒¹⁻ᵛ, 0); fill!(∂𝐒¹ᵉ, 0)
+        fill!(∂𝐒²⁻ᵛ, 0); fill!(∂𝐒²⁻ᵉ, 0); fill!(∂𝐒²ᵉ, 0)
+        fill!(∂𝐒³⁻ᵛ, 0); fill!(∂𝐒³⁻ᵉ², 0); fill!(∂𝐒³⁻ᵉ, 0); fill!(∂𝐒ⁱ³ᵉ, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂st_next, 0)
+        fill!(kronaug_buf, 0); fill!(∂kronaug, 0)
+        fill!(∂aug_state, 0); fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
+        fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
+        fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
 
         for t in Tt:-1:1
             aug_state   = aug_state_seq[t]
