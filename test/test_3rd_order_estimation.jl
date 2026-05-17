@@ -325,49 +325,40 @@ end
 
 # ---------------------------------------------------------------------------
 # Filter-free estimation (joint sampling of parameters and latent shocks)
-# Third order — verify forward, analytical rrule, and Mooncake gradient
-# (Full NUTS sampling is too expensive for this large model in CI; instead
-# we verify gradient consistency with the analytical rrule.)
+# Third order — NUTS via the analytical rrule + Mooncake AD.  Same sampler
+# (NUTS, Mooncake) and number of draws as the inversion-filter run above;
+# correctness of the rrule itself is checked in
+# `test_filter_free_gradients.jl`.
 # ---------------------------------------------------------------------------
-import ADTypes: AutoForwardDiff
-import ChainRulesCore as CRC
+import Distributions: MvNormal
+import LinearAlgebra: I as LinearAlgebraI
 
 const T_ff_3rd = 10
 const data_ff_3rd = data[:, 1:T_ff_3rd]
 const nExo_ff_3rd = length(get_shocks(Caldara_et_al_2012_estim))
 
-@testset "Filter-free rrule (third order)" begin
-    Random.seed!(42)
-    pars3rd = copy(Caldara_et_al_2012_estim.parameter_values)
-    shocks3rd = 0.01 .* randn(nExo_ff_3rd, T_ff_3rd)
-    me_std3rd = 0.05
+Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    shocks      = collect(reshape(shocks_vec, nExo, nT))
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
 
-    llh_fwd = get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_3rd,
-                                            pars3rd, shocks3rd, me_std3rd;
-                                            algorithm = :third_order)
-    @test isfinite(llh_fwd)
+Random.seed!(30)
 
-    llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, Caldara_et_al_2012_estim,
-                          data_ff_3rd, pars3rd, shocks3rd, me_std3rd;
-                          algorithm = :third_order)
-    @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
-    _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
-
-    nP = length(pars3rd)
-    z0 = vcat(pars3rd, vec(shocks3rd), me_std3rd)
-    obj = function (z)
-        p = z[1:nP]
-        s = reshape(z[nP+1:nP+nExo_ff_3rd*T_ff_3rd], nExo_ff_3rd, T_ff_3rd)
-        m = z[end]
-        get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff_3rd, p, s, m;
-                                       algorithm = :third_order)
-    end
-    g_mc = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)
-    dpars_mc = g_mc[1:nP]
-    dshk_mc  = reshape(g_mc[nP+1:nP+nExo_ff_3rd*T_ff_3rd], nExo_ff_3rd, T_ff_3rd)
-    dme_mc   = g_mc[end]
-
-    @test isapprox(dpars_mc, dpars_a; rtol = 1e-8)
-    @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
-    @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
+@testset "Filter-free NUTS (third order)" begin
+    init_ff = (; all_params = Caldara_et_al_2012_estim.parameter_values,
+                 me_std     = 0.05,
+                 shocks_vec = zeros(nExo_ff_3rd * T_ff_3rd))
+    ff_samps = @time sample(
+        Caldara_et_al_2012_filter_free_function(data_ff_3rd, Caldara_et_al_2012_estim,
+                                                 :third_order, nExo_ff_3rd, T_ff_3rd, -Inf),
+        NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)),
+        n_samples,
+        progress = false,
+        initial_params = Turing.InitFromParams(init_ff))
+    @test size(ff_samps, 1) == n_samples
 end

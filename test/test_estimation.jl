@@ -201,15 +201,14 @@ end
 Random.seed!(30)
 
 @testset "Filter-free NUTS (first order)" begin
-    n_ff_samples = 5
     init_ff = (; all_params = FS2000.parameter_values,
                  me_std     = 0.05,
                  shocks_vec = zeros(nExo_ff_1st * T_ff_1st))
     ff_samps = @time sample(
         FS2000_filter_free_function_1st(data_ff_1st, FS2000, :first_order, nExo_ff_1st, T_ff_1st, -Inf),
         NUTS(adtype = AutoMooncake(; config=nothing)),
-        n_ff_samples,
+        n_samples,
         progress = false,
         initial_params = Turing.InitFromParams(init_ff))
-    @test size(ff_samps, 1) == n_ff_samples
+    @test size(ff_samps, 1) == n_samples
 end

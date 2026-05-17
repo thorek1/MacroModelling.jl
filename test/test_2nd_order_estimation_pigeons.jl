@@ -145,7 +145,7 @@ end
 pt_ff = @time Pigeons.pigeons(target = FS2000_ff_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 3,
+            n_rounds = 9,
             seed = PIGEONS_SEED,
             multithreaded = false)
 
