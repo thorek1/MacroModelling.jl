@@ -16,6 +16,7 @@ USE_NESSAI = true
 USE_DYNESTY = false
 USE_ULTRANEST = false
 USE_FLAT_PRIOR = false
+USE_NONLINEAR_MODEL = false
 
 NESSAI_NLIVE = 2000
 NESSAI_FLOW_POOLSIZE = 128
@@ -145,11 +146,23 @@ const param_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew,
 # ──────────────────────────────────────────────────────────────────────────────
 # Include linear model and set up fixed parameters
 # ──────────────────────────────────────────────────────────────────────────────
-include("../models/Smets_Wouters_2007_linear.jl")
+if USE_NONLINEAR_MODEL
+    include("../models/Smets_Wouters_2007.jl")
 
-fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007_linear.constants.post_complete_parameters.parameters)]
+    fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.constants.post_complete_parameters.parameters)]
 
-SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01], derivatives = false)
+    SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])(observables,:)
+
+    model = Smets_Wouters_2007
+else
+    include("../models/Smets_Wouters_2007_linear.jl")
+
+    fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007_linear.constants.post_complete_parameters.parameters)]
+
+    SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01], derivatives = false)
+
+    model = Smets_Wouters_2007_linear
+end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Reorder index: maps dists order → parameters_combined order (after fixed)
@@ -177,7 +190,7 @@ end
 
 function sw07_log_likelihood(params::Vector{Float64})
     parameters_combined = vcat(fixed_parameters, params[reorder_idx])
-    llh = get_loglikelihood(Smets_Wouters_2007_linear, data(observables), parameters_combined,
+    llh = get_loglikelihood(model, data(observables), parameters_combined,
                            presample_periods = 4, initial_covariance = :diagonal,
                            filter = :kalman, on_failure_loglikelihood = -1e10)
     return llh
@@ -349,6 +362,118 @@ if USE_NESSAI
         @test !isnothing(nessai_fs)
     end
 
+# USE_FLAT_PRIOR = true
+# 05-16 23:18 nessai INFO    : Final ln-evidence: -1000.984 +/- 0.179
+# 05-16 23:18 nessai INFO    : Information: 64.29
+# 05-16 23:19 nessai INFO    : Final KS test: D=0.03676, p-value=1.217e-178
+# 05-16 23:19 nessai WARNING : Final p-value for the insertion indices is less than 0.05, this could be an indication of problems during sampling. Consider checking the diagnostic plots.
+# 05-16 23:19 nessai INFO    : Checkpointing nested sampling
+# 05-16 23:19 nessai INFO    : Total sampling time: 5:51:29.037943
+# 05-16 23:19 nessai INFO    : Total training time: 2:30:57.819565
+# 05-16 23:19 nessai INFO    : Total population time: 1:48:37.768095
+# 05-16 23:19 nessai INFO    : Total likelihood evaluations: 1575272
+# 05-16 23:19 nessai INFO    : Time spent evaluating likelihood: 1:31:42.081410
+# 05-16 23:19 nessai INFO    : Total sampling time: 5:51:29.037943
+# 05-16 23:19 nessai INFO    : Total likelihood evaluations: 1575272
+# 05-16 23:19 nessai INFO    : Starting post processing
+# 05-16 23:19 nessai INFO    : Computing posterior samples
+# 05-16 23:19 nessai INFO    : Effective sample size: 25888.8
+# 05-16 23:19 nessai INFO    : Producing posterior samples using rejection sampling
+# 05-16 23:19 nessai INFO    : Expect 18102.563355074064 samples from rejection sampling
+# 05-16 23:19 nessai INFO    : Returned 18091 posterior samples
+# nessai estimation completed
+# nessai number of posterior samples: 18091
+# nessai posterior means:
+#   z_ea: 0.45597505067412014
+#   z_eb: 0.2634471634240015
+#   z_eg: 0.5399781177240325
+#   z_eqs: 0.4613615701545901
+#   z_em: 0.22045420331736487
+#   z_epinf: 0.13056396971061376
+#   z_ew: 0.25179550470796747
+#   crhoa: 0.9786408574522782
+#   crhob: 0.15199680428936876
+#   crhog: 0.9780564007164783
+#   crhoqs: 0.6564116015571109
+#   crhoms: 0.06738391108495864
+#   crhopinf: 0.9558515467489069
+#   crhow: 0.9629644930386038
+#   cmap: 0.8494662208479085
+#   cmaw: 0.9441767978898936
+#   csadjcost: 10.640862613235852
+#   csigma: 1.5896792904211503
+#   chabb: 0.7875637746883587
+#   cprobw: 0.9123398699555444
+#   csigl: 4.998929930146837
+#   cprobp: 0.7089127968773836
+#   cindw: 0.614639209280305
+#   cindp: 0.10747340317835892
+#   czcap: 0.5774969844402321
+#   cfc: 1.9619671340448266
+#   crpi: 2.651779898533512
+#   crr: 0.8866870134207688
+#   cry: 0.14560572712053682
+#   crdy: 0.2085582121253571
+#   constepinf: 1.1080946420338906
+#   constebeta: 0.0845741693625765
+#   constelab: -0.7359719855369656
+#   ctrend: 0.44698207929208417
+#   cgy: 0.5229994110626076
+#   calfa: 0.21057521428483572
+# nessai FlexiChains summary:
+# ╭─FlexiSummary (9 statistics) ─────────────────────────────────────────────────────────────────────────────────────────╮
+# │   iter    collapsed                                                                                                  │
+# │   chain   collapsed                                                                                                  │
+# │ ↓ stat  = [mean, std, mcse, ess_bulk, ess_tail, rhat, q5, q50, q95]                                                  │
+# │                                                                                                                      │
+# │ Parameters (36) ── Symbol                                                                                            │
+# │  Float64  z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap,  │
+# │           cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy,     │
+# │           constepinf, constebeta, constelab, ctrend, cgy, calfa                                                      │
+# │                                                                                                                      │
+# │ Extras (0)                                                                                                           │
+# │  (none)                                                                                                              │
+# │                                                                                                                      │
+# │ Summary                                                                                                              │
+# │        param     mean     std    mcse    ess_bulk    ess_tail    rhat       q5      q50      q95                     │
+# │         z_ea   0.4560  0.0240  0.0002  17737.3098   2424.5258  1.0201   0.4182   0.4551   0.4969                     │
+# │         z_eb   0.2634  0.0200  0.0002  17209.3386   1400.1095  1.0199   0.2304   0.2634   0.2966                     │
+# │         z_eg   0.5400  0.0260  0.0002  18202.0418   2259.5431  1.0221   0.4994   0.5387   0.5845                     │
+# │        z_eqs   0.4614  0.0375  0.0004   7517.6694   1452.8103  1.0149   0.4012   0.4602   0.5251                     │
+# │         z_em   0.2205  0.0106  0.0001  10922.9755   1135.3528  1.0199   0.2039   0.2200   0.2388                     │
+# │      z_epinf   0.1306  0.0145  0.0001  15695.6764   2569.9921  1.0124   0.1071   0.1302   0.1547                     │
+# │         z_ew   0.2518  0.0151  0.0006    654.2906    703.1263  1.0295   0.2271   0.2519   0.2764                     │
+# │        crhoa   0.9786  0.0044  0.0000  17328.3740   1270.9016  1.0254   0.9711   0.9788   0.9855                     │
+# │        crhob   0.1520  0.0688  0.0019   1836.2886    846.4405  1.0175   0.0463   0.1475   0.2718                     │
+# │        crhog   0.9781  0.0068  0.0001  15740.3369   1311.1854  1.0180   0.9663   0.9784   0.9887                     │
+# │       crhoqs   0.6564  0.0470  0.0004  16916.0572   3407.4362  1.0121   0.5779   0.6569   0.7338                     │
+# │       crhoms   0.0674  0.0400  0.0022    405.3113    712.6945  1.0410   0.0176   0.0596   0.1448                     │
+# │     crhopinf   0.9559  0.0179  0.0002  15713.7123   1436.5666  1.0165   0.9244   0.9570   0.9828                     │
+# │        crhow   0.9630  0.0162  0.0007    865.8765    917.2468  1.0225   0.9324   0.9661   0.9831                     │
+# │         cmap   0.8495  0.0475  0.0004  16660.5245   4637.4201  1.0172   0.7633   0.8546   0.9171                     │
+# │         cmaw   0.9442  0.0199  0.0013    252.2650    553.2506  1.0674   0.9069   0.9482   0.9680                     │
+# │    csadjcost  10.6409  1.8610  0.0251   5947.1725  15547.3654  1.0055   7.6668  10.5965  13.7493                     │
+# │       csigma   1.5897  0.1465  0.0033   1783.2334   1193.9868  1.0115   1.3537   1.5868   1.8376                     │
+# │        chabb   0.7876  0.0312  0.0005   3671.2221   1863.0511  1.0145   0.7354   0.7878   0.8384                     │
+# │       cprobw   0.9123  0.0229  0.0007   1511.9196   1268.1527  1.0125   0.8691   0.9160   0.9423                     │
+# │        csigl   4.9989  1.5756  0.0152   4305.8474   2073.4637  1.0087   2.6721   4.8444   7.8543                     │
+# │       cprobp   0.7089  0.0479  0.0004  18070.2996   2874.3563  1.0121   0.6278   0.7100   0.7874                     │
+# │        cindw   0.6146  0.1461  0.0049   1016.0963   1216.2424  1.0191   0.3594   0.6223   0.8418                     │
+# │        cindp   0.1075  0.0691  0.0028    745.8185   1086.8971  1.0245   0.0208   0.0942   0.2397                     │
+# │        czcap   0.5775  0.1100  0.0008  17784.2685   3122.7813  1.0131   0.3988   0.5768   0.7607                     │
+# │          cfc   1.9620  0.1318  0.0010  17516.9688   3312.8420  1.0154   1.7570   1.9556   2.1893                     │
+# │         crpi   2.6518  0.2079  0.0021  11329.3786   3925.3179  1.0057   2.2701   2.6805   2.9403                     │
+# │          crr   0.8867  0.0146  0.0003   4505.8139   1726.8373  1.0169   0.8610   0.8876   0.9088                     │
+# │          cry   0.1456  0.0275  0.0003   6882.1499   1901.3740  1.0095   0.1012   0.1448   0.1921                     │
+# │         crdy   0.2086  0.0243  0.0002  16764.8131   2203.2354  1.0197   0.1708   0.2074   0.2502                     │
+# │   constepinf   1.1081  0.1504  0.0011  18162.9990  13464.1905  1.0073   0.8652   1.1051   1.3571                     │
+# │   constebeta   0.0846  0.0588  0.0029    485.9809    976.6815  1.0325   0.0171   0.0704   0.1993                     │
+# │    constelab  -0.7360  1.0574  0.0078  18170.9297  15111.6223  1.0120  -2.5156  -0.7086   0.9596                     │
+# │       ctrend   0.4470  0.0142  0.0001  15757.8298   1948.6520  1.0251   0.4232   0.4471   0.4698                     │
+# │          cgy   0.5230  0.0788  0.0006  17064.2716   2355.5780  1.0147   0.3916   0.5232   0.6503                     │
+# │        calfa   0.2106  0.0164  0.0001  18208.5176   2030.2823  1.0202   0.1838   0.2103   0.2378                     │
+# ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+# nessai log evidence: -1000.9839809407748
 end # USE_NESSAI
 
 # ──────────────────────────────────────────────────────────────────────────────
