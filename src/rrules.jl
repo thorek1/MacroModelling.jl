@@ -8323,6 +8323,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     # Precompute Aᵀ once outside the pullback closure: needed by the matmul
     # forming ∂A (every call) and by the fallback adjoint solve.
     At = A_dense'
+    ∂A_buf = zeros(eltype(A), size(A))
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
@@ -8359,7 +8360,8 @@ function rrule(::typeof(solve_lyapunov_equation),
 
         tmp_n1 = workspace.𝐂A
         tmp_n2 = workspace.𝐀²
-        ∂A = zeros(eltype(A), size(A))
+        ∂A = ∂A_buf
+        fill!(∂A, 0)
 
         ℒ.mul!(tmp_n1, ∂C, A_dense)
         ℒ.mul!(∂A, tmp_n1, P_cached')
@@ -9076,6 +9078,14 @@ function rrule(::typeof(calculate_loglikelihood),
         end
     end
 
+    # Pre-allocate pullback buffers outside the closure; the closure resets
+    # them with fill! on each invocation.
+    ∂state_t⁻        = zeros(n_pnf)
+    v_buf            = zeros(n_cols)
+    ∂state_full_next = zeros(n_vars)
+    ∂v               = zeros(n_cols)
+    ∂y               = zeros(n_obs_loc)
+
     # end # timeit_debug
     # pullback — O(Tt) backward recursion mirroring the missing rrule's
     # pattern.  Replaces an earlier O(Tt²) explicit-unrolling implementation
@@ -9084,11 +9094,11 @@ function rrule(::typeof(calculate_loglikelihood),
     function inversion_pullback(∂llh)
         # @timeit_debug timer "Inversion filter - pullback" begin
 
-        ∂state_t⁻        = zeros(n_pnf)
-        v_buf            = zeros(n_cols)
-        ∂state_full_next = zeros(n_vars)
-        ∂v               = zeros(n_cols)
-        ∂y               = zeros(n_obs_loc)
+        fill!(∂state_t⁻, 0)
+        fill!(v_buf, 0)
+        fill!(∂state_full_next, 0)
+        fill!(∂v, 0)
+        fill!(∂y, 0)
 
         𝐒obs_v = view(𝐒, obs_idx, 1:n_cols - T.nExo)
         square_case = (T.nExo == n_obs_loc)
@@ -11292,6 +11302,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ∂𝐒ⁱ_full_buf       = zeros(n_cond, n_exo)
     ∂𝐒ⁱ²ᵉ_full_buf     = zeros(n_cond, n_exo^2)
     ∂shock_independent  = zeros(n_cond)
+    ∂kronaug_for3       = zeros((n_past + 1 + n_exo)^2)
 
     function pruned3_missing_pullback(∂llh)
         fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
@@ -11305,6 +11316,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂aug_state₁, 0); fill!(∂aug_state₁̂, 0); fill!(∂aug_state₂, 0); fill!(∂aug_state₃, 0)
         fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
+        fill!(∂kronaug_for3, 0)
 
         for t in Tt:-1:1
             aug_state₁  = aug_state₁_seq[t]
@@ -11334,7 +11346,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             ℒ.mul!(∂𝐒⁻³, ∂state₃_next, kron_kron_aug₁', 1/6, 1)
             ∂kronkronaug₁ = (𝐒⁻³' * ∂state₃_next) ./ 6
             fill!(∂aug_state₁, 0)
-            ∂kronaug_for3 = zeros(length(kronaug_buf))
+            fill!(∂kronaug_for3, 0)
             fill_kron_adjoint!(∂aug_state₁, ∂kronaug_for3, ∂kronkronaug₁, aug_state₁, kronaug_buf)
 
             # state₂_next = 𝐒⁻¹ aug₂ + 0.5 𝐒⁻² kron(aug₁, aug₁)
@@ -12504,6 +12516,8 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ∂shock_independent = zeros(length(cond_var_idx))
     kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
     ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
+    ∂kronaug_for3      = zeros((n_past + 1 + n_exo)^2)
+    ∂u_mat             = zeros(n_exo * (n_past + 1), n_exo)
 
     function third_order_missing_pullback(∂llh)
         fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
@@ -12517,6 +12531,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂aug_state, 0); fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
+        fill!(∂kronaug_for3, 0); fill!(∂u_mat, 0)
 
         for t in Tt:-1:1
             aug_state   = aug_state_seq[t]
@@ -12534,7 +12549,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             kron_kron_aug = ℒ.kron(kronaug_buf, aug_state)
             ℒ.mul!(∂𝐒⁻³, ∂st_next, kron_kron_aug', 1/6, 1)
             ∂kronkronaug = (𝐒⁻³' * ∂st_next) ./ 6
-            ∂kronaug_for3 = zeros(length(kronaug_buf))
+            fill!(∂kronaug_for3, 0)
             fill_kron_adjoint!(∂aug_state, ∂kronaug_for3, ∂kronkronaug, aug_state, kronaug_buf)
             fill!(∂kronaug, 0)
             ∂kronaug .+= ∂kronaug_for3
@@ -12688,7 +12703,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 end
                 ∂kron_u_s1v = (𝐒³⁻ᵉ²' * ∂𝐒ⁱ_full) ./ 2
                 u_mat = ℒ.kron(J, state¹⁻_vol)
-                ∂u_mat = zeros(size(u_mat))
+                fill!(∂u_mat, 0)
                 @inbounds for j in 1:n_exo
                     for q in 1:(n_exo*(n_past+1))
                         for r in 1:(n_past+1)
