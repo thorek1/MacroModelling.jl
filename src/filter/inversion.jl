@@ -2969,6 +2969,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
             end
         end
 
+        if !all(isfinite, jac_v)
+            if opts.verbose println("Inversion filter failed at step $i (non-finite Jacobian)") end
+            return on_failure_loglikelihood
+        end
+
         if m == n_exo
             jacdecomp = ℒ.lu(jac_v, check = false)
             if !ℒ.issuccess(jacdecomp)
@@ -2981,10 +2986,6 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
             end
             copyto!(x_buf, x_v)
         else
-            if !all(isfinite, jac_v)
-                if opts.verbose println("Inversion filter failed at step $i (non-finite Jacobian)") end
-                return on_failure_loglikelihood
-            end
             JJt = view(JJt_buf, 1:m, 1:m)
             ℒ.mul!(JJt, jac_v, jac_v')
             JJt_lu = ℒ.lu(JJt, check = false)
