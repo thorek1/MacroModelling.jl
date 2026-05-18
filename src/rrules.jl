@@ -8495,19 +8495,27 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_obs_full)
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_obs_full, Tt; order = :first_order)
 
     state₀ = copy(state[1])
-    state_seq = [copy(state₀) for _ in 1:Tt+1]
+    state_seq = ws.state_seq_rrule
+    @inbounds for t in 1:Tt+1
+        if !isassigned(state_seq, t) || length(state_seq[t]) != length(state₀)
+            state_seq[t] = copy(state₀)
+        else
+            copyto!(state_seq[t], state₀)
+        end
+    end
 
     # full observation Jacobian (constant across periods)
     jac_full = 𝐒[obs_idx_full, end-n_exo+1:end]
     𝐒obs_past_full = 𝐒[obs_idx_full, 1:end-n_exo]
 
-    # per-period storage
-    x_seq = [zeros(n_exo) for _ in 1:Tt]
+    # per-period storage (cached in workspace; see ensure_inversion_rrule_buffers!)
+    x_seq = ws.x_seq_rrule
     idx_seq = obs_idx_per_t
-    invjac_v_seq = Vector{Matrix{Float64}}(undef, Tt)  # m_t × m_t inverse for square; pinv-T for wide
-    G_seq = Vector{Matrix{Float64}}(undef, Tt)         # (jac_v jac_v')^{-1}, m_t × m_t
+    invjac_v_seq = ws.invjac_v_seq_rrule  # m_t × m_t inverse for square; pinv-T for wide
+    G_seq = ws.G_seq_rrule                # (jac_v jac_v')^{-1}, m_t × m_t
     n_obs_total = 0
     shocks² = 0.0
     logabsdets = 0.0
@@ -8560,7 +8568,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 invjac_v = G * jac_v  # this is pinv(jac_v)' (m × n_exo); useful below
                 logabsdet_t = ℒ.logabsdet(JJt_lu)[1] / 2
             end
-            x_seq[t] = xv
+            x_seq[t] .= xv
             invjac_v_seq[t] = invjac_v
             G_seq[t] = G
 
@@ -8902,107 +8910,172 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     ∂𝐒 = zero(𝐒)
-    
-    ∂𝐒ᵗ⁻ = copy(∂𝐒[t⁻,:])
-
     ∂data_in_deviations = zero(data_in_deviations)
-    
-    # Allocate or reuse workspaces for pullback
-    n_periods = size(data_in_deviations,2) - 1
-    if size(ws.∂data) != (length(t⁻), n_periods)
-        ws.∂data = zeros(length(t⁻), n_periods)
-    else
-        fill!(ws.∂data, zero(eltype(ws.∂data)))
-    end
-    ∂data = ws.∂data
-
     ∂state = zero(state[1])
 
-    # precomputed matrices
-    M¹  = 𝐒[obs_idx, 1:end-T.nExo]' * invjac' 
-    M²  = 𝐒[t⁻,1:end-T.nExo]' - M¹ * 𝐒[t⁻,end-T.nExo+1:end]'
-    M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]'
+    n_obs_loc = length(obs_idx)
+    n_pnf     = length(t⁻)
+    n_cols    = size(𝐒, 2)
+    n_vars    = size(𝐒, 1)
+    Tt        = size(data_in_deviations, 2)
 
-    ∂Stmp = [copy(M¹) for _ in 1:size(data_in_deviations,2)-1]
-
-    for t in 2:size(data_in_deviations,2)-1
-        ℒ.mul!(∂Stmp[t], M², ∂Stmp[t-1])
-        # ∂Stmp[t] = M² * ∂Stmp[t-1]
+    # For the fat case (m < n_exo) we need G = (jac*jac')^{-1} so the pullback
+    # can apply the analytic pseudoinverse adjoint (matches the missing-rrule
+    # formulation). Precomputed once because jac is constant across periods.
+    # Always typed as Matrix{Float64} (empty in the square case) to keep the
+    # pullback closure type-stable.
+    G_fat = zeros(0, 0)
+    if T.nExo != n_obs_loc
+        JJt_p = jac * jac'
+        JJt_p_lu = ℒ.lu(JJt_p, check = false)
+        if ℒ.issuccess(JJt_p_lu)
+            G_fat = inv(JJt_p_lu)
+        end
     end
-
-    # Allocate or reuse workspaces for temporary matrices
-    if size(ws.∂_tmp1) != (T.nExo, length(t⁻) + T.nExo)
-        ws.∂_tmp1 = zeros(Float64, T.nExo, length(t⁻) + T.nExo)
-    else
-        fill!(ws.∂_tmp1, zero(Float64))
-    end
-    tmp1 = ws.∂_tmp1
-    
-    if size(ws.∂_tmp2) != (length(t⁻), length(t⁻) + T.nExo)
-        ws.∂_tmp2 = zeros(Float64, length(t⁻), length(t⁻) + T.nExo)
-    else
-        fill!(ws.∂_tmp2, zero(Float64))
-    end
-    tmp2 = ws.∂_tmp2
-    
-    if size(ws.∂_tmp3) != (length(t⁻) + T.nExo,)
-        ws.∂_tmp3 = zeros(Float64, length(t⁻) + T.nExo)
-    else
-        fill!(ws.∂_tmp3, zero(Float64))
-    end
-    tmp3 = ws.∂_tmp3
-
-    if size(ws.∂𝐒t⁻) != size(tmp2)
-        ws.∂𝐒t⁻ = copy(tmp2)
-    else
-        fill!(ws.∂𝐒t⁻, zero(Float64))
-    end
-    ∂𝐒t⁻ = ws.∂𝐒t⁻
-    # ∂𝐒obs_idx   = copy(tmp1)
 
     # end # timeit_debug
-    # pullback
+    # pullback — O(Tt) backward recursion mirroring the missing rrule's
+    # pattern.  Replaces an earlier O(Tt²) explicit-unrolling implementation
+    # that built powers of M² = 𝐒past' - 𝐒obs' * invjac' * 𝐒past_v' and
+    # accumulated ∂𝐒t⁻ in a nested t/tt loop.  See PR #295 review for context.
     function inversion_pullback(∂llh)
-        # @timeit_debug timer "Inversion filter - pullback" begin    
-                
-        for t in reverse(axes(data_in_deviations,2))
-            ∂state[t⁻]                                  .= M² * ∂state[t⁻]
+        # @timeit_debug timer "Inversion filter - pullback" begin
 
+        ∂state_t⁻        = zeros(n_pnf)
+        v_buf            = zeros(n_cols)
+        ∂state_full_next = zeros(n_vars)
+        ∂v               = zeros(n_cols)
+        ∂y               = zeros(n_obs_loc)
+
+        𝐒obs_v = view(𝐒, obs_idx, 1:n_cols - T.nExo)
+        𝐒T       = 𝐒'
+        𝐒obs_v_T = 𝐒obs_v'
+        invjac_T = invjac'
+        v_buf_T  = v_buf'
+        col_off = n_cols - T.nExo
+
+        @inbounds for t in Tt:-1:1
+            # Lift accumulated ∂state[t+1] cotangent (lives in t⁻ slots).
+            fill!(∂state_full_next, 0.0)
+            for k in 1:n_pnf
+                ∂state_full_next[t⁻[k]] = ∂state_t⁻[k]
+            end
+
+            # v_t = [state[t][t⁻]; x[t]]
+            st_t = state[t]
+            for k in 1:n_pnf
+                v_buf[k] = st_t[t⁻[k]]
+            end
+            copyto!(v_buf, n_pnf + 1, x[t], 1, T.nExo)
+
+            # ∂𝐒 += ∂state_full_next * v_t'   (state recursion contribution)
+            ℒ.mul!(∂𝐒, ∂state_full_next, v_buf_T, 1.0, 1.0)
+
+            # ∂v = 𝐒' * ∂state_full_next  →  splits into ∂state_t[t⁻] and ∂x_t
+            ℒ.mul!(∂v, 𝐒T, ∂state_full_next)
+            for k in 1:n_pnf
+                ∂state_t⁻[k] = ∂v[k]
+            end
+
+            # Shocks² contribution to ∂x_t (only for non-presample periods).
+            # llh = -1/2 * (logabsdets + shocks² + const); ∂llh applied at end,
+            # so the per-period term is -x[t] (without ∂llh scaling).
             if t > presample_periods
-                ∂state[t⁻]                              += M¹ * x[t]
+                for k in 1:T.nExo
+                    ∂v[n_pnf + k] -= x[t][k]
+                end
+            end
 
-                ∂data_in_deviations[:,t]                -= invjac' * x[t]
+            ∂x_view = view(∂v, n_pnf+1:n_pnf+T.nExo)
 
-                ∂𝐒[obs_idx, :]                          += invjac' * x[t] * vcat(state[t][t⁻], x[t])'
+            # ∂y_t from x_t = invjac * y_t  (square)  or  x_t = pinv(jac)*y_t (fat)
+            # Square: ∂y = invjac' * ∂x_t.
+            # Fat (m < n_exo): pinv(jac) = jac'*G (G = (jac*jac')^{-1}, symm), so
+            # pinv(jac)' = G*jac and ∂y = (G*jac) * ∂x_t = G * (jac * ∂x_t).
+            if T.nExo == n_obs_loc
+                ℒ.mul!(∂y, invjac_T, ∂x_view)
+            else
+                jac_∂x = jac * ∂x_view   # length m
+                ℒ.mul!(∂y, G_fat, jac_∂x)
+            end
 
-                if t > 1
-                    ∂data[:,t:end]                      .= M² * ∂data[:,t:end]
-                    
-                    ∂data[:,t-1]                        += M¹ * x[t]
-            
-                    ∂data_in_deviations[:,t-1]          += M³ * ∂data[:,t-1:end] * ones(size(data_in_deviations,2) - t + 1)
+            # ∂data_in_deviations[:,t] += ∂y
+            for i in 1:n_obs_loc
+                ∂data_in_deviations[i, t] += ∂y[i]
+            end
 
-                    for tt in t-1:-1:1
-                        for (i,v) in enumerate(t⁻)
-                            copyto!(tmp3::Vector{Float64}, i::Int, state[tt]::Vector{Float64}, v::Int, 1)
-                        end
-                        
-                        copyto!(tmp3, length(t⁻) + 1, x[tt], 1, T.nExo)
+            # ∂𝐒[obs_idx, 1:end-n_exo] -= ∂y * state[t][t⁻]'   (∂𝐒obs)
+            for j in 1:n_pnf
+                sj = st_t[t⁻[j]]
+                for i in 1:n_obs_loc
+                    ∂𝐒[obs_idx[i], j] -= ∂y[i] * sj
+                end
+            end
 
-                        ℒ.mul!(tmp1,  x[t], tmp3')
+            # ∂state_t⁻ -= 𝐒obs' * ∂y
+            ℒ.mul!(∂state_t⁻, 𝐒obs_v_T, ∂y, -1.0, 1.0)
 
-                        ℒ.mul!(∂𝐒t⁻,  ∂Stmp[t-tt], tmp1, 1, 1)
-                        
+            # ∂jac contribution from x = (pinv-of-)jac * y (per period).
+            if T.nExo == n_obs_loc
+                # ∂jac += -∂y * x[t]'
+                for j in 1:T.nExo
+                    xtj = x[t][j]
+                    c = col_off + j
+                    for i in 1:n_obs_loc
+                        ∂𝐒[obs_idx[i], c] -= ∂y[i] * xtj
+                    end
+                end
+            else
+                # Fat case: ∂jac = -pinv(jac)' * ∂x_t * x[t]' + g_t * (P_perp * ∂x_t)'
+                # where g_t = G * y_t (= G * (data - 𝐒obs * state[t][t⁻])) and
+                # P_perp = I - pinv(jac) * jac. The first term equals -∂y * x[t]'.
+                y_t = data_in_deviations[:, t] - 𝐒obs_v * view(st_t, t⁻)
+                g_t = G_fat * y_t
+                # P_perp * ∂x_t = ∂x_t - jac' * (G * (jac * ∂x_t))
+                Jdx = jac * ∂x_view                        # length n_obs
+                GJdx = G_fat * Jdx                          # length n_obs
+                JtGJdx = jac' * GJdx                        # length n_exo
+                P_perp_∂x = Vector{Float64}(undef, T.nExo)
+                for k in 1:T.nExo
+                    P_perp_∂x[k] = ∂x_view[k] - JtGJdx[k]
+                end
+                for j in 1:T.nExo
+                    xtj = x[t][j]
+                    pterm = P_perp_∂x[j]
+                    c = col_off + j
+                    for i in 1:n_obs_loc
+                        ∂𝐒[obs_idx[i], c] += -∂y[i] * xtj + g_t[i] * pterm
                     end
                 end
             end
         end
 
-        ∂𝐒[t⁻,:]                            += ∂𝐒t⁻
-                        
-        ∂𝐒[obs_idx, :]                      -= M³ * ∂𝐒t⁻
-        
-        ∂𝐒[obs_idx,end-T.nExo+1:end] -= (size(data_in_deviations,2) - presample_periods) * invjac' / 2
+        # Constant-jac logabsdet contribution (scales with Tt - presample).
+        # Square: ∂jac += -(Tt - p)/2 * invjac'
+        # Fat   : ∂jac += -(Tt - p)/2 * (G * jac)    (since d log|det(JJt)|/2 / d jac = G * jac)
+        factor = -(Tt - presample_periods) / 2
+        if T.nExo == n_obs_loc
+            invjac_T = invjac'
+            for j in 1:T.nExo
+                c = col_off + j
+                for i in 1:n_obs_loc
+                    ∂𝐒[obs_idx[i], c] += factor * invjac_T[i, j]
+                end
+            end
+        else
+            Gjac = G_fat * jac
+            for j in 1:T.nExo
+                c = col_off + j
+                for i in 1:n_obs_loc
+                    ∂𝐒[obs_idx[i], c] += factor * Gjac[i, j]
+                end
+            end
+        end
+
+        # Lift accumulated ∂state_t⁻ into the n_vars-sized ∂state (t⁻ slots).
+        for k in 1:n_pnf
+            ∂state[t⁻[k]] = ∂state_t⁻[k]
+        end
 
         # ----- Warmup pullback ------------------------------------------------
         # Backprop through the warmup forward.  At this point ∂state holds the
@@ -9130,6 +9203,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_cond, Tt; order = :pruned_second_order)
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -9154,16 +9228,16 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     state₁ = copy(state[1][Tcc.past_not_future_and_mixed_idx])
     state₂ = copy(state[2][Tcc.past_not_future_and_mixed_idx])
 
-    # Per-period storage
-    state₁_seq      = [zeros(n_past) for _ in 1:Tt+1]
-    state₂_seq      = [zeros(n_past) for _ in 1:Tt+1]
+    # Per-period storage (cached in workspace; see ensure_inversion_rrule_buffers!)
+    state₁_seq      = ws.state_seq_rrule
+    state₂_seq      = ws.state₂_seq_rrule
     state₁_seq[1] .= state₁
     state₂_seq[1] .= state₂
-    state¹⁻_vol_seq = [zeros(n_past + 1) for _ in 1:Tt]
-    aug_state₁_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    aug_state₂_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
+    state¹⁻_vol_seq = ws.state¹⁻_vol_seq_rrule
+    aug_state₁_seq  = ws.aug_state₁_seq_rrule
+    aug_state₂_seq  = ws.aug_state₂_seq_rrule
+    x_seq           = ws.x_seq_rrule
+    𝐒ⁱ_full_seq    = ws.𝐒ⁱ_full_seq_rrule
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -10069,6 +10143,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_cond, Tt; order = :second_order)
 
     cc = ensure_conditional_forecast_constants!(constants)
     shock_idxs     = cc.shock_idxs
@@ -10090,13 +10165,13 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     st = copy(state[Tcc.past_not_future_and_mixed_idx])
 
-    # Per-period storage
-    st_seq          = [zeros(n_past) for _ in 1:Tt+1]
+    # Per-period storage (cached in workspace; see ensure_inversion_rrule_buffers!)
+    st_seq          = ws.state_seq_rrule
     st_seq[1]      .= st
-    state¹⁻_vol_seq = [zeros(n_past + 1) for _ in 1:Tt]
-    aug_state_seq   = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
+    state¹⁻_vol_seq = ws.state¹⁻_vol_seq_rrule
+    aug_state_seq   = ws.aug_state_seq_rrule
+    x_seq           = ws.x_seq_rrule
+    𝐒ⁱ_full_seq    = ws.𝐒ⁱ_full_seq_rrule
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -10915,6 +10990,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond; third_order = true)
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_cond, Tt; order = :pruned_third_order)
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
     tc = constants.third_order
@@ -10953,21 +11029,21 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     state₂ = copy(state[2][Tcc.past_not_future_and_mixed_idx])
     state₃ = copy(state[3][Tcc.past_not_future_and_mixed_idx])
 
-    # Per-period storage
-    state₁_seq      = [zeros(n_past) for _ in 1:Tt+1]
-    state₂_seq      = [zeros(n_past) for _ in 1:Tt+1]
-    state₃_seq      = [zeros(n_past) for _ in 1:Tt+1]
+    # Per-period storage (cached in workspace; see ensure_inversion_rrule_buffers!)
+    state₁_seq      = ws.state_seq_rrule
+    state₂_seq      = ws.state₂_seq_rrule
+    state₃_seq      = ws.state₃_seq_rrule
     state₁_seq[1] .= state₁
     state₂_seq[1] .= state₂
     state₃_seq[1] .= state₃
-    state¹⁻_vol_seq = [zeros(n_past + 1) for _ in 1:Tt]
-    aug_state₁_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    aug_state₁̂_seq = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    aug_state₂_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    aug_state₃_seq  = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
-    𝐒ⁱ²ᵉ_full_seq  = [zeros(n_cond, n_exo^2) for _ in 1:Tt]
+    state¹⁻_vol_seq = ws.state¹⁻_vol_seq_rrule
+    aug_state₁_seq  = ws.aug_state₁_seq_rrule
+    aug_state₁̂_seq = ws.aug_state₁̂_seq_rrule
+    aug_state₂_seq  = ws.aug_state₂_seq_rrule
+    aug_state₃_seq  = ws.aug_state₃_seq_rrule
+    x_seq           = ws.x_seq_rrule
+    𝐒ⁱ_full_seq    = ws.𝐒ⁱ_full_seq_rrule
+    𝐒ⁱ²ᵉ_full_seq  = ws.𝐒ⁱ²ᵉ_full_seq_rrule
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -12155,14 +12231,16 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     st = copy(state[Tcc.past_not_future_and_mixed_idx])
 
-    # Per-period storage
-    st_seq          = [zeros(n_past) for _ in 1:Tt+1]
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_cond, Tt; order = :third_order)
+
+    # Per-period storage (cached in workspace; see ensure_inversion_rrule_buffers!)
+    st_seq          = ws.state_seq_rrule
     st_seq[1]      .= st
-    state¹⁻_vol_seq = [zeros(n_past + 1) for _ in 1:Tt]
-    aug_state_seq   = [zeros(n_past + 1 + n_exo) for _ in 1:Tt]
-    x_seq           = [zeros(n_exo) for _ in 1:Tt]
-    𝐒ⁱ_full_seq    = [zeros(n_cond, n_exo) for _ in 1:Tt]
-    𝐒ⁱ²ᵉ_full_seq  = [zeros(n_cond, n_exo^2) for _ in 1:Tt]
+    state¹⁻_vol_seq = ws.state¹⁻_vol_seq_rrule
+    aug_state_seq   = ws.aug_state_seq_rrule
+    x_seq           = ws.x_seq_rrule
+    𝐒ⁱ_full_seq    = ws.𝐒ⁱ_full_seq_rrule
+    𝐒ⁱ²ᵉ_full_seq  = ws.𝐒ⁱ²ᵉ_full_seq_rrule
 
     shocks² = 0.0
     logabsdets = 0.0
@@ -13113,12 +13191,17 @@ function rrule(::typeof(calculate_loglikelihood),
     PCtmp = similar(P, size(P, 1), size(C, 1))
     F = similar(P, size(C, 1), size(C, 1))
 
-    u = [similar(ū) for _ in 1:Tt]
-    P_seq = [copy(P̄) for _ in 1:Tt]
-    CP = [zeros(eltype(P), size(C, 1), size(P, 2)) for _ in 1:Tt]
-    K = [similar(P, size(P, 1), size(C, 1)) for _ in 1:Tt]
-    invF = [similar(F) for _ in 1:Tt]
-    v = [zeros(size(data_in_deviations, 1)) for _ in 1:Tt]
+    # Per-period sequence buffers (cached in workspace; see ensure_kalman_rrule_buffers!)
+    ensure_kalman_rrule_buffers!(kalman_ws, size(C, 1), size(C, 2), Tt)
+    u     = kalman_ws.u_seq_rrule
+    P_seq = kalman_ws.P_seq_rrule
+    CP    = kalman_ws.CP_seq_rrule
+    K     = kalman_ws.K_seq_rrule
+    invF  = kalman_ws.invF_seq_rrule
+    v     = kalman_ws.v_seq_rrule
+    @inbounds for t in 1:Tt
+        copyto!(P_seq[t], P̄)
+    end
 
     # Missing-value support: per-period observable indices.  When all entries
     # of data_in_deviations are finite, obs_idx_per_t[t] == 1:n_obs_full and
