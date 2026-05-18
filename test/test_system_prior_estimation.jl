@@ -372,30 +372,52 @@ println("Mean estimated values (Mooncake, missing data): $(sample_means_mc_missi
 end
 
 @testset "Mooncake vs ForwardDiff gradient (Gali pruned 2nd order, missing data)" begin
-    function combined_objective_mc_missing(x)
+    # `data_missing` is a KeyedArray containing NaN entries (injected by
+    # `inject_missing_observations`). If it is referenced inside the objective
+    # as a (non-`const`) `GlobalRef`, Mooncake emits a
+    # `__verify_const(global_ref, stored_value)` check which asserts
+    # `global_ref == primal(stored_value)`; that comparison is false for
+    # NaN-bearing arrays (`NaN != NaN`) and aborts the gradient. Pass
+    # `data_missing` (and the other captured values) as
+    # `DifferentiationInterface.Constant` contexts so they are threaded through
+    # as ordinary primals instead of GlobalRefs.
+    function combined_objective_mc_missing(x, data_m, model, nsss_v, moment_v,
+                                           tgt_nsss, tgt_mean, tgt_std,
+                                           tgt_irf, irf_idx)
         all_p = build_full_params(x)
-        m = Gali_2015_chapter_3_nonlinear
         alg = :pruned_second_order
 
-        llh = get_loglikelihood(m, data_missing, all_p, algorithm = alg, on_failure_loglikelihood = -Inf)
+        llh = get_loglikelihood(model, data_m, all_p, algorithm = alg, on_failure_loglikelihood = -Inf)
 
-        stats_n = get_statistics(m, all_p, non_stochastic_steady_state = nsss_vars, algorithm = alg)
-        llh += sum(Turing.logpdf.(Turing.Normal.(target_nsss, 0.1), stats_n[:non_stochastic_steady_state]))
+        stats_n = get_statistics(model, all_p, non_stochastic_steady_state = nsss_v, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(tgt_nsss, 0.1), stats_n[:non_stochastic_steady_state]))
 
-        stats_m = get_statistics(m, all_p, mean = moment_vars, standard_deviation = moment_vars, algorithm = alg)
-        llh += sum(Turing.logpdf.(Turing.Normal.(target_mean, 0.1), stats_m[:mean]))
-        llh += sum(Turing.logpdf.(Turing.Normal.(target_std, 0.05), stats_m[:standard_deviation]))
+        stats_m = get_statistics(model, all_p, mean = moment_v, standard_deviation = moment_v, algorithm = alg)
+        llh += sum(Turing.logpdf.(Turing.Normal.(tgt_mean, 0.1), stats_m[:mean]))
+        llh += sum(Turing.logpdf.(Turing.Normal.(tgt_std, 0.05), stats_m[:standard_deviation]))
 
-        irf_v = get_irf(m, all_p, algorithm = alg, periods = 5)
-        llh += sum(Turing.logpdf.(Turing.Normal.(target_irf, 0.1), irf_v[irf_var_idx, 1, 1]))
+        irf_v = get_irf(model, all_p, algorithm = alg, periods = 5)
+        llh += sum(Turing.logpdf.(Turing.Normal.(tgt_irf, 0.1), irf_v[irf_idx, 1, 1]))
 
         return llh
     end
 
     test_point = true_params[estimated_param_indices]
 
-    mc_grad = DifferentiationInterface.gradient(combined_objective_mc_missing, AutoMooncake(config = nothing), test_point)
-    fd_grad = ForwardDiff.gradient(combined_objective_mc_missing, test_point)
+    ctx = (
+        DifferentiationInterface.Constant(data_missing),
+        DifferentiationInterface.Constant(Gali_2015_chapter_3_nonlinear),
+        DifferentiationInterface.Constant(nsss_vars),
+        DifferentiationInterface.Constant(moment_vars),
+        DifferentiationInterface.Constant(target_nsss),
+        DifferentiationInterface.Constant(target_mean),
+        DifferentiationInterface.Constant(target_std),
+        DifferentiationInterface.Constant(target_irf),
+        DifferentiationInterface.Constant(irf_var_idx),
+    )
+
+    mc_grad = DifferentiationInterface.gradient(combined_objective_mc_missing, AutoMooncake(config = nothing), test_point, ctx...)
+    fd_grad = DifferentiationInterface.gradient(combined_objective_mc_missing, AutoForwardDiff(), test_point, ctx...)
 
     @test all(isfinite, mc_grad)
     @test all(isfinite, fd_grad)
