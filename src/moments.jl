@@ -1028,6 +1028,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
 
         # Aᵢ = ê_to_ŝ₃ · Eᴸᶻ⁽ⁱ⁾ · ŝ_to_ŝ₃' (= ê_to_ŝ₃[:, midx] · Eᴸᶻ[midx, :] · ŝ_to_ŝ₃')
         Aᵢ_sp = ê_ŝ_cols * Eᵢ_sp * ŝ_to_ŝ₃'
+        droptol!(Aᵢ_sp, eps())
         # Cᵢ = ê_to_ŝ₃ · Γ⁽ⁱ⁾ · ê_to_ŝ₃' + Aᵢ + Aᵢ' (kept sparse; solver collects internally)
         Cᵢ_sp = sparse_ABAt(ê_ŝ_cols, Γᵢ_sp) + Aᵢ_sp + Aᵢ_sp'
         droptol!(Cᵢ_sp, eps())
@@ -1160,25 +1161,28 @@ function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
     N_ê₂ = nᵉ + nᵉ^2 + nˢ * nᵉ
     ṁ_buf = Vector{R}(undef, N_ê₂)
 
-    # Keep Γ_full, ê_to_ŝ₂, ê_to_y₂ sparse end-to-end. Per node t: Γ·Dm and Dm·Γ
-    # are sparse (column/row scalings of Γ_full). Per direction i: Dṁ is a
-    # diagonal with very few nonzeros so `inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ` stays
-    # extremely sparse. The Lyapunov RHS Ċ is passed sparse — `solve_lyapunov_equation`
-    # collects internally — and Σ̇ʸ is also assembled sparsely; only its diagonal
-    # is read. Mirrors the pattern used in `calculate_third_order_moments_with_autocorrelation`.
+    # Mirror the Lyapunov-RHS assembly pattern used in
+    # `calculate_third_order_moments_with_autocorrelation`. The differentiated
+    # mask piece ê·(Dṁ·Γ·Dm + Dm·Γ·Dṁ)·ê' has a symmetric inner block
+    # `sym = Dṁ·Γ·Dm + (Dṁ·Γ·Dm)'`, so it is assembled with the specialised
+    # `sparse_ABAt(ê, sym)` kernel — exactly the form used for `ê·Γ·ê'` in the
+    # reference. Γ_full, ê_to_ŝ₂ and ê_to_y₂ stay sparse end-to-end;
+    # `solve_lyapunov_equation` collects internally. Σ̇ʸ is also sparse, only
+    # its diagonal is read.
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_second_order(x, nᵉ, nˢ)
         Dm = ℒ.Diagonal(m)
-        Γ_Dm = Γ_full * Dm                                     # sparse: column scaling
-        Dm_Γ = Dm * Γ_full                                     # sparse: row scaling
+        Γ_Dm = Γ_full * Dm                                     # sparse: column scaling, reused across i
         for i in 1:nᵉ
             mask_directional_derivative_second_order!(ṁ_buf, x, i, nᵉ, nˢ)
             Dṁ = ℒ.Diagonal(ṁ_buf)
-            # inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ — sparse (support ⊆ rows/cols where ṁ≠0)
-            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ
-            # Ċ = ê_to_ŝ₂ · inner · ê_to_ŝ₂' — kept sparse
-            Ċ_sp = ê_to_ŝ₂ * inner * ê_to_ŝ₂'
+            # Symmetric inner block sym = Dṁ·Γ·Dm + (Dṁ·Γ·Dm)' (sparse).
+            DṁΓDm = Dṁ * Γ_Dm
+            sym = DṁΓDm + DṁΓDm'                              # SparseMatrixCSC + Adjoint -> SparseMatrixCSC
+            droptol!(sym, eps())
+            # Ċ = ê_to_ŝ₂ · sym · ê_to_ŝ₂' via specialised symmetric kernel
+            Ċ_sp = sparse_ABAt(ê_to_ŝ₂, sym)
             droptol!(Ċ_sp, eps())
             Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₂, Ċ_sp, lyap_ws,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
@@ -1188,8 +1192,8 @@ function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
-            # Σ̇ʸ = ŝ_to_y₂ · Σ̇ᶻ · ŝ_to_y₂' + ê_to_y₂ · inner · ê_to_y₂'
-            Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + ê_to_y₂ * inner * ê_to_y₂'
+            # Σ̇ʸ = ŝ_to_y₂ · Σ̇ᶻ · ŝ_to_y₂' + sparse_ABAt(ê_to_y₂, sym)
+            Σ̇ʸ = ŝ_to_y₂ * Σ̇ᶻ * ŝ_to_y₂' + sparse_ABAt(ê_to_y₂, sym)
             shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
         end
     end
@@ -1435,28 +1439,34 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
     N_ê₃ = size(Γ₃, 1)
     ṁ_buf = Vector{R}(undef, N_ê₃)
 
-    # Keep Γ₃, Eᴸᶻ, ê_to_ŝ₃, ê_to_y₃ sparse end-to-end. The Lyapunov RHS Ċ is
-    # potentially very large (n_ŝ₃ × n_ŝ₃) but extremely sparse — pass it sparse;
-    # `solve_lyapunov_equation` collects internally. Σ̇ʸ is assembled sparsely too
-    # and only its diagonal is read. Mirrors the pattern from
-    # `calculate_third_order_moments_with_autocorrelation`.
+    # Mirror the Lyapunov-RHS assembly pattern used in
+    # `calculate_third_order_moments_with_autocorrelation`. Two pieces:
+    #   * mask piece: ê·(Dṁ·Γ·Dm + Dm·Γ·Dṁ)·ê' has a symmetric inner block
+    #     `sym = Dṁ·Γ·Dm + (Dṁ·Γ·Dm)'`, so it is assembled with the specialised
+    #     `sparse_ABAt(ê, sym)` kernel — exactly the form used for `ê·Γ·ê'`
+    #     in the reference.
+    #   * cross piece: Ḃ = ê·(Dṁ·Eᴸᶻ)·ŝ' has different outer factors, so it is
+    #     symmetrised as `Ḃ + Ḃ'` (mirrors the `A + A'` term in the reference).
+    # Γ₃, Eᴸᶻ, ê_to_ŝ₃, ê_to_y₃ stay sparse end-to-end; `solve_lyapunov_equation`
+    # collects internally. Σ̇ʸ is also sparse, only its diagonal is read.
     for (t, w) in zip(nodes, weights)
         x = fill(R(t), nᵉ)
         m = continuous_coalition_mask_third_order(x, nᵉ, nˢ)
         Dm = ℒ.Diagonal(m)
-        Γ_Dm = Γ₃ * Dm                                         # sparse: column scaling
-        Dm_Γ = Dm * Γ₃                                         # sparse: row scaling
+        Γ_Dm = Γ₃ * Dm                                         # sparse: column scaling, reused across i
         for i in 1:nᵉ
             mask_directional_derivative_third_order!(ṁ_buf, x, i, nᵉ, nˢ)
             Dṁ = ℒ.Diagonal(ṁ_buf)
-            # inner = Dṁ·Γ·Dm + Dm·Γ·Dṁ (sparse)
-            inner = Dṁ * Γ_Dm + Dm_Γ * Dṁ
-            # Dṁ_EL = Dṁ · Eᴸᶻ (sparse, only rows with ṁ≠0 survive)
-            Dṁ_EL = Dṁ * Eᴸᶻ
-            # Ȧᴿ = ê_to_ŝ₃ · Dṁ_EL · ŝ_to_ŝ₃' (sparse)
-            Ȧᴿ_sp = ê_to_ŝ₃ * Dṁ_EL * ŝ_to_ŝ₃'
-            # Ċ = ê_to_ŝ₃ · inner · ê_to_ŝ₃' + Ȧᴿ + Ȧᴿ' (kept sparse)
-            Ċ_sp = ê_to_ŝ₃ * inner * ê_to_ŝ₃' + Ȧᴿ_sp + Ȧᴿ_sp'
+            # Symmetric inner mask block sym = Dṁ·Γ·Dm + (Dṁ·Γ·Dm)' (sparse).
+            DṁΓDm = Dṁ * Γ_Dm
+            sym = DṁΓDm + DṁΓDm'
+            droptol!(sym, eps())
+            # Asymmetric cross piece Ḃᶻ = ê_to_ŝ₃ · Dṁ·Eᴸᶻ · ŝ_to_ŝ₃' (sparse).
+            DṁEL  = Dṁ * Eᴸᶻ
+            Ḃᶻ_sp = ê_to_ŝ₃ * DṁEL * ŝ_to_ŝ₃'
+            droptol!(Ḃᶻ_sp, eps())
+            # Ċ = sparse_ABAt(ê_to_ŝ₃, sym) + Ḃᶻ + Ḃᶻ' (symmetric Lyapunov RHS).
+            Ċ_sp = sparse_ABAt(ê_to_ŝ₃, sym) + Ḃᶻ_sp + Ḃᶻ_sp'
             droptol!(Ċ_sp, eps())
             Σ̇ᶻ, info = solve_lyapunov_equation(ŝ_to_ŝ₃, Ċ_sp, lyap_ws_3rd,
                                                 lyapunov_algorithm = opts.lyapunov_algorithm,
@@ -1466,11 +1476,11 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
             if !info
                 return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
             end
-            # Σ̇ʸ = ŝ_to_y₃ · Σ̇ᶻ · ŝ_to_y₃' + ê_to_y₃ · inner · ê_to_y₃'
-            #       + ê_to_y₃ · Dṁ_EL · ŝ_to_y₃' + ŝ_to_y₃ · Dṁ_EL' · ê_to_y₃'
-            cross_sp = ê_to_y₃ * Dṁ_EL * ŝ_to_y₃'
-            Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + ê_to_y₃ * inner * ê_to_y₃' +
-                  cross_sp + cross_sp'
+            # Σ̇ʸ = ŝ_to_y₃ · Σ̇ᶻ · ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, sym) + Ḃʸ + Ḃʸ'
+            #       with Ḃʸ = ê_to_y₃ · Dṁ·Eᴸᶻ · ŝ_to_y₃'
+            # Same structure as Σʸ₃ in `calculate_third_order_moments_with_autocorrelation`.
+            Ḃʸ_sp = ê_to_y₃ * DṁEL * ŝ_to_y₃'
+            Σ̇ʸ = ŝ_to_y₃ * Σ̇ᶻ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, sym) + Ḃʸ_sp + Ḃʸ_sp'
             shares[:, i] .+= R(w) .* ℒ.diag(Σ̇ʸ)
         end
     end
