@@ -8721,6 +8721,118 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 end
 
 
+# Per-period O(Tt) backward sweep of the dense first-order inversion-filter
+# pullback. Extracted into a standalone function so the compiler concretely
+# specialises on every argument type. When this body lived directly inside the
+# closure, scalar indexing of the captured ∂𝐒/state inferred as `Any`, costing
+# ~600 allocs per period (~100k allocs total on SW07-class problems).
+function _dense_first_order_inv_pullback_loop!(
+        ∂𝐒::Matrix{Float64},
+        ∂data_in_deviations::Matrix{Float64},
+        ∂state_t⁻::Vector{Float64},
+        v_buf::Vector{Float64},
+        ∂state_full_next::Vector{Float64},
+        ∂v::Vector{Float64},
+        ∂y::Vector{Float64},
+        state::Vector{Vector{Float64}},
+        x::Vector{Vector{Float64}},
+        data_in_deviations::Matrix{Float64},
+        𝐒::Matrix{Float64},
+        𝐒obs_v::SubArray{Float64,2,Matrix{Float64}},
+        invjac::Matrix{Float64},
+        jac::Matrix{Float64},
+        G_fat::Matrix{Float64},
+        obs_idx::Vector{Int},
+        t⁻::Vector{Int},
+        Tt::Int,
+        n_pnf::Int,
+        n_cols::Int,
+        n_obs_loc::Int,
+        nExo::Int,
+        presample_periods::Int,
+        square_case::Bool,
+    )
+    𝐒T       = 𝐒'
+    𝐒obs_v_T = 𝐒obs_v'
+    invjac_T = invjac'
+    v_buf_T  = v_buf'
+    col_off  = n_cols - nExo
+
+    @inbounds for t in Tt:-1:1
+        fill!(∂state_full_next, 0.0)
+        for k in 1:n_pnf
+            ∂state_full_next[t⁻[k]] = ∂state_t⁻[k]
+        end
+
+        st_t = state[t]
+        x_t  = x[t]
+        for k in 1:n_pnf
+            v_buf[k] = st_t[t⁻[k]]
+        end
+        copyto!(v_buf, n_pnf + 1, x_t, 1, nExo)
+
+        ℒ.mul!(∂𝐒, ∂state_full_next, v_buf_T, 1.0, 1.0)
+        ℒ.mul!(∂v, 𝐒T, ∂state_full_next)
+        for k in 1:n_pnf
+            ∂state_t⁻[k] = ∂v[k]
+        end
+
+        if t > presample_periods
+            for k in 1:nExo
+                ∂v[n_pnf + k] -= x_t[k]
+            end
+        end
+
+        ∂x_view = view(∂v, n_pnf + 1 : n_pnf + nExo)
+
+        if square_case
+            ℒ.mul!(∂y, invjac_T, ∂x_view)
+        else
+            jac_∂x = jac * ∂x_view
+            ℒ.mul!(∂y, G_fat, jac_∂x)
+        end
+
+        for i in 1:n_obs_loc
+            ∂data_in_deviations[i, t] += ∂y[i]
+        end
+
+        for j in 1:n_pnf
+            sj = st_t[t⁻[j]]
+            for i in 1:n_obs_loc
+                ∂𝐒[obs_idx[i], j] -= ∂y[i] * sj
+            end
+        end
+
+        ℒ.mul!(∂state_t⁻, 𝐒obs_v_T, ∂y, -1.0, 1.0)
+
+        if square_case
+            for j in 1:nExo
+                xtj = x_t[j]
+                c = col_off + j
+                for i in 1:n_obs_loc
+                    ∂𝐒[obs_idx[i], c] -= ∂y[i] * xtj
+                end
+            end
+        else
+            y_t = data_in_deviations[:, t] - 𝐒obs_v * view(st_t, t⁻)
+            g_t = G_fat * y_t
+            Jdx    = jac * ∂x_view
+            GJdx   = G_fat * Jdx
+            JtGJdx = jac' * GJdx
+            for j in 1:nExo
+                xtj   = x_t[j]
+                pterm = ∂x_view[j] - JtGJdx[j]
+                c     = col_off + j
+                for i in 1:n_obs_loc
+                    ∂𝐒[obs_idx[i], c] += -∂y[i] * xtj + g_t[i] * pterm
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+
 function rrule(::typeof(calculate_loglikelihood), 
                 ::Val{:inversion},
                 ::Val{:first_order}, 
@@ -8948,107 +9060,17 @@ function rrule(::typeof(calculate_loglikelihood),
         ∂y               = zeros(n_obs_loc)
 
         𝐒obs_v = view(𝐒, obs_idx, 1:n_cols - T.nExo)
-        𝐒T       = 𝐒'
-        𝐒obs_v_T = 𝐒obs_v'
-        invjac_T = invjac'
-        v_buf_T  = v_buf'
+        square_case = (T.nExo == n_obs_loc)
+
+        # Hot loop extracted into a function — see _dense_first_order_inv_pullback_loop!
+        _dense_first_order_inv_pullback_loop!(
+            ∂𝐒, ∂data_in_deviations, ∂state_t⁻, v_buf, ∂state_full_next, ∂v, ∂y,
+            state, x, data_in_deviations, 𝐒, 𝐒obs_v, invjac, jac, G_fat,
+            obs_idx, t⁻, Tt, n_pnf, n_cols, n_obs_loc, T.nExo,
+            presample_periods, square_case,
+        )
+
         col_off = n_cols - T.nExo
-
-        @inbounds for t in Tt:-1:1
-            # Lift accumulated ∂state[t+1] cotangent (lives in t⁻ slots).
-            fill!(∂state_full_next, 0.0)
-            for k in 1:n_pnf
-                ∂state_full_next[t⁻[k]] = ∂state_t⁻[k]
-            end
-
-            # v_t = [state[t][t⁻]; x[t]]
-            st_t = state[t]
-            for k in 1:n_pnf
-                v_buf[k] = st_t[t⁻[k]]
-            end
-            copyto!(v_buf, n_pnf + 1, x[t], 1, T.nExo)
-
-            # ∂𝐒 += ∂state_full_next * v_t'   (state recursion contribution)
-            ℒ.mul!(∂𝐒, ∂state_full_next, v_buf_T, 1.0, 1.0)
-
-            # ∂v = 𝐒' * ∂state_full_next  →  splits into ∂state_t[t⁻] and ∂x_t
-            ℒ.mul!(∂v, 𝐒T, ∂state_full_next)
-            for k in 1:n_pnf
-                ∂state_t⁻[k] = ∂v[k]
-            end
-
-            # Shocks² contribution to ∂x_t (only for non-presample periods).
-            # llh = -1/2 * (logabsdets + shocks² + const); ∂llh applied at end,
-            # so the per-period term is -x[t] (without ∂llh scaling).
-            if t > presample_periods
-                for k in 1:T.nExo
-                    ∂v[n_pnf + k] -= x[t][k]
-                end
-            end
-
-            ∂x_view = view(∂v, n_pnf+1:n_pnf+T.nExo)
-
-            # ∂y_t from x_t = invjac * y_t  (square)  or  x_t = pinv(jac)*y_t (fat)
-            # Square: ∂y = invjac' * ∂x_t.
-            # Fat (m < n_exo): pinv(jac) = jac'*G (G = (jac*jac')^{-1}, symm), so
-            # pinv(jac)' = G*jac and ∂y = (G*jac) * ∂x_t = G * (jac * ∂x_t).
-            if T.nExo == n_obs_loc
-                ℒ.mul!(∂y, invjac_T, ∂x_view)
-            else
-                jac_∂x = jac * ∂x_view   # length m
-                ℒ.mul!(∂y, G_fat, jac_∂x)
-            end
-
-            # ∂data_in_deviations[:,t] += ∂y
-            for i in 1:n_obs_loc
-                ∂data_in_deviations[i, t] += ∂y[i]
-            end
-
-            # ∂𝐒[obs_idx, 1:end-n_exo] -= ∂y * state[t][t⁻]'   (∂𝐒obs)
-            for j in 1:n_pnf
-                sj = st_t[t⁻[j]]
-                for i in 1:n_obs_loc
-                    ∂𝐒[obs_idx[i], j] -= ∂y[i] * sj
-                end
-            end
-
-            # ∂state_t⁻ -= 𝐒obs' * ∂y
-            ℒ.mul!(∂state_t⁻, 𝐒obs_v_T, ∂y, -1.0, 1.0)
-
-            # ∂jac contribution from x = (pinv-of-)jac * y (per period).
-            if T.nExo == n_obs_loc
-                # ∂jac += -∂y * x[t]'
-                for j in 1:T.nExo
-                    xtj = x[t][j]
-                    c = col_off + j
-                    for i in 1:n_obs_loc
-                        ∂𝐒[obs_idx[i], c] -= ∂y[i] * xtj
-                    end
-                end
-            else
-                # Fat case: ∂jac = -pinv(jac)' * ∂x_t * x[t]' + g_t * (P_perp * ∂x_t)'
-                # where g_t = G * y_t (= G * (data - 𝐒obs * state[t][t⁻])) and
-                # P_perp = I - pinv(jac) * jac. The first term equals -∂y * x[t]'.
-                y_t = data_in_deviations[:, t] - 𝐒obs_v * view(st_t, t⁻)
-                g_t = G_fat * y_t
-                # P_perp * ∂x_t = ∂x_t - jac' * (G * (jac * ∂x_t))
-                Jdx = jac * ∂x_view                        # length n_obs
-                GJdx = G_fat * Jdx                          # length n_obs
-                JtGJdx = jac' * GJdx                        # length n_exo
-                P_perp_∂x = Vector{Float64}(undef, T.nExo)
-                for k in 1:T.nExo
-                    P_perp_∂x[k] = ∂x_view[k] - JtGJdx[k]
-                end
-                for j in 1:T.nExo
-                    xtj = x[t][j]
-                    pterm = P_perp_∂x[j]
-                    c = col_off + j
-                    for i in 1:n_obs_loc
-                        ∂𝐒[obs_idx[i], c] += -∂y[i] * xtj + g_t[i] * pterm
-                    end
-                end
-            end
-        end
 
         # Constant-jac logabsdet contribution (scales with Tt - presample).
         # Square: ∂jac += -(Tt - p)/2 * invjac'
@@ -9888,6 +9910,14 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂𝐒 = [zero(𝐒[1]), zeros(size(𝐒[2]))]
 
+    # Pre-allocated per-period buffers (formerly created fresh each iteration).
+    ∂jacc_buf  = zero(jacc[1])
+    ∂xλ_buf    = zeros(T.nExo + size(jacc[1], 1))
+    S_buf      = zeros(T.nExo + size(jacc[1], 1))
+    kron_xλ    = zeros(T.nExo * length(λ[1]))         # ℒ.kron(x[i], λ[i])
+    kron_S1_xλ = zeros(T.nExo * length(kron_xλ))      # ℒ.kron(S[1:T.nExo], kron(x, λ))
+    kron_xx_S2 = zeros(length(kronxx[1]) * size(jacc[1], 1))  # ℒ.kron(kronxx[i], S[T.nExo+1:end])
+
     function inversion_filter_loglikelihood_pullback(∂llh) 
         # @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
         # @timeit_debug timer "Preallocation" begin
@@ -9944,26 +9974,30 @@ function rrule(::typeof(calculate_loglikelihood),
             fill_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
 
             if i < size(data_in_deviations,2)
-                ∂state[1] *= 0
-                ∂state[2] *= 0
+                fill!(∂state[1], 0)
+                fill!(∂state[2], 0)
             end
             
             # aug_state₁ = [state₁; 1; x]
             # ∂state[1] += ∂aug_state₁[1:length(∂state[1])]
-            ℒ.axpy!(1, ∂aug_state₁[1:length(∂state[1])], ∂state[1])
+            @views ℒ.axpy!(1, ∂aug_state₁[1:length(∂state[1])], ∂state[1])
 
-            ∂x = ∂aug_state₁[T.nPast_not_future_and_mixed+2:end]
+            @views copyto!(∂x, ∂aug_state₁[T.nPast_not_future_and_mixed+2:end])
 
             # aug_state₂ = [state₂; 0; zero(x)]
             # ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
-            ℒ.axpy!(1, ∂aug_state₂[1:length(∂state[1])], ∂state[2])
+            @views ℒ.axpy!(1, ∂aug_state₂[1:length(∂state[1])], ∂state[2])
 
             # shocks² += sum(abs2,x[i]) — only for i > presample_periods
             if i > presample_periods
                 if i < size(data_in_deviations,2)
-                    ∂x -= copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] -= x[i][k]
+                    end
                 else
-                    ∂x += copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] += x[i][k]
+                    end
                 end
             end
 
@@ -9974,7 +10008,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    ∂jacc = inv(jacc_lu)'
+                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    ∂jacc = ∂jacc_buf
                 else
                     ∂jacc = ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
@@ -9982,7 +10017,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     end
                 end
             else
-                ∂jacc = zero(jacc[i])
+                fill!(∂jacc_buf, 0)
+                ∂jacc = ∂jacc_buf
             end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
@@ -10001,33 +10037,39 @@ function rrule(::typeof(calculate_loglikelihood),
             ℒ.mul!(∂𝐒ⁱ²ᵉ, ∂jacc, kron_buffer2', -1, 1)
 
             # find_shocks
-            ∂xλ = vcat(∂x, zero(λ[i]))
-            # S = vcat(∂x, zero(λ[i]))
+            # ∂xλ = vcat(∂x, zero(λ[i]))
+            copyto!(∂xλ_buf, 1, ∂x, 1, length(∂x))
+            fill!(view(∂xλ_buf, length(∂x)+1:length(∂xλ_buf)), 0)
 
-            S = fXλp[i]' \ ∂xλ
-            # ℒ.ldiv!(fXλp[i]', S)
+            S_solved = fXλp[i]' \ ∂xλ_buf
+            copyto!(S_buf, S_solved)
+            S = S_buf
 
             if i < size(data_in_deviations,2)
-                S *= -1
+                ℒ.rmul!(S, -1)
             end
 
-            ∂shock_independent = S[T.nExo+1:end] # fine
+            S1 = view(S, 1:T.nExo)
+            S2 = view(S, T.nExo+1:length(S))
+            ∂shock_independent = S2
 
-            # ∂𝐒ⁱ = (S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]') # fine
-            # ∂𝐒ⁱ -= ∂jacc / 2 # fine
-            # copyto!(∂𝐒ⁱ, ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end]))
-            ℒ.kron!(kronSλ, S[1:T.nExo], λ[i])
-            ℒ.kron!(kronxS, x[i], S[T.nExo+1:end])
+            # ∂𝐒ⁱ = (S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]')
+            ℒ.kron!(kronSλ, S1, λ[i])
+            ℒ.kron!(kronxS, x[i], S2)
             ℒ.axpy!(-1, kronxS, kronSλ)
             copyto!(∂𝐒ⁱ, kronSλ)
-            # ∂𝐒ⁱ -= ∂jacc / 2 # fine
+            # ∂𝐒ⁱ -= ∂jacc / 2
             ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
-        
-            ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
-            # ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] *  kronxλ[i]' - S[T.nExo+1:end] * kronxx[i]'
+
+            # ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            ℒ.kron!(kron_xλ,    x[i], λ[i])
+            ℒ.kron!(kron_S1_xλ, S1,   kron_xλ)
+            ℒ.kron!(kron_xx_S2, kronxx[i], S2)
+            ℒ.axpby!(-1, kron_xx_S2, 2, kron_S1_xλ)
+            ∂𝐒ⁱ²ᵉ .+= reshape(kron_S1_xλ, size(∂𝐒ⁱ²ᵉ))
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
-            ∂state¹⁻_vol *= 0
+            fill!(∂state¹⁻_vol, 0)
             # ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
             ℒ.mul!(∂kronIstate¹⁻_vol, 𝐒²⁻ᵉ', ∂𝐒ⁱ)
 
@@ -10044,7 +10086,9 @@ function rrule(::typeof(calculate_loglikelihood),
 
 
             # shock_independent = copy(data_in_deviations[:,i])
-            ∂data_in_deviations[:,i] = ∂shock_independent
+            @inbounds for k in eachindex(∂shock_independent)
+                ∂data_in_deviations[k, i] = ∂shock_independent[k]
+            end
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
             # ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
@@ -10055,7 +10099,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
             # ∂𝐒¹⁻ -= ∂shock_independent * aug_state₂[i][1:T.nPast_not_future_and_mixed]'
-            ℒ.mul!(∂𝐒¹⁻, ∂shock_independent, aug_state₂[i][1:T.nPast_not_future_and_mixed]', -1, 1)
+            @views ℒ.mul!(∂𝐒¹⁻, ∂shock_independent, aug_state₂[i][1:T.nPast_not_future_and_mixed]', -1, 1)
 
             # ∂state[2] -= 𝐒¹⁻' * ∂shock_independent
             ℒ.mul!(∂state[2], 𝐒¹⁻', ∂shock_independent, -1, 1)
@@ -10073,7 +10117,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
             # ∂state[1] += ∂state¹⁻_vol[1:end-1]
-            ℒ.axpy!(1, ∂state¹⁻_vol[1:end-1], ∂state[1])
+            @views ℒ.axpy!(1, ∂state¹⁻_vol[1:end-1], ∂state[1])
         end
 
         # end # timeit_debug
@@ -10735,6 +10779,14 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂state = zeros(T.nPast_not_future_and_mixed)
 
+    # Pre-allocated per-period buffers (formerly created fresh each iteration).
+    ∂x         = zero(x[1])
+    ∂jacc_buf  = zero(jacc[1])
+    ∂xλ_buf    = zeros(T.nExo + size(jacc[1], 1))
+    S_buf      = zeros(T.nExo + size(jacc[1], 1))
+    kron_S1_kxλ = zeros(T.nExo * length(kronxλ[1]))
+    kron_xx_S2  = zeros(length(kronxx[1]) * size(jacc[1], 1))
+
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter 2nd - pullback" begin
 
@@ -10809,21 +10861,25 @@ function rrule(::typeof(calculate_loglikelihood),
             fill_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
 
             if i < size(data_in_deviations,2)
-                ∂state *= 0
+                fill!(∂state, 0)
             end
 
             # aug_state[i] = [stt; 1; x[i]]
-            ∂state += ∂aug_state[1:length(∂state)]
+            @views ℒ.axpy!(1, ∂aug_state[1:length(∂state)], ∂state)
 
             # aug_state[i] = [stt; 1; x[i]]
-            ∂x = ∂aug_state[T.nPast_not_future_and_mixed+2:end]
+            @views copyto!(∂x, ∂aug_state[T.nPast_not_future_and_mixed+2:end])
 
             # shocks² += sum(abs2,x[i]) — only contributes for i > presample_periods
             if i > presample_periods
                 if i < size(data_in_deviations,2)
-                    ∂x -= copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] -= x[i][k]
+                    end
                 else
-                    ∂x += copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] += x[i][k]
+                    end
                 end
             end
 
@@ -10834,7 +10890,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    ∂jacc = inv(jacc_lu)'
+                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    ∂jacc = ∂jacc_buf
                 else
                     ∂jacc = ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
@@ -10842,7 +10899,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     end
                 end
             else
-                ∂jacc = zero(jacc[i])
+                fill!(∂jacc_buf, 0)
+                ∂jacc = ∂jacc_buf
             end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
@@ -10860,40 +10918,38 @@ function rrule(::typeof(calculate_loglikelihood),
             ℒ.mul!(∂𝐒ⁱ²ᵉ, ∂jacc, kron_buffer2', -1, 1)
 
             # find_shocks
-            ∂xλ = vcat(∂x, zero(λ[i]))
+            # ∂xλ = vcat(∂x, zero(λ[i]))
+            copyto!(∂xλ_buf, 1, ∂x, 1, length(∂x))
+            fill!(view(∂xλ_buf, length(∂x)+1:length(∂xλ_buf)), 0)
 
-            S = fXλp[i]' \ ∂xλ
+            S_solved = fXλp[i]' \ ∂xλ_buf
+            copyto!(S_buf, S_solved)
+            S = S_buf
 
             if i < size(data_in_deviations,2)
-                S *= -1
+                ℒ.rmul!(S, -1)
             end
 
-            ∂shock_independent = S[T.nExo+1:end] # fine
+            S1 = view(S, 1:T.nExo)
+            S2 = view(S, T.nExo+1:length(S))
+            ∂shock_independent = S2
 
-            # ℒ.mul!(∂𝐒ⁱ, λ[i], S[1:T.nExo]')
-            # ℒ.mul!(∂𝐒ⁱ, S[T.nExo+1:end], x[i]', -1, 1) # fine
-            # ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
-            # ∂𝐒ⁱ = λ[i] * S[1:T.nExo]' - S[T.nExo+1:end] * x[i]' # fine
-
-            # copyto!(∂𝐒ⁱ, ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end]))
-            # ∂𝐒ⁱ -= ∂jacc / 2 # fine
-            ℒ.kron!(kronSλ, S[1:T.nExo], λ[i])
-            ℒ.kron!(kronxS, x[i], S[T.nExo+1:end])
+            # ∂𝐒ⁱ = ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end])
+            ℒ.kron!(kronSλ, S1, λ[i])
+            ℒ.kron!(kronxS, x[i], S2)
             ℒ.axpy!(-1, kronxS, kronSλ)
             copyto!(∂𝐒ⁱ, kronSλ)
 
             ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
-        
-            ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], kronxλ[i]) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
-            # ℒ.mul!(∂𝐒ⁱ²ᵉtmp, S[1:T.nExo], kronxλ[i]', 2, 1)
-            # ℒ.mul!(∂𝐒ⁱ²ᵉtmp2, S[T.nExo+1:end], kronxx[i]', -1, 1)
 
-            # ℒ.mul!(∂𝐒ⁱ²ᵉ, S[1:T.nExo], kronxλ[i]', 2, 1)
-            # ℒ.mul!(∂𝐒ⁱ²ᵉ, S[T.nExo+1:end], kronxx[i]', -1, 1)
-            # ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] * kronxλ[i]' - S[T.nExo+1:end] * kronxx[i]'
+            # ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], kronxλ[i]) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            ℒ.kron!(kron_S1_kxλ, S1, kronxλ[i])
+            ℒ.kron!(kron_xx_S2, kronxx[i], S2)
+            ℒ.axpby!(-1, kron_xx_S2, 2, kron_S1_kxλ)
+            ∂𝐒ⁱ²ᵉ .+= reshape(kron_S1_kxλ, size(∂𝐒ⁱ²ᵉ))
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
-            ∂state¹⁻_vol *= 0
+            fill!(∂state¹⁻_vol, 0)
             
             ℒ.mul!(∂kronIstate¹⁻_vol, 𝐒²⁻ᵉ', ∂𝐒ⁱ)
 
@@ -10910,7 +10966,9 @@ function rrule(::typeof(calculate_loglikelihood),
             # ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
 
             # shock_independent = copy(data_in_deviations[:,i])
-            ∂data_in_deviations[:,i] = ∂shock_independent
+            @inbounds @simd for k in eachindex(∂shock_independent)
+                ∂data_in_deviations[k, i] = ∂shock_independent[k]
+            end
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
             # ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
@@ -11883,6 +11941,22 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
 
+    # Pre-allocated per-period buffers (formerly created fresh each iteration).
+    ∂jacc_buf   = zero(jacc[1])
+    ∂xλ_buf     = zeros(T.nExo + size(jacc[1], 1))
+    S_buf       = zeros(T.nExo + size(jacc[1], 1))
+    kronSλ      = zeros(length(cond_var_idx) * T.nExo)
+    kronxS      = zeros(T.nExo * length(cond_var_idx))
+    kron_S1_kxλ = zeros(T.nExo * length(kronxλ[1]))
+    kron_xx_S2  = zeros(length(kronxx[1]) * size(jacc[1], 1))
+    kron_S1_kxxλ = zeros(T.nExo * length(kronxxλ[1]))
+    kron_xxx_S2  = zeros(length(kronxxx[1]) * size(jacc[1], 1))
+    kron_xλ      = zero(kronxλ[1])
+    kron_xxλ     = zero(kronxxλ[1])
+    kron_Ix      = zero(ℒ.kron(ℒ.I(T.nExo), x[1]))
+    kron_Ixx     = zero(ℒ.kron(ℒ.I(T.nExo), kronxx[1]))
+    ∂𝐒ⁱ²ᵉ_tmp   = zero(𝐒ⁱ²ᵉ[1])
+
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter - pullback" begin
         fill!(∂𝐒ⁱ, 0)
@@ -11959,27 +12033,31 @@ function rrule(::typeof(calculate_loglikelihood),
             end
 
             # aug_state₁[i] = [state₁; 1; x[i]]
-            ∂state[1] += ∂aug_state₁[1:length(∂state[1])]
+            ∂state[1] .+= @view ∂aug_state₁[1:length(∂state[1])]
 
-            ∂x = ∂aug_state₁[T.nPast_not_future_and_mixed+2:end]
+            @views copyto!(∂x, ∂aug_state₁[T.nPast_not_future_and_mixed+2:end])
 
             # aug_state₁̂[i] = [state₁; 0; x[i]]
-            ∂state[1] += ∂aug_state₁̂[1:length(∂state[1])]
+            ∂state[1] .+= @view ∂aug_state₁̂[1:length(∂state[1])]
 
-            ∂x += ∂aug_state₁̂[T.nPast_not_future_and_mixed+2:end]
+            @views ℒ.axpy!(1, ∂aug_state₁̂[T.nPast_not_future_and_mixed+2:end], ∂x)
 
             # aug_state₂[i] = [state₂; 0; zeros(T.nExo)]
-            ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
+            ∂state[2] .+= @view ∂aug_state₂[1:length(∂state[1])]
             
             # aug_state₃[i] = [state₃; 0; zeros(T.nExo)]
-            ∂state[3] += ∂aug_state₃[1:length(∂state[1])]
+            ∂state[3] .+= @view ∂aug_state₃[1:length(∂state[1])]
 
             # shocks² += sum(abs2,x[i]) — only for i > presample_periods
             if i > presample_periods
                 if i < size(data_in_deviations,2)
-                    ∂x -= copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] -= x[i][k]
+                    end
                 else
-                    ∂x += copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] += x[i][k]
+                    end
                 end
             end
 
@@ -11990,7 +12068,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    ∂jacc = inv(jacc_lu)'
+                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    ∂jacc = ∂jacc_buf
                 else
                     ∂jacc = ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
@@ -11998,13 +12077,15 @@ function rrule(::typeof(calculate_loglikelihood),
                     end
                 end
             else
-                ∂jacc = zero(jacc[i])
+                fill!(∂jacc_buf, 0)
+                ∂jacc = ∂jacc_buf
             end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
 
-            ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
+            ℒ.mul!(kron_Ix, 𝐒ⁱ²ᵉ[i]', ∂jacc)
+            ∂kronIx = kron_Ix
 
             if i < size(data_in_deviations,2)
                 fill_kron_adjoint_∂B!(∂kronIx, ∂x, -ℒ.I(T.nExo))
@@ -12012,11 +12093,13 @@ function rrule(::typeof(calculate_loglikelihood),
                 fill_kron_adjoint_∂B!(∂kronIx, ∂x, ℒ.I(T.nExo))
             end
 
-            ∂𝐒ⁱ²ᵉ = -∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+            ℒ.kron!(kron_Ix, ℒ.I(T.nExo), x[i])
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, ∂jacc, kron_Ix', -1, 0)
 
-            ∂kronIxx = 𝐒ⁱ³ᵉ' * ∂jacc * 3 / 2
+            ℒ.mul!(kron_Ixx, 𝐒ⁱ³ᵉ', ∂jacc, 3/2, 0)
+            ∂kronIxx = kron_Ixx
 
-            ∂kronxx *= 0
+            fill!(∂kronxx, 0)
 
             if i < size(data_in_deviations,2)
                 fill_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, -ℒ.I(T.nExo))
@@ -12026,28 +12109,47 @@ function rrule(::typeof(calculate_loglikelihood),
 
             fill_kron_adjoint!(∂x, ∂x, ∂kronxx, x[i], x[i])
 
-            ∂𝐒ⁱ³ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), kronxx[i])' * 3 / 2
+            ℒ.kron!(kron_Ixx, ℒ.I(T.nExo), kronxx[i])
+            ℒ.mul!(∂𝐒ⁱ³ᵉ, ∂jacc, kron_Ixx', -3/2, 1)
 
             # find_shocks
-            ∂xλ = vcat(∂x, zero(λ[i]))
+            # ∂xλ = vcat(∂x, zero(λ[i]))
+            copyto!(∂xλ_buf, 1, ∂x, 1, length(∂x))
+            fill!(view(∂xλ_buf, length(∂x)+1:length(∂xλ_buf)), 0)
 
-            S = fXλp[i]' \ ∂xλ
+            S_solved = fXλp[i]' \ ∂xλ_buf
+            copyto!(S_buf, S_solved)
+            S = S_buf
 
             if i < size(data_in_deviations,2)
-                S *= -1
+                ℒ.rmul!(S, -1)
             end
 
-            ∂shock_independent = S[T.nExo+1:end] # fine
+            S1 = view(S, 1:T.nExo)
+            S2 = view(S, T.nExo+1:length(S))
+            ∂shock_independent = S2
 
-            # ∂𝐒ⁱ += S[1:T.nExo] * λ[i]' - S[T.nExo + 1:end] * x[i]' # fine
-            copyto!(∂𝐒ⁱ, ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end]))
-            ∂𝐒ⁱ -= ∂jacc / 2 # fine
-        
-            ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
-            # ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] * kronxλ[i]' - S[T.nExo + 1:end] * kronxx[i]'
+            # ∂𝐒ⁱ = ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end])
+            ℒ.kron!(kronSλ, S1, λ[i])
+            ℒ.kron!(kronxS, x[i], S2)
+            ℒ.axpy!(-1, kronxS, kronSλ)
+            copyto!(∂𝐒ⁱ, kronSλ)
+            ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
 
-            ∂𝐒ⁱ³ᵉ += reshape(3 * ℒ.kron(S[1:T.nExo], ℒ.kron(ℒ.kron(x[i], x[i]), λ[i])) - ℒ.kron(kronxxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ³ᵉ))
-            # ∂𝐒ⁱ³ᵉ += 3 * S[1:T.nExo] * kronxxλ[i]' - S[T.nExo + 1:end] * kronxxx[i]'
+            # ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            ℒ.kron!(kron_xλ, x[i], λ[i])
+            ℒ.kron!(kron_S1_kxλ, S1, kron_xλ)
+            ℒ.kron!(kron_xx_S2, kronxx[i], S2)
+            ℒ.axpby!(-1, kron_xx_S2, 2, kron_S1_kxλ)
+            ∂𝐒ⁱ²ᵉ_tmp .+= reshape(kron_S1_kxλ, size(∂𝐒ⁱ²ᵉ_tmp))
+            ∂𝐒ⁱ²ᵉ = ∂𝐒ⁱ²ᵉ_tmp
+
+            # ∂𝐒ⁱ³ᵉ += reshape(3 * ℒ.kron(S[1:T.nExo], ℒ.kron(ℒ.kron(x[i], x[i]), λ[i])) - ℒ.kron(kronxxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ³ᵉ))
+            ℒ.kron!(kron_xxλ, kronxx[i], λ[i])
+            ℒ.kron!(kron_S1_kxxλ, S1, kron_xxλ)
+            ℒ.kron!(kron_xxx_S2, kronxxx[i], S2)
+            ℒ.axpby!(-1, kron_xxx_S2, 3, kron_S1_kxxλ)
+            ∂𝐒ⁱ³ᵉ .+= reshape(kron_S1_kxxλ, size(∂𝐒ⁱ³ᵉ))
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
             ∂kronstate¹⁻_vol *= 0
@@ -12094,7 +12196,7 @@ function rrule(::typeof(calculate_loglikelihood),
             fill_kron_adjoint_∂A!(∂kronIIstate¹⁻_vol, ∂state¹⁻_vol, II)
 
             # shock_independent = copy(data_in_deviations[:,i])
-            ∂data_in_deviations[:,i] = ∂shock_independent
+            @inbounds @simd for k in eachindex(∂shock_independent); ∂data_in_deviations[k, i] = ∂shock_independent[k]; end
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
             ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
@@ -12900,6 +13002,22 @@ function rrule(::typeof(calculate_loglikelihood),
 
     ∂state = zeros(T.nPast_not_future_and_mixed)
 
+    # Pre-allocated per-period buffers (formerly created fresh each iteration).
+    ∂jacc_buf    = zero(jacc[1])
+    ∂xλ_buf      = zeros(T.nExo + size(jacc[1], 1))
+    S_buf        = zeros(T.nExo + size(jacc[1], 1))
+    kronSλ       = zeros(length(cond_var_idx) * T.nExo)
+    kronxS       = zeros(T.nExo * length(cond_var_idx))
+    kron_S1_kxλ  = zeros(T.nExo * length(kronxλ[1]))
+    kron_xx_S2   = zeros(length(kronxx[1]) * size(jacc[1], 1))
+    kron_S1_kxxλ = zeros(T.nExo * length(kronxxλ[1]))
+    kron_xxx_S2  = zeros(length(kronxxx[1]) * size(jacc[1], 1))
+    kron_xλ      = zero(kronxλ[1])
+    kron_xxλ     = zero(kronxxλ[1])
+    kron_Ix      = zero(ℒ.kron(ℒ.I(T.nExo), x[1]))
+    kron_Ixx     = zero(ℒ.kron(ℒ.I(T.nExo), kronxx[1]))
+    ∂𝐒ⁱ²ᵉ_tmp    = zero(𝐒ⁱ²ᵉ[1])
+
     function inversion_filter_loglikelihood_pullback(∂llh)
         # @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
         # @timeit_debug timer "Preallocation" begin
@@ -12947,21 +13065,25 @@ function rrule(::typeof(calculate_loglikelihood),
             fill_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
 
             if i < size(data_in_deviations,2)
-                ∂state *= 0
+                fill!(∂state, 0)
             end
 
             # aug_state[i] = [stt; 1; x[i]]
-            ∂state += ∂aug_state[1:length(∂state)]
+            @views ℒ.axpy!(1, ∂aug_state[1:length(∂state)], ∂state)
 
             # aug_state[i] = [stt; 1; x[i]]
-            ∂x = ∂aug_state[T.nPast_not_future_and_mixed+2:end]
+            @views copyto!(∂x, ∂aug_state[T.nPast_not_future_and_mixed+2:end])
 
             # shocks² += sum(abs2,x[i]) — only for i > presample_periods
             if i > presample_periods
                 if i < size(data_in_deviations,2)
-                    ∂x -= copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] -= x[i][k]
+                    end
                 else
-                    ∂x += copy(x[i])
+                    @inbounds @simd for k in eachindex(∂x)
+                        ∂x[k] += x[i][k]
+                    end
                 end
             end
 
@@ -12972,7 +13094,8 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    ∂jacc = inv(jacc_lu)'
+                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    ∂jacc = ∂jacc_buf
                 else
                     ∂jacc = ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
@@ -12980,13 +13103,15 @@ function rrule(::typeof(calculate_loglikelihood),
                     end
                 end
             else
-                ∂jacc = zero(jacc[i])
+                fill!(∂jacc_buf, 0)
+                ∂jacc = ∂jacc_buf
             end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
 
-            ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
+            ℒ.mul!(kron_Ix, 𝐒ⁱ²ᵉ[i]', ∂jacc)
+            ∂kronIx = kron_Ix
 
             if i < size(data_in_deviations,2)
                 fill_kron_adjoint_∂B!(∂kronIx, ∂x, -ℒ.I(T.nExo))
@@ -12994,11 +13119,13 @@ function rrule(::typeof(calculate_loglikelihood),
                 fill_kron_adjoint_∂B!(∂kronIx, ∂x, ℒ.I(T.nExo))
             end
 
-            ∂𝐒ⁱ²ᵉ = -∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+            ℒ.kron!(kron_Ix, ℒ.I(T.nExo), x[i])
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, ∂jacc, kron_Ix', -1, 0)
 
-            ∂kronIxx = 𝐒ⁱ³ᵉ' * ∂jacc * 3 / 2
+            ℒ.mul!(kron_Ixx, 𝐒ⁱ³ᵉ', ∂jacc, 3/2, 0)
+            ∂kronIxx = kron_Ixx
             
-            ∂kronxx *= 0
+            fill!(∂kronxx, 0)
 
             if i < size(data_in_deviations,2)
                 fill_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, -ℒ.I(T.nExo))
@@ -13008,28 +13135,47 @@ function rrule(::typeof(calculate_loglikelihood),
 
             fill_kron_adjoint!(∂x, ∂x, ∂kronxx, x[i], x[i])
 
-            ∂𝐒ⁱ³ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), kronxx[i])' * 3 / 2
+            ℒ.kron!(kron_Ixx, ℒ.I(T.nExo), kronxx[i])
+            ℒ.mul!(∂𝐒ⁱ³ᵉ, ∂jacc, kron_Ixx', -3/2, 1)
 
             # find_shocks
-            ∂xλ = vcat(∂x, zero(λ[i]))
+            # ∂xλ = vcat(∂x, zero(λ[i]))
+            copyto!(∂xλ_buf, 1, ∂x, 1, length(∂x))
+            fill!(view(∂xλ_buf, length(∂x)+1:length(∂xλ_buf)), 0)
 
-            S = fXλp[i]' \ ∂xλ
+            S_solved = fXλp[i]' \ ∂xλ_buf
+            copyto!(S_buf, S_solved)
+            S = S_buf
 
             if i < size(data_in_deviations,2)
-                S *= -1
+                ℒ.rmul!(S, -1)
             end
 
-            ∂shock_independent = S[T.nExo+1:end] # fine
+            S1 = view(S, 1:T.nExo)
+            S2 = view(S, T.nExo+1:length(S))
+            ∂shock_independent = S2
 
-            # ∂𝐒ⁱ += S[1:T.nExo] * λ[i]' - S[T.nExo + 1:end] * x[i]' # fine
-            copyto!(∂𝐒ⁱ, ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end]))
-            ∂𝐒ⁱ -= ∂jacc / 2 # fine
-        
-            ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
-            # ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] * kronxλ[i]' - S[T.nExo + 1:end] * kronxx[i]'
+            # ∂𝐒ⁱ = ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end])
+            ℒ.kron!(kronSλ, S1, λ[i])
+            ℒ.kron!(kronxS, x[i], S2)
+            ℒ.axpy!(-1, kronxS, kronSλ)
+            copyto!(∂𝐒ⁱ, kronSλ)
+            ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
 
-            ∂𝐒ⁱ³ᵉ += reshape(3 * ℒ.kron(S[1:T.nExo], ℒ.kron(ℒ.kron(x[i], x[i]), λ[i])) - ℒ.kron(kronxxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ³ᵉ))
-            # ∂𝐒ⁱ³ᵉ += 3 * S[1:T.nExo] * kronxxλ[i]' - S[T.nExo + 1:end] * kronxxx[i]'
+            # ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            ℒ.kron!(kron_xλ, x[i], λ[i])
+            ℒ.kron!(kron_S1_kxλ, S1, kron_xλ)
+            ℒ.kron!(kron_xx_S2, kronxx[i], S2)
+            ℒ.axpby!(-1, kron_xx_S2, 2, kron_S1_kxλ)
+            ∂𝐒ⁱ²ᵉ_tmp .+= reshape(kron_S1_kxλ, size(∂𝐒ⁱ²ᵉ_tmp))
+            ∂𝐒ⁱ²ᵉ = ∂𝐒ⁱ²ᵉ_tmp
+
+            # ∂𝐒ⁱ³ᵉ += reshape(3 * ℒ.kron(S[1:T.nExo], ℒ.kron(ℒ.kron(x[i], x[i]), λ[i])) - ℒ.kron(kronxxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ³ᵉ))
+            ℒ.kron!(kron_xxλ, kronxx[i], λ[i])
+            ℒ.kron!(kron_S1_kxxλ, S1, kron_xxλ)
+            ℒ.kron!(kron_xxx_S2, kronxxx[i], S2)
+            ℒ.axpby!(-1, kron_xxx_S2, 3, kron_S1_kxxλ)
+            ∂𝐒ⁱ³ᵉ .+= reshape(kron_S1_kxxλ, size(∂𝐒ⁱ³ᵉ))
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
             ∂kronstate¹⁻_vol *= 0
@@ -13063,7 +13209,7 @@ function rrule(::typeof(calculate_loglikelihood),
             fill_kron_adjoint_∂A!(∂kronIIstate¹⁻_vol, ∂state¹⁻_vol, II)
 
             # shock_independent = copy(data_in_deviations[:,i])
-            ∂data_in_deviations[:,i] = ∂shock_independent
+            @inbounds @simd for k in eachindex(∂shock_independent); ∂data_in_deviations[k, i] = ∂shock_independent[k]; end
 
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
