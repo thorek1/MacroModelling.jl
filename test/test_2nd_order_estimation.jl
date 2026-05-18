@@ -307,7 +307,7 @@ end
 # is currently unstable on this path; ForwardDiff is reliable here).
 # ---------------------------------------------------------------------------
 import ADTypes: AutoForwardDiff, AutoMooncake
-import Distributions: MvNormal
+import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
 # Subsample data to keep CI run-time bounded — joint state-space sampling has

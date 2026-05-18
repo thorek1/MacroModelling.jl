@@ -111,7 +111,7 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 # Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
 # parameters + latent shocks).
 # ---------------------------------------------------------------------------
-import Distributions: MvNormal
+import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
 const T_ff_pruned2nd = 20

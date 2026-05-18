@@ -181,7 +181,7 @@ m = nothing
 # First-order — analytical rrule + Mooncake AD
 # ---------------------------------------------------------------------------
 import ADTypes: AutoForwardDiff
-import Distributions: MvNormal
+import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
 const T_ff_1st = 20

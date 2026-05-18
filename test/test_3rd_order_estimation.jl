@@ -330,7 +330,7 @@ end
 # correctness of the rrule itself is checked in
 # `test_filter_free_gradients.jl`.
 # ---------------------------------------------------------------------------
-import Distributions: MvNormal
+import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
 const T_ff_3rd = 10

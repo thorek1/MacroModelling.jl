@@ -131,7 +131,7 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 # parameters + latent shocks + me_std).  Same sampler (Pigeons) and number
 # of rounds as the inversion-filter run above.
 # ---------------------------------------------------------------------------
-import Distributions: MvNormal
+import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
 const T_ff_p3       = 10
