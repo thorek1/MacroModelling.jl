@@ -6358,6 +6358,37 @@ function fill_kron_adjoint_∂A!(∂X::DenseMatrix{R}, ∂A::Vector{S}, B::Abstr
 end
 
 
+function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractVector{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
+
+    n1, m1 = size(B)
+    n2 = length(∂A)
+
+    const_n1n2 = n1 * n2
+
+    colptr = ∂X.colptr
+    rowval = ∂X.rowval
+    nzval  = ∂X.nzval
+
+    for col in 1:size(∂X, 2)
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+
+                ∂A[k] += B[i, j] * val
+            end
+        end
+    end
+end
+
+
 function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMatrix{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
     @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
     
