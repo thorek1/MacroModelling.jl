@@ -87,8 +87,6 @@ end
 
 plot_model_estimates(FS2000, data, parameters = sample_pigeons)
 
-FS2000 = nothing
-
 
 # ---------------------------------------------------------------------------
 # Replicate the Pigeons estimation problem on data with missing observations.
