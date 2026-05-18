@@ -50,6 +50,8 @@ makedocs(
             "Model Estimates" => "plot_model_estimates.md",
         ],
         "Steady State" => "steady_state.md",
+        "Shapley decompositions (higher order)" => "shapley_decompositions.md",
+        "Speed Benchmarks" => "speed.md",
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",

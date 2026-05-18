@@ -1,12 +1,14 @@
 # Todo list
 ## High priority
 
+- [ ] add filter free estimation to one of the estimation tests (think about filter free filtering instead of smoothing)
+- [ ] derivatives of variance decomposition for estimation!?
 - [ ] check dispatch doctor coverage in new functions
 - [ ] dont use variable, parameter, function names starting with _
-- [ ] add higher order variance decomposition
+- [x] add higher order variance decomposition
 - [ ] let filters work with relevant subspace of solution only and also allow for missing obs
 - [ ] make package work with semi structural expectations models
-- [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually capures higher order effects such as stochastic vol.
+- [ ] implement stochastic mean fixed point algorithm from Kliem and Meyer Gohde, and then use first order perturbation + kalman filter to estimate around that point. check whether an approximaion around that point actually captures higher order effects such as stochastic vol.
 - [ ] implement NestedSampling with NormalisingFlows in Julia
 - [ ] Move mean, second-order moments, and third-order moments to compressed space end-to-end; they still use uncompressed-space matrices, and the third-order solution still uses uncompressed second-order matrices.
 - [ ] check allocations of jacobian in sparse case (NAWM)
@@ -68,7 +70,9 @@
 - [ ] do proper testing of ss solver with random set of params, equal across configs
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
-- [ ] implement higher order (pruned) variance decomposition
+- [x] implement higher order (pruned) variance decomposition
+- [x] add `marginal_contribution` (Shapley) option to `get_variance_decomposition` for pruned higher-order solutions
+- [x] add `marginal_contribution` (Shapley) option to `get_shock_decomposition`/`plot_shock_decomposition` for pruned higher-order solutions (allocates the `Nonlinearities` term across shocks)
 - [ ] try slicesampler instead of pigeons
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
@@ -367,5 +371,5 @@ The following tasks were extracted from comments in the code base. Each item ref
 - [ ] `src/filter/find_shocks.jl`: add `ForwardDiff` support for `find_shocks`
 - [ ] `src/get_functions.jl`: verify derivatives against finite differences
 - [ ] `src/get_functions.jl` (`get_conditional_variance_decomposition`): extend to higher order solutions
-- [ ] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions
+- [x] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions
 - [ ] `src/get_functions.jl` (`get_loglikelihood`): error when bounds are violated to catch wrong parameter ordering

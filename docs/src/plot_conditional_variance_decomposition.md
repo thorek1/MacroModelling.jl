@@ -125,6 +125,8 @@ The vertical axis shows the share of the shocks variance contribution, and the h
 
 Note that if occasionally binding constraints are present in the model, they are not taken into account here.
 
+For the unconditional variance decomposition under pruned higher-order solutions ([`get_variance_decomposition`](@ref)) you can additionally request `marginal_contribution = true` to allocate the cross-shock interaction across the individual shocks via marginal contributions (Shapley values), so that the resulting table has one column per shock and rows summing to one.
+
 The same function can be called using different names. For example: `plot_fevd`, or `plot_forecast_error_variance_decomposition`. Going forward, `plot_fevd` will be used for brevity.
 
 ## Periods Argument

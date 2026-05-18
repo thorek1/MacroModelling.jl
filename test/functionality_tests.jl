@@ -1669,6 +1669,53 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             verbose = false)
                 end
             end
+
+            if algorithm in (:pruned_second_order, :pruned_third_order)
+                clear_solution_caches!(m, algorithm)
+
+                sd_default = get_shock_decomposition(m, data,
+                                                    algorithm = algorithm,
+                                                    data_in_levels = false,
+                                                    verbose = false)
+                sd_mc = get_shock_decomposition(m, data,
+                                                algorithm = algorithm,
+                                                data_in_levels = false,
+                                                marginal_contribution = true,
+                                                verbose = false)
+
+                @test :Nonlinearities ∈ axiskeys(sd_default, :Shocks)
+                @test :Nonlinearities ∉ axiskeys(sd_mc, :Shocks)
+                @test :Initial_values ∈ axiskeys(sd_mc, :Shocks)
+                @test size(sd_mc, :Shocks) == size(sd_default, :Shocks) - 1
+                init_mc = sd_mc(Shocks = :Initial_values)
+                shock_keys_mc = filter(!=(:Initial_values), collect(axiskeys(sd_mc, :Shocks)))
+                shock_sum_mc = dropdims(sum(collect(sd_mc(Shocks = shock_keys_mc)), dims = 2), dims = 2)
+                # In marginal-contribution mode the zero-shock / initial-values
+                # path stays separate; only the incremental response is
+                # reallocated across the shock columns.
+                sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
+                sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
+                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-8)
+                @test isapprox(sum_default, sum_mc, atol = 1e-8)
+            end
+
+            # First-order with marginal_contribution = true is silently ignored
+            # (with an @info notice) and returns the standard first-order
+            # decomposition.
+            if algorithm == :first_order
+                clear_solution_caches!(m, algorithm)
+                sd_fo_default = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        verbose = false)
+                sd_fo_mc      = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        marginal_contribution = true,
+                                                        verbose = false)
+                @test axiskeys(sd_fo_mc, :Shocks) == axiskeys(sd_fo_default, :Shocks)
+                @test isapprox(collect(sd_fo_mc), collect(sd_fo_default), rtol = 1e-10)
+            end
         end
 
         
@@ -2058,6 +2105,52 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 get_forecast_error_variance_decomposition(m)
 
                 fevd(m)
+            end
+
+            if algorithm == :pruned_second_order || algorithm == :pruned_third_order
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_higher = get_variance_decomposition(m, algorithm = algorithm)
+
+                nE = length(m.constants.post_model_macro.exo)
+
+                @test size(var_decomp_higher, 2) == nE + 1
+                @test axiskeys(var_decomp_higher, 2)[end] == :Cross_shock_interaction
+                @test all(isapprox.(sum(collect(var_decomp_higher), dims = 2), 1, atol = 1e-6))
+
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_mc = get_variance_decomposition(m, algorithm = algorithm, marginal_contribution = true)
+
+                @test size(var_decomp_mc, 2) == nE
+                @test :Cross_shock_interaction ∉ axiskeys(var_decomp_mc, 2)
+                # Rows whose total variance is non-trivial must satisfy Shapley
+                # efficiency (per-shock shares sum to one). Rows with negligible
+                # variance are reported as exact zeros.
+                # Note: the non-mc decomposition's row sums are always exactly 1
+                # by construction (the :Cross_shock_interaction column absorbs the
+                # residual), so we cannot use them to discriminate. Instead, check
+                # whether the per-shock columns (excluding :Cross_shock_interaction)
+                # carry non-trivial weight — if they don't, the variable's total
+                # variance is negligible and the mc path correctly reports zeros.
+                row_sums_mc = vec(sum(collect(var_decomp_mc), dims = 2))
+                shock_only_sums = vec(sum(collect(var_decomp_higher)[:, 1:nE], dims = 2))
+                for v in eachindex(row_sums_mc)
+                    if shock_only_sums[v] > 1e-10
+                        @test isapprox(row_sums_mc[v], 1, atol = 1e-6)
+                    else
+                        @test isapprox(row_sums_mc[v], 0, atol = 1e-10) || isapprox(row_sums_mc[v], 1, atol = 1e-6)
+                    end
+                end
+
+                # First-order with marginal_contribution = true is silently
+                # ignored (with an @info notice) and returns the standard
+                # first-order shares (additive across shocks, no interaction
+                # column).
+                vd_first_default = get_variance_decomposition(m)
+                vd_first_mc      = get_variance_decomposition(m, marginal_contribution = true)
+                @test axiskeys(vd_first_mc, 2) == axiskeys(vd_first_default, 2)
+                @test isapprox(collect(vd_first_mc), collect(vd_first_default), rtol = 1e-10)
             end
 
             

@@ -1156,7 +1156,7 @@ end
         ℒ.mul!(ĀB, Ā, B)
         ℒ.mul!(CĀB, C', ĀB)
         copyto!(vCĀB, CĀB)
-        @views ℒ.mul!(X[row,:], D', vCĀB)
+        @views ℒ.mul!(X[r,:], D', vCĀB)
         r += 1
     end
 
