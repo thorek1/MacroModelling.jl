@@ -9418,8 +9418,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     # Hoisted per-period pullback buffers (max-size, used via views when m varies)
     ∂𝐒ⁱ_full_buf       = zeros(length(cond_var_idx), n_exo)
     ∂shock_independent  = zeros(length(cond_var_idx))
-    jac_v_buf           = zeros(n_exo, n_exo)
-    ∂jac_v_buf          = zeros(n_exo, n_exo)
+    ∂jac_v_buf          = zeros(length(cond_var_idx), n_exo)
     kron_Isv_buf        = zeros(n_exo * (n_past + 1), n_exo)
     ∂state₂_contrib     = zeros(n_past)
     ∂kron_sv            = zeros((n_past + 1)^2)
@@ -9437,7 +9436,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂aug_state₁, 0); fill!(∂aug_state₂, 0)
         fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0); fill!(∂kronIstate, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂shock_independent, 0)
-        fill!(jac_v_buf, 0); fill!(∂jac_v_buf, 0)
+        fill!(∂jac_v_buf, 0)
         fill!(kron_Isv_buf, 0); fill!(∂state₂_contrib, 0)
         fill!(∂kron_sv, 0); fill!(kron_sv, 0); fill!(∂kronIstate_local, 0)
 
@@ -9479,7 +9478,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             end
 
             # shocks² and logabsdet contributions (only if t > presample and m > 0)
-            ∂jac_v = zeros(m, n_exo)
+            ∂jac_v = view(∂jac_v_buf, 1:m, :); fill!(∂jac_v, 0)
             jac_v_local = zeros(m, n_exo)
             𝐒ⁱ²ᵉ_v_local = zeros(m, n_exo^2)
             if m > 0
@@ -10362,6 +10361,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ∂state¹⁻_vol = zeros(n_past + 1)
     ∂𝐒ⁱ_full_buf      = zeros(length(cond_var_idx), n_exo)
     ∂shock_independent = zeros(length(cond_var_idx))
+    ∂jac_v_buf         = zeros(length(cond_var_idx), n_exo)
     kron_Isv_buf       = zeros(n_exo * (n_past + 1), n_exo)
     ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
 
@@ -10376,6 +10376,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂aug_state, 0); fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
+        fill!(∂jac_v_buf, 0)
 
         for t in Tt:-1:1
             aug_state = aug_state_seq[t]
@@ -10405,7 +10406,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             end
 
             # shocks² and logabsdet contributions (only if t > presample and m > 0)
-            ∂jac_v = zeros(m, n_exo)
+            ∂jac_v = view(∂jac_v_buf, 1:m, :); fill!(∂jac_v, 0)
             jac_v_local = zeros(m, n_exo)
             𝐒ⁱ²ᵉ_v_local = zeros(m, n_exo^2)
             if m > 0
@@ -11303,6 +11304,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ∂𝐒ⁱ²ᵉ_full_buf     = zeros(n_cond, n_exo^2)
     ∂shock_independent  = zeros(n_cond)
     ∂kronaug_for3       = zeros((n_past + 1 + n_exo)^2)
+    ∂jac_v_buf          = zeros(n_cond, n_exo)
 
     function pruned3_missing_pullback(∂llh)
         fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
@@ -11317,6 +11319,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(∂kronaug_for3, 0)
+        fill!(∂jac_v_buf, 0)
 
         for t in Tt:-1:1
             aug_state₁  = aug_state₁_seq[t]
@@ -11387,7 +11390,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             fill!(∂aug_state₃, 0)
 
             # shocks² and logabsdet contributions (only if t > presample and m > 0)
-            ∂jac_v = zeros(m, n_exo)
+            ∂jac_v = view(∂jac_v_buf, 1:m, :); fill!(∂jac_v, 0)
             jac_v_local = zeros(m, n_exo)
             𝐒ⁱ²ᵉ_v_local = zeros(m, n_exo^2)
             𝐒ⁱ³ᵉ_v_local = zeros(m, n_exo^3)
@@ -12518,6 +12521,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     ∂kronIstate_local  = zeros(n_exo * (n_past + 1), n_exo)
     ∂kronaug_for3      = zeros((n_past + 1 + n_exo)^2)
     ∂u_mat             = zeros(n_exo * (n_past + 1), n_exo)
+    ∂jac_v_buf         = zeros(length(cond_var_idx), n_exo)
 
     function third_order_missing_pullback(∂llh)
         fill!(∂𝐒_1, 0); fill!(∂𝐒_2, 0); fill!(∂𝐒_3, 0)
@@ -12532,6 +12536,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
         fill!(∂kronaug_for3, 0); fill!(∂u_mat, 0)
+        fill!(∂jac_v_buf, 0)
 
         for t in Tt:-1:1
             aug_state   = aug_state_seq[t]
@@ -12565,7 +12570,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             fill!(∂aug_state, 0)
 
             # shocks² and logabsdet contributions (only if t > presample and m > 0)
-            ∂jac_v = zeros(m, n_exo)
+            ∂jac_v = view(∂jac_v_buf, 1:m, :); fill!(∂jac_v, 0)
             jac_v_local = zeros(m, n_exo)
             𝐒ⁱ²ᵉ_v_local = zeros(m, n_exo^2)
             𝐒ⁱ³ᵉ_v_local = zeros(m, n_exo^3)
@@ -13600,6 +13605,8 @@ function rrule(::typeof(calculate_loglikelihood),
     Ptmp = zero(P_seq[1])
     ∂A_kf = zero(A)
     ∂𝐁_kf = zero(𝐁)
+    ∂A_buf = zero(A)
+    ∂𝐁_buf = zero(𝐁)
 
     function calculate_loglikelihood_pullback(∂llh)
         ℒ.rmul!(∂A_kf, 0)
@@ -13682,8 +13689,8 @@ function rrule(::typeof(calculate_loglikelihood),
         ℒ.rmul!(∂𝐁_kf, -∂llh/2)
         ℒ.rmul!(∂data_in_deviations, -∂llh/2)
 
-        ∂A = copy(∂A_kf)
-        ∂𝐁 = copy(∂𝐁_kf)
+        ∂A = ∂A_buf; copyto!(∂A, ∂A_kf)
+        ∂𝐁 = ∂𝐁_buf; copyto!(∂𝐁, ∂𝐁_kf)
 
         if !isnothing(lyap_pullback)
             lyap_grads = lyap_pullback((∂P, NoTangent()))
