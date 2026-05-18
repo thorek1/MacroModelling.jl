@@ -171,7 +171,7 @@ import StatsPlots
 plot_irf(RBC)
 ```
 
-![RBC IRF](../assets/tutorial_irf__RBC____1.png)
+![RBC IRF](../assets/tutorial_irf__RBC__ϵᶻ__1.png)
 
 When the model is solved the first time (in this case by calling [`plot_irf`](@ref)), the package breaks down the steady state problem into independent blocks and first attempts to solve them symbolically and if that fails numerically.
 

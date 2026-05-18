@@ -1,77 +1,6 @@
 @stable default_mode = "disable" begin
 
 
-# ---------------------------------------------------------------------------
-# Missing-value support helpers
-# ---------------------------------------------------------------------------
-# The Kalman filter accepts data that may contain missing values. The internal
-# canonical sentinel is NaN: any input entry that is `missing` or NaN is
-# treated as unobserved. A per-period vector of available observable indices
-# is built once per call and then used by the filter loop to take views into
-# the (max-sized) workspace buffers, so all preallocation tricks are kept.
-
-"""
-    missing_data_to_nan(data) -> Matrix{Float64}
-
-Convert a matrix that may contain `missing` values into a `Matrix{Float64}`
-where `missing` becomes `NaN`. `Matrix{Float64}` inputs are returned unchanged
-(no copy).
-"""
-missing_data_to_nan(data::Matrix{Float64}) = data
-function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Real}})
-    out = Matrix{Float64}(undef, size(data, 1), size(data, 2))
-    @inbounds for j in axes(data, 2), i in axes(data, 1)
-        v = data[i, j]
-        out[i, j] = (v === missing) ? NaN : Float64(v)
-    end
-    return out
-end
-missing_data_to_nan(data::AbstractMatrix{<:Real}) = convert(Matrix{Float64}, data)
-@unstable function missing_data_to_nan(data::KeyedArray)
-    raw = missing_data_to_nan(collect(data))::Matrix{Float64}
-    names = AxisKeys.NamedDims.dimnames(data)
-    return KeyedArray(NamedDimsArray(raw, names); NamedTuple{names}(axiskeys(data))...)
-end
-
-"""
-    build_obs_index(data) -> (Vector{Vector{Int}}, Bool)
-
-Return `(obs_idx_per_t, has_missing)` where `obs_idx_per_t[t]` is the sorted
-vector of row indices that are *observed* (finite) in column `t` of `data`,
-and `has_missing` is `true` iff at least one entry is non-finite (NaN). When
-`has_missing == false`, callers can take the dense fast path.
-"""
-function build_obs_index(data::AbstractMatrix{<:Real})
-    n, T = size(data)
-    obs = Vector{Vector{Int}}(undef, T)
-    has_missing = false
-    @inbounds for t in 1:T
-        m = 0
-        for i in 1:n
-            if isfinite(data[i, t])
-                m += 1
-            else
-                has_missing = true
-            end
-        end
-        if m == n
-            obs[t] = collect(1:n)
-        else
-            v = Vector{Int}(undef, m)
-            k = 0
-            for i in 1:n
-                if isfinite(data[i, t])
-                    k += 1
-                    v[k] = i
-                end
-            end
-            obs[t] = v
-        end
-    end
-    return obs, has_missing
-end
-
-
 function calculate_loglikelihood(::Val{:kalman},
                                 ::Val,
                                 observables_index::Vector{Int}, 
@@ -110,18 +39,52 @@ function calculate_loglikelihood(::Val{:kalman},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
     # timer = timer, 
 
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
-
-    if has_missing
-        return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
-                                              obs_idx_per_t, kalman_ws,
-                                              presample_periods = presample_periods,
-                                              verbose = opts.verbose,
-                                              on_failure_loglikelihood = on_failure_loglikelihood)
-    end
-
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
+end
+
+
+function calculate_loglikelihood_with_missing(::Val{:kalman},
+                                ::Val,
+                                observables_index::Vector{Int},
+                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}},
+                                                data_in_deviations::Matrix{S},
+                                                constants::constants,
+                                                state,
+                                                workspaces::workspaces,
+                                                obs_idx_per_t::Vector{Vector{Int}};
+                                                warmup_iterations::Int = 0,
+                                                presample_periods::Int = 0,
+                                                initial_covariance::Symbol = :theoretical,
+                                                filter_algorithm::Symbol = :LagrangeNewton,
+                                                lyapunov_algorithm::Symbol = :doubling,
+                                                on_failure_loglikelihood::U = -Inf,
+                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
+
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
+
+    A = @views 𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end]
+
+    C = @views I_nVars[observables_sorted, observables_and_states]
+
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
+
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
+
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+
+    return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
+                                          obs_idx_per_t, kalman_ws,
+                                          presample_periods = presample_periods,
+                                          verbose = opts.verbose,
+                                          on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 # Specialization for :theoretical
@@ -194,7 +157,7 @@ function run_kalman_iterations(A::Matrix{S},
         ℒ.mul!(F, Ctmp, C')                                    # F = C * P * C'
 
         # Old way (≤v0.1.42): luF = lu(F)  — allocates new LU each step
-        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(F,
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
                                                                            ws.fast_lu_ws_f,
                                                                            ws.fast_lu_dims_f)
 
@@ -336,7 +299,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         ℒ.mul!(Ctv, Cv, P)        # Ctv = C[idx,:] * P
         ℒ.mul!(Fv, Ctv, Cv')      # Fv = C[idx,:] * P * C[idx,:]'
 
-        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Fv,
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
                                                                             ws.fast_lu_ws_f,
                                                                             ws.fast_lu_dims_f)
 
@@ -346,7 +309,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         end
 
         logabsdetF = zero(S)
-        signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, 1:m)) ? -one(S) : one(S)
+        signF = isodd(count(i -> luF.ipiv[i] != i, 1:m)) ? -one(S) : one(S)
         @inbounds for i in 1:m
             di = Fv[i, i]
             if di == 0
@@ -364,13 +327,13 @@ function run_kalman_iterations_missing(A::Matrix{S},
 
         if t > presample_periods
             copyto!(ztv, zv)
-            solve_lu_left!(Fv, ztv, ws.fast_lu_ws_f, luF)
+            solve_lu_left!(Fv, ztv, ws.fast_lu_ws_f, luF; use_fastlapack_lu = false)
             loglik += logabsdetF + ℒ.dot(zv, ztv)
             n_obs_total += m
         end
 
         ℒ.mul!(Kv, P, Cv')                   # K = P * C[idx,:]'
-        solve_lu_right!(Fv, Kv, ws.fast_lu_ws_f, luF, rhs_t_kv)  # K = K / F
+        solve_lu_right!(Fv, Kv, ws.fast_lu_ws_f, luF, rhs_t_kv; use_fastlapack_lu = false)  # K = K / F
 
         # P = A * (P - K * C[idx,:] * P) * A' + 𝐁
         ℒ.mul!(tmp, Kv, Cv)                  # tmp = K * C[idx,:]
@@ -516,7 +479,7 @@ function filter_and_smooth(𝓂::ℳ,
             end
 
             kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
-                factorize_lu!(F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+                factorize_lu!(Val(:FastLapack), F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
 
             if !solved_F
                 @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
@@ -536,8 +499,8 @@ function filter_and_smooth(𝓂::ℳ,
             Fv = view(F_buf, 1:m, 1:m)                  # m × m
             Fv .= Cv * P[:, :, t] * Cv'
 
-            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
-                factorize_lu!(Fv, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF_v =
+                factorize_lu!(Val(:Julia), Fv, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
 
             if !solved_F
                 @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
@@ -545,7 +508,7 @@ function filter_and_smooth(𝓂::ℳ,
             end
 
             iF_m = Matrix{Float64}(ℒ.I, m, m)
-            solve_lu_left!(Fv, iF_m, kalman_ws.fast_lu_ws_f, nothing)
+            solve_lu_left!(Fv, iF_m, kalman_ws.fast_lu_ws_f, luF_v; use_fastlapack_lu = false)
 
             v_m = data_in_deviations[idx, t] .- Cv * μ[:, t]
 

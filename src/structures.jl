@@ -340,8 +340,9 @@ mutable struct second_order_indices
     # Filled by ensure_conditional_forecast_constants! (options_and_caches.jl)
     # Triggered by: get_conditional_forecast, find_shocks
     # =========================================================================
-    var²_idxs::Vector{Int}               # Variable² indices
+    var²_idxs::Vector{Int}               # Variable² indices (no-vol: kron(s_in_s, s_in_s))
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
+    shockvar_no_vol_idxs::Vector{Int}    # Shock-variable cross indices (no-vol: kron(e_in_s⁺, s_in_s))
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
@@ -527,6 +528,16 @@ mutable struct sylvester_workspace{G <: AbstractFloat, H <: Real}
     # Stable primal solution cache for AD/rrule pullbacks
     P::Matrix{G}
     
+    # Doubling power cache (for AD: reuse A^(2^k), B^(2^k) sequences across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)) ; 𝐁_pow[k] = B^(2^(k-1)). Only valid when pow_iters > 0.
+    # Fields are AbstractMatrix so the cache can hold dense Matrix or sparse SparseMatrixCSC entries
+    # (the doubling overloads dispatched by Sylvester preserve the sparsity of A and B across squaring).
+    𝐀_pow::Vector{AbstractMatrix{G}}
+    𝐁_pow::Vector{AbstractMatrix{G}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow / 𝐁_pow
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow / 𝐁_pow store transposes as Adjoint views (for adjoint use)
+
     # ForwardDiff partials buffers (for forward-mode AD)
     P̃::Matrix{H}       # For sylvester equation partials
     Ã_fd::Matrix{H}    # Temporary for ForwardDiff partials of A
@@ -739,14 +750,23 @@ mutable struct lyapunov_workspace{T <: Real, R <: Real}
     Ã_fd::Matrix{R}    # Temporary for ForwardDiff partials of A
     C̃_fd::Matrix{R}    # Temporary for ForwardDiff partials of C
 
+    # Doubling power cache (for AD: reuse A^(2^k) sequence across forward/pullback)
+    # 𝐀_pow[k] = A^(2^(k-1)). Valid only when pow_iters > 0.
+    # Slot type is AbstractMatrix so dense and sparse iterations
+    # share the same storage (sparse-aware capture).
+    𝐀_pow::Vector{AbstractMatrix{T}}
+    pow_iters::Int            # number of valid entries in 𝐀_pow
+    pow_capture::Bool         # true while solver should populate the cache
+    pow_transposed::Bool      # true when 𝐀_pow stores transposes as Adjoint views (for adjoint use)
+
     # FastLapackInterface Schur workspace for unit-root deflation (lazily resized)
     schur_ws::FastLapackInterface.SchurWs{T}
 end
 
 
-struct ss_solve_block
-    ss_problem::function_and_jacobian
-    extended_ss_problem::function_and_jacobian
+struct ss_solve_block{T <: Real}
+    ss_problem::function_and_jacobian{T}
+    extended_ss_problem::function_and_jacobian{T}
 end
 
 
@@ -773,7 +793,7 @@ struct NSSSSolverFunctions
     aux_funcs::Vector{Function}                        # f!(out, sol_vec, params_vec) — optional pre-step aux
     error_funcs::Vector{Function}                      # g!(out, sol_vec, params_vec) — optional error check
     eval_funcs::Vector{Function}                       # f!(out, sol_vec, params_vec) — main eval (analytical only)
-    solve_blocks::Vector{Union{Nothing, ss_solve_block}} # compiled residual/Jacobian (numerical only)
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}} # compiled residual/Jacobian (numerical only)
 end
 
 
@@ -849,7 +869,7 @@ NSSSSolverFunctions() = NSSSSolverFunctions(
     Function[],
     Function[],
     Function[],
-    Union{Nothing,ss_solve_block}[],
+    Union{Nothing,ss_solve_block{Float64}}[],
 )
 
 """Construct an empty `NSSSSolverConstants` with no steps."""
@@ -1114,6 +1134,10 @@ mutable struct inversion_workspace{T <: Real}
     y_obs::Vector{T}                 # n_cond_var - observation prediction
     x_shocks::Vector{T}              # n_exo - recovered shocks
     state_concat::Vector{T}          # n_past + n_exo - for vcat-free concatenation in 1st order
+    # Missing-data variant scratch buffers
+    JJt_buf::Matrix{T}               # (n_cond_var, n_cond_var) - scratch for non-square sub-LU
+    obs_sub_buf::Vector{T}           # n_cond_var - compact sub-observation buffer
+    jacc_v_buf::Matrix{T}            # (n_cond_var, n_exo) - per-period sub-Jacobian scratch
     # Pruned third-order augmented state buffers
     aug_state₃::Vector{T}            # n_past+1+n_exo - third state component
     aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
@@ -1132,6 +1156,23 @@ mutable struct inversion_workspace{T <: Real}
     ∂𝐒ⁱ²ᵉtmp2::Matrix{T}             # (n_obs, n_exo^2)
     kronSλ::Vector{T}                # n_obs * n_exo
     kronxS::Vector{T}                # n_exo * n_obs
+
+    # Per-period sequence buffers captured by rrule pullbacks (allocated lazily via
+    # ensure_inversion_rrule_buffers!).  Each holds one inner array per time period.
+    state_seq_rrule::Vector{Vector{T}}        # n_past+1 (first_order: full state copy) or n_past
+    state₂_seq_rrule::Vector{Vector{T}}       # n_past   (pruned 2nd / 3rd component)
+    state₃_seq_rrule::Vector{Vector{T}}       # n_past   (pruned 3rd component)
+    x_seq_rrule::Vector{Vector{T}}            # n_exo
+    state¹⁻_vol_seq_rrule::Vector{Vector{T}}  # n_past+1
+    aug_state_seq_rrule::Vector{Vector{T}}    # n_past+1+n_exo
+    aug_state₁_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₂_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₃_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₁̂_seq_rrule::Vector{Vector{T}}  # n_past+1+n_exo
+    𝐒ⁱ_full_seq_rrule::Vector{Matrix{T}}     # (n_cond, n_exo)
+    𝐒ⁱ²ᵉ_full_seq_rrule::Vector{Matrix{T}}   # (n_cond, n_exo^2)
+    invjac_v_seq_rrule::Vector{Matrix{T}}     # (m_t, m_t) per period — variable size, undef ok
+    G_seq_rrule::Vector{Matrix{T}}            # (m_t, m_t) per period — variable size, undef ok
 end
 
 
@@ -1163,6 +1204,15 @@ mutable struct kalman_workspace{T <: Real}
     fast_lu_ws_f::FastLapackInterface.LUWs
     fast_lu_dims_f::NTuple{2, Int}
     fast_lu_rhs_t_k::Matrix{T} # (n_obs, n_states) scratch for right solves
+
+    # Per-period sequence buffers captured by the kalman rrule pullback (allocated
+    # lazily via ensure_kalman_rrule_buffers!).  Each holds Tt inner arrays.
+    u_seq_rrule::Vector{Vector{T}}      # n_states
+    P_seq_rrule::Vector{Matrix{T}}      # (n_states, n_states)
+    CP_seq_rrule::Vector{Matrix{T}}     # (n_obs, n_states)
+    K_seq_rrule::Vector{Matrix{T}}      # (n_states, n_obs)
+    invF_seq_rrule::Vector{Matrix{T}}   # (n_obs, n_obs)
+    v_seq_rrule::Vector{Vector{T}}      # n_obs
 end
 
 

@@ -56,7 +56,7 @@ import REPL
 import Unicode
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
-# using AxisKeys
+import AxisKeys
 
 import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 # import RecursiveFactorization as RF
@@ -66,7 +66,6 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
-import AxisKeys
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 # Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
@@ -171,6 +170,7 @@ include("./parser/equation_modification.jl")
 include("get_functions.jl")
 include("dynare.jl")
 include("inspect.jl")
+include("aumann_shapley.jl")
 include("moments.jl")
 include("./algorithms/fast_lapack_wrappers.jl")
 include("./perturbation/derivatives.jl")
@@ -554,10 +554,40 @@ function invalidate_cache_validity!(𝓂::ℳ)
 end
 
 
-function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
+function reset_nsss_solver_cache!(𝓂::ℳ)
+    empty!(𝓂.caches.solver)
+
+    c = 𝓂.constants.nsss_solver
+    ms = 𝓂.constants.post_complete_parameters
+    seed = Vector{Vector{Float64}}()
+
+    for step_idx in 1:c.n_steps
+        if c.step_types[step_idx] == NUMERICAL_STEP
+            wr = c.write_ranges[step_idx]
+            nbr = c.numerical_bounds_ranges[step_idx]
+            guess_len = min(length(wr), length(nbr))
+            guesses = Vector{Float64}(undef, guess_len)
+
+            for i in 1:guess_len
+                sol_idx = c.write_indices[wr[i]]
+                sol_name = sol_idx <= length(ms.nsss_sol_names) ? ms.nsss_sol_names[sol_idx] : Symbol("")
+                guesses[i] = get(𝓂.constants.post_parameters_macro.guess, sol_name, Inf)
+            end
+
+            push!(seed, guesses)
+            push!(seed, Float64[Inf])
+        end
     end
+
+    push!(seed, fill(Inf, length(ms.parameters)))
+    push!(𝓂.caches.solver, seed)
+
+    return nothing
+end
+
+
+function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
+    reset_nsss_solver_cache!(𝓂)
 
     𝓂.caches.first_order_solution_matrix = zeros(0,0)
     𝓂.caches.first_order_obc_solution_matrix = zeros(0,0)
@@ -825,7 +855,7 @@ end
 
 function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_workspace{T,F,H} = Higher_order_workspace()) where {T <: Real, F <: AbstractFloat, H <: Real}
     if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
-        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T = T, S = F)
+        ℂ.tmp_sparse_prealloc6 = Higher_order_workspace(T, F)
     end
 
     I           = ℂ.tmp_sparse_prealloc6[1]
@@ -1165,7 +1195,7 @@ function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
     # @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
     # @assert size(buffer, 2) == n^2 "Buffer must have n columns."
 
-    @turbo for j in 1:m
+    @inbounds for j in 1:m
          for i in 1:n
             buffer[(j - 1) * n + i, j] = x[i]
         end
@@ -1370,9 +1400,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
-    end
+    reset_nsss_solver_cache!(𝓂)
 
     runtime = @elapsed outmodel = try solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
@@ -1465,9 +1493,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         for i in 1:n_samples
             start_time = time()
 
-            while length(𝓂.caches.solver) > 1
-                pop!(𝓂.caches.solver)
-            end
+            reset_nsss_solver_cache!(𝓂)
 
             SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
@@ -1494,10 +1520,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ;
         end
     end
 
-    while length(𝓂.caches.solver) > 1
-        pop!(𝓂.caches.solver)
-    end
-
+    empty!(𝓂.caches.solver)
     push!(𝓂.caches.solver, solved_NSSS)
 
     if solved
@@ -1996,7 +2019,8 @@ end
 
 
 @unstable function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     if variables == :all_excluding_auxiliary_and_obc
         return ms.vars_idx_excluding_aux_obc
     elseif variables == :all_excluding_obc
@@ -2144,6 +2168,22 @@ function covariance_to_correlation(covariance::AbstractMatrix{T}) where T <: Rea
     end
 
     correlation = covariance_symmetric ./ (std_corr * std_corr')
+
+    # Clamp machine-precision noise to zero for clean display output.
+    # Skipped for AD element types (e.g. ForwardDiff.Dual) where
+    # replacing with zero(T) would destroy derivative partials.
+    if T <: AbstractFloat
+        noise_tol = eps(T)^(T(2)/T(3))
+        n = size(correlation, 1)
+        @inbounds for j in 1:n, i in 1:n
+            if i != j
+                c = correlation[i, j]
+                if !isnan(c) && abs(c) < noise_tol
+                    correlation[i, j] = zero(T)
+                end
+            end
+        end
+    end
 
     return correlation, covariance_symmetric, diag_covariance, std_corr
 end
@@ -2439,6 +2479,7 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
         try 
             𝓂.functions.NSSS_custom(output, parameter_values)
         catch
+            fill!(output, S(NaN))
         end
         return output
     elseif applicable(𝓂.functions.NSSS_custom, parameter_values)
@@ -2578,7 +2619,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     # timer::TimerOutput = TimerOutput(),
 
     # @timeit_debug timer "Calculate NSSS" begin
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     
     # Cache hit: return cached NSSS if valid for current parameters
     if caching && S === Float64 && cache_valid_for_parameters(𝓂.caches.valid_for.non_stochastic_steady_state, parameter_values) && !isempty(𝓂.caches.non_stochastic_steady_state)

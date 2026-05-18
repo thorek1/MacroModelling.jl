@@ -412,7 +412,8 @@ end
 # ── OBC violation function setup ─────────────────────────────────────────────
 
 function set_up_obc_violation_function!(𝓂)
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.equations.dynamic),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -858,7 +859,7 @@ end
 
 # ── OBC state update (per-period NLopt solver) ───────────────────────────────
 
-@unstable function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function, 𝓂, algorithm) where R <: Float64
+function obc_state_update(present_states::S, present_shocks::Vector{R}, state_update::F, 𝓂::ℳ, algorithm::Symbol) where {S, R <: Float64, F}
     unconditional_forecast_horizon = 𝓂.constants.post_model_macro.max_obc_horizon
 
     reference_ss = 𝓂.caches.non_stochastic_steady_state
@@ -871,7 +872,7 @@ end
 
     p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
-    constraints_violated = any(𝓂.functions.obc_violation(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+    constraints_violated = any(𝓂.functions.obc_violation(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))::Bool
 
     if constraints_violated
         opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
@@ -890,14 +891,14 @@ end
 
         present_shocks[contains.(string.(𝓂.constants.post_model_macro.exo),"ᵒᵇᶜ")] .= x
 
-        constraints_violated = any(𝓂.functions.obc_violation(x, p) .> eps(Float32))
+        constraints_violated = any(𝓂.functions.obc_violation(x, p) .> eps(Float32))::Bool
 
         solved = !constraints_violated
     else
         solved = true
     end
 
-    present_states = state_update(present_states, present_shocks)
+    present_states = state_update(present_states, present_shocks)::S
 
     return present_states, present_shocks, solved
 end

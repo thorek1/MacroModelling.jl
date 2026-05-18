@@ -7,6 +7,8 @@ import LinearAlgebra as ℒ
 
 using Random, AxisKeys
 
+import MacroModelling: clear_solution_caches!
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: Zygote-compatible full parameter vector builder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ include("../models/Ireland_2004.jl")
 
             f = x -> begin
                 all_p = build_params(x)
-                irf_v = get_irf(m, all_p, algorithm = alg, periods = 3)
+                irf_v = get_irf(m, all_p, algorithm = alg, verbose = true, periods = 3)
                 return sum(irf_v)
             end
 
@@ -73,6 +75,54 @@ include("../models/Ireland_2004.jl")
             @test fd_fi < 1e-4
         end
     end
+end
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Regression: clearing solution caches must not retain an evicted solver seed
+# ══════════════════════════════════════════════════════════════════════════════
+@testset "IRF derivative after NSSS solver cache eviction" begin
+    include("../models/Smets_Wouters_2003.jl")
+
+    m = Smets_Wouters_2003
+    parameters = copy(m.parameter_values)
+    initial_state = get_irf(
+        m,
+        algorithm = :first_order,
+        shocks = :none,
+        levels = true,
+        verbose = true, 
+        variables = :all,
+        periods = 1,
+    ) |> vec
+
+    get_irf(m, parameters)
+    for i in 1:(m.caches.solver.capacity + 5)
+        push!(m.caches.solver, [fill(float(i), 1), fill(float(i), 1), fill(float(i), length(parameters))])
+    end
+
+    clear_solution_caches!(m, :first_order)
+    @test length(m.caches.solver) == 1
+    @test all(isinf, m.caches.solver[end][end])
+
+    deriv_for = ForwardDiff.jacobian(x -> get_irf(m, x, verbose = true, initial_state = initial_state)[:, end, 1], parameters)
+    deriv_fin = FiniteDifferences.jacobian(
+        FiniteDifferences.central_fdm(5, 1, max_range = 1e-4),
+        x -> begin
+            clear_solution_caches!(m, :first_order)
+            get_irf(m, x, initial_state = initial_state)[:, end, 1]
+        end,
+        parameters,
+    )[1]
+
+    # FiniteDifferences clears the NSSS solver cache on every probe, forcing the
+    # solver to restart from the declared `guess` each time. The resulting solution
+    # depends on the perturbed parameter at the level of the solver tolerance
+    # (~1e-12), which the central-difference stencil amplifies to a ~1e-6 noise
+    # floor relative to the largest IRF magnitude. The analytic forward-mode
+    # derivative correctly reports zero (or near-zero) for those entries, so we
+    # compare with a tolerance band that respects this irreducible FD noise.
+    fd_atol = 1e-5 * maximum(abs, deriv_for)
+    @test isapprox(deriv_for, deriv_fin, rtol = 1e-4, atol = fd_atol)
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -128,12 +178,13 @@ model_configs = [
                 non_stochastic_steady_state = cfg.nsss_vars,
                 mean = cfg.moment_vars,
                 standard_deviation = cfg.moment_vars,
+                verbose = true, 
                 algorithm = alg)
             target_nsss = target_stats[:non_stochastic_steady_state]
             target_mean = target_stats[:mean]
             target_std  = target_stats[:standard_deviation]
 
-            target_irf_full = get_irf(m, m.parameter_values, algorithm = alg, periods = 3)
+            target_irf_full = get_irf(m, m.parameter_values, verbose = true, algorithm = alg, periods = 3)
             irf_var_idx = sort(MacroModelling.parse_variables_input_to_index(cfg.observables[1], m))
             target_irf = target_irf_full[irf_var_idx, 1, 1]
 
@@ -142,19 +193,19 @@ model_configs = [
                 all_p = build_params(x)
 
                 llh = get_loglikelihood(m, data, all_p,
-                    algorithm = alg, on_failure_loglikelihood = -Inf)
+                    algorithm = alg, verbose = true, on_failure_loglikelihood = -Inf)
 
                 stats_n = get_statistics(m, all_p,
-                    non_stochastic_steady_state = cfg.nsss_vars, algorithm = alg)
+                    non_stochastic_steady_state = cfg.nsss_vars, verbose = true, algorithm = alg)
                 llh -= sum((stats_n[:non_stochastic_steady_state] .- target_nsss).^2)
 
                 stats_m = get_statistics(m, all_p,
                     mean = cfg.moment_vars, standard_deviation = cfg.moment_vars,
-                    algorithm = alg)
+                    verbose = true, algorithm = alg)
                 llh -= sum((stats_m[:mean] .- target_mean).^2)
                 llh -= sum((stats_m[:standard_deviation] .- target_std).^2)
 
-                irf_v = get_irf(m, all_p, algorithm = alg, periods = 3)
+                irf_v = get_irf(m, all_p, verbose = true, algorithm = alg, periods = 3)
                 llh -= sum((irf_v[irf_var_idx, 1, 1] .- target_irf).^2)
 
                 return llh

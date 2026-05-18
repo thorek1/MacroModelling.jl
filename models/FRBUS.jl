@@ -1,3 +1,10 @@
+# FRB/US LINVER (2024) model
+# Source: https://www.federalreserve.gov/econres/us-models-linver.htm
+# Settings:
+#   expvers      = "mcap"
+#   mprule       = "intay"
+#   elb_imposed  = "no"
+
 @model FRBUS begin
     delrff[0] = rff[0] - rff[-1]
 

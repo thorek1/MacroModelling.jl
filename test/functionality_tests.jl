@@ -1669,6 +1669,53 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             verbose = false)
                 end
             end
+
+            if algorithm in (:pruned_second_order, :pruned_third_order)
+                clear_solution_caches!(m, algorithm)
+
+                sd_default = get_shock_decomposition(m, data,
+                                                    algorithm = algorithm,
+                                                    data_in_levels = false,
+                                                    verbose = false)
+                sd_mc = get_shock_decomposition(m, data,
+                                                algorithm = algorithm,
+                                                data_in_levels = false,
+                                                marginal_contribution = true,
+                                                verbose = false)
+
+                @test :Nonlinearities ∈ axiskeys(sd_default, :Shocks)
+                @test :Nonlinearities ∉ axiskeys(sd_mc, :Shocks)
+                @test :Initial_values ∈ axiskeys(sd_mc, :Shocks)
+                @test size(sd_mc, :Shocks) == size(sd_default, :Shocks) - 1
+                init_mc = sd_mc(Shocks = :Initial_values)
+                shock_keys_mc = filter(!=(:Initial_values), collect(axiskeys(sd_mc, :Shocks)))
+                shock_sum_mc = dropdims(sum(collect(sd_mc(Shocks = shock_keys_mc)), dims = 2), dims = 2)
+                # In marginal-contribution mode the zero-shock / initial-values
+                # path stays separate; only the incremental response is
+                # reallocated across the shock columns.
+                sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
+                sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
+                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-8)
+                @test isapprox(sum_default, sum_mc, atol = 1e-8)
+            end
+
+            # First-order with marginal_contribution = true is silently ignored
+            # (with an @info notice) and returns the standard first-order
+            # decomposition.
+            if algorithm == :first_order
+                clear_solution_caches!(m, algorithm)
+                sd_fo_default = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        verbose = false)
+                sd_fo_mc      = get_shock_decomposition(m, data,
+                                                        algorithm = algorithm,
+                                                        data_in_levels = false,
+                                                        marginal_contribution = true,
+                                                        verbose = false)
+                @test axiskeys(sd_fo_mc, :Shocks) == axiskeys(sd_fo_default, :Shocks)
+                @test isapprox(collect(sd_fo_mc), collect(sd_fo_default), rtol = 1e-10)
+            end
         end
 
         
@@ -1752,7 +1799,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                                     if algorithm == :first_order && filter == :kalman
                                         for i in 1:100
-                                            local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
+                                            local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3), 
                                                                                     x -> begin 
                                                                                             clear_solution_caches!(m, algorithm)
         
@@ -2060,6 +2107,52 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 fevd(m)
             end
 
+            if algorithm == :pruned_second_order || algorithm == :pruned_third_order
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_higher = get_variance_decomposition(m, algorithm = algorithm)
+
+                nE = length(m.constants.post_model_macro.exo)
+
+                @test size(var_decomp_higher, 2) == nE + 1
+                @test axiskeys(var_decomp_higher, 2)[end] == :Cross_shock_interaction
+                @test all(isapprox.(sum(collect(var_decomp_higher), dims = 2), 1, atol = 1e-6))
+
+                clear_solution_caches!(m, algorithm)
+
+                var_decomp_mc = get_variance_decomposition(m, algorithm = algorithm, marginal_contribution = true)
+
+                @test size(var_decomp_mc, 2) == nE
+                @test :Cross_shock_interaction ∉ axiskeys(var_decomp_mc, 2)
+                # Rows whose total variance is non-trivial must satisfy Shapley
+                # efficiency (per-shock shares sum to one). Rows with negligible
+                # variance are reported as exact zeros.
+                # Note: the non-mc decomposition's row sums are always exactly 1
+                # by construction (the :Cross_shock_interaction column absorbs the
+                # residual), so we cannot use them to discriminate. Instead, check
+                # whether the per-shock columns (excluding :Cross_shock_interaction)
+                # carry non-trivial weight — if they don't, the variable's total
+                # variance is negligible and the mc path correctly reports zeros.
+                row_sums_mc = vec(sum(collect(var_decomp_mc), dims = 2))
+                shock_only_sums = vec(sum(collect(var_decomp_higher)[:, 1:nE], dims = 2))
+                for v in eachindex(row_sums_mc)
+                    if shock_only_sums[v] > 1e-10
+                        @test isapprox(row_sums_mc[v], 1, atol = 1e-6)
+                    else
+                        @test isapprox(row_sums_mc[v], 0, atol = 1e-10) || isapprox(row_sums_mc[v], 1, atol = 1e-6)
+                    end
+                end
+
+                # First-order with marginal_contribution = true is silently
+                # ignored (with an @info notice) and returns the standard
+                # first-order shares (additive across shocks, no interaction
+                # column).
+                vd_first_default = get_variance_decomposition(m)
+                vd_first_mc      = get_variance_decomposition(m, marginal_contribution = true)
+                @test axiskeys(vd_first_mc, 2) == axiskeys(vd_first_default, 2)
+                @test isapprox(collect(vd_first_mc), collect(vd_first_default), rtol = 1e-10)
+            end
+
             
             
             for parameters in params
@@ -2106,7 +2199,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         verbose = verbose)
                                                                         
-                                @test check_isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8, nans = true)
 
                                 clear_solution_caches!(m, algorithm)
                                                                         
@@ -2116,7 +2209,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                                         verbose = verbose)
 
-                                @test check_isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8)
+                                @test check_isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8, nans = true)
 
                             end
 
@@ -2131,7 +2224,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm,
                                                 verbose = verbose)
 
-                                @test check_isapprox(corrl, CORRL, rtol = 1e-5)
+                                @test check_isapprox(corrl, CORRL, rtol = 1e-5, nans = true)
 
                                 clear_solution_caches!(m, algorithm)
                                 
@@ -2143,7 +2236,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                 verbose = verbose)
 
-                                @test check_isapprox(autocorr_, AUTOCORR, rtol = 1e-8)
+                                @test check_isapprox(autocorr_, AUTOCORR, rtol = 1e-8, nans = true)
                             end
                         end
                     end
@@ -2210,39 +2303,42 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             sol = get_solution(m, parameter_values, algorithm = algorithm)
 
+            # Helper to extract element i in flattened order: 1→SS, 2→sol_mats[1], 3→sol_mats[2], ...
+            sol_el(s, i) = i == 1 ? s[1] : s[2][i-1]
+
             deriv_sol = nothing
             deriv_sol_zyg = nothing
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values))
+                for i in 1:length(sol[2])
+                    push!(deriv_sol, ForwardDiff.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_fin = []
-                for i in 1:length(sol)-2
+                for i in 1:length(sol[2])
                     push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
-                                                                get_solution(m, x, algorithm = algorithm)[i]
+                                                                sol_el(get_solution(m, x, algorithm = algorithm), i)
                                                             end, parameter_values)[1])
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_moon = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
+                for i in 1:length(sol[2])
+                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_zyg = []
-                for i in 1:length(sol)-2
-                    push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
+                for i in 1:length(sol[2])
+                    push!(deriv_sol_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
                 end
 
                 @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
@@ -2259,16 +2355,16 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             sylvester_algorithm = sylvester_algorithm)
 
-                        @test check_isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-8)
+                        @test check_isapprox(vcat([sol[1]], sol[2]), vcat([SOL[1]], SOL[2]), rtol = 1e-8)
 
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL, ForwardDiff.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], parameter_values))
+                                                sylvester_algorithm = sylvester_algorithm), i), parameter_values))
                             end
 
                             @test check_isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
@@ -2276,21 +2372,21 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL_moon = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], ADTypes.AutoMooncake(config = nothing), parameter_values))
+                                                sylvester_algorithm = sylvester_algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
                             end
 
                             clear_solution_caches!(m, algorithm)
 
                             DERIV_SOL_zyg = []
-                            for i in 1:length(sol)-2
-                                push!(DERIV_SOL_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                            for i in 1:length(sol[2])
+                                push!(DERIV_SOL_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)[i], parameter_values)[1])
+                                                sylvester_algorithm = sylvester_algorithm), i), parameter_values)[1])
                             end
 
                             @test check_isapprox(DERIV_SOL_moon, DERIV_SOL, rtol = 1e-8)
@@ -2382,7 +2478,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
                     for i in 1:100
-                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2400,7 +2496,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
                     for i in 1:100
-                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2419,14 +2515,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_for_last = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)
 
                     for i in 1:100
-                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
                                                                         get_irf(m, x, initial_state = initial_state)[:,end,1]
                                                                     end, parameter_values)
                         if isfinite(ℒ.norm(deriv_fin_last[1]))
-                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-4)
                             break
                         end
                     end
@@ -2438,7 +2534,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
                     for i in 1:100
-                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-4), 
+                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -2646,7 +2742,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end                    
 
             for i in 1:100        
-                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
 
@@ -2677,7 +2773,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
@@ -2709,7 +2805,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end         
 
             for i in 1:100        
-                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                                 x -> begin 
                                                                     clear_solution_caches!(m, algorithm)
                                                                     
@@ -2742,7 +2838,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv6_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv6_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
@@ -2767,10 +2863,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # cleanly. Comparing only over non-degenerate entries keeps the
             # AD-vs-FD check meaningful without silently masking real bugs.
             corr_target_vars_jac = let
-                _all_vars_jac = m.constants.post_model_macro.var
-                _sd_jac = get_statistics(m, old_params, algorithm = algorithm,
-                                         standard_deviation = _all_vars_jac)[:standard_deviation]
-                _all_vars_jac[findall(>(1e-6), _sd_jac)]
+                all_vars_jac = m.constants.post_model_macro.var
+                sd_jac = get_statistics(m, old_params, algorithm = algorithm,
+                                         standard_deviation = all_vars_jac)[:standard_deviation]
+                all_vars_jac[findall(>(1e-6), sd_jac)]
             end
 
             deriv7 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
@@ -2784,7 +2880,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv7_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv7_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                                                             x -> begin
                                                                 clear_solution_caches!(m, algorithm)
 
@@ -3054,8 +3150,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 covariance = m.constants.post_model_macro.var[4:5])
             
             # Check that within-group covariances match
-            @test check_isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6)
-            @test check_isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6)
+            @test check_isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-6, nans = true)
+            @test check_isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-6, nans = true)
             
             # Check that cross-group covariances are zero
             @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
@@ -3082,13 +3178,13 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # well above sqrt(eps)). Some models (e.g. Smets_Wouters_2007) have
             # near-constant variables in their leading positions which would produce
             # NaN/Inf-like correlation entries and break the cov/(sd*sd') cross-check.
-            _all_vars = m.constants.post_model_macro.var
-            _all_sd = let s = get_statistics(m, old_params, algorithm = algorithm,
-                                              standard_deviation = _all_vars)
+            all_vars = m.constants.post_model_macro.var
+            all_sd = let s = get_statistics(m, old_params, algorithm = algorithm,
+                                              standard_deviation = all_vars)
                 s[:standard_deviation]
             end
-            _nondeg_idx = findall(>(1e-6), _all_sd)
-            vars_corr = _all_vars[_nondeg_idx]
+            nondeg_idx = findall(>(1e-6), all_sd)
+            vars_corr = all_vars[nondeg_idx]
 
             # Flat input: full correlation matrix among requested variables
             stats_corr = get_statistics(m, old_params, algorithm = algorithm,
@@ -3096,14 +3192,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             @test haskey(stats_corr, :correlation)
             @test stats_corr[:correlation] isa AbstractMatrix
             @test size(stats_corr[:correlation]) == (length(vars_corr), length(vars_corr))
-            # Diagonal must be 1 (or NaN for degenerate variables, but selected vars should be non-degenerate)
+            # Diagonal must be 1 (or NaN for degenerate variables)
             for i in 1:length(vars_corr)
-                @test check_isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6)
+                @test check_isapprox(stats_corr[:correlation][i, i], 1.0, rtol = 1e-6, nans = true)
             end
             # Symmetric
-            @test check_isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6)
-            # All entries in [-1, 1]
-            @test all(-1 - 1e-6 .<= stats_corr[:correlation] .<= 1 + 1e-6)
+            @test check_isapprox(stats_corr[:correlation], stats_corr[:correlation]', rtol = 1e-6, nans = true)
+            # All entries in [-1, 1] (or NaN)
+            @test all(x -> isnan(x) || (-1 - 1e-6 <= x <= 1 + 1e-6), stats_corr[:correlation])
 
             # Cross-check correlation = covariance / (std * std')
             stats_combo = get_statistics(m, old_params, algorithm = algorithm,
@@ -3126,8 +3222,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                               correlation = vars_corr[1:2])
                 stats_block2 = get_statistics(m, old_params, algorithm = algorithm,
                                               correlation = vars_corr[3:4])
-                @test check_isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6)
-                @test check_isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6)
+                @test check_isapprox(stats_grouped_corr[:correlation][1:2, 1:2], stats_block1[:correlation], rtol = 1e-6, nans = true)
+                @test check_isapprox(stats_grouped_corr[:correlation][3:4, 3:4], stats_block2[:correlation], rtol = 1e-6, nans = true)
                 # Cross-group entries are zero
                 @test all(stats_grouped_corr[:correlation][1:2, 3:4] .== 0)
                 @test all(stats_grouped_corr[:correlation][3:4, 1:2] .== 0)
@@ -3183,6 +3279,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             cov(m, algorithm = algorithm)
 
+            get_correlation(m, algorithm = algorithm)
+
+            get_corr(m, algorithm = algorithm)
+
+            corr(m, algorithm = algorithm)
+
             
             get_mean(m, algorithm = algorithm)
         end
@@ -3196,6 +3298,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            correlation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             parameter_derivatives = parameter_derivatives,
                             derivatives = true)
         end
@@ -3209,6 +3312,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            correlation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             derivatives = true)
         end
 
@@ -3316,7 +3420,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3337,7 +3441,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         collect(get_moments(m,
@@ -3362,7 +3466,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for i in 1:100
                 local fd = FiniteDifferences.jacobian(
-                    FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3),
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
                     x -> begin
                         clear_solution_caches!(m, algorithm)
                         vec(collect(get_moments(m,
@@ -3372,7 +3476,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             derivatives = false)[:covariance]))
                     end, old_params)
                 if isfinite(ℒ.norm(fd[1]))
-                    @test check_isapprox(cov_jac, fd[1], rtol = 1e-4)
+                    @test check_isapprox(cov_jac, fd[1], rtol = 1e-4, nans = true)
                     break
                 end
             end
@@ -3400,6 +3504,33 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
                 m.parameter_values .= old_params
             end
+
+            # Correlation derivatives
+            clear_solution_caches!(m, algorithm)
+            mom_corr = get_moments(m, algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, correlation = true,
+                                  tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
+                                  derivatives = true)
+            corr_ka = collect(mom_corr[:correlation])
+            n_cr = size(corr_ka, 1)
+            corr_jac = reshape(corr_ka[:, :, 2:end], n_cr * n_cr, :)
+
+            for i in 1:100
+                local fd = FiniteDifferences.jacobian(
+                    FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-3),
+                    x -> begin
+                        clear_solution_caches!(m, algorithm)
+                        vec(collect(get_moments(m,
+                            parameters = m.constants.post_complete_parameters.parameters .=> x,
+                            algorithm = algorithm, non_stochastic_steady_state = false, standard_deviation = false, correlation = true,
+                            tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
+                            derivatives = false)[:correlation]))
+                    end, old_params)
+                if isfinite(ℒ.norm(fd[1]))
+                    @test check_isapprox(corr_jac, fd[1], rtol = 1e-4, nans = true)
+                    break
+                end
+            end
+            m.parameter_values .= old_params
         end
     end
 

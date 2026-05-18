@@ -55,7 +55,8 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    ms = ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    ms = 𝓂.constants.post_complete_parameters
     full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 

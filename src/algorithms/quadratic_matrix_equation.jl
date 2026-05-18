@@ -49,23 +49,26 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.mul!(X², X, X)
         # A*X² into AXX buffer
         ℒ.mul!(qme_ws.AXX, A, X²)
+        norm_AXX = ℒ.norm(qme_ws.AXX)
         
-        AXXnorm = min(ℒ.norm(qme_ws.AXX), ℒ.norm(C))
+        # B*X into X² buffer (no longer needed for X²)
+        ℒ.mul!(X², B, X)
+        norm_BX = ℒ.norm(X²)
         
-        # AXX += B*X
-        ℒ.mul!(qme_ws.AXX, B, X, 1, 1)
-        # AXX += C
+        # Accumulate residual: AXX += B*X + C
+        ℒ.axpy!(1, X², qme_ws.AXX)
         ℒ.axpy!(1, C, qme_ws.AXX)
     
-        reached_tol = ℒ.norm(qme_ws.AXX) / AXXnorm
+        # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+        reached_tol = ℒ.norm(qme_ws.AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
 
         if reached_tol < (initial_guess_acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
-            _existing_sol = cache.qme_solution
-            if _existing_sol isa Matrix{R} && size(_existing_sol) == size(initial_guess)
-                copyto!(_existing_sol, initial_guess)
-                return _existing_sol, true
+            existing_sol = cache.qme_solution
+            if existing_sol isa Matrix{R} && size(existing_sol) == size(initial_guess)
+                copyto!(existing_sol, initial_guess)
+                return existing_sol, true
             else
                 new_sol = Matrix{R}(initial_guess)
                 cache.qme_solution = new_sol
@@ -206,12 +209,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_qz_dims,
     schdcmp,
     schur_ok,
-    has_ur = factorize_generalized_schur!(D,
+    has_ur = factorize_generalized_schur!((use_fastlapack_schur ? Val(:FastLapack) : Val(:Julia)), D,
                                             E,
                                             schur_ws_local.fast_qz_ws,
                                             schur_ws_local.fast_qz_dims,
-                                            schur_ws_local.eigenselect;
-                                            use_fastlapack_schur = use_fastlapack_schur)
+                                            schur_ws_local.eigenselect)
 
     if !schur_ok
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -234,10 +236,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_z11,
     schur_ws_local.fast_lu_dims_z11,
     solved_Z₁₁,
-    Ẑ₁₁ = factorize_lu!(schur_ws_local.Z₁₁,
+    Ẑ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.Z₁₁,
                         schur_ws_local.fast_lu_ws_z11,
-                        schur_ws_local.fast_lu_dims_z11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_z11)
     
     if !solved_Z₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -248,10 +249,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schur_ws_local.fast_lu_ws_s11,
     schur_ws_local.fast_lu_dims_s11,
     solved_S₁₁,
-    Ŝ₁₁ = factorize_lu!(schur_ws_local.S₁₁,
+    Ŝ₁₁ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), schur_ws_local.S₁₁,
                         schur_ws_local.fast_lu_ws_s11,
-                        schur_ws_local.fast_lu_dims_s11;
-                        use_fastlapack_lu = use_fastlapack_lu)
+                        schur_ws_local.fast_lu_dims_s11)
     
     if !solved_S₁₁
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
@@ -294,9 +294,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # n == n_comb (= nFnpm + nPfm - nMixed) so the result is (n, n), same as doubling.
     # Prefer cache-backed storage to avoid extra allocations.
     X = if caching
-        _existing_sol = cache.qme_solution
-        if _existing_sol isa Matrix{R} && size(_existing_sol) == (n, n)
-            _existing_sol
+        existing_sol = cache.qme_solution
+        if existing_sol isa Matrix{R} && size(existing_sol) == (n, n)
+            existing_sol
         else
             cache.qme_solution = zeros(R, n, n)
         end
@@ -312,14 +312,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # A*X² into AXX buffer
     ℒ.mul!(schur_ws_local.AXX, A, schur_ws_local.temp_X2)
     
-    AXXnorm = min(ℒ.norm(schur_ws_local.AXX), ℒ.norm(C))
+    norm_AXX = ℒ.norm(schur_ws_local.AXX)
     
-    # AXX += B*X
-    ℒ.mul!(schur_ws_local.AXX, B, X, 1, 1)
-    # AXX += C
+    # B*X into temp_X2 buffer (no longer needed for X²)
+    ℒ.mul!(schur_ws_local.temp_X2, B, X)
+    norm_BX = ℒ.norm(schur_ws_local.temp_X2)
+    
+    # Accumulate residual: AXX += B*X + C
+    ℒ.axpy!(1, schur_ws_local.temp_X2, schur_ws_local.AXX)
     ℒ.axpy!(1, C, schur_ws_local.AXX)
     
-    reached_tol = ℒ.norm(schur_ws_local.AXX) / AXXnorm
+    # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+    reached_tol = ℒ.norm(schur_ws_local.AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
     
     return X, 0, reached_tol
 end
@@ -338,10 +342,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::SolverTolerances = SolverTolerances(),
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100,
+                                        max_iter::Int = 50,
                                         caching::Bool = true)::Tuple{Matrix{R}, Int64, R} where {R <: AbstractFloat}
     T = constants.post_model_macro
-    idx_constants = ensure_first_order_constants!(constants)
+    ensure_first_order_constants!(constants)
+    idx_constants = constants.post_complete_parameters
     workspace = ensure_qme_doubling_workspace!(workspaces, size(A, 1))
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
@@ -351,10 +356,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     guess_provided = true
     n = size(A, 1)
 
-    if length(initial_guess) == 0
-        guess_provided = false
-        initial_guess = zero(A)
-    end
+    # if length(initial_guess) == 0
+    #     guess_provided = false
+    #     initial_guess = zero(A)
+    # end
 
     # Extract workspaces
     E = workspace.E
@@ -376,15 +381,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     copy!(F, A)
     copy!(B̄, B)
 
-    ℒ.mul!(B̄, A, initial_guess, 1, 1)
+    # ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
     workspace.fast_lu_ws_qme_a,
     workspace.fast_lu_dims_qme_a,
     solved_B,
-    B̂ = factorize_lu!(B̄,
+    B̂ = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), B̄,
                        workspace.fast_lu_ws_qme_a,
-                       workspace.fast_lu_dims_qme_a;
-                       use_fastlapack_lu = use_fastlapack_lu)
+                       workspace.fast_lu_dims_qme_a)
 
     if !solved_B
         return A, 0, 1.0
@@ -399,7 +403,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # X = -E - initial_guess (in-place)
     copy!(X, E)
     ℒ.rmul!(X, -1)
-    ℒ.axpy!(-1, initial_guess, X)
+    # ℒ.axpy!(-1, initial_guess, X)
     # Y = -F (in-place)
     copy!(Y, F)
     ℒ.rmul!(Y, -1)
@@ -431,10 +435,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_a,
         workspace.fast_lu_dims_qme_a,
         solved_EI,
-        fEI = factorize_lu!(temp1,
+        fEI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp1,
                             workspace.fast_lu_ws_qme_a,
-                            workspace.fast_lu_dims_qme_a;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_a)
 
         if !solved_EI
             return A, iter, 1.0
@@ -466,10 +469,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         workspace.fast_lu_ws_qme_b,
         workspace.fast_lu_dims_qme_b,
         solved_FI,
-        fFI = factorize_lu!(temp2,
+        fFI = factorize_lu!((use_fastlapack_lu ? Val(:FastLapack) : Val(:Julia)), temp2,
                             workspace.fast_lu_ws_qme_b,
-                            workspace.fast_lu_dims_qme_b;
-                            use_fastlapack_lu = use_fastlapack_lu)
+                            workspace.fast_lu_dims_qme_b)
         
         if !solved_FI
             return A, iter, 1.0
@@ -538,29 +540,34 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
     # end # timeit_debug
 
-    ℒ.axpy!(1, initial_guess, X_new)
+    # ℒ.axpy!(1, initial_guess, X_new)
 
     # Compute residual to verify solution quality
     # AXX = A * X_new^2 (use temp1 for X^2)
     ℒ.mul!(temp1, X_new, X_new)
     ℒ.mul!(AXX, A, temp1)
     
-    AXXnorm = min(ℒ.norm(AXX), ℒ.norm(C))
+    norm_AXX = ℒ.norm(AXX)
 
-    ℒ.mul!(AXX, B, X_new, 1, 1)
+    # B*X into temp1 buffer (no longer needed for X²)
+    ℒ.mul!(temp1, B, X_new)
+    norm_BX = ℒ.norm(temp1)
 
+    # Accumulate residual: AXX += B*X + C
+    ℒ.axpy!(1, temp1, AXX)
     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+    # Standard relative residual: norm(r) / (norm(A*X²) + norm(B*X) + norm(C))
+    reached_tol = ℒ.norm(AXX) / (norm_AXX + norm_BX + ℒ.norm(C))
 
     # if reached_tol > tol
     #     println("QME: doubling $reached_tol")
     # end
 
     X_cache = if caching
-        _existing_sol = cache.qme_solution
-        if _existing_sol isa Matrix{R} && size(_existing_sol) == size(X_new)
-            _existing_sol
+        existing_sol = cache.qme_solution
+        if existing_sol isa Matrix{R} && size(existing_sol) == size(X_new)
+            existing_sol
         else
             cache.qme_solution = zeros(R, size(X_new, 1), size(X_new, 2))
         end

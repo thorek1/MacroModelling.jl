@@ -63,11 +63,17 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = FS2000_custom_steady_state_function!)
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (Mooncake + custom steady state): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 get_steady_state(FS2000, steady_state_function = nothing)
@@ -75,6 +81,9 @@ get_steady_state(FS2000, steady_state_function = nothing)
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
 
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
 println("Mean variable values (ForwardDiff): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
 
 sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
@@ -112,126 +121,56 @@ end
     end
 end
 
-@testset "Kalman with missing observations (mid-sample partial + fully missing periods)" begin
-    n_obs   = size(data, 1)
-    n_time  = size(data, 2)
-    @assert n_time > 60 "FS2000 sample is shorter than expected"
+# ---------------------------------------------------------------------------
+# Replicate the full estimation problem on data with missing observations.
+# Standalone correctness tests for missing-data Kalman/inversion paths live
+# in test_missing_data.jl.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
 
-    # Mid-sample mix of partial and fully-missing periods.  Periods 25 and 47
-    # have a single observable missing; periods 30, 31 and 60 have ALL
-    # observables missing (predict-only Kalman steps).  None at the boundaries.
-    dat_nan = Matrix{Float64}(collect(data))
-    dat_nan[1, 25]  = NaN                  # partial: drop obs 1
-    dat_nan[2, 47]  = NaN                  # partial: drop obs 2
-    dat_nan[:, 30] .= NaN                  # fully missing period
-    dat_nan[:, 31] .= NaN                  # consecutive fully missing
-    dat_nan[:, 60] .= NaN                  # another isolated fully missing
+FS2000_loglikelihood_missing = FS2000_loglikelihood_function(data_missing, FS2000, -Inf)
 
-    data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
+samps_missing = @time sample(FS2000_loglikelihood_missing, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
 
-    # Equivalent Missing-typed array
-    dat_miss = Matrix{Union{Missing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_miss, 2), i in axes(dat_miss, 1)
-        if !isfinite(Float64(coalesce(dat_miss[i, j], NaN)))
-            dat_miss[i, j] = missing
-        end
-    end
-    data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
 
-    # 1. forward filter: finite, agrees across NaN/Missing forms, differs from dense.
-    ll_dense = get_loglikelihood(FS2000, data, FS2000.parameter_values)
-    ll_nan   = get_loglikelihood(FS2000, data_nan, FS2000.parameter_values)
-    ll_miss  = get_loglikelihood(FS2000, data_missing, FS2000.parameter_values)
-    @test isfinite(ll_nan)
-    @test isapprox(ll_nan, ll_miss)
-    @test ll_nan != ll_dense
+modeFS2000_missing = Turing.maximum_a_posteriori(FS2000_loglikelihood_missing,
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                        adtype = AutoMooncake(; config=nothing),
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
 
-    # 2. AD gradient (Mooncake) matches finite differences on the missing-data input.
-    back_grad = DifferentiationInterface.gradient(
-        x -> get_loglikelihood(FS2000, data_nan, x),
-        ADTypes.AutoMooncake(config = nothing),
-        FS2000.parameter_values,
-    )
-    @test all(isfinite, back_grad)
+println("Mode variable values (missing data): $(modeFS2000_missing.params); Mode loglikelihood: $(modeFS2000_missing.lp)")
 
-    fin_grad = FiniteDifferences.grad(
-        FiniteDifferences.central_fdm(4, 1),
-        x -> get_loglikelihood(FS2000, data_nan, x),
-        FS2000.parameter_values,
-    )[1]
-    @test isapprox(back_grad, fin_grad, rtol = 1e-4)
-
-    # 3. smoother runs end-to-end and produces finite, well-shaped output, even
-    #    at fully-missing periods (the smoother backfills shocks from the
-    #    surrounding observations).
-    sd = get_shock_decomposition(FS2000, data_nan)
-    @test all(isfinite, collect(sd))
-    @test size(sd, 3) == n_time
-
-    sh = get_estimated_shocks(FS2000, data_nan)
-    @test all(isfinite, collect(sh))
-    @test size(sh, 2) == n_time
-
-    vars = get_estimated_variables(FS2000, data_nan)
-    @test all(isfinite, collect(vars))
-    @test size(vars, 2) == n_time
+@testset "Estimation results (missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(FS2000.parameter_values)
+    @test isfinite(modeFS2000_missing.lp)
 end
 
-@testset "Inversion filter with missing observations (mid-sample partial + fully missing periods)" begin
-    n_time = size(data, 2)
-    @assert n_time > 60 "FS2000 sample is shorter than expected"
+@testset "Mooncake vs FiniteDifferences gradient (1st order Kalman, missing data)" begin
+    # Pass FS2000 and data_missing as Constant contexts (not closure captures)
+    # so Mooncake doesn't run `__verify_const` against the captured globals.
+    # That check uses `==`, which returns `false` for NaN-bearing arrays even
+    # when the array is the same object — triggering an assertion failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values,
+        DifferentiationInterface.Constant(FS2000),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
 
-    # Same missingness pattern as the Kalman test above: mid-sample partial and
-    # fully-missing periods, none at the boundaries.
-    dat_nan = Matrix{Float64}(collect(data))
-    dat_nan[1, 25]  = NaN
-    dat_nan[2, 47]  = NaN
-    dat_nan[:, 30] .= NaN
-    dat_nan[:, 31] .= NaN
-    dat_nan[:, 60] .= NaN
-    data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
-
-    dat_miss = Matrix{Union{Missing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_miss, 2), i in axes(dat_miss, 1)
-        if !isfinite(Float64(coalesce(dat_miss[i, j], NaN)))
-            dat_miss[i, j] = missing
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data_missing, x), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
         end
-    end
-    data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
-
-    inversion_algos = [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
-
-    for algo in inversion_algos
-        ll_dense = get_loglikelihood(FS2000, data,         FS2000.parameter_values; algorithm = algo, filter = :inversion)
-        ll_nan   = get_loglikelihood(FS2000, data_nan,     FS2000.parameter_values; algorithm = algo, filter = :inversion)
-        ll_miss  = get_loglikelihood(FS2000, data_missing, FS2000.parameter_values; algorithm = algo, filter = :inversion)
-        @test isfinite(ll_nan)
-        @test isapprox(ll_nan, ll_miss)
-        @test ll_nan != ll_dense
-
-        # filter_data_with_model end-to-end via the smoother accessors.
-        sh = get_estimated_shocks(FS2000, data_nan; algorithm = algo, filter = :inversion)
-        @test all(isfinite, collect(sh))
-        @test size(sh, 2) == n_time
-    end
-
-    # AD: first_order, pruned_second_order and second_order inversion support
-    # missing data; the remaining higher orders are not yet implemented and must
-    # error out clearly rather than silently zeroing the gradient.
-    for algo in (:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order)
-        back_grad = DifferentiationInterface.gradient(
-            x -> get_loglikelihood(FS2000, data_nan, x; algorithm = algo, filter = :inversion),
-            ADTypes.AutoMooncake(config = nothing),
-            FS2000.parameter_values,
-        )
-        @test all(isfinite, back_grad)
-
-        fin_grad = FiniteDifferences.grad(
-            FiniteDifferences.central_fdm(4, 1),
-            x -> get_loglikelihood(FS2000, data_nan, x; algorithm = algo, filter = :inversion),
-            FS2000.parameter_values,
-        )[1]
-        @test isapprox(back_grad, fin_grad, rtol = 1e-4)
     end
 end
 

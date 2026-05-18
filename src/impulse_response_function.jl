@@ -99,7 +99,7 @@ function irf(state_update::Function,
 
         shock_history[:,1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -111,9 +111,10 @@ function irf(state_update::Function,
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     else
-        shock_idx = parse_shocks_input_to_index(shocks,constants)
+        raw_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_idx = raw_idx isa Integer ? Int[raw_idx] : collect(Int, raw_idx)
         shock_history = zeros(T.nExo, periods)
     end
 
@@ -198,11 +199,7 @@ function irf(state_update::Function,
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? 
-                    shock_idx isa Int ? 
-                        [T.exo[shock_idx]] : 
-                    T.exo[shock_idx] : 
-                [:Shock_matrix]
+        axis2 = shocks isa Union{Symbol_input,String_input} ? T.exo[shock_idx] : [:Shock_matrix]
 
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
@@ -242,7 +239,7 @@ end
 
         shock_history[:,1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -254,9 +251,10 @@ end
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     else
-        shock_idx = parse_shocks_input_to_index(shocks,constants)
+        raw_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_idx = raw_idx isa Integer ? Int[raw_idx] : collect(Int, raw_idx)
         shock_history = zeros(T.nExo, periods)
     end
 
@@ -325,11 +323,7 @@ end
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? 
-                    shock_idx isa Int ? 
-                        [T.exo[shock_idx]] : 
-                    T.exo[shock_idx] : 
-                [:Shock_matrix]
+        axis2 = shocks isa Union{Symbol_input,String_input} ? T.exo[shock_idx] : [:Shock_matrix]
         
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
@@ -370,7 +364,7 @@ function girf(state_update::Function,
 
         shock_history[:,1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -382,13 +376,14 @@ function girf(state_update::Function,
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks == :simulate
         shock_history = randn(T.nExo,periods) * shock_size
 
-        shock_idx = 1
+        shock_idx = Int[1]
     else
-        shock_idx = parse_shocks_input_to_index(shocks,constants)
+        raw_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_idx = raw_idx isa Integer ? Int[raw_idx] : collect(Int, raw_idx)
         shock_history = zeros(T.nExo, periods)
     end
 
@@ -512,11 +507,7 @@ function girf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = shocks isa Union{Symbol_input,String_input} ? 
-                shock_idx isa Int ? 
-                    [T.exo[shock_idx]] : 
-                T.exo[shock_idx] : 
-            [:Shock_matrix]
+    axis2 = shocks isa Union{Symbol_input,String_input} ? T.exo[shock_idx] : [:Shock_matrix]
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
@@ -556,7 +547,7 @@ function girf(state_update::Function,
 
         shock_history[:,1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -568,15 +559,16 @@ function girf(state_update::Function,
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
-        shock_idx = 1
+        shock_idx = Int[1]
     elseif shocks == :simulate
         shock_history = randn(T.nExo,periods) * shock_size
         
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 
-        shock_idx = 1
+        shock_idx = Int[1]
     else
-        shock_idx = parse_shocks_input_to_index(shocks,constants)
+        raw_idx = parse_shocks_input_to_index(shocks,constants)
+        shock_idx = raw_idx isa Integer ? Int[raw_idx] : collect(Int, raw_idx)
         shock_history = zeros(T.nExo, periods)
     end
 
@@ -706,11 +698,7 @@ function girf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = shocks isa Union{Symbol_input,String_input} ? 
-                shock_idx isa Int ? 
-                    [T.exo[shock_idx]] : 
-                T.exo[shock_idx] : 
-            [:Shock_matrix]
+    axis2 = shocks isa Union{Symbol_input,String_input} ? T.exo[shock_idx] : [:Shock_matrix]
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)

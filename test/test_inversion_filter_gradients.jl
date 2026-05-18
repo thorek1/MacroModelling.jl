@@ -23,6 +23,7 @@ import FiniteDifferences
 #   * n_obs <  n_shocks  (under-identified — LagrangeNewton path)
 #   * n_obs == n_shocks  (square — first_order only; higher orders cannot
 #     invert square systems on this model with LagrangeNewton)
+#   * partial + fully missing observations (public missing-data dispatch)
 #   * warmup_iterations > 0   (first_order only — codebase warns it's first-
 #     order-only and ignores it otherwise)
 #   * presample_periods > 0
@@ -54,6 +55,7 @@ function make_llh_closure(model, data, base_params, idx, algorithm; kwargs...)
                                  filter = :inversion,
                                  algorithm = algorithm,
                                  on_failure_loglikelihood = -Inf,
+                                 verbose = true,
                                  kwargs...)
     end
 end
@@ -130,6 +132,31 @@ function ss_perturbed_data(model, observables; periods = 8, σ = 1e-4, seed = 42
     return KeyedArray(dat; Variables = observables, Time = 1:periods)
 end
 
+function data_with_missing_observations(data)
+    dat_nan = Matrix{Float64}(collect(data))
+    n_obs, n_time = size(dat_nan)
+    @assert n_time >= 6 "Need at least 6 periods to inject non-boundary missing observations"
+
+    partial_t1 = 2
+    partial_t2 = n_time - 1
+    full_t1 = n_time ÷ 2
+    full_t2 = min(full_t1 + 1, n_time - 1)
+
+    dat_nan[1, partial_t1] = NaN
+    dat_nan[min(2, n_obs), partial_t2] = NaN
+    dat_nan[:, full_t1] .= NaN
+    dat_nan[:, full_t2] .= NaN
+
+    dat_miss = Matrix{Union{Missing,Float64}}(copy(dat_nan))
+    @inbounds for j in axes(dat_miss, 2), i in axes(dat_miss, 1)
+        if !isfinite(Float64(coalesce(dat_miss[i, j], NaN)))
+            dat_miss[i, j] = missing
+        end
+    end
+
+    return KeyedArray(dat_miss; Variables = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
+end
+
 # =============================================================================
 # Gali (2015) Chapter 3 nonlinear NK — all 5 algorithms
 # =============================================================================
@@ -137,8 +164,11 @@ include("../models/Gali_2015_chapter_3_nonlinear.jl")
 const GALI = Gali_2015_chapter_3_nonlinear
 
 # 3 shocks total → under-identified = 1 or 2 obs, square = 3 obs.
+# Square obs must be linearly independent in the first-order solution.
+# log_W_real = σ·log_y + φ·log_N (static identity from W_real = Y^σ·N^φ),
+# so [:log_y, :log_W_real, :log_N] is rank-deficient; use i_ann instead.
 const GALI_OBS_UNDER  = [:log_y, :log_W_real]
-const GALI_OBS_SQUARE = [:log_y, :log_W_real, :log_N]
+const GALI_OBS_SQUARE = [:log_y, :log_N, :i_ann]
 
 const GALI_PARAM_SUBSET_NAMES = [:σ, :φ, :ϕᵖⁱ, :ρ_a, :ρ_z, :std_a, :std_z]
 
@@ -163,6 +193,14 @@ end
                           GALI, data, base_params, p_subset, algo)
     end
 
+    # --- (a2) missing observations: partial + fully missing periods --------
+    for algo in algorithms
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 16)
+        data_missing = data_with_missing_observations(data)
+        compare_gradients("Gali :$algo (under-identified, missing obs, $(length(p_subset)) params)",
+                          GALI, data_missing, base_params, p_subset, algo)
+    end
+
     # --- (b) FULL parameter vector — first_order only, under-identified ------
     let algo = :first_order
         data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
@@ -179,6 +217,14 @@ end
         data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
         compare_gradients("Gali :$algo (square obs)",
                           GALI, data, base_params, p_subset, algo)
+    end
+
+    # --- (c2) square observables + missing periods: first_order only -------
+    let algo = :first_order
+        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 8, σ = 1e-6, seed = 17)
+        data_missing = data_with_missing_observations(data)
+        compare_gradients("Gali :$algo (square obs + missing periods)",
+                          GALI, data_missing, base_params, p_subset, algo)
     end
 
     # --- (d) warmup_iterations > 0 (first_order only, per implementation) ---
@@ -246,6 +292,24 @@ end
         p_subset = sw07_subset_indices()
         compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
                           SW07, data, base_params, p_subset, algo)
+    end
+
+    # Missing-data coverage on the SW07 paths already present in this file.
+    for algo in (:first_order, :pruned_second_order)
+        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = algo == :first_order ? 23 : 24)
+        data_missing = data_with_missing_observations(data)
+        p_idx = algo == :first_order ? collect(eachindex(base_params)) : sw07_subset_indices()
+        compare_gradients("SW07 :$algo (under-identified, missing obs)",
+                          SW07, data_missing, base_params, p_idx, algo)
+    end
+
+    # Presample-period coverage for the SW07 algorithms exercised in this file.
+    for algo in (:first_order, :pruned_second_order)
+        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = algo == :first_order ? 25 : 26)
+        p_idx = algo == :first_order ? collect(eachindex(base_params)) : sw07_subset_indices()
+        compare_gradients("SW07 :$algo (presample_periods=3)",
+                          SW07, data, base_params, p_idx, algo;
+                          presample_periods = 3)
     end
 end  # SW07 testset
 
