@@ -2464,13 +2464,13 @@ struct AdTolerances
 end
 
 function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
-    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
+    base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     return AdTolerances(
-        resolve_tol(qme, _base_qme),
-        resolve_tol(sylvester, _base_sylv),
-        resolve_tol(lyapunov, _base_lyap))
+        resolve_tol(qme, base_qme),
+        resolve_tol(sylvester, base_sylv),
+        resolve_tol(lyapunov, base_lyap))
 end
 
 resolve_tol(s::AdTolerances, ::AdTolerances) = s
@@ -2513,14 +2513,14 @@ function FirstOrderTolerances(; qme = (;),
                               droptol::Float64 = 1e-14,
                               dependencies_tol::Float64 = 1e-12,
                               ad = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
-    _base_ad   = AdTolerances()
+    base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_ad   = AdTolerances()
     return FirstOrderTolerances(
-        resolve_tol(qme, _base_qme),
-        resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(qme, base_qme),
+        resolve_tol(lyapunov, base_lyap),
         droptol, dependencies_tol,
-        resolve_tol(ad, _base_ad))
+        resolve_tol(ad, base_ad))
 end
 
 resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
@@ -2565,14 +2565,14 @@ function HigherOrderTolerances(; sylvester = (;),
                                droptol::Float64 = 1e-14,
                                dependencies_tol::Float64 = 1e-12,
                                ad = (;))
-    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
-    _base_ad   = AdTolerances()
+    base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_ad   = AdTolerances()
     return HigherOrderTolerances(
-        resolve_tol(sylvester, _base_sylv),
-        resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(sylvester, base_sylv),
+        resolve_tol(lyapunov, base_lyap),
         droptol, dependencies_tol,
-        resolve_tol(ad, _base_ad))
+        resolve_tol(ad, base_ad))
 end
 
 resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
@@ -2678,17 +2678,17 @@ function Tolerances(; nsss = (;),
                     first_order = (;),
                     second_order = (;),
                     third_order = (;))
-    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(),
+    base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(),
                        HigherOrderTolerances(
                            sylvester = SolverTolerances(acceptance_tol = 1e-8),
                            lyapunov  = SolverTolerances(acceptance_tol = 1e-8),
                            ad = AdTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-8),
                                              lyapunov  = SolverTolerances(acceptance_tol = 1e-8))))
     return Tolerances(
-        resolve_tol(nsss, _base.nsss),
-        resolve_tol(first_order, _base.first_order),
-        resolve_tol(second_order, _base.second_order),
-        resolve_tol(third_order, _base.third_order))
+        resolve_tol(nsss, base.nsss),
+        resolve_tol(first_order, base.first_order),
+        resolve_tol(second_order, base.second_order),
+        resolve_tol(third_order, base.third_order))
 end
 
 resolve_tol(s::Tolerances, ::Tolerances) = s

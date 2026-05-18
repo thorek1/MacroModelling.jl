@@ -3170,9 +3170,9 @@ And data, 4×4 Matrix{Float64}:
     ŝ_to_ŝ₂ = zeros(0, 0)
     ŝ_to_y₂ = zeros(0, 0)
     SS_and_pars = Float64[]
-    _dvariance_full = zeros(0, 0)
-    _n_cov_tuple = 0
-    _cov_pb = nothing
+    dvariance_full = zeros(0, 0)
+    n_cov_tuple = 0
+    cov_pb = nothing
     axis3 = Symbol[]
 
     if derivatives
@@ -3221,34 +3221,34 @@ And data, 4×4 Matrix{Float64}:
         # Hoist covariance rrule call for shared use across variance/std_dev/covariance/correlation
         if variance || standard_deviation || covariance || correlation
             if algorithm == :pruned_second_order
-                _cov_result, _cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                _cov_result, cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
-                _n_cov_tuple = 15
+                n_cov_tuple = 15
             elseif algorithm == :pruned_third_order
-                _cov_obs = (covariance || correlation) ? :full_covar : variables
-                _cov_result, _cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, _cov_obs, 𝓂, opts = opts)
+                cov_obs = (covariance || correlation) ? :full_covar : variables
+                _cov_result, cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, cov_obs, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
-                _n_cov_tuple = 4
+                n_cov_tuple = 4
             else
-                _cov_result, _cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                _cov_result, cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 if !_cov_result[5]
                     @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
                 end
-                _n_cov_tuple = 5
+                n_cov_tuple = 5
             end
 
             # Compute variance Jacobian via VJP (shared by variance & std_dev)
             if variance || standard_deviation
-                _np_cov = length(𝓂.parameter_values)
-                _nv_cov = size(covar_dcmp, 1)
-                _dvariance_full = zeros(_nv_cov, _np_cov)
-                for j in 1:_nv_cov
+                np_cov = length(𝓂.parameter_values)
+                nv_cov = size(covar_dcmp, 1)
+                dvariance_full = zeros(nv_cov, np_cov)
+                for j in 1:nv_cov
                     if covar_dcmp[j,j] > eps(Float64)
-                        ∂Σ = zeros(_nv_cov, _nv_cov); ∂Σ[j,j] = 1.0
-                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
-                        ∂p = _cov_pb(seed)[2]
-                        if !(∂p isa AbstractZero); _dvariance_full[j,:] .= ∂p; end
+                        ∂Σ = zeros(nv_cov, nv_cov); ∂Σ[j,j] = 1.0
+                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                        ∂p = cov_pb(seed)[2]
+                        if !(∂p isa AbstractZero); dvariance_full[j,:] .= ∂p; end
                     end
                 end
             end
@@ -3262,7 +3262,7 @@ And data, 4×4 Matrix{Float64}:
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            dvariance = _dvariance_full[:, param_idx]
+            dvariance = dvariance_full[:, param_idx]
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             
@@ -3278,7 +3278,7 @@ And data, 4×4 Matrix{Float64}:
     
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
                 # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
-                dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
+                dst_dev = dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
             end
@@ -3294,7 +3294,7 @@ And data, 4×4 Matrix{Float64}:
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
             # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
-            dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
+            dst_dev = dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
             st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
@@ -3302,15 +3302,15 @@ And data, 4×4 Matrix{Float64}:
 
         if covariance || correlation
             # Compute full covariance Jacobian via VJP from hoisted rrule
-            _np_cov2 = length(𝓂.parameter_values)
-            _nv_cov2 = size(covar_dcmp, 1)
-            dcovariance = zeros(_nv_cov2 * _nv_cov2, _np_cov2)
-            for j in 1:(_nv_cov2 * _nv_cov2)
-                r = mod1(j, _nv_cov2)
-                c = div(j - 1, _nv_cov2) + 1
-                ∂Σ = zeros(_nv_cov2, _nv_cov2); ∂Σ[r,c] = 1.0
-                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
-                ∂p = _cov_pb(seed)[2]
+            np_cov2 = length(𝓂.parameter_values)
+            nv_cov2 = size(covar_dcmp, 1)
+            dcovariance = zeros(nv_cov2 * nv_cov2, np_cov2)
+            for j in 1:(nv_cov2 * nv_cov2)
+                r = mod1(j, nv_cov2)
+                c = div(j - 1, nv_cov2) + 1
+                ∂Σ = zeros(nv_cov2, nv_cov2); ∂Σ[r,c] = 1.0
+                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                ∂p = cov_pb(seed)[2]
                 if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
             dcovariance = dcovariance[:, param_idx]

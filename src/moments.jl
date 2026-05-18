@@ -142,9 +142,9 @@ function calculate_covariance(parameters::Vector{R},
     idx_constants = constants.post_complete_parameters
     T = constants.post_model_macro
     
-    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
-    SS_and_pars = _nsss_result[1]::Vector{R}
-    solution_error = _nsss_result[2][1]
+    nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars = nsss_result[1]::Vector{R}
+    solution_error = nsss_result[2][1]
     
     if solution_error > opts.tol.nsss.acceptance_tol
         return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.nsss.acceptance_tol
@@ -225,9 +225,9 @@ function calculate_mean(parameters::Vector{R},
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
     
-    _nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
-    SS_and_pars = _nsss_result[1]::Vector{R}
-    solution_error = _nsss_result[2][1]
+    nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
+    SS_and_pars = nsss_result[1]::Vector{R}
+    solution_error = nsss_result[2][1]
     
     if algorithm == :first_order
         mean_of_variables = SS_and_pars[1:T.nVars]

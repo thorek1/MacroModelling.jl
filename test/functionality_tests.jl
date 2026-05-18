@@ -2211,7 +2211,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             sol = get_solution(m, parameter_values, algorithm = algorithm)
 
             # Helper to extract element i in flattened order: 1→SS, 2→sol_mats[1], 3→sol_mats[2], ...
-            _sol_el(s, i) = i == 1 ? s[1] : s[2][i-1]
+            sol_el(s, i) = i == 1 ? s[1] : s[2][i-1]
 
             deriv_sol = nothing
             deriv_sol_zyg = nothing
@@ -2219,7 +2219,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                 deriv_sol = []
                 for i in 1:length(sol[2])
-                    push!(deriv_sol, ForwardDiff.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values))
+                    push!(deriv_sol, ForwardDiff.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
@@ -2230,7 +2230,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
-                                                                _sol_el(get_solution(m, x, algorithm = algorithm), i)
+                                                                sol_el(get_solution(m, x, algorithm = algorithm), i)
                                                             end, parameter_values)[1])
                 end
 
@@ -2238,14 +2238,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                 deriv_sol_moon = []
                 for i in 1:length(sol[2])
-                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
+                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
 
                 deriv_sol_zyg = []
                 for i in 1:length(sol[2])
-                    push!(deriv_sol_zyg, Zygote.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
+                    push!(deriv_sol_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
                 end
 
                 @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
@@ -2268,7 +2268,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                             DERIV_SOL = []
                             for i in 1:length(sol[2])
-                                push!(DERIV_SOL, ForwardDiff.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
+                                push!(DERIV_SOL, ForwardDiff.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm), i), parameter_values))
@@ -2280,7 +2280,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                             DERIV_SOL_moon = []
                             for i in 1:length(sol[2])
-                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
+                                push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
@@ -2290,7 +2290,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                             DERIV_SOL_zyg = []
                             for i in 1:length(sol[2])
-                                push!(DERIV_SOL_zyg, Zygote.jacobian(x -> _sol_el(get_solution(m, x, algorithm = algorithm, 
+                                push!(DERIV_SOL_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm), i), parameter_values)[1])
@@ -2770,10 +2770,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # cleanly. Comparing only over non-degenerate entries keeps the
             # AD-vs-FD check meaningful without silently masking real bugs.
             corr_target_vars_jac = let
-                _all_vars_jac = m.constants.post_model_macro.var
-                _sd_jac = get_statistics(m, old_params, algorithm = algorithm,
-                                         standard_deviation = _all_vars_jac)[:standard_deviation]
-                _all_vars_jac[findall(>(1e-6), _sd_jac)]
+                all_vars_jac = m.constants.post_model_macro.var
+                sd_jac = get_statistics(m, old_params, algorithm = algorithm,
+                                         standard_deviation = all_vars_jac)[:standard_deviation]
+                all_vars_jac[findall(>(1e-6), sd_jac)]
             end
 
             deriv7 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
@@ -3085,13 +3085,13 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             # well above sqrt(eps)). Some models (e.g. Smets_Wouters_2007) have
             # near-constant variables in their leading positions which would produce
             # NaN/Inf-like correlation entries and break the cov/(sd*sd') cross-check.
-            _all_vars = m.constants.post_model_macro.var
-            _all_sd = let s = get_statistics(m, old_params, algorithm = algorithm,
-                                              standard_deviation = _all_vars)
+            all_vars = m.constants.post_model_macro.var
+            all_sd = let s = get_statistics(m, old_params, algorithm = algorithm,
+                                              standard_deviation = all_vars)
                 s[:standard_deviation]
             end
-            _nondeg_idx = findall(>(1e-6), _all_sd)
-            vars_corr = _all_vars[_nondeg_idx]
+            nondeg_idx = findall(>(1e-6), all_sd)
+            vars_corr = all_vars[nondeg_idx]
 
             # Flat input: full correlation matrix among requested variables
             stats_corr = get_statistics(m, old_params, algorithm = algorithm,

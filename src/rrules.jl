@@ -8726,7 +8726,7 @@ end
 # specialises on every argument type. When this body lived directly inside the
 # closure, scalar indexing of the captured ∂𝐒/state inferred as `Any`, costing
 # ~600 allocs per period (~100k allocs total on SW07-class problems).
-function _dense_first_order_inv_pullback_loop!(
+function dense_first_order_inv_pullback_loop!(
         ∂𝐒::Matrix{Float64},
         ∂data_in_deviations::Matrix{Float64},
         ∂state_t⁻::Vector{Float64},
@@ -9062,8 +9062,8 @@ function rrule(::typeof(calculate_loglikelihood),
         𝐒obs_v = view(𝐒, obs_idx, 1:n_cols - T.nExo)
         square_case = (T.nExo == n_obs_loc)
 
-        # Hot loop extracted into a function — see _dense_first_order_inv_pullback_loop!
-        _dense_first_order_inv_pullback_loop!(
+        # Hot loop extracted into a function — see dense_first_order_inv_pullback_loop!
+        dense_first_order_inv_pullback_loop!(
             ∂𝐒, ∂data_in_deviations, ∂state_t⁻, v_buf, ∂state_full_next, ∂v, ∂y,
             state, x, data_in_deviations, 𝐒, 𝐒obs_v, invjac, jac, G_fat,
             obs_idx, t⁻, Tt, n_pnf, n_cols, n_obs_loc, T.nExo,
