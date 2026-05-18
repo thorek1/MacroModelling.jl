@@ -55,6 +55,7 @@ function make_llh_closure(model, data, base_params, idx, algorithm; kwargs...)
                                  filter = :inversion,
                                  algorithm = algorithm,
                                  on_failure_loglikelihood = -Inf,
+                                 verbose = true,
                                  kwargs...)
     end
 end

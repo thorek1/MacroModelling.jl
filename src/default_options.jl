@@ -71,7 +71,7 @@ const DEFAULT_LARGE_QME_ALGORITHM = :doubling
 const DEFAULT_QME_SELECTOR = 𝓂 -> (𝓂.constants.post_model_macro.nVars - 𝓂.constants.post_model_macro.nPresent_only)^2 > DEFAULT_QME_THRESHOLD ? DEFAULT_LARGE_QME_ALGORITHM : DEFAULT_QME_ALGORITHM
 const DEFAULT_LYAPUNOV_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_ALGORITHM = :doubling
-const DEFAULT_SYLVESTER_THRESHOLD = 1000
+const DEFAULT_SYLVESTER_THRESHOLD = 10000
 const DEFAULT_LARGE_SYLVESTER_ALGORITHM = :bicgstab
 const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> sum(1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM
 

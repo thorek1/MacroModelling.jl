@@ -1,6 +1,491 @@
 @stable default_mode = "disable" begin
 
 
+# ---------------------------------------------------------------------
+# Aumann–Shapley shock decomposition (marginal-contribution driver)
+# ---------------------------------------------------------------------
+#
+# Computes per-period Shapley shares for the inversion-filter shock
+# decomposition under pruned 2nd / 3rd order solutions via the path-
+# integral identity
+#     φᵢ(v, t) = ∫₀¹ ∂Ṽ_t(s·𝟙)/∂xᵢ ds
+#                ≈ Σ_k w_k · ∂Ṽ_t(s_k·𝟙)/∂xᵢ      (Gauss–Legendre)
+# where Ṽ_t is the polynomial extension of `S → ŝ_t(S)[v]`. The production
+# drivers start from the low-order Gauss–Legendre rules (2 nodes at 2nd
+# order, 3 at 3rd order) and rerun with 4 nodes only when the coarse
+# Shapley-efficiency closure residual exceeds `1e-3`.
+#
+# Per period the driver maintains, for every Gauss–Legendre node s_k:
+#   - one primal pruned-state trajectory under shocks scaled by s_k;
+#   - one tangent trajectory per shock direction i = 1..nᵉ giving
+#     ∂ŝ_t/∂xᵢ at x = s_k·𝟙.
+# Each tangent recursion mirrors the primal recursion with derivatives
+# threaded by the chain rule; the shock contribution to the tangent's
+# augmented vector picks up `εᵢ_t · eᵢ` because ∂(xᵢ·εᵢ_t)/∂xᵢ = εᵢ_t.
+# A separate s = 0 primal trajectory is propagated to obtain V(∅).
+#
+# Each function fills `decomposition[:, 1:nᵉ, :]` with per-shock Aumann–
+# Shapley shares of the incremental response `V(N) − V(∅)`. By linearity,
+# these columns equal each shock's standalone effect plus its allocated share
+# of the cross-shock interaction. The `decomposition[:, nᵉ+1, :]` column keeps
+# the zero-shock / initial-values path `V(∅)` plus any tiny numerical closure
+# residual, matching the layout the public API expects when
+# `marginal_contribution = true`.
+
+# Pruned 2nd-order state update: new_s1, new_s2 = 𝐒₁·aug1, 𝐒₁·aug2 + ½𝐒₂·(aug1⊗aug1).
+# Builds augmented vectors via copyto!, computes kron product, and applies solution matrices in-place.
+function pruned_state_update_2nd_order!(
+        new_s1, new_s2, s1, s2, past_idx, shock_dir, zero_dir,
+        aug1, aug2, kk, 𝐒)
+    n_past = length(past_idx)
+    @views copyto!(aug1[1:n_past], s1[past_idx])
+    aug1[n_past + 1] = 1.0
+    copyto!(aug1, n_past + 2, shock_dir, 1, length(shock_dir))
+    @views copyto!(aug2[1:n_past], s2[past_idx])
+    aug2[n_past + 1] = 0.0
+    copyto!(aug2, n_past + 2, zero_dir, 1, length(zero_dir))
+    ℒ.kron!(kk, aug1, aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
+    return nothing
+end
+
+# Pruned 3rd-order state update: extends 2nd-order with new_s3 = 𝐒₁·aug3 + 𝐒₂·(aug1̂⊗aug2) + ⅙𝐒₃·(aug1⊗aug1⊗aug1).
+# aug1̂ is the no-constant variant of aug1 (constant slot = 0).
+function pruned_state_update_3rd_order!(
+        new_s1, new_s2, new_s3, s1, s2, s3, past_idx, shock_dir, zero_dir,
+        aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
+    n_past = length(past_idx)
+    @views copyto!(aug1[1:n_past], s1[past_idx])
+    aug1[n_past + 1] = 1.0
+    copyto!(aug1, n_past + 2, shock_dir, 1, length(shock_dir))
+    @views copyto!(aug1̂[1:n_past], s1[past_idx])
+    aug1̂[n_past + 1] = 0.0
+    copyto!(aug1̂, n_past + 2, shock_dir, 1, length(shock_dir))
+    @views copyto!(aug2[1:n_past], s2[past_idx])
+    aug2[n_past + 1] = 0.0
+    copyto!(aug2, n_past + 2, zero_dir, 1, length(zero_dir))
+    @views copyto!(aug3[1:n_past], s3[past_idx])
+    aug3[n_past + 1] = 0.0
+    copyto!(aug3, n_past + 2, zero_dir, 1, length(zero_dir))
+    ℒ.kron!(k11,  aug1, aug1)
+    ℒ.kron!(k12̂,  aug1̂, aug2)
+    ℒ.kron!(k111, k11,  aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
+    ℒ.mul!(new_s3, 𝐒[1], aug3)
+    ℒ.mul!(new_s3, 𝐒[2], k12̂, 1.0, 1.0)
+    ℒ.mul!(new_s3, 𝐒[3], k111, 1/6, 1.0)
+    return nothing
+end
+
+function aumann_shapley_shock_decomposition_pruned_2nd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int;
+        verbose::Bool = false) where R <: Real
+    n_nodes = 2
+    max_error = aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                                      variables,
+                                                                      shocks,
+                                                                      initial_state,
+                                                                      𝐒,
+                                                                      T,
+                                                                      nE,
+                                                                      n_nodes)
+    if verbose
+        println("Aumann-Shapley second-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if verbose
+            println("Aumann-Shapley second-order shock decomposition rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        max_error = aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                                          variables,
+                                                                          shocks,
+                                                                          initial_state,
+                                                                          𝐒,
+                                                                          T,
+                                                                          nE,
+                                                                          n_nodes)
+        if verbose
+            println("Aumann-Shapley second-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+        end
+    end
+    return decomposition
+end
+
+function aumann_shapley_shock_decomposition_pruned_2nd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int,
+        n_nodes::Int) where R <: Real
+    nᵥ = T.nVars
+    iₚ = T.past_not_future_and_mixed_idx
+    nₚ = length(iₚ)
+    n_aug = nₚ + 1 + nE
+    n_kron = n_aug^2
+    nₜ = size(decomposition, 3)
+
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
+
+    # Scratch buffers — one set reused sequentially across quadrature nodes.
+    # s₁/s₂ are primal pruned state components; s₁⁺/s₂⁺ are next-period outputs.
+    s₁   = zeros(R, nᵥ)
+    s₂   = zeros(R, nᵥ)
+    s₁⁺  = zeros(R, nᵥ)
+    s₂⁺  = zeros(R, nᵥ)
+    # ds* buffers hold tangent states ∂s/∂xᵢ for each shock direction i.
+    ds₁ᵢ   = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ   = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₁ᵢ⁺  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ⁺  = [zeros(R, nᵥ) for _ in 1:nE]
+
+    # Augmented primal/tangent vectors [past state; constant; shocks].
+    a₁  = Vector{R}(undef, n_aug)
+    a₂  = Vector{R}(undef, n_aug)
+    da₁ = Vector{R}(undef, n_aug)
+    da₂ = Vector{R}(undef, n_aug)
+    # Kronecker workspaces for a₁⊗a₁ and its directional derivative.
+    k₁₁  = Vector{R}(undef, n_kron)
+    dk₁₁ = Vector{R}(undef, n_kron)
+    dk₁₁′ = Vector{R}(undef, n_kron)
+
+    # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
+    ε̄ₜ = zeros(R, nE)
+    εᵢₜ = zeros(R, nE)
+    ε₀ = zeros(R, nE)
+
+    # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
+    s₁ .= initial_state[1]
+    s₂ .= initial_state[2]
+    # Propagate the baseline path with all shocks set to zero.
+    for t in 1:nₜ
+        pruned_state_update_2nd_order!(s₁⁺, s₂⁺, s₁, s₂, iₚ, ε₀, ε₀, a₁, a₂, k₁₁, 𝐒)
+        @inbounds for v in 1:nᵥ
+            decomposition[v, nE + 1, t] = s₁⁺[v] + s₂⁺[v]
+        end
+        # Swap current and next buffers instead of allocating a fresh state.
+        s₁, s₁⁺ = s₁⁺, s₁
+        s₂, s₂⁺ = s₂⁺, s₂
+    end
+
+    # --- Pass 2: one node at a time, accumulate weighted tangents. ---
+    @views fill!(decomposition[:, 1:nE, :], zero(R))
+
+    # Quadrature over shock scaling nodes; each node contributes one weighted path.
+    for k in 1:n_nodes
+        sₖ = nodes[k]
+        wₖ = weights[k]
+        s₁ .= initial_state[1]
+        s₂ .= initial_state[2]
+        # Reset the tangent trajectories for this quadrature node.
+        for i in 1:nE
+            fill!(ds₁ᵢ[i], 0.0)
+            fill!(ds₂ᵢ[i], 0.0)
+        end
+
+        # March forward one period at a time, updating the primal path and all tangents.
+        for t in 1:nₜ
+            εₜ = @view shocks[:, t]
+            ε̄ₜ .= sₖ .* εₜ
+            pruned_state_update_2nd_order!(s₁⁺, s₂⁺, s₁, s₂, iₚ, ε̄ₜ, ε₀, a₁, a₂, k₁₁, 𝐒)
+
+            # For each shock direction i, propagate tangent recursions and
+            # accumulate node-weighted directional derivatives.
+            for i in 1:nE
+                fill!(εᵢₜ, 0.0)
+                εᵢₜ[i] = εₜ[i]
+
+                @views copyto!(da₁[1:nₚ], ds₁ᵢ[i][iₚ])
+                da₁[nₚ + 1] = 0.0
+                copyto!(da₁, nₚ + 2, εᵢₜ, 1, nE)
+
+                @views copyto!(da₂[1:nₚ], ds₂ᵢ[i][iₚ])
+                da₂[nₚ + 1] = 0.0
+                copyto!(da₂, nₚ + 2, ε₀, 1, nE)
+
+                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                ℒ.kron!(dk₁₁,  da₁, a₁)
+                ℒ.kron!(dk₁₁′, a₁, da₁)
+                dk₁₁ .+= dk₁₁′
+
+                # Plain form: ds₁ᵢ⁺ = S1 * da₁
+                ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
+                # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+
+                @inbounds for v in 1:nᵥ
+                    decomposition[v, i, t] += wₖ * (ds₁ᵢ⁺[i][v] + ds₂ᵢ⁺[i][v])
+                end
+            end
+
+            # Advance the primal and tangent buffers to the next period.
+            s₁, s₁⁺ = s₁⁺, s₁
+            s₂, s₂⁺ = s₂⁺, s₂
+            for i in 1:nE
+                ds₁ᵢ[i], ds₁ᵢ⁺[i] = ds₁ᵢ⁺[i], ds₁ᵢ[i]
+                ds₂ᵢ[i], ds₂ᵢ⁺[i] = ds₂ᵢ⁺[i], ds₂ᵢ[i]
+            end
+        end
+    end
+
+    max_residual = zero(R)
+    max_reference = zero(R)
+    @inbounds for t in 1:nₜ, v in 1:nᵥ
+        ϕsum = zero(R)
+        for i in 1:nE
+            ϕsum += decomposition[v, i, t]
+        end
+        residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        max_residual = max(max_residual, abs(residual))
+        max_reference = max(max_reference, abs(variables[v, t]))
+    end
+
+    T = float(R)
+    scale = max(T(max_reference), sqrt(eps(T)))
+    return T(max_residual) / scale
+end
+
+
+function aumann_shapley_shock_decomposition_pruned_3rd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int;
+        verbose::Bool = false) where R <: Real
+    n_nodes = 3
+    max_error = _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                                      variables,
+                                                                      shocks,
+                                                                      initial_state,
+                                                                      𝐒,
+                                                                      T,
+                                                                      nE,
+                                                                      n_nodes)
+    if verbose
+        println("Aumann-Shapley third-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+    end
+    while max_error > AUMANN_SHAPLEY_REFINEMENT_RTOL && n_nodes < AUMANN_SHAPLEY_REFINEMENT_MAX_NODES
+        next_nodes = min(n_nodes + 1, AUMANN_SHAPLEY_REFINEMENT_MAX_NODES)
+        if verbose
+            println("Aumann-Shapley third-order shock decomposition rerunning with ", next_nodes, " nodes after closure error ", max_error, " at ", n_nodes, " nodes")
+        end
+        n_nodes = next_nodes
+        max_error = _aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                                          variables,
+                                                                          shocks,
+                                                                          initial_state,
+                                                                          𝐒,
+                                                                          T,
+                                                                          nE,
+                                                                          n_nodes)
+        if verbose
+            println("Aumann-Shapley third-order shock decomposition closure error with ", n_nodes, " nodes: ", max_error)
+        end
+    end
+    return decomposition
+end
+
+function _aumann_shapley_shock_decomposition_pruned_3rd_order!(
+        decomposition::AbstractArray{R},
+        variables::AbstractMatrix,
+        shocks::AbstractMatrix,
+        initial_state,
+        𝐒,
+        T,
+        nE::Int,
+        n_nodes::Int) where R <: Real
+    nᵥ = T.nVars
+    iₚ = T.past_not_future_and_mixed_idx
+    nₚ = length(iₚ)
+    n_aug = nₚ + 1 + nE
+    n_kron2 = n_aug^2
+    n_kron3 = n_aug^3
+    nₜ = size(decomposition, 3)
+
+    nodes, weights = gausslegendre_unit_interval(n_nodes)
+
+    # Scratch buffers — one set reused sequentially across quadrature nodes.
+    # s₁/s₂/s₃ are primal pruned state components; s*⁺ are next-period outputs.
+    s₁  = zeros(R, nᵥ)
+    s₂  = zeros(R, nᵥ)
+    s₃  = zeros(R, nᵥ)
+    s₁⁺ = zeros(R, nᵥ)
+    s₂⁺ = zeros(R, nᵥ)
+    s₃⁺ = zeros(R, nᵥ)
+    # ds* buffers hold tangent states ∂s/∂xᵢ for each shock direction i.
+    ds₁ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₃ᵢ  = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₁ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₂ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
+    ds₃ᵢ⁺ = [zeros(R, nᵥ) for _ in 1:nE]
+
+    # Augmented primal/tangent vectors [past state; constant; shocks].
+    # a₁⁰ is a₁ with zero constant slot for the third-order cross term.
+    a₁  = Vector{R}(undef, n_aug)
+    a₁⁰ = Vector{R}(undef, n_aug)
+    a₂  = Vector{R}(undef, n_aug)
+    a₃  = Vector{R}(undef, n_aug)
+    da₁ = Vector{R}(undef, n_aug)
+    da₂ = Vector{R}(undef, n_aug)
+    da₃ = Vector{R}(undef, n_aug)
+
+    # Kronecker workspaces for primal terms and directional derivatives:
+    # k₁₁=a₁⊗a₁, k₁₂⁰=a₁⁰⊗a₂, k₁₁₁=(a₁⊗a₁)⊗a₁ and their d/dxᵢ variants.
+    k₁₁   = Vector{R}(undef, n_kron2)
+    k₁₂⁰  = Vector{R}(undef, n_kron2)
+    dk₁₁  = Vector{R}(undef, n_kron2)
+    dk₁₂⁰ = Vector{R}(undef, n_kron2)
+    k₂tmp = Vector{R}(undef, n_kron2)
+    k₁₁₁  = Vector{R}(undef, n_kron3)
+    dk₁₁₁ = Vector{R}(undef, n_kron3)
+    k₃tmp = Vector{R}(undef, n_kron3)
+
+    # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
+    ε̄ₜ = zeros(R, nE)
+    εᵢₜ = zeros(R, nE)
+    ε₀ = zeros(R, nE)
+
+    # --- Pass 1: V(∅) trajectory (zero shocks) → store in decomposition[:, nE+1, :]. ---
+    s₁ .= initial_state[1]
+    s₂ .= initial_state[2]
+    s₃ .= initial_state[3]
+    # Propagate the baseline path with all shocks set to zero.
+    for t in 1:nₜ
+        pruned_state_update_3rd_order!(s₁⁺, s₂⁺, s₃⁺, s₁, s₂, s₃, iₚ, ε₀, ε₀,
+                                       a₁, a₁⁰, a₂, a₃, k₁₁, k₁₂⁰, k₁₁₁, 𝐒)
+        @inbounds for v in 1:nᵥ
+            decomposition[v, nE + 1, t] = s₁⁺[v] + s₂⁺[v] + s₃⁺[v]
+        end
+        # Swap current and next buffers instead of allocating a fresh state.
+        s₁, s₁⁺ = s₁⁺, s₁
+        s₂, s₂⁺ = s₂⁺, s₂
+        s₃, s₃⁺ = s₃⁺, s₃
+    end
+
+    # --- Pass 2: one node at a time, accumulate weighted tangents. ---
+    @views fill!(decomposition[:, 1:nE, :], zero(R))
+
+    # Quadrature over shock scaling nodes; each node contributes one weighted path.
+    for k in 1:n_nodes
+        sₖ = nodes[k]
+        wₖ = weights[k]
+        s₁ .= initial_state[1]
+        s₂ .= initial_state[2]
+        s₃ .= initial_state[3]
+        # Reset the tangent trajectories for this quadrature node.
+        for i in 1:nE
+            fill!(ds₁ᵢ[i], 0.0)
+            fill!(ds₂ᵢ[i], 0.0)
+            fill!(ds₃ᵢ[i], 0.0)
+        end
+
+        # March forward one period at a time, updating the primal path and all tangents.
+        for t in 1:nₜ
+            εₜ = @view shocks[:, t]
+            ε̄ₜ .= sₖ .* εₜ
+
+            pruned_state_update_3rd_order!(s₁⁺, s₂⁺, s₃⁺, s₁, s₂, s₃, iₚ, ε̄ₜ, ε₀,
+                                           a₁, a₁⁰, a₂, a₃, k₁₁, k₁₂⁰, k₁₁₁, 𝐒)
+
+            # For each shock direction i, propagate first/second/third-order
+            # tangents and accumulate the node-weighted contribution.
+            for i in 1:nE
+                fill!(εᵢₜ, 0.0)
+                εᵢₜ[i] = εₜ[i]
+
+                @views copyto!(da₁[1:nₚ], ds₁ᵢ[i][iₚ])
+                da₁[nₚ + 1] = 0.0
+                copyto!(da₁, nₚ + 2, εᵢₜ, 1, nE)
+
+                @views copyto!(da₂[1:nₚ], ds₂ᵢ[i][iₚ])
+                da₂[nₚ + 1] = 0.0
+                copyto!(da₂, nₚ + 2, ε₀, 1, nE)
+
+                @views copyto!(da₃[1:nₚ], ds₃ᵢ[i][iₚ])
+                da₃[nₚ + 1] = 0.0
+                copyto!(da₃, nₚ + 2, ε₀, 1, nE)
+
+                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                ℒ.kron!(dk₁₁, da₁, a₁)
+                ℒ.kron!(k₂tmp, a₁, da₁)
+                dk₁₁ .+= k₂tmp
+
+                # d(aug1_no_const ⊗ aug2) = (d aug1 ⊗ aug2) + (aug1_no_const ⊗ d aug2)
+                ℒ.kron!(dk₁₂⁰, da₁, a₂)
+                ℒ.kron!(k₂tmp, a₁⁰, da₂)
+                dk₁₂⁰ .+= k₂tmp
+
+                # d(k11 ⊗ aug1) = (d k11 ⊗ aug1) + (k11 ⊗ d aug1)
+                ℒ.kron!(dk₁₁₁, dk₁₁, a₁)
+                ℒ.kron!(k₃tmp, k₁₁, da₁)
+                dk₁₁₁ .+= k₃tmp
+
+                # Plain form: ds₁ᵢ⁺ = S1 * da₁
+                ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
+                # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+                # Plain form: ds₃ᵢ⁺ = S1 * da₃ + S2 * d(a₁⁰⊗a₂) + (1/6) * S3 * d(a₁⊗a₁⊗a₁)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
+
+                @inbounds for v in 1:nᵥ
+                    decomposition[v, i, t] += wₖ * (
+                        ds₁ᵢ⁺[i][v] +
+                        ds₂ᵢ⁺[i][v] +
+                        ds₃ᵢ⁺[i][v]
+                    )
+                end
+            end
+
+            # Advance the primal and tangent buffers to the next period.
+            s₁, s₁⁺ = s₁⁺, s₁
+            s₂, s₂⁺ = s₂⁺, s₂
+            s₃, s₃⁺ = s₃⁺, s₃
+            for i in 1:nE
+                ds₁ᵢ[i], ds₁ᵢ⁺[i] = ds₁ᵢ⁺[i], ds₁ᵢ[i]
+                ds₂ᵢ[i], ds₂ᵢ⁺[i] = ds₂ᵢ⁺[i], ds₂ᵢ[i]
+                ds₃ᵢ[i], ds₃ᵢ⁺[i] = ds₃ᵢ⁺[i], ds₃ᵢ[i]
+            end
+        end
+    end
+    max_residual = zero(R)
+    max_reference = zero(R)
+    @inbounds for t in 1:nₜ, v in 1:nᵥ
+        ϕsum = zero(R)
+        for i in 1:nE
+            ϕsum += decomposition[v, i, t]
+        end
+        residual = variables[v, t] - (decomposition[v, nE + 1, t] + ϕsum)
+        max_residual = max(max_residual, abs(residual))
+        max_reference = max(max_reference, abs(variables[v, t]))
+    end
+
+    T = float(R)
+    scale = max(T(max_reference), sqrt(eps(T)))
+    return T(max_residual) / scale
+end
+
 """
 Compute log-likelihood using the inversion filter, which calls the find_shocks function
 to recover shocks that match the observables. For higher-order solutions the global
@@ -1886,6 +2371,7 @@ end
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
+                                marginal_contribution::Bool = false,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -1895,7 +2381,7 @@ end
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, marginal_contribution ? T.nExo + 2 : T.nExo + 3, size(data_in_deviations, 2))
 
     observables = get_and_check_observables(T, data_in_deviations)
     
@@ -2127,6 +2613,19 @@ end
     states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
+
+    if marginal_contribution
+        nE = 𝓂.constants.post_model_macro.nExo
+        aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                      variables,
+                                                      shocks,
+                                                      initial_state,
+                                                      𝐒,
+                                                      T,
+                                                      nE;
+                                                      verbose = opts.verbose)
+        return variables, shocks, zeros(0,0), decomposition
+    end
 
     for i in 1:𝓂.constants.post_model_macro.nExo
         sck = zeros(𝓂.constants.post_model_macro.nExo)
@@ -2486,6 +2985,7 @@ end
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
+                                marginal_contribution::Bool = false,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize constants at entry point
     constants = initialise_constants!(𝓂)
@@ -2495,7 +2995,7 @@ end
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, marginal_contribution ? T.nExo + 2 : T.nExo + 3, size(data_in_deviations, 2))
     
     observables = get_and_check_observables(T, data_in_deviations)
 
@@ -2829,6 +3329,19 @@ end
     states = [initial_state for _ in 1:𝓂.constants.post_model_macro.nExo + 1]
 
     decomposition[:, end, :] .= variables
+
+    if marginal_contribution
+        nE = 𝓂.constants.post_model_macro.nExo
+        aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                      variables,
+                                                      shocks,
+                                                      initial_state,
+                                                      𝐒,
+                                                      T,
+                                                      nE;
+                                                      verbose = opts.verbose)
+        return variables, shocks, zeros(0,0), decomposition
+    end
 
     for i in 1:𝓂.constants.post_model_macro.nExo
         sck = zeros(𝓂.constants.post_model_macro.nExo)

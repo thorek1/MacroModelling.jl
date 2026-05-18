@@ -13,10 +13,11 @@ many indices precomputed. moved constants to a separate struct. workspaces reduc
 preallocated workspaces for all solvers, with better reuse and reduced allocations. use of LinearSolve and FastLapackInterface for matrix solves
 write_mod_file (dynare) now allows to modify order, pruning and irf length
 allow equation modification like in Troll
+add correlation to get_statistics (including derivatives)
+add `marginal_contribution` (Shapley) shock decomposition for the inversion filter and `marginal_contribution` variance decomposition at pruned 2nd/3rd order; both use a polynomial-coefficient algorithm (∑_{j≤2k} C(nᵉ,j) Lyapunov solves) instead of the 2^nᵉ exhaustive coalition enumeration, making the higher-order Shapley aggregation feasible for models with many shocks
 custom steady state function support  (including in-place functions)
 `get_equations` and `get_calibration_equations` accept a `filter` keyword argument
 equations are now returned as expressions instead of strings
-add correlation to `get_statistics`
 counters for steady state and perturbation solves
 replace MCMCChains with FlexiChains in estimation
 shock decomposition includes calibration parameters
