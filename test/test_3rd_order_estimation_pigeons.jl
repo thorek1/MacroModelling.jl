@@ -47,6 +47,61 @@ dists = [
     Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
+const PIGEONS_SEED = 30
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
+# parameters + latent shocks + me_std).  Same sampler (Pigeons) and number
+# of rounds as the inversion-filter run above.
+# ---------------------------------------------------------------------------
+import Turing: MvNormal
+import LinearAlgebra: I as LinearAlgebraI
+
+const T_ff_3rd       = size(data, 2)
+const data_ff_3rd    = data
+const nExo_ff_3rd    = length(get_shocks(Caldara_et_al_2012_estim))
+
+Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext()
+        shocks  = reshape(shocks_vec, nExo, nT)
+        Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                          algorithm = algorithm,
+                                                          on_failure_loglikelihood = on_failure_loglikelihood)
+    end
+end
+
+Caldara_ff_lp = Pigeons.TuringLogPotential(
+    Caldara_et_al_2012_filter_free_function(data_ff_3rd, Caldara_et_al_2012_estim,
+                                             :third_order, nExo_ff_3rd, T_ff_3rd,
+                                             -floatmax(Float64)+1e10))
+
+init_ff_params = (; all_params = Caldara_et_al_2012_estim.parameter_values,
+                    me_std     = 0.05,
+                    shocks_vec = zeros(nExo_ff_3rd * T_ff_3rd))
+
+const Caldara_FF_LP = typeof(Caldara_ff_lp)
+
+function Pigeons.initialization(target::Caldara_FF_LP, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+    result = DynamicPPL.initialize_parameters!!(result, init_ff_params, target.model)
+    return result
+end
+
+pt_ff = @time Pigeons.pigeons(target = Caldara_ff_lp,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 4,
+            n_rounds = 8,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps_ff = MCMCChains.Chains(pt_ff)
+println("Filter-free (Pigeons, third order) — mean: $(mean(samps_ff).nt.mean)")
+@test size(samps_ff, 1) > 0
+
+
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.product_distribution(dists)
 
@@ -60,7 +115,6 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_fai
 end
 
 
-const PIGEONS_SEED = 3
 
 Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -Inf)
 
@@ -120,54 +174,3 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
-# ---------------------------------------------------------------------------
-# Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
-# parameters + latent shocks + me_std).  Same sampler (Pigeons) and number
-# of rounds as the inversion-filter run above.
-# ---------------------------------------------------------------------------
-import Turing: MvNormal
-import LinearAlgebra: I as LinearAlgebraI
-
-const T_ff_3rd       = size(data, 2)
-const data_ff_3rd    = data
-const nExo_ff_3rd    = length(get_shocks(Caldara_et_al_2012_estim))
-
-Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
-    all_params  ~ Turing.product_distribution(dists)
-    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext()
-        shocks  = reshape(shocks_vec, nExo, nT)
-        Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
-                                                          algorithm = algorithm,
-                                                          on_failure_loglikelihood = on_failure_loglikelihood)
-    end
-end
-
-Caldara_ff_lp = Pigeons.TuringLogPotential(
-    Caldara_et_al_2012_filter_free_function(data_ff_3rd, Caldara_et_al_2012_estim,
-                                             :third_order, nExo_ff_3rd, T_ff_3rd,
-                                             -floatmax(Float64)+1e10))
-
-init_ff_params = (; all_params = Caldara_et_al_2012_estim.parameter_values,
-                    me_std     = 0.05,
-                    shocks_vec = zeros(nExo_ff_3rd * T_ff_3rd))
-
-const Caldara_FF_LP = typeof(Caldara_ff_lp)
-
-function Pigeons.initialization(target::Caldara_FF_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    result = DynamicPPL.initialize_parameters!!(result, init_ff_params, target.model)
-    return result
-end
-
-pt_ff = @time Pigeons.pigeons(target = Caldara_ff_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 4,
-            n_rounds = 8,
-            seed = PIGEONS_SEED,
-            multithreaded = false)
-
-samps_ff = MCMCChains.Chains(pt_ff)
-println("Filter-free (Pigeons, third order) — mean: $(mean(samps_ff).nt.mean)")
-@test size(samps_ff, 1) > 0

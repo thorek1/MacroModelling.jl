@@ -54,6 +54,53 @@ dists = [
     Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
+n_samples = 100
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# Pruned third order — NUTS via the analytical rrule + Mooncake AD.  Same
+# sampler (NUTS, Mooncake) and number of draws as the inversion-filter run
+# above; correctness of the rrule itself is checked in
+# `test_filter_free_gradients.jl`.
+# ---------------------------------------------------------------------------
+import Turing: MvNormal
+import LinearAlgebra: I as LinearAlgebraI
+
+const T_ff_p3 = size(data, 2)
+const data_ff_p3 = data
+const nExo_ff_p3 = length(get_shocks(Caldara_et_al_2012_estim))
+
+Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    shocks      = collect(reshape(shocks_vec, nExo, nT))
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+Random.seed!(30)
+
+@testset "Filter-free NUTS (pruned third order)" begin
+    init_ff = (; all_params = Caldara_et_al_2012_estim.parameter_values,
+                 me_std     = 0.05,
+                 shocks_vec = zeros(nExo_ff_p3 * T_ff_p3))
+    ff_samps = @time sample(
+        Caldara_et_al_2012_filter_free_function(data_ff_p3, Caldara_et_al_2012_estim,
+                                                 :pruned_third_order, nExo_ff_p3, T_ff_p3, -Inf),
+        NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)),
+        n_samples,
+        progress = true,
+        initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, pruned third order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
+    @test size(ff_samps, 1) == n_samples
+end
+
+
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.product_distribution(dists)
 
@@ -96,7 +143,6 @@ init_params = collect(mode_estimateLBFGS.params.data.all_params)
 
 println("Mode variable values (L-BFGS): $(mode_estimateLBFGS.params)")
 
-n_samples = 100
 
 samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS))
 
@@ -331,47 +377,3 @@ end
 # p
 
 
-
-# ---------------------------------------------------------------------------
-# Filter-free estimation (joint sampling of parameters and latent shocks)
-# Pruned third order — NUTS via the analytical rrule + Mooncake AD.  Same
-# sampler (NUTS, Mooncake) and number of draws as the inversion-filter run
-# above; correctness of the rrule itself is checked in
-# `test_filter_free_gradients.jl`.
-# ---------------------------------------------------------------------------
-import Turing: MvNormal
-import LinearAlgebra: I as LinearAlgebraI
-
-const T_ff_p3 = size(data, 2)
-const data_ff_p3 = data
-const nExo_ff_p3 = length(get_shocks(Caldara_et_al_2012_estim))
-
-Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
-    all_params  ~ Turing.product_distribution(dists)
-    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
-    shocks      = collect(reshape(shocks_vec, nExo, nT))
-    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
-                                                      algorithm = algorithm,
-                                                      on_failure_loglikelihood = on_failure_loglikelihood)
-end
-
-Random.seed!(30)
-
-@testset "Filter-free NUTS (pruned third order)" begin
-    init_ff = (; all_params = Caldara_et_al_2012_estim.parameter_values,
-                 me_std     = 0.05,
-                 shocks_vec = zeros(nExo_ff_p3 * T_ff_p3))
-    ff_samps = @time sample(
-        Caldara_et_al_2012_filter_free_function(data_ff_p3, Caldara_et_al_2012_estim,
-                                                 :pruned_third_order, nExo_ff_p3, T_ff_p3, -Inf),
-        NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)),
-        n_samples,
-        progress = true,
-        initial_params = Turing.InitFromParams(init_ff))
-    posterior_summary = FlexiChains.summarystats(ff_samps)
-    show(stdout, MIME"text/plain"(), posterior_summary)
-    println()
-    println("Mean variable values (filter-free, pruned third order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
-    @test size(ff_samps, 1) == n_samples
-end

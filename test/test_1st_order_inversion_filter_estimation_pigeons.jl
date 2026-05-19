@@ -34,50 +34,7 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
-    all_params ~ Turing.product_distribution(dists)
-
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        llh = get_loglikelihood(m, 
-                                data, 
-                                all_params, 
-                                filter = filter,
-                                on_failure_loglikelihood = on_failure_loglikelihood)
-        maybe_print_loglikelihood(verbose, llh, dists, all_params)
-
-        Turing.@addlogprob! llh
-    end
-end
-
-# generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)+1e10)) #, verbose = true))
-
-init_params = FS2000.parameter_values
 const PIGEONS_SEED = 30
-
-const FS2000_LP = typeof(FS2000_lp)
-
-function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-    
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
-
-    return result
-end
-
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
-
-pt = @time Pigeons.pigeons(target = FS2000_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 2,
-            n_rounds = 10,
-            seed = PIGEONS_SEED,
-            multithreaded = false) # tests fail on multithreaded
-
-samps = MCMCChains.Chains(pt)
-
-println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 # ---------------------------------------------------------------------------
 # Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
@@ -127,3 +84,48 @@ pt_ff = @time Pigeons.pigeons(target = FS2000_ff_lp,
 samps_ff = MCMCChains.Chains(pt_ff)
 println("Filter-free (Pigeons, first order, inversion script) — mean: $(mean(samps_ff).nt.mean)")
 @test size(samps_ff, 1) > 0
+
+
+Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
+    all_params ~ Turing.product_distribution(dists)
+
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, 
+                                data, 
+                                all_params, 
+                                filter = filter,
+                                on_failure_loglikelihood = on_failure_loglikelihood)
+        maybe_print_loglikelihood(verbose, llh, dists, all_params)
+
+        Turing.@addlogprob! llh
+    end
+end
+
+# generate a Pigeons log potential
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)+1e10)) #, verbose = true))
+
+init_params = FS2000.parameter_values
+
+const FS2000_LP = typeof(FS2000_lp)
+
+function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+    
+    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+
+    return result
+end
+
+pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+
+pt = @time Pigeons.pigeons(target = FS2000_lp,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 2,
+            n_rounds = 10,
+            seed = PIGEONS_SEED,
+            multithreaded = false) # tests fail on multithreaded
+
+samps = MCMCChains.Chains(pt)
+
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
