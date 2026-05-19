@@ -813,7 +813,7 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
     end
 
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     𝐒₁ = [𝐒₁_raw[:, 1:nPast] zeros(nVars) 𝐒₁_raw[:, nPast+1:end]]
     aug_state₁ = sparse([zeros(nPast); 1; zeros(nExo)])
@@ -975,7 +975,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
 
     # Expand compressed 𝐒₂_raw to full for stochastic SS computation
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     so = 𝓂.constants.second_order
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -1108,7 +1108,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
 
     # Expand compressed 𝐒₂_raw to full for stochastic SS computation
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     T = 𝓂.constants.post_model_macro
     nPast = T.nPast_not_future_and_mixed
@@ -1202,7 +1202,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
         rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
@@ -1238,7 +1238,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     𝐔₃ = 𝓂.constants.third_order.𝐔₃
-    𝐒₃̂ = sparse(𝐒₃) * 𝐔₃
+    𝐒₃̂ = dense_to_sparse(𝐒₃) * 𝐔₃
 
     so = 𝓂.constants.second_order
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -1410,7 +1410,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}
 
     ∇₃, third_derivatives_pullback =
         rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
@@ -1446,7 +1446,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     end
 
     𝐔₃ = 𝓂.constants.third_order.𝐔₃
-    𝐒₃̂ = sparse(𝐒₃) * 𝐔₃
+    𝐒₃̂ = dense_to_sparse(𝐒₃) * 𝐔₃
 
     T = 𝓂.constants.post_model_macro
     nPast = T.nPast_not_future_and_mixed
@@ -2969,7 +2969,7 @@ function rrule(::typeof(calculate_second_order_moments),
     μʸ₂ = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
     slvd = solved && solved2
-    𝐒₂_sp = sparse(𝐒₂_full)
+    𝐒₂_sp = dense_to_sparse(𝐒₂_full)
 
     result = (μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂_sp, ∇₂, slvd)
 
@@ -3473,7 +3473,7 @@ function rrule(::typeof(calculate_third_order_moments),
 
     # Expand compressed 𝐒₂_raw to full for moments computation
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
     ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
@@ -4317,7 +4317,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
     # Expand compressed 𝐒₂_raw to full for moments computation
     𝐔₂ = 𝓂.constants.second_order.𝐔₂
-    𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}
 
     # ── Step 2: Third-order derivatives ──
     ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
@@ -6085,7 +6085,7 @@ function rrule(::typeof(calculate_second_order_solution),
         empty!(cache.valid_for.pruned_second_order_solution)
     end
 
-    # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
+    # return (dense_to_sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
     return (𝐒₂_stable, solved), second_order_solution_pullback
 end
 
@@ -7667,7 +7667,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # Expand compressed inputs to full space for internal computation
     ∇₂ = ∇₂ * M₂.𝐔∇₂
-    𝐒₂ = sparse(𝐒₂ * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
+    𝐒₂ = dense_to_sparse(𝐒₂ * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
 
     i₊ = T.future_not_past_and_mixed_idx
     i₋ = T.past_not_future_and_mixed_idx
@@ -8090,7 +8090,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # Sparsify ∂S1p0_kron_sigma: structurally bounded by σ's support, so very sparse.
         # sparse × sparse matmul avoids dense intermediate; downstream fill_kron_adjoint!
         # uses the sparse overload that iterates only nonzero cotangent entries.
-        ∂S1p0_kron = choose_matrix_format(sparse(∂S1p0_kron_sigma) * 𝛔t)
+        ∂S1p0_kron = choose_matrix_format(dense_to_sparse(∂S1p0_kron_sigma) * 𝛔t)
         ∂S1p0_left = ℂ.∂S1p0_left_3rd
         fill!(∂S1p0_left, zero(S))
         ∂S1p0_right = ℂ.∂S1p0_right_3rd

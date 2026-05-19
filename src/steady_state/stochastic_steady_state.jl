@@ -63,7 +63,7 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
                                                   parameter_values = parameters,
                                                   caching = caching)
 
-    𝐒₂_raw = sparse(𝐒₂_raw_untyped)::SparseMatrixCSC{M, Int}
+    𝐒₂_raw = dense_to_sparse(𝐒₂_raw_untyped)::SparseMatrixCSC{M, Int}
 
     update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
@@ -156,10 +156,10 @@ function calculate_stochastic_steady_state(::Val{:second_order},
             T = 𝓂.constants.post_model_macro
             SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
             ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
-            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₂ = dense_to_sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (dense_to_sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -213,10 +213,10 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
             T = 𝓂.constants.post_model_macro
             SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
             ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
-            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₂ = dense_to_sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (dense_to_sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -335,12 +335,12 @@ function calculate_stochastic_steady_state(::Val{:third_order},
             T = 𝓂.constants.post_model_macro
             SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
             ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
-            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
-            ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
+            ∇₂ = dense_to_sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₃ = dense_to_sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
-            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (dense_to_sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = (dense_to_sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
         end
     end
@@ -429,12 +429,12 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
             T = 𝓂.constants.post_model_macro
             SS_and_pars = 𝓂.caches.non_stochastic_steady_state::Vector{M}
             ∇₁ = Matrix(𝓂.caches.jacobian)::Matrix{M}
-            ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
-            ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
+            ∇₂ = dense_to_sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}
+            ∇₃ = dense_to_sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
-            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
+            𝐒₂ = (dense_to_sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+            𝐒̂₃ = (dense_to_sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
         end
     end
