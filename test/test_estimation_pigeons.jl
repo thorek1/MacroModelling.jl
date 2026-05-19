@@ -60,7 +60,7 @@ const FS2000_LP = typeof(FS2000_lp)
 
 function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
     result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    result = DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+    result = DynamicPPL.link!!(result, target.model)
 
     result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
