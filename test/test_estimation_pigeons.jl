@@ -60,7 +60,8 @@ const FS2000_LP = typeof(FS2000_lp)
 
 function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
     result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    
+    result = DynamicPPL.link!!(result, target.model)
+
     result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
     return result
@@ -68,30 +69,11 @@ end
 
 pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 
-pt = @time Pigeons.pigeons(target = FS2000_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 10,
-            seed = PIGEONS_SEED,
-            multithreaded = false) # tests fail on multithreaded
-
-samps = MCMCChains.Chains(pt)
-
-println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
-
-sample_pigeons = mean(samps).nt.mean
-
-@testset "Pigeons Estimation results" begin
-    @test isapprox(sample_pigeons[1:9], [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
-end
-
-plot_model_estimates(FS2000, data, parameters = sample_pigeons)
-
-
 # ---------------------------------------------------------------------------
-# Replicate the Pigeons estimation problem on data with missing observations.
-# Reuses the same `Pigeons.initialization` defined above (dispatch is on the
-# TuringLogPotential type, which is unchanged by swapping in missing data).
+# Run the Pigeons estimation problem on data with missing observations FIRST
+# so any failures surface early. Reuses the same `Pigeons.initialization`
+# defined above (dispatch is on the TuringLogPotential type, which is
+# unchanged by swapping in missing data).
 # ---------------------------------------------------------------------------
 data_missing = inject_missing_observations(data)
 
@@ -115,3 +97,22 @@ println("Mean variable values (Pigeons, missing data): $(sample_pigeons_missing)
     @test length(sample_pigeons_missing) >= 9
     @test all(isfinite, sample_pigeons_missing[1:9])
 end
+
+pt = @time Pigeons.pigeons(target = FS2000_lp,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 10,
+            seed = PIGEONS_SEED,
+            multithreaded = false) # tests fail on multithreaded
+
+samps = MCMCChains.Chains(pt)
+
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
+
+sample_pigeons = mean(samps).nt.mean
+
+@testset "Pigeons Estimation results" begin
+    @test isapprox(sample_pigeons[1:9], [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+end
+
+plot_model_estimates(FS2000, data, parameters = sample_pigeons)

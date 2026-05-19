@@ -65,8 +65,8 @@ if isfinite(LLH)
 
     function Pigeons.initialization(target::FS2000_pruned2nd_LP, rng::AbstractRNG, _::Int64)
         result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-        
+        result = DynamicPPL.link!!(result, target.model)
+
         result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
         return result
@@ -95,20 +95,8 @@ else
     Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
 
-pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 8,
-            seed = PIGEONS_SEED,
-            multithreaded = false)
-
-samps = MCMCChains.Chains(pt)
-
-
-println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
-
 # ---------------------------------------------------------------------------
-# Replicate the Pigeons estimation problem on data with missing observations.
+# Run the missing-data Pigeons estimation FIRST so failures surface early.
 # ---------------------------------------------------------------------------
 data_missing = inject_missing_observations(data)
 
@@ -132,3 +120,15 @@ println("Mean variable values (Pigeons, pruned 2nd order, missing data): $(sampl
     @test length(sample_pigeons_missing) >= 9
     @test all(isfinite, sample_pigeons_missing[1:9])
 end
+
+pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 8,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps = MCMCChains.Chains(pt)
+
+
+println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
