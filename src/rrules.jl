@@ -1966,6 +1966,10 @@ function rrule(::typeof(get_loglikelihood),
         return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values
     end
 
+    if !isfinite(llh)
+        return S(on_failure_loglikelihood), _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+    end
+
     return llh, pullback
 end
 
@@ -12706,7 +12710,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
-        return llh, pullback
+        return isfinite(llh) ? (llh, pullback) : on_failure
 
     elseif algorithm == :second_order
         𝐒₁_full = Matrix(𝐒[1])
@@ -12752,7 +12756,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
-        return llh, pullback
+        return isfinite(llh) ? (llh, pullback) : on_failure
 
     elseif algorithm == :pruned_second_order
         𝐒₁_full = Matrix(𝐒[1])
@@ -12805,7 +12809,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
-        return llh, pullback
+        return isfinite(llh) ? (llh, pullback) : on_failure
 
     elseif algorithm == :third_order
         𝐒₁_full = Matrix(𝐒[1])
@@ -12856,7 +12860,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
-        return llh, pullback
+        return isfinite(llh) ? (llh, pullback) : on_failure
 
     else  # :pruned_third_order
         𝐒₁_full = Matrix(𝐒[1])
@@ -12922,6 +12926,6 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             d_params = ss_grads[3]
             return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks, d_me_std
         end
-        return llh, pullback
+        return isfinite(llh) ? (llh, pullback) : on_failure
     end
 end

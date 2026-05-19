@@ -4470,6 +4470,10 @@ Supported solution algorithms: `:second_order`, `:pruned_second_order`, `:third_
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
+    if !isfinite(llh)
+        return convert(R, on_failure_loglikelihood)
+    end
+
     return llh
 end
 
