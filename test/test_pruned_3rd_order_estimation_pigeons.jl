@@ -142,6 +142,8 @@ println("Mean variable values (Pigeons, pruned 3rd order, missing data): $(sampl
     @test all(isfinite, sample_pigeons_missing[1:n_params])
 end
 
+pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 4,

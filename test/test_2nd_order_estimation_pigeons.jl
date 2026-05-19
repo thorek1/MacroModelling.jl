@@ -121,6 +121,8 @@ println("Mean variable values (Pigeons, 2nd order, missing data): $(sample_pigeo
     @test all(isfinite, sample_pigeons_missing[1:9])
 end
 
+pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+
 pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,

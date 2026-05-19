@@ -121,11 +121,13 @@ println("Mean variable values (Pigeons, pruned 2nd order, missing data): $(sampl
     @test all(isfinite, sample_pigeons_missing[1:9])
 end
 
+pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED + 2)
+
 pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 8,
-            seed = PIGEONS_SEED,
+            seed = PIGEONS_SEED + 2,
             multithreaded = false)
 
 samps = MCMCChains.Chains(pt)
