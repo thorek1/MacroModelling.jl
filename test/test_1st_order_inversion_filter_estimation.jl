@@ -5,6 +5,9 @@ import Mooncake
 import Turing: NUTS, sample
 import ADTypes
 import ADTypes: AutoMooncake
+import ADTypes: AutoForwardDiff
+import Turing: MvNormal
+import LinearAlgebra: I as LinearAlgebraI
 import DifferentiationInterface
 import FiniteDifferences
 import Optim, LineSearches
@@ -86,6 +89,44 @@ println("Mode variable values: $(modeFS2000i.params); Mode loglikelihood: $(mode
             break
         end
     end
+end
+
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# First-order — analytical rrule + Mooncake AD
+# ---------------------------------------------------------------------------
+const T_ff_1st = 20
+const data_ff_1st = data[:, 1:T_ff_1st]
+const nExo_ff_1st = length(get_shocks(FS2000))
+
+Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    shocks      = collect(reshape(shocks_vec, nExo, nT))
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+Random.seed!(30)
+
+@testset "Filter-free NUTS (first order, inversion script)" begin
+    init_ff = (; all_params = FS2000.parameter_values,
+                 me_std     = 0.05,
+                 shocks_vec = zeros(nExo_ff_1st * T_ff_1st))
+    ff_samps = @time sample(
+        FS2000_filter_free_function_1st(data_ff_1st, FS2000, :first_order, nExo_ff_1st, T_ff_1st, -Inf),
+        NUTS(adtype = AutoMooncake(; config=nothing)),
+        n_samples,
+        progress = true,
+        initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, first order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
+    @test size(ff_samps, 1) == n_samples
 end
 
 

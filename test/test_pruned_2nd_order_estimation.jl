@@ -339,7 +339,11 @@ Random.seed!(30)
         FS2000_filter_free_function(data_ff_pruned2nd, FS2000, :pruned_second_order, nExo_ff_pruned2nd, T_ff_pruned2nd, -Inf),
         NUTS(adtype = AutoMooncake(; config=nothing)),
         n_samples,
-        progress = false,
+        progress = true,
         initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, pruned second order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
     @test size(ff_samps, 1) == n_samples
 end

@@ -124,7 +124,6 @@ end
 plot_model_estimates(FS2000, data, parameters = sample_nuts)
 plot_shock_decomposition(FS2000, data)
 
-FS2000 = nothing
 m = nothing
 # @profview sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)
 
@@ -208,7 +207,11 @@ Random.seed!(30)
         FS2000_filter_free_function_1st(data_ff_1st, FS2000, :first_order, nExo_ff_1st, T_ff_1st, -Inf),
         NUTS(adtype = AutoMooncake(; config=nothing)),
         n_samples,
-        progress = false,
+        progress = true,
         initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, first order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
     @test size(ff_samps, 1) == n_samples
 end

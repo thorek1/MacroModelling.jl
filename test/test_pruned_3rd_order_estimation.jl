@@ -367,7 +367,11 @@ Random.seed!(30)
                                                  :pruned_third_order, nExo_ff_p3, T_ff_p3, -Inf),
         NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)),
         n_samples,
-        progress = false,
+        progress = true,
         initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, pruned third order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
     @test size(ff_samps, 1) == n_samples
 end
