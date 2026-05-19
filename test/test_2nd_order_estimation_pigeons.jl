@@ -111,8 +111,8 @@ println("Mean variable values (second order): $(mean(samps).nt.mean)")
 import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 
-const T_ff_2nd = 20
-const data_ff_2nd = data[:, 1:T_ff_2nd]
+const T_ff_2nd = size(data, 2)
+const data_ff_2nd = data
 const nExo_ff_2nd = length(get_shocks(FS2000))
 
 Turing.@model function FS2000_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)

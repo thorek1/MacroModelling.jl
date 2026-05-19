@@ -315,8 +315,8 @@ import LinearAlgebra: I as LinearAlgebraI
 
 # Subsample data to keep CI run-time bounded — joint state-space sampling has
 # nExo * T_ff latent variables in addition to the model parameters.
-const T_ff_pruned2nd = 20
-const data_ff_pruned2nd = data[:, 1:T_ff_pruned2nd]
+const T_ff_pruned2nd = size(data, 2)
+const data_ff_pruned2nd = data
 const nExo_ff_pruned2nd = length(get_shocks(FS2000))
 
 Turing.@model function FS2000_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)

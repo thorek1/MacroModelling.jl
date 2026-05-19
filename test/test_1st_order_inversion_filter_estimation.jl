@@ -96,8 +96,8 @@ end
 # Filter-free estimation (joint sampling of parameters and latent shocks)
 # First-order — analytical rrule + Mooncake AD
 # ---------------------------------------------------------------------------
-const T_ff_1st = 20
-const data_ff_1st = data[:, 1:T_ff_1st]
+const T_ff_1st = size(data, 2)
+const data_ff_1st = data
 const nExo_ff_1st = length(get_shocks(FS2000))
 
 Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
