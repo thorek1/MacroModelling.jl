@@ -65,10 +65,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if reached_tol < (initial_guess_acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if the low tol is used it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
-            _existing_sol = cache.qme_solution
-            if _existing_sol isa Matrix{R} && size(_existing_sol) == size(initial_guess)
-                copyto!(_existing_sol, initial_guess)
-                return _existing_sol, true
+            existing_sol = cache.qme_solution
+            if existing_sol isa Matrix{R} && size(existing_sol) == size(initial_guess)
+                copyto!(existing_sol, initial_guess)
+                return existing_sol, true
             else
                 new_sol = Matrix{R}(initial_guess)
                 cache.qme_solution = new_sol
@@ -294,9 +294,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # n == n_comb (= nFnpm + nPfm - nMixed) so the result is (n, n), same as doubling.
     # Prefer cache-backed storage to avoid extra allocations.
     X = if caching
-        _existing_sol = cache.qme_solution
-        if _existing_sol isa Matrix{R} && size(_existing_sol) == (n, n)
-            _existing_sol
+        existing_sol = cache.qme_solution
+        if existing_sol isa Matrix{R} && size(existing_sol) == (n, n)
+            existing_sol
         else
             cache.qme_solution = zeros(R, n, n)
         end
@@ -565,9 +565,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # end
 
     X_cache = if caching
-        _existing_sol = cache.qme_solution
-        if _existing_sol isa Matrix{R} && size(_existing_sol) == size(X_new)
-            _existing_sol
+        existing_sol = cache.qme_solution
+        if existing_sol isa Matrix{R} && size(existing_sol) == size(X_new)
+            existing_sol
         else
             cache.qme_solution = zeros(R, size(X_new, 1), size(X_new, 2))
         end

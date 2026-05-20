@@ -43,6 +43,50 @@ function calculate_loglikelihood(::Val{:kalman},
     # timer = timer, 
 end
 
+
+function calculate_loglikelihood_with_missing(::Val{:kalman},
+                                ::Val,
+                                observables_index::Vector{Int},
+                                                𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}},
+                                                data_in_deviations::Matrix{S},
+                                                constants::constants,
+                                                state,
+                                                workspaces::workspaces,
+                                                obs_idx_per_t::Vector{Vector{Int}};
+                                                warmup_iterations::Int = 0,
+                                                presample_periods::Int = 0,
+                                                initial_covariance::Symbol = :theoretical,
+                                                filter_algorithm::Symbol = :LagrangeNewton,
+                                                lyapunov_algorithm::Symbol = :doubling,
+                                                on_failure_loglikelihood::U = -Inf,
+                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = constants.post_model_macro
+    idx_constants = constants.post_complete_parameters
+    lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
+
+    observables_and_states = sort(union(T.past_not_future_and_mixed_idx, observables_index))
+    observables_sorted = sort(observables_index)
+    I_nVars = idx_constants.diag_nVars
+
+    A = @views 𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] * I_nVars[T.past_not_future_and_mixed_idx, observables_and_states]
+    B = @views 𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end]
+
+    C = @views I_nVars[observables_sorted, observables_and_states]
+
+    kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
+
+    𝐁 = kalman_ws.𝐁
+    ℒ.mul!(𝐁, B, B')
+
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+
+    return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
+                                          obs_idx_per_t, kalman_ws,
+                                          presample_periods = presample_periods,
+                                          verbose = opts.verbose,
+                                          on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
 # Specialization for :theoretical
 function get_initial_covariance(::Val{:theoretical}, 
                                 A::AbstractMatrix{S}, 
@@ -182,6 +226,134 @@ function run_kalman_iterations(A::Matrix{S},
 end
 
 
+# Missing-data variant of run_kalman_iterations.
+# Uses the same workspace buffers but takes per-period sub-views of size m_t
+# (= number of observed variables in period t). Periods with m_t == 0 become
+# pure predict steps (no update, no likelihood contribution).
+function run_kalman_iterations_missing(A::Matrix{S}, 
+                                𝐁::Matrix{S},
+                                C::AbstractMatrix{R}, 
+                                P::Matrix{S}, 
+                                data_in_deviations::Matrix{S},
+                                obs_idx_per_t::Vector{Vector{Int}},
+                                ws::kalman_workspace; 
+                                presample_periods::Int = 0,
+                                on_failure_loglikelihood::U = -Inf,
+                                verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
+
+    n_obs   = size(C, 1)
+    n_state = size(C, 2)
+    n_steps = size(data_in_deviations, 2)
+
+    u    = ws.u
+    z    = ws.z
+    ztmp = ws.ztmp
+    utmp = ws.utmp
+    Ctmp = ws.Ctmp
+    F    = ws.F
+    K    = ws.K
+    tmp  = ws.tmp
+    Ptmp = ws.Ptmp
+
+    fill!(u, zero(S))
+
+    loglik = S(0.0)
+    n_obs_total = 0
+
+    for t in 1:n_steps
+        idx = obs_idx_per_t[t]
+        m   = length(idx)
+
+        if any(!isfinite, u)
+            if verbose println("KF not finite at step $t") end
+            return on_failure_loglikelihood
+        end
+
+        if m == 0
+            # Pure predict step.
+            ℒ.mul!(utmp, A, u)
+            u .= utmp
+
+            ℒ.mul!(Ptmp, A, P)
+            ℒ.mul!(P, Ptmp, A')
+            ℒ.axpy!(1, 𝐁, P)
+
+            continue
+        end
+
+        Cv  = view(C, idx, :)                  # m × n_state
+        dv  = view(data_in_deviations, idx, t) # m
+        zv  = view(z, 1:m)                     # m  (innovation buffer)
+        ztv = view(ztmp, 1:m)
+        Ctv = view(Ctmp, 1:m, :)               # m × n_state
+        Fv  = view(F, 1:m, 1:m)                # m × m
+        Kv  = view(K, :, 1:m)                  # n_state × m
+        rhs_t_kv = view(ws.fast_lu_rhs_t_k, 1:m, :)  # m × n_state
+
+        # innovation v = data[idx, t] - C[idx,:] * u   (stored into zv)
+        ℒ.mul!(zv, Cv, u)
+        @inbounds for i in 1:m
+            zv[i] = dv[i] - zv[i]
+        end
+
+        ℒ.mul!(Ctv, Cv, P)        # Ctv = C[idx,:] * P
+        ℒ.mul!(Fv, Ctv, Cv')      # Fv = C[idx,:] * P * C[idx,:]'
+
+        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
+                                                                            ws.fast_lu_ws_f,
+                                                                            ws.fast_lu_dims_f)
+
+        if !solved_F
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        logabsdetF = zero(S)
+        signF = isodd(count(i -> luF.ipiv[i] != i, 1:m)) ? -one(S) : one(S)
+        @inbounds for i in 1:m
+            di = Fv[i, i]
+            if di == 0
+                if verbose println("KF factorisation failed step $t") end
+                return on_failure_loglikelihood
+            end
+            logabsdetF += log(abs(di))
+            signF *= sign(di)
+        end
+
+        if signF <= 0 || logabsdetF < log(eps(Float64))
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        if t > presample_periods
+            copyto!(ztv, zv)
+            solve_lu_left!(Fv, ztv, ws.fast_lu_ws_f, luF; use_fastlapack_lu = false)
+            loglik += logabsdetF + ℒ.dot(zv, ztv)
+            n_obs_total += m
+        end
+
+        ℒ.mul!(Kv, P, Cv')                   # K = P * C[idx,:]'
+        solve_lu_right!(Fv, Kv, ws.fast_lu_ws_f, luF, rhs_t_kv; use_fastlapack_lu = false)  # K = K / F
+
+        # P = A * (P - K * C[idx,:] * P) * A' + 𝐁
+        ℒ.mul!(tmp, Kv, Cv)                  # tmp = K * C[idx,:]
+        ℒ.mul!(Ptmp, tmp, P)                 # Ptmp = K * C[idx,:] * P
+        ℒ.axpy!(-1, Ptmp, P)                 # P -= Ptmp
+
+        ℒ.mul!(Ptmp, A, P)
+        ℒ.mul!(P, Ptmp, A')
+        ℒ.axpy!(1, 𝐁, P)
+
+        # u = A * (u + K * v)
+        ℒ.mul!(u, Kv, zv, 1, 1)
+        ℒ.mul!(utmp, A, u)
+        u .= utmp
+    end
+
+    return -(loglik + n_obs_total * log(2 * 3.141592653589793)) / 2
+end
+
+
 @unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
@@ -207,7 +379,7 @@ end
 
 
 function filter_and_smooth(𝓂::ℳ, 
-                            data_in_deviations::AbstractArray{Float64}, 
+                            data_in_deviations::AbstractArray, 
                             observables::Vector{Symbol};
                             opts::CalculationOptions = merge_calculation_options())
     # Based on Durbin and Koopman (2012)
@@ -266,36 +438,97 @@ function filter_and_smooth(𝓂::ℳ,
     L = zeros(n_states, n_states, n_obs)
     ϵ = zeros(size(B,2), n_obs) # filtered_shocks
 
+    # Convert any Missing entries to NaN sentinels and build per-period
+    # observable index. Periods with no observed rows are handled by a
+    # predict-only Kalman step; partially-missing periods compute reduced
+    # m × m innovation/F/iF/K on sub-views and scatter the results back into
+    # the full-size storage. Because every row/column of the scattered v[:,t],
+    # iF[:,:,t], L[:,:,t] that touches a "missing" position is zero, the
+    # downstream smoother equations work unchanged.
+    data_in_deviations = missing_data_to_nan(data_in_deviations)
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+
     P[:, :, 1] = P̄
 
     F_buf = kalman_ws.F
 
     # Kalman Filter
     for t in axes(data_in_deviations,2)
-        v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
+        idx = obs_idx_per_t[t]
+        m   = length(idx)
 
-        @views F_buf .= C * P[:, :, t] * C'
-        @views iF_t = iF[:, :, t]
-        fill!(iF_t, 0.0)
-        @inbounds for i in 1:n_obs_C
-            iF_t[i, i] = 1.0
+        if m == 0
+            # Predict-only step: no innovation, no Kalman update.
+            # v[:, t], iF[:, :, t] stay zero; L_t = A; ϵ_t = 0.
+            L[:, :, t] .= A
+            μ[:, t+1]  .= A * μ[:, t]
+            P[:, :, t+1] .= A * P[:, :, t] * A' .+ 𝐁
+            σ[:, t]    .= sqrt.(abs.(ℒ.diag(P[:, :, t+1])))
+            continue
         end
 
-        kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
-            factorize_lu!(Val(:FastLapack), F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+        if m == n_obs_C
+            # Dense fast path.
+            v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
 
-        if !solved_F
-            @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
-            break
+            @views F_buf .= C * P[:, :, t] * C'
+            @views iF_t = iF[:, :, t]
+            fill!(iF_t, 0.0)
+            @inbounds for i in 1:n_obs_C
+                iF_t[i, i] = 1.0
+            end
+
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, _ =
+                factorize_lu!(Val(:FastLapack), F_buf, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+
+            if !solved_F
+                @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
+                break
+            end
+
+            solve_lu_left!(F_buf, iF_t, kalman_ws.fast_lu_ws_f, nothing) # iF_t = F̄ \ I
+            PCiF         = P[:, :, t] * C' * iF_t
+            L[:, :, t]  .= A - A * PCiF * C
+            P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
+            σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1])))
+            μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
+            ϵ[:, t]     .= B' * C' * iF_t * v[:, t]
+        else
+            # Partial-missing step: reduced m × m operations, scatter back.
+            Cv = view(C, idx, :)                        # m × n_states
+            Fv = view(F_buf, 1:m, 1:m)                  # m × m
+            Fv .= Cv * P[:, :, t] * Cv'
+
+            kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f, solved_F, luF_v =
+                factorize_lu!(Val(:Julia), Fv, kalman_ws.fast_lu_ws_f, kalman_ws.fast_lu_dims_f)
+
+            if !solved_F
+                @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
+                break
+            end
+
+            iF_m = Matrix{Float64}(ℒ.I, m, m)
+            solve_lu_left!(Fv, iF_m, kalman_ws.fast_lu_ws_f, luF_v; use_fastlapack_lu = false)
+
+            v_m = data_in_deviations[idx, t] .- Cv * μ[:, t]
+
+            PCiF = P[:, :, t] * Cv' * iF_m              # n_states × m
+            L[:, :, t]  .= A - A * PCiF * Cv
+            P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
+            σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1])))
+            μ[:, t+1]   .= A * (μ[:, t] + PCiF * v_m)
+            ϵ[:, t]     .= B' * Cv' * iF_m * v_m
+
+            # Scatter v_m and iF_m into the full-size buffers (zero elsewhere).
+            fill!(view(v, :, t), 0.0)
+            @inbounds for i in 1:m
+                v[idx[i], t] = v_m[i]
+            end
+            @views fill!(iF[:, :, t], 0.0)
+            @inbounds for j in 1:m, i in 1:m
+                iF[idx[i], idx[j], t] = iF_m[i, j]
+            end
         end
-
-        solve_lu_left!(F_buf, iF_t, kalman_ws.fast_lu_ws_f, nothing) # iF_t = F̄ \ I
-        PCiF         = P[:, :, t] * C' * iF_t
-        L[:, :, t]  .= A - A * PCiF * C
-        P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
-        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
-        μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
-        ϵ[:, t]     .= B' * C' * iF_t * v[:, t]
     end
 
 

@@ -117,6 +117,66 @@ sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
 end
 
 
+# ---------------------------------------------------------------------------
+# Replicate the estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+Random.seed!(3)
+
+Caldara_et_al_2012_loglikelihood_missing = Caldara_et_al_2012_loglikelihood_function(data_missing, Caldara_et_al_2012_estim, -Inf)
+
+mode_estimateNM_missing = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood_missing,
+                                                Optim.NelderMead(),
+                                                iterations = 100,
+                                                initial_params = Turing.InitFromParams((; all_params = Caldara_et_al_2012_estim.parameter_values)))
+
+mode_estimateLBFGS_missing = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood_missing,
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoMooncake(; config=nothing),
+                                                iterations = 100,
+                                                initial_params = Turing.InitFromParams(mode_estimateNM_missing))
+
+init_params_missing = collect(mode_estimateLBFGS_missing.params.data.all_params)
+
+println("Mode variable values (L-BFGS, missing data): $(mode_estimateLBFGS_missing.params)")
+
+samps_missing = sample(Caldara_et_al_2012_loglikelihood_missing, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS_missing))
+
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+@testset "Estimation results (3rd order, missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(Caldara_et_al_2012_estim.parameter_values)
+    @test isfinite(mode_estimateLBFGS_missing.lp)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (3rd order, missing data)" begin
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, algorithm = :third_order)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), init_params_missing,
+        DifferentiationInterface.Constant(Caldara_et_al_2012_estim),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1, max_range = 1e-3), x -> get_loglikelihood(Caldara_et_al_2012_estim, data_missing, x, algorithm = :third_order), init_params_missing)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
+
 # include("../models/FS2000.jl")
 
 # # load data

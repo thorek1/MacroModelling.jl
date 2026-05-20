@@ -56,7 +56,7 @@ import REPL
 import Unicode
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
-# using AxisKeys
+import AxisKeys
 
 import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 # import RecursiveFactorization as RF
@@ -732,24 +732,65 @@ end
 
 
 
-# Helper to convert dense matrix to sparse using I,J,V format (avoids Julia 1.12 SparseArrays bug)
+# Helper to convert dense matrix to sparse, avoiding the Julia 1.12 SparseArrays bug in
+# `SparseMatrixCSC(::Matrix)`. Builds CSC arrays directly in column-major order:
+# one counting pass + one fill pass with exact allocations and no COO→CSC sort step,
+# so this is at least as fast as the stdlib path it replaces.
 function dense_to_sparse(A::DenseMatrix{S}, tol::R) where {S <: Real, R <: AbstractFloat}
     m, n = size(A)
-    I = Int[]
-    J = Int[]
-    V = S[]
+    nnz_count = 0
+    @inbounds for v in A
+        abs(v) > tol && (nnz_count += 1)
+    end
+    colptr = Vector{Int}(undef, n + 1)
+    rowval = Vector{Int}(undef, nnz_count)
+    nzval  = Vector{S}(undef, nnz_count)
+    k = 0
+    colptr[1] = 1
     @inbounds for j in 1:n
         for i in 1:m
-            v = A[i,j]
+            v = A[i, j]
             if abs(v) > tol
-                push!(I, i)
-                push!(J, j)
-                push!(V, v)
+                k += 1
+                rowval[k] = i
+                nzval[k]  = v
             end
         end
+        colptr[j + 1] = k + 1
     end
-    return sparse(I, J, V, m, n)
+    return SparseMatrixCSC(m, n, colptr, rowval, nzval)
 end
+
+# No-tolerance variant matching `sparse(::Matrix)` semantics (drops only structural zeros via
+# `iszero`, so AD-active values with zero primal but nonzero partials are preserved).
+function dense_to_sparse(A::DenseMatrix{S}) where {S}
+    m, n = size(A)
+    nnz_count = 0
+    @inbounds for v in A
+        iszero(v) || (nnz_count += 1)
+    end
+    colptr = Vector{Int}(undef, n + 1)
+    rowval = Vector{Int}(undef, nnz_count)
+    nzval  = Vector{S}(undef, nnz_count)
+    k = 0
+    colptr[1] = 1
+    @inbounds for j in 1:n
+        for i in 1:m
+            v = A[i, j]
+            if !iszero(v)
+                k += 1
+                rowval[k] = i
+                nzval[k]  = v
+            end
+        end
+        colptr[j + 1] = k + 1
+    end
+    return SparseMatrixCSC(m, n, colptr, rowval, nzval)
+end
+
+# Passthrough for already-sparse inputs: lets callers safely funnel mixed Matrix/SparseMatrixCSC
+# values (e.g., return types of `calculate_second_order_solution`) through the same code path.
+dense_to_sparse(A::AbstractSparseMatrix) = A
 
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
@@ -1172,7 +1213,7 @@ end
 
 
 
-function get_and_check_observables(T::post_model_macro, data::KeyedArray{Float64})::Vector{Symbol}
+function get_and_check_observables(T::post_model_macro, data::KeyedArray)::Vector{Symbol}
     @assert size(data,1) <= T.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))

@@ -936,6 +936,9 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # y_obs (n_cond_var)
         zeros(TT, 0),            # x_shocks (n_exo)
         zeros(TT, 0),            # state_concat (n_past + n_exo)
+        zeros(TT, 0, 0),         # JJt_buf (n_cond_var × n_cond_var)
+        zeros(TT, 0),            # obs_sub_buf (n_cond_var)
+        zeros(TT, 0, 0),         # jacc_v_buf (n_cond_var × n_exo)
         zeros(TT, 0),            # aug_state₃ (n_past+1+n_exo)
         zeros(TT, 0),            # aug_state₁̂ (n_past+1+n_exo)
         zeros(TT, 0),            # state²⁻_vol (n_past+1)
@@ -950,7 +953,23 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0, 0),         # ∂𝐒ⁱ²ᵉtmp (n_exo × n_exo*n_obs)
         zeros(TT, 0, 0),         # ∂𝐒ⁱ²ᵉtmp2 (n_obs × n_exo^2)
         zeros(TT, 0),            # kronSλ (n_obs * n_exo)
-        zeros(TT, 0))            # kronxS (n_exo * n_obs)
+        zeros(TT, 0),            # kronxS (n_exo * n_obs)
+        # Per-period sequence buffers captured by rrule pullbacks (grown lazily
+        # via ensure_inversion_rrule_buffers!).
+        Vector{Vector{TT}}(),    # state_seq_rrule
+        Vector{Vector{TT}}(),    # state₂_seq_rrule
+        Vector{Vector{TT}}(),    # state₃_seq_rrule
+        Vector{Vector{TT}}(),    # x_seq_rrule
+        Vector{Vector{TT}}(),    # state¹⁻_vol_seq_rrule
+        Vector{Vector{TT}}(),    # aug_state_seq_rrule
+        Vector{Vector{TT}}(),    # aug_state₁_seq_rrule
+        Vector{Vector{TT}}(),    # aug_state₂_seq_rrule
+        Vector{Vector{TT}}(),    # aug_state₃_seq_rrule
+        Vector{Vector{TT}}(),    # aug_state₁̂_seq_rrule
+        Vector{Matrix{TT}}(),    # 𝐒ⁱ_full_seq_rrule
+        Vector{Matrix{TT}}(),    # 𝐒ⁱ²ᵉ_full_seq_rrule
+        Vector{Matrix{TT}}(),    # invjac_v_seq_rrule (variable inner size)
+        Vector{Matrix{TT}}())    # G_seq_rrule (variable inner size)
 end
 
 
@@ -1056,8 +1075,13 @@ Ensure observation-dimension-dependent estimation buffers are allocated.
 Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
 """
 function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
+    n_exo² = n_exo^2
     if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
-       size(ws.Si_buffer) == (n_cond_var, n_exo)
+       size(ws.Si_buffer) == (n_cond_var, n_exo) &&
+       size(ws.JJt_buf) == (n_cond_var, n_cond_var) &&
+       length(ws.obs_sub_buf) == n_cond_var &&
+       size(ws.jacc_v_buf) == (n_cond_var, n_exo) &&
+       (!third_order || size(ws.Si2e_buffer) == (n_cond_var, n_exo²))
         return ws
     end
     
@@ -1075,8 +1099,16 @@ function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo:
     if size(ws.jacc_buffer) != (n_cond_var, n_exo)
         ws.jacc_buffer = zeros(T, n_cond_var, n_exo)
     end
+    if size(ws.JJt_buf) != (n_cond_var, n_cond_var)
+        ws.JJt_buf = zeros(T, n_cond_var, n_cond_var)
+    end
+    if length(ws.obs_sub_buf) != n_cond_var
+        ws.obs_sub_buf = zeros(T, n_cond_var)
+    end
+    if size(ws.jacc_v_buf) != (n_cond_var, n_exo)
+        ws.jacc_v_buf = zeros(T, n_cond_var, n_exo)
+    end
     if third_order
-        n_exo² = n_exo^2
         if size(ws.Si2e_buffer) != (n_cond_var, n_exo²)
             ws.Si2e_buffer = zeros(T, n_cond_var, n_exo²)
         end
@@ -1085,6 +1117,119 @@ function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo:
     return ws
 end
 
+
+"""
+    ensure_inversion_rrule_buffers!(ws, n_exo, n_past, n_cond, Tt; order)
+
+Ensure the per-period sequence buffers captured by inversion-filter rrule pullbacks
+are sized for `Tt` time periods.  `order` selects which sequences are needed:
+`:first_order`, `:pruned_second_order`, `:second_order`, `:pruned_third_order`,
+or `:third_order`.
+
+Each outer `Vector` is resized to the required length (Tt or Tt+1) and inner
+buffers are (re)allocated only when their current dimensions don't match.
+Buffers are intended for use within a single rrule call — they are read by the
+pullback closure after the forward pass completes — so two simultaneous calls
+into rrules sharing the same workspace would alias.  This matches the existing
+sharing model for the scalar workspace buffers (e.g. `state_vol`, `Si_buffer`).
+"""
+function ensure_inversion_rrule_buffers!(ws::inversion_workspace{T},
+                                          n_exo::Int, n_past::Int,
+                                          n_cond::Int, Tt::Int;
+                                          order::Symbol = :first_order) where T
+    n_aug = n_past + 1 + n_exo
+    n_vol = n_past + 1
+    n_exo² = n_exo^2
+
+    _grow_vec_seq!(ws.x_seq_rrule, Tt, n_exo, T)
+
+    if order === :first_order
+        # first_order: state_seq stores full state copies (length n_past via state[1] copy).
+        # We resize the outer vector and let the rrule control inner size.
+        _grow_vec_seq_undef!(ws.state_seq_rrule, Tt + 1)
+        _grow_mat_seq_undef!(ws.invjac_v_seq_rrule, Tt)
+        _grow_mat_seq_undef!(ws.G_seq_rrule, Tt)
+        return ws
+    end
+
+    _grow_vec_seq!(ws.state¹⁻_vol_seq_rrule, Tt, n_vol, T)
+    _grow_mat_seq!(ws.𝐒ⁱ_full_seq_rrule, Tt, n_cond, n_exo, T)
+
+    if order === :pruned_second_order
+        _grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
+        _grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
+        _grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
+        _grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
+    elseif order === :second_order
+        _grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
+        _grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
+    elseif order === :pruned_third_order
+        _grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
+        _grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
+        _grow_vec_seq!(ws.state₃_seq_rrule, Tt + 1, n_past, T)
+        _grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
+        _grow_vec_seq!(ws.aug_state₁̂_seq_rrule, Tt, n_aug, T)
+        _grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
+        _grow_vec_seq!(ws.aug_state₃_seq_rrule, Tt, n_aug, T)
+        _grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
+    elseif order === :third_order
+        _grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
+        _grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
+        _grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
+    else
+        error("ensure_inversion_rrule_buffers!: unknown order $order")
+    end
+
+    return ws
+end
+
+@inline function _grow_vec_seq!(seq::Vector{Vector{T}}, Tt::Int, n::Int, ::Type{T}) where T
+    if length(seq) < Tt
+        sizehint!(seq, Tt)
+        while length(seq) < Tt
+            push!(seq, zeros(T, n))
+        end
+    elseif length(seq) > Tt
+        resize!(seq, Tt)
+    end
+    @inbounds for i in 1:Tt
+        if !isassigned(seq, i) || length(seq[i]) != n
+            seq[i] = zeros(T, n)
+        end
+    end
+    return seq
+end
+
+@inline function _grow_vec_seq_undef!(seq::Vector{Vector{T}}, Tt::Int) where T
+    if length(seq) != Tt
+        resize!(seq, Tt)
+    end
+    return seq
+end
+
+@inline function _grow_mat_seq!(seq::Vector{Matrix{T}}, Tt::Int, m::Int, n::Int, ::Type{T}) where T
+    if length(seq) < Tt
+        sizehint!(seq, Tt)
+        while length(seq) < Tt
+            push!(seq, zeros(T, m, n))
+        end
+    elseif length(seq) > Tt
+        resize!(seq, Tt)
+    end
+    @inbounds for i in 1:Tt
+        if !isassigned(seq, i) || size(seq[i]) != (m, n)
+            seq[i] = zeros(T, m, n)
+        end
+    end
+    return seq
+end
+
+@inline function _grow_mat_seq_undef!(seq::Vector{Matrix{T}}, Tt::Int) where T
+    if length(seq) != Tt
+        resize!(seq, Tt)
+    end
+    return seq
+end
 
 """
     Kalman_workspace(::Type{TT} = Float64)
@@ -1110,7 +1255,14 @@ function Kalman_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0, 0),         # Ptmp (n_states × n_states)
         empty_lu_ws,
         (0, 0),
-        zeros(TT, 0, 0))         # fast_lu_rhs_t_k (n_obs × n_states)
+        zeros(TT, 0, 0),         # fast_lu_rhs_t_k (n_obs × n_states)
+        # Per-period sequence buffers for the kalman rrule pullback
+        Vector{Vector{TT}}(),    # u_seq_rrule
+        Vector{Matrix{TT}}(),    # P_seq_rrule
+        Vector{Matrix{TT}}(),    # CP_seq_rrule
+        Vector{Matrix{TT}}(),    # K_seq_rrule
+        Vector{Matrix{TT}}(),    # invF_seq_rrule
+        Vector{Vector{TT}}())    # v_seq_rrule
 end
 
 
@@ -1168,6 +1320,23 @@ function ensure_kalman_workspaces!(workspaces::workspaces, n_obs::Int, n_states:
         ws.fast_lu_rhs_t_k = zeros(T, n_obs, n_states)
     end
     
+    return ws
+end
+
+
+"""
+    ensure_kalman_rrule_buffers!(ws::kalman_workspace{T}, n_obs, n_states, Tt)
+
+Ensure the per-period sequence buffers captured by the kalman-filter rrule
+pullback are sized for `Tt` time periods.  Mirrors `ensure_inversion_rrule_buffers!`.
+"""
+function ensure_kalman_rrule_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int, Tt::Int) where T
+    _grow_vec_seq!(ws.u_seq_rrule,    Tt, n_states, T)
+    _grow_mat_seq!(ws.P_seq_rrule,    Tt, n_states, n_states, T)
+    _grow_mat_seq!(ws.CP_seq_rrule,   Tt, n_obs,    n_states, T)
+    _grow_mat_seq!(ws.K_seq_rrule,    Tt, n_states, n_obs,    T)
+    _grow_mat_seq!(ws.invF_seq_rrule, Tt, n_obs,    n_obs,    T)
+    _grow_vec_seq!(ws.v_seq_rrule,    Tt, n_obs,    T)
     return ws
 end
 
@@ -2295,13 +2464,13 @@ struct AdTolerances
 end
 
 function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
-    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
+    base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
     return AdTolerances(
-        resolve_tol(qme, _base_qme),
-        resolve_tol(sylvester, _base_sylv),
-        resolve_tol(lyapunov, _base_lyap))
+        resolve_tol(qme, base_qme),
+        resolve_tol(sylvester, base_sylv),
+        resolve_tol(lyapunov, base_lyap))
 end
 
 resolve_tol(s::AdTolerances, ::AdTolerances) = s
@@ -2344,14 +2513,14 @@ function FirstOrderTolerances(; qme = (;),
                               droptol::Float64 = 1e-14,
                               dependencies_tol::Float64 = 1e-12,
                               ad = (;))
-    _base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
-    _base_ad   = AdTolerances()
+    base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_ad   = AdTolerances()
     return FirstOrderTolerances(
-        resolve_tol(qme, _base_qme),
-        resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(qme, base_qme),
+        resolve_tol(lyapunov, base_lyap),
         droptol, dependencies_tol,
-        resolve_tol(ad, _base_ad))
+        resolve_tol(ad, base_ad))
 end
 
 resolve_tol(s::FirstOrderTolerances, ::FirstOrderTolerances) = s
@@ -2396,14 +2565,14 @@ function HigherOrderTolerances(; sylvester = (;),
                                droptol::Float64 = 1e-14,
                                dependencies_tol::Float64 = 1e-12,
                                ad = (;))
-    _base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    _base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
-    _base_ad   = AdTolerances()
+    base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_ad   = AdTolerances()
     return HigherOrderTolerances(
-        resolve_tol(sylvester, _base_sylv),
-        resolve_tol(lyapunov, _base_lyap),
+        resolve_tol(sylvester, base_sylv),
+        resolve_tol(lyapunov, base_lyap),
         droptol, dependencies_tol,
-        resolve_tol(ad, _base_ad))
+        resolve_tol(ad, base_ad))
 end
 
 resolve_tol(s::HigherOrderTolerances, ::HigherOrderTolerances) = s
@@ -2509,17 +2678,17 @@ function Tolerances(; nsss = (;),
                     first_order = (;),
                     second_order = (;),
                     third_order = (;))
-    _base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(),
+    base = Tolerances(NsssTolerances(), FirstOrderTolerances(), HigherOrderTolerances(),
                        HigherOrderTolerances(
                            sylvester = SolverTolerances(acceptance_tol = 1e-8),
                            lyapunov  = SolverTolerances(acceptance_tol = 1e-8),
                            ad = AdTolerances(sylvester = SolverTolerances(acceptance_tol = 1e-8),
                                              lyapunov  = SolverTolerances(acceptance_tol = 1e-8))))
     return Tolerances(
-        resolve_tol(nsss, _base.nsss),
-        resolve_tol(first_order, _base.first_order),
-        resolve_tol(second_order, _base.second_order),
-        resolve_tol(third_order, _base.third_order))
+        resolve_tol(nsss, base.nsss),
+        resolve_tol(first_order, base.first_order),
+        resolve_tol(second_order, base.second_order),
+        resolve_tol(third_order, base.third_order))
 end
 
 resolve_tol(s::Tolerances, ::Tolerances) = s

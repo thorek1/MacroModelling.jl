@@ -83,6 +83,48 @@ sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
 end
 
 
+# ---------------------------------------------------------------------------
+# Replicate the estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+Random.seed!(30)
+
+samps_missing = @time sample(FS2000_loglikelihood_function(data_missing, FS2000, :second_order, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+@testset "Estimation results (2nd order, missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(FS2000.parameter_values)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (2nd order, missing data)" begin
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, algorithm = :second_order)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values,
+        DifferentiationInterface.Constant(FS2000),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data_missing, x, algorithm = :second_order), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
+
 # # estimate highly nonlinear model
 
 

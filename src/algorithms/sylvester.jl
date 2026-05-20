@@ -82,15 +82,15 @@
         guess = length(initial_guess) > 0 ? initial_guess : c
         guess_name = length(initial_guess) > 0 ? "previous solution" : "C"
         
-        _tmp = 𝕊ℂ.tmp
-        _res = 𝕊ℂ.𝐂
-        ℒ.mul!(_tmp, guess, b)
-        ℒ.mul!(_res, a, _tmp)
-        ℒ.axpy!(1, c, _res)
-        ℒ.axpy!(-1, guess, _res)
+        tmp_buf = 𝕊ℂ.tmp
+        res_buf = 𝕊ℂ.𝐂
+        ℒ.mul!(tmp_buf, guess, b)
+        ℒ.mul!(res_buf, a, tmp_buf)
+        ℒ.axpy!(1, c, res_buf)
+        ℒ.axpy!(-1, guess, res_buf)
         
         denom = max(ℒ.norm(guess), ℒ.norm(c))
-        reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
+        reached_tol = denom == 0 ? 0.0 : ℒ.norm(res_buf) / denom
 
         if reached_tol < initial_guess_acceptance_tol
             if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end

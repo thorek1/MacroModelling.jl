@@ -203,14 +203,14 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
-      - name: Restrict DynamicPPL to 0.35 for pigeons runs
-        if: contains(matrix.test_set, 'pigeons')
-        shell: bash
-        run: |
-          sed -i.bak \
-            -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$/DynamicPPL = "0.35"/g' \
-            Project.toml
-          rm -f Project.toml.bak
+      # - name: Restrict DynamicPPL to 0.40 for pigeons runs
+      #   if: contains(matrix.test_set, 'pigeons')
+      #   shell: bash
+      #   run: |
+      #     sed -i.bak \
+      #       -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$/DynamicPPL = "0.40"/g' \
+      #       Project.toml
+      #     rm -f Project.toml.bak
 
       - name: Remove Mooncake from pigeons runs
         if: contains(matrix.test_set, 'pigeons')

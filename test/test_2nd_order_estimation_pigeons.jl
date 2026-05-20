@@ -24,27 +24,26 @@ data = data(observables,:)
 
 
 dists = [
-    Beta(0.356, 0.02, μσ = true),           # alp
-    Beta(0.993, 0.002, μσ = true),          # bet
+    Beta(0.356, 0.02, eps(Float64), 1 - eps(Float64), μσ = true),           # alp
+    Beta(0.993, 0.002, eps(Float64), 1 - eps(Float64), μσ = true),          # bet
     Normal(0.0085, 0.003),                  # gam
     Normal(1.0002, 0.007),                  # mst
-    Beta(0.129, 0.223, μσ = true),          # rho
-    Beta(0.65, 0.05, μσ = true),            # psi
-    Beta(0.01, 0.005, μσ = true),           # del
-    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
-    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+    Beta(0.129, 0.223, eps(Float64), 1 - eps(Float64), μσ = true),          # rho
+    Beta(0.65, 0.05, eps(Float64), 1 - eps(Float64), μσ = true),            # psi
+    Beta(0.01, 0.005, eps(Float64), 1 - eps(Float64), μσ = true),           # del
+    InverseGamma(0.035449, Inf, eps(Float64), Inf, μσ = true),              # z_e_a
+    InverseGamma(0.008862, Inf, eps(Float64), Inf, μσ = true)               # z_e_m
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
     all_params ~ Turing.product_distribution(dists)
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = algorithm, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
-    end
+    llh = get_loglikelihood(m,
+                            data,
+                            all_params,
+                            algorithm = algorithm,
+                            on_failure_loglikelihood = on_failure_loglikelihood)
+    Turing.@addlogprob! llh
 end
 
 
@@ -53,18 +52,19 @@ const PIGEONS_SEED = 30
 # generate a Pigeons log potential
 FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)+1e10))
 
+#=
+const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
+
 init_params = FS2000.parameter_values
 
 LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)+1e10), (all_params = init_params,))
 
 if isfinite(LLH)
-    const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
-
     function Pigeons.initialization(target::FS2000_2nd_LP, rng::AbstractRNG, _::Int64)
-        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-        
-        result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+        result = DynamicPPL.link!!(result, target.model)
+
+        # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
 
         return result
     end
@@ -89,8 +89,51 @@ else
     end
 
     # define a specific initialization for this model
-    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+    Pigeons.initialization(::FS2000_2nd_LP, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
+=#
+
+# ---------------------------------------------------------------------------
+# Run the Pigeons estimation problem on data with missing observations FIRST
+# so any failures surface early.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+FS2000_2nd_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data_missing, FS2000, :second_order, -floatmax(Float64)+1e10))
+
+#=
+const FS2000_2nd_LP_MISSING = typeof(FS2000_2nd_lp_missing)
+
+function Pigeons.initialization(target::FS2000_2nd_LP_MISSING, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+    result = DynamicPPL.link!!(result, target.model)
+
+    # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
+
+    return result
+end
+
+pt_missing = Pigeons.pigeons(target = FS2000_2nd_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED + 1)
+=#
+
+pt_missing = @time Pigeons.pigeons(target = FS2000_2nd_lp_missing,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 9,
+            seed = PIGEONS_SEED + 1,
+            multithreaded = false)
+
+samps_missing = MCMCChains.Chains(pt_missing)
+
+sample_pigeons_missing = mean(samps_missing).nt.mean
+println("Mean variable values (Pigeons, 2nd order, missing data): $(sample_pigeons_missing)")
+
+@testset "Pigeons Estimation results (2nd order, missing data)" begin
+    @test length(sample_pigeons_missing) >= 9
+    @test all(isfinite, sample_pigeons_missing[1:9])
+end
+
+pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 
 pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],

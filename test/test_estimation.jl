@@ -121,6 +121,59 @@ end
     end
 end
 
+# ---------------------------------------------------------------------------
+# Replicate the full estimation problem on data with missing observations.
+# Standalone correctness tests for missing-data Kalman/inversion paths live
+# in test_missing_data.jl.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+FS2000_loglikelihood_missing = FS2000_loglikelihood_function(data_missing, FS2000, -Inf)
+
+samps_missing = @time sample(FS2000_loglikelihood_missing, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+modeFS2000_missing = Turing.maximum_a_posteriori(FS2000_loglikelihood_missing,
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                        adtype = AutoMooncake(; config=nothing),
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+println("Mode variable values (missing data): $(modeFS2000_missing.params); Mode loglikelihood: $(modeFS2000_missing.lp)")
+
+@testset "Estimation results (missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(FS2000.parameter_values)
+    @test isfinite(modeFS2000_missing.lp)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (1st order Kalman, missing data)" begin
+    # Pass FS2000 and data_missing as Constant contexts (not closure captures)
+    # so Mooncake doesn't run `__verify_const` against the captured globals.
+    # That check uses `==`, which returns `false` for NaN-bearing arrays even
+    # when the array is the same object — triggering an assertion failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values,
+        DifferentiationInterface.Constant(FS2000),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data_missing, x), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
 plot_model_estimates(FS2000, data, parameters = sample_nuts)
 plot_shock_decomposition(FS2000, data)
 
