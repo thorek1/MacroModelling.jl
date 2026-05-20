@@ -5,7 +5,6 @@ import Mooncake
 import Turing: NUTS, sample
 import ADTypes
 import ADTypes: AutoMooncake
-import ADTypes: AutoForwardDiff
 import Turing: MvNormal
 import LinearAlgebra: I as LinearAlgebraI
 import DifferentiationInterface
@@ -81,6 +80,57 @@ Random.seed!(30)
     println()
     println("Mean variable values (filter-free, first order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
     @test size(ff_samps, 1) == n_samples
+end
+
+
+# ---------------------------------------------------------------------------
+# Replicate the estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+
+Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
+    all_params ~ Turing.product_distribution(dists)
+
+    llh = get_loglikelihood(m, 
+                            data, 
+                            all_params, 
+                            filter = filter,
+                            on_failure_loglikelihood = on_failure_loglikelihood)
+    maybe_print_loglikelihood(verbose, llh, dists, all_params)
+
+    Turing.@addlogprob! llh
+end
+
+
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
+println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
+
+sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
+
+modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        adtype = AutoMooncake(; config=nothing), 
+                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
+
+println("Mode variable values: $(modeFS2000i.params); Mode loglikelihood: $(modeFS2000i.lp)")
+
+@testset "Mooncake vs FiniteDifferences gradient (1st order inversion)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x, filter = :inversion), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x, filter = :inversion), FS2000.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
 end
 
 
@@ -351,51 +401,4 @@ end
 #             alpha = 0.5);
 
 # p
-
-
-Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
-    all_params ~ Turing.product_distribution(dists)
-
-    llh = get_loglikelihood(m, 
-                            data, 
-                            all_params, 
-                            filter = filter,
-                            on_failure_loglikelihood = on_failure_loglikelihood)
-    maybe_print_loglikelihood(verbose, llh, dists, all_params)
-
-    Turing.@addlogprob! llh
-end
-
-
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
-
-
-posterior_summary = FlexiChains.summarystats(samps)
-show(stdout, MIME"text/plain"(), posterior_summary)
-println()
-println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
-
-sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
-
-modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                        adtype = AutoMooncake(; config=nothing), 
-                                        initial_params = Turing.InitFromParams((; all_params = FS2000.parameter_values)))
-
-println("Mode variable values: $(modeFS2000i.params); Mode loglikelihood: $(modeFS2000i.lp)")
-
-@testset "Mooncake vs FiniteDifferences gradient (1st order inversion)" begin
-    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(FS2000, data, x, filter = :inversion), ADTypes.AutoMooncake(config = nothing), FS2000.parameter_values)
-    @test !isnothing(back_grad)
-    @test all(isfinite, back_grad)
-
-    for i in 1:100
-        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(FS2000, data, x, filter = :inversion), FS2000.parameter_values)
-        if isfinite(ℒ.norm(fin_grad))
-            println("Finite differences converged after $i iterations")
-            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
-            break
-        end
-    end
-end
 
