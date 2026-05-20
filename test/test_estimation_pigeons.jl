@@ -10,7 +10,7 @@ include("test_helpers.jl")
 include("../models/FS2000.jl")
 
 # load data
-dat, header = readdlm("test/data/FS2000_data.csv", ',', header = true)
+dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
 dat = Float64.(dat)
 names = vec(header)
 data = KeyedArray(dat', Variable = Symbol.("log_".*names), Time = axes(dat, 1))
@@ -57,10 +57,10 @@ const PIGEONS_SEED = 30
 const FS2000_LP = typeof(FS2000_lp)
 
 function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromPrior())
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
     result = DynamicPPL.link!!(result, target.model)
 
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+    # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
 
     return result
 end
@@ -78,10 +78,10 @@ FS2000_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(dat
 const FS2000_LP_MISSING = typeof(FS2000_lp_missing)
 
 function Pigeons.initialization(target::FS2000_LP_MISSING, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromPrior(), DynamicPPL.PriorContext())
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
     result = DynamicPPL.link!!(result, target.model)
 
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+    # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
 
     return result
 end
