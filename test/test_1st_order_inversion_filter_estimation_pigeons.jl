@@ -37,16 +37,14 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.product_distribution(dists)
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        llh = get_loglikelihood(m, 
-                                data, 
-                                all_params, 
-                                filter = filter,
-                                on_failure_loglikelihood = on_failure_loglikelihood)
-        maybe_print_loglikelihood(verbose, llh, dists, all_params)
+    llh = get_loglikelihood(m,
+                            data,
+                            all_params,
+                            filter = filter,
+                            on_failure_loglikelihood = on_failure_loglikelihood)
+    maybe_print_loglikelihood(verbose, llh, dists, all_params)
 
-        Turing.@addlogprob! llh
-    end
+    Turing.@addlogprob! llh
 end
 
 # generate a Pigeons log potential
@@ -58,12 +56,8 @@ const PIGEONS_SEED = 30
 const FS2000_LP = typeof(FS2000_lp)
 
 function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    result = DynamicPPL.link!!(result, target.model)
-
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
-
-    return result
+    vi = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+    return DynamicPPL.link(vi, target.model)
 end
 
 pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
@@ -74,6 +68,13 @@ pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGE
 data_missing = inject_missing_observations(data)
 
 FS2000_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data_missing, FS2000, :inversion, -floatmax(Float64)+1e10))
+
+const FS2000_LP_MISSING = typeof(FS2000_lp_missing)
+
+function Pigeons.initialization(target::FS2000_LP_MISSING, rng::AbstractRNG, _::Int64)
+    vi = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromPrior())
+    return DynamicPPL.link(vi, target.model)
+end
 
 pt_missing = Pigeons.pigeons(target = FS2000_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED+1)
 
