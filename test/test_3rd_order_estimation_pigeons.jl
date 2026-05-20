@@ -68,6 +68,7 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 # generate a Pigeons log potential
 Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
 
+#=
 const Caldara_LP = typeof(Caldara_lp)
 
 init_params = Caldara_et_al_2012_estim.parameter_values
@@ -107,6 +108,7 @@ else
     # define a specific initialization for this model
     Pigeons.initialization(::Caldara_LP, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
+=#
 
 # ---------------------------------------------------------------------------
 # Run the missing-data Pigeons estimation FIRST so failures surface early.
@@ -115,6 +117,7 @@ data_missing = inject_missing_observations(data)
 
 Caldara_lp_missing = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data_missing, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
 
+#=
 const Caldara_LP_MISSING = typeof(Caldara_lp_missing)
 
 function Pigeons.initialization(target::Caldara_LP_MISSING, rng::AbstractRNG, _::Int64)
@@ -127,6 +130,7 @@ function Pigeons.initialization(target::Caldara_LP_MISSING, rng::AbstractRNG, _:
 end
 
 pt_missing = Pigeons.pigeons(target = Caldara_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+=#
 
 pt_missing = @time Pigeons.pigeons(target = Caldara_lp_missing,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],

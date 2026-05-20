@@ -51,8 +51,10 @@ end
 # generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)+1e10))
 
-init_params = FS2000.parameter_values
 const PIGEONS_SEED = 30
+
+#=
+init_params = FS2000.parameter_values
 
 const FS2000_LP = typeof(FS2000_lp)
 
@@ -66,6 +68,7 @@ function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
 end
 
 pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+=#
 
 # ---------------------------------------------------------------------------
 # Run the Pigeons estimation problem on data with missing observations FIRST
@@ -75,6 +78,7 @@ data_missing = inject_missing_observations(data)
 
 FS2000_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data_missing, FS2000, -floatmax(Float64)+1e10))
 
+#=
 const FS2000_LP_MISSING = typeof(FS2000_lp_missing)
 
 function Pigeons.initialization(target::FS2000_LP_MISSING, rng::AbstractRNG, _::Int64)
@@ -87,6 +91,7 @@ function Pigeons.initialization(target::FS2000_LP_MISSING, rng::AbstractRNG, _::
 end
 
 pt_missing = Pigeons.pigeons(target = FS2000_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+=#
 
 pt_missing = @time Pigeons.pigeons(target = FS2000_lp_missing,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
