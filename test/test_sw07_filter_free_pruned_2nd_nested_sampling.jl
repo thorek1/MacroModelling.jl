@@ -2,7 +2,7 @@ using Test
 using MacroModelling
 import Turing
 using PythonCall
-using Random, AxisKeys
+using DelimitedFiles, AxisKeys
 
 using FlexiChains
 using FlexiChains: Parameter, FlexiChain
@@ -24,12 +24,12 @@ include("test_helpers.jl")
 #   * parameter space : the full SW07 estimation parameter vector used in the
 #                       other SW07 estimation tests, plus observable-specific
 #                       measurement-error stds, plus all latent shocks over the
-#                       synthetic sample window.
+#                       SW07 estimation sample window.
 # ──────────────────────────────────────────────────────────────────────────────
 
 USE_NESSAI = true
 
-NESSAI_NLIVE = 1500
+NESSAI_NLIVE = 1000
 NESSAI_FLOW_POOLSIZE = 128
 NESSAI_FLOW_DRAWSIZE = NESSAI_FLOW_POOLSIZE
 NESSAI_UNINFORMED_POOLSIZE = NESSAI_FLOW_POOLSIZE
@@ -58,19 +58,21 @@ println("nessai installed")
 include("../models/Smets_Wouters_2007.jl")
 const SW07_FF = Smets_Wouters_2007
 
-# Use a small under-identified observable set to keep the model well-conditioned.
-const OBS_FF = [:dy, :dc, :dinve]
+# Use the same SW07 dataset and sample window as the estimate_sw07 CI run.
+const OBS_FF_CSV = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
+const OBS_FF     = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs]
+const SAMPLE_IDX_FF = 47:230 # 1960Q1-2004Q4
 
-# Synthetic data: steady-state with small noise (deterministic, reproducible).
-const T_FF   = 6
-function ss_perturbed_data(model, observables; periods, σ, seed)
-    SS     = get_steady_state(model)
-    ss_obs = collect(SS(observables, :Steady_state))
-    Random.seed!(seed)
-    dat = repeat(ss_obs, 1, periods) .+ σ .* randn(length(observables), periods)
-    return KeyedArray(dat; Variables = observables, Time = 1:periods)
+const DATA_FF = let
+    dat, header = DelimitedFiles.readdlm(joinpath(@__DIR__, "data", "usmodel.csv"), ',', header = true)
+    dat = Float64.(dat)
+    col_names = vec(Symbol.(strip.(header)))
+    data = KeyedArray(dat', Variable = col_names, Time = axes(dat, 1))
+    data = data(OBS_FF_CSV, SAMPLE_IDX_FF)
+    rekey(data, :Variable => OBS_FF)
 end
-const DATA_FF = ss_perturbed_data(SW07_FF, OBS_FF; periods = T_FF, σ = 1e-4, seed = 17)
+
+const T_FF = size(DATA_FF, 2)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sampled SW07 parameter vector + priors
