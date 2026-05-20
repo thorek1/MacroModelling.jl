@@ -59,8 +59,6 @@ elseif test_set == "basic"
     include("test_basic.jl")
 elseif test_set == "system_prior_estimation"
     include("test_system_prior_estimation.jl")
-elseif test_set == "missing_data"
-    include("test_missing_data.jl")
 elseif test_set == "gradient_checks"
     include("test_missing_data.jl")
     include("test_rrule_robustness.jl")
