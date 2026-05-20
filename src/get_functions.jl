@@ -1,6 +1,81 @@
 @stable default_mode = "disable" begin
 
 
+# ---------------------------------------------------------------------------
+# Missing-value support helpers (shared by Kalman and inversion filters)
+# ---------------------------------------------------------------------------
+# Filters accept data that may contain unobserved entries. The internal
+# canonical sentinel is NaN: `missing_data_to_nan` converts `missing` and
+# `nothing` to NaN at the public API boundary, and `build_obs_index` then
+# classifies any non-finite entry (NaN, Inf, -Inf) as unobserved via
+# `isfinite`. A per-period vector of available observable indices is built
+# once per call and reused inside the filter loops to slice the (max-sized)
+# workspace buffers, so all preallocation tricks are kept.
+
+"""
+    missing_data_to_nan(data) -> Matrix{Float64}
+
+Convert a matrix that may contain `missing` or `nothing` values into a
+`Matrix{Float64}` where `missing`/`nothing` become `NaN`. `Matrix{Float64}`
+inputs are returned unchanged (no copy). Non-finite real values (NaN, Inf,
+-Inf) are preserved and are treated as unobserved downstream by
+`build_obs_index`.
+"""
+missing_data_to_nan(data::Matrix{Float64}) = data
+function missing_data_to_nan(data::AbstractMatrix{<:Union{Missing,Nothing,Real}})
+    out = Matrix{Float64}(undef, size(data, 1), size(data, 2))
+    @inbounds for j in axes(data, 2), i in axes(data, 1)
+        v = data[i, j]
+        out[i, j] = (v === missing || v === nothing) ? NaN : Float64(v)
+    end
+    return out
+end
+missing_data_to_nan(data::AbstractMatrix{<:Real}) = convert(Matrix{Float64}, data)
+@unstable function missing_data_to_nan(data::KeyedArray)
+    raw = missing_data_to_nan(collect(data))::Matrix{Float64}
+    names = AxisKeys.NamedDims.dimnames(data)
+    return KeyedArray(NamedDimsArray(raw, names); NamedTuple{names}(axiskeys(data))...)
+end
+
+"""
+    build_obs_index(data) -> (Vector{Vector{Int}}, Bool)
+
+Return `(obs_idx_per_t, has_missing)` where `obs_idx_per_t[t]` is the sorted
+vector of row indices that are *observed* (finite) in column `t` of `data`,
+and `has_missing` is `true` iff at least one entry is non-finite (NaN, Inf
+or -Inf). When `has_missing == false`, callers can take the dense fast path.
+"""
+function build_obs_index(data::AbstractMatrix{<:Real})
+    n, T = size(data)
+    obs = Vector{Vector{Int}}(undef, T)
+    has_missing = false
+    @inbounds for t in 1:T
+        m = 0
+        for i in 1:n
+            if isfinite(data[i, t])
+                m += 1
+            else
+                has_missing = true
+            end
+        end
+        if m == n
+            obs[t] = collect(1:n)
+        else
+            v = Vector{Int}(undef, m)
+            k = 0
+            for i in 1:n
+                if isfinite(data[i, t])
+                    k += 1
+                    v[k] = i
+                end
+            end
+            obs[t] = v
+        end
+    end
+    return obs, has_missing
+end
+
+
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
@@ -3292,9 +3367,9 @@ And data, 4×4 Matrix{Float64}:
     ŝ_to_ŝ₂ = zeros(0, 0)
     ŝ_to_y₂ = zeros(0, 0)
     SS_and_pars = Float64[]
-    _dvariance_full = zeros(0, 0)
-    _n_cov_tuple = 0
-    _cov_pb = nothing
+    dvariance_full = zeros(0, 0)
+    n_cov_tuple = 0
+    cov_pb = nothing
     axis3 = Symbol[]
 
     if derivatives
@@ -3343,34 +3418,34 @@ And data, 4×4 Matrix{Float64}:
         # Hoist covariance rrule call for shared use across variance/std_dev/covariance/correlation
         if variance || standard_deviation || covariance || correlation
             if algorithm == :pruned_second_order
-                _cov_result, _cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                _cov_result, cov_pb = rrule(calculate_second_order_moments_with_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
-                _n_cov_tuple = 15
+                n_cov_tuple = 15
             elseif algorithm == :pruned_third_order
-                _cov_obs = (covariance || correlation) ? :full_covar : variables
-                _cov_result, _cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, _cov_obs, 𝓂, opts = opts)
+                cov_obs = (covariance || correlation) ? :full_covar : variables
+                _cov_result, cov_pb = rrule(calculate_third_order_moments, 𝓂.parameter_values, cov_obs, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
-                _n_cov_tuple = 4
+                n_cov_tuple = 4
             else
-                _cov_result, _cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
+                _cov_result, cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
                 if !_cov_result[5]
                     @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
                 end
-                _n_cov_tuple = 5
+                n_cov_tuple = 5
             end
 
             # Compute variance Jacobian via VJP (shared by variance & std_dev)
             if variance || standard_deviation
-                _np_cov = length(𝓂.parameter_values)
-                _nv_cov = size(covar_dcmp, 1)
-                _dvariance_full = zeros(_nv_cov, _np_cov)
-                for j in 1:_nv_cov
+                np_cov = length(𝓂.parameter_values)
+                nv_cov = size(covar_dcmp, 1)
+                dvariance_full = zeros(nv_cov, np_cov)
+                for j in 1:nv_cov
                     if covar_dcmp[j,j] > eps(Float64)
-                        ∂Σ = zeros(_nv_cov, _nv_cov); ∂Σ[j,j] = 1.0
-                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
-                        ∂p = _cov_pb(seed)[2]
-                        if !(∂p isa AbstractZero); _dvariance_full[j,:] .= ∂p; end
+                        ∂Σ = zeros(nv_cov, nv_cov); ∂Σ[j,j] = 1.0
+                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                        ∂p = cov_pb(seed)[2]
+                        if !(∂p isa AbstractZero); dvariance_full[j,:] .= ∂p; end
                     end
                 end
             end
@@ -3384,7 +3459,7 @@ And data, 4×4 Matrix{Float64}:
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            dvariance = _dvariance_full[:, param_idx]
+            dvariance = dvariance_full[:, param_idx]
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             
@@ -3400,7 +3475,7 @@ And data, 4×4 Matrix{Float64}:
     
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
                 # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
-                dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
+                dst_dev = dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
             end
@@ -3416,7 +3491,7 @@ And data, 4×4 Matrix{Float64}:
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
             # Analytical: d(sqrt(v))/d(params) = dv/d(params) / (2*sqrt(v))
-            dst_dev = _dvariance_full[:, param_idx] ./ (2 .* standard_dev)
+            dst_dev = dvariance_full[:, param_idx] ./ (2 .* standard_dev)
 
             st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
@@ -3424,15 +3499,15 @@ And data, 4×4 Matrix{Float64}:
 
         if covariance || correlation
             # Compute full covariance Jacobian via VJP from hoisted rrule
-            _np_cov2 = length(𝓂.parameter_values)
-            _nv_cov2 = size(covar_dcmp, 1)
-            dcovariance = zeros(_nv_cov2 * _nv_cov2, _np_cov2)
-            for j in 1:(_nv_cov2 * _nv_cov2)
-                r = mod1(j, _nv_cov2)
-                c = div(j - 1, _nv_cov2) + 1
-                ∂Σ = zeros(_nv_cov2, _nv_cov2); ∂Σ[r,c] = 1.0
-                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), _n_cov_tuple)
-                ∂p = _cov_pb(seed)[2]
+            np_cov2 = length(𝓂.parameter_values)
+            nv_cov2 = size(covar_dcmp, 1)
+            dcovariance = zeros(nv_cov2 * nv_cov2, np_cov2)
+            for j in 1:(nv_cov2 * nv_cov2)
+                r = mod1(j, nv_cov2)
+                c = div(j - 1, nv_cov2) + 1
+                ∂Σ = zeros(nv_cov2, nv_cov2); ∂Σ[r,c] = 1.0
+                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                ∂p = cov_pb(seed)[2]
                 if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
             dcovariance = dcovariance[:, param_idx]
@@ -4226,7 +4301,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 ```
 """
 function get_loglikelihood(𝓂::ℳ, 
-                            data::KeyedArray{Float64}, 
+                            data::KeyedArray{T}, 
                             parameter_values::Vector{S}; 
                             steady_state_function::SteadyStateFunctionType = missing, 
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -4242,17 +4317,22 @@ function get_loglikelihood(𝓂::ℳ,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {S <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
     if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
+    sylv²::Symbol = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1]
+    sylv³::Symbol = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ?
+        (sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM) :
+        sylvester_algorithm[2]
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm² = sylv²,
+                            sylvester_algorithm³ = sylv³,
                             lyapunov_algorithm = lyapunov_algorithm)
 
     estimation = true
@@ -4301,18 +4381,39 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood 
     end
  
-    if collect(axiskeys(data,1)) isa Vector{String}
-        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
-    end
+    data_keyed::KeyedArray = collect(axiskeys(data, 1)) isa Vector{String} ?
+        rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
+        data
 
-    dt = collect(data(observables))
+    # Canonicalise the raw observations to Float64 with NaN sentinels for
+    # missing/nothing entries, then preserve the promoted element type after
+    # subtracting steady-state values so AD inputs can flow through.
+    dt::Matrix{Float64} = missing_data_to_nan(collect(data_keyed(observables)))
 
-    # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter),
+    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+
+    llh = if has_missing
+        calculate_loglikelihood_with_missing(Val(filter),
+                                    Val(algorithm),
+                                    obs_indices,
+                                    𝐒,
+                                    data_in_deviations,
+                                    constants_obj,
+                                    state,
+                                    𝓂.workspaces,
+                                    obs_idx_per_t,
+                                    warmup_iterations = warmup_iterations,
+                                    presample_periods = presample_periods,
+                                    initial_covariance = initial_covariance,
+                                    filter_algorithm = filter_algorithm,
+                                    opts = opts,
+                                    on_failure_loglikelihood = on_failure_loglikelihood)
+    else
+        calculate_loglikelihood(Val(filter),
                                 Val(algorithm),
                                 obs_indices,
                                 𝐒,
@@ -4326,6 +4427,7 @@ function get_loglikelihood(𝓂::ℳ,
                                 filter_algorithm = filter_algorithm,
                                 opts = opts,
                                 on_failure_loglikelihood = on_failure_loglikelihood) # timer = timer
+    end
 
     # end # timeit_debug
 

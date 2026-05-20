@@ -37,14 +37,14 @@ include("models/Caldara_et_al_2012_estim.jl")
 dists = [
     Normal(0, 1),                           # dȳ
     Normal(0, 1),                           # dc̄
-    Beta(0.95, 0.005, μσ = true),           # β
-    Beta(0.33, 0.05, μσ = true),            # ζ
-    Beta(0.02, 0.01, μσ = true),            # δ
-    Beta(0.75, 0.01, μσ = true),            # λ
+    Beta(0.95, 0.005, eps(Float64), 1 - eps(Float64), μσ = true),           # β
+    Beta(0.33, 0.05, eps(Float64), 1 - eps(Float64), μσ = true),            # ζ
+    Beta(0.02, 0.01, eps(Float64), 1 - eps(Float64), μσ = true),            # δ
+    Beta(0.75, 0.01, eps(Float64), 1 - eps(Float64), μσ = true),            # λ
     Normal(1, .25),                         # ψ
-    InverseGamma(0.021, Inf, μσ = true),    # σ̄
-    InverseGamma(0.1, Inf, μσ = true),      # η
-    Beta(0.75, 0.02, μσ = true)             # ρ
+    InverseGamma(0.021, Inf, eps(Float64), Inf, μσ = true),                 # σ̄
+    InverseGamma(0.1, Inf, eps(Float64), Inf, μσ = true),                   # η
+    Beta(0.75, 0.02, eps(Float64), 1 - eps(Float64), μσ = true)             # ρ
 ]
 
 const PIGEONS_SEED = 30
@@ -105,13 +105,12 @@ println("Filter-free (Pigeons, third order) — mean: $(mean(samps_ff).nt.mean)"
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.product_distribution(dists)
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = :third_order, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
-    end
+    llh = get_loglikelihood(m,
+                            data,
+                            all_params,
+                            algorithm = :third_order,
+                            on_failure_loglikelihood = on_failure_loglikelihood)
+    Turing.@addlogprob! llh
 end
 
 
@@ -123,18 +122,19 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 # generate a Pigeons log potential
 Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
 
+#=
+const Caldara_LP = typeof(Caldara_lp)
+
 init_params = Caldara_et_al_2012_estim.parameter_values
 
 LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10), (all_params = init_params,))
 
 if isfinite(LLH)
-    const Caldara_LP = typeof(Caldara_lp)
-
     function Pigeons.initialization(target::Caldara_LP, rng::AbstractRNG, _::Int64)
-        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-        
-        result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+        result = DynamicPPL.link!!(result, target.model)
+
+        # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
 
         return result
     end
@@ -160,8 +160,51 @@ else
     end
 
     # define a specific initialization for this model
-    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+    Pigeons.initialization(::Caldara_LP, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
+=#
+
+# ---------------------------------------------------------------------------
+# Run the missing-data Pigeons estimation FIRST so failures surface early.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+Caldara_lp_missing = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data_missing, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
+
+#=
+const Caldara_LP_MISSING = typeof(Caldara_lp_missing)
+
+function Pigeons.initialization(target::Caldara_LP_MISSING, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+    result = DynamicPPL.link!!(result, target.model)
+
+    # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
+
+    return result
+end
+
+pt_missing = Pigeons.pigeons(target = Caldara_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
+=#
+
+pt_missing = @time Pigeons.pigeons(target = Caldara_lp_missing,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 4,
+            n_rounds = 8,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps_missing = MCMCChains.Chains(pt_missing)
+
+sample_pigeons_missing = mean(samps_missing).nt.mean
+println("Mean variable values (Pigeons, 3rd order, missing data): $(sample_pigeons_missing)")
+
+@testset "Pigeons Estimation results (3rd order, missing data)" begin
+    n_params = length(Caldara_et_al_2012_estim.parameter_values)
+    @test length(sample_pigeons_missing) >= n_params
+    @test all(isfinite, sample_pigeons_missing[1:n_params])
+end
+
+pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
 
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],

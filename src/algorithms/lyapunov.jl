@@ -107,15 +107,15 @@ end
         guess = initial_guess
         if size(guess) == size(C)
             ensure_lyapunov_doubling_buffers!(workspace)
-            _tmp = workspace.𝐂A
-            _res = workspace.𝐂¹
-            ℒ.mul!(_tmp, guess, A')
-            ℒ.mul!(_res, A, _tmp)
-            ℒ.axpy!(1, C, _res)
-            ℒ.axpy!(-1, guess, _res)
+            tmp_buf = workspace.𝐂A
+            res_buf = workspace.𝐂¹
+            ℒ.mul!(tmp_buf, guess, A')
+            ℒ.mul!(res_buf, A, tmp_buf)
+            ℒ.axpy!(1, C, res_buf)
+            ℒ.axpy!(-1, guess, res_buf)
 
             denom = max(ℒ.norm(guess), ℒ.norm(C))
-            reached_tol = denom == 0 ? 0.0 : ℒ.norm(_res) / denom
+            reached_tol = denom == 0 ? 0.0 : ℒ.norm(res_buf) / denom
             if reached_tol < initial_guess_acceptance_tol
                 if verbose println("Lyapunov equation - initial guess achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
                 return choose_matrix_format(guess), true

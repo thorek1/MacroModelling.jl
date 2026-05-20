@@ -1,6 +1,7 @@
 # Todo list
 ## High priority
 
+- [ ] for get functions that return larger arrays, add option to select variables to return and then only allocate for those variables (e.g. get_irf)
 - [ ] add filter free estimation to one of the estimation tests (think about filter free filtering instead of smoothing)
 - [ ] derivatives of variance decomposition for estimation!?
 - [ ] check dispatch doctor coverage in new functions

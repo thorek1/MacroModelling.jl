@@ -252,7 +252,7 @@ function warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covarianc
     end
 end
 
-function _flatten_tol_dict(d::Dict;
+function flatten_tol_dict(d::Dict;
                            names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
                            prefix::String = "")
     result = Dict{String,Any}()
@@ -260,7 +260,7 @@ function _flatten_tol_dict(d::Dict;
         seg = get(names, k, String(k))
         label = isempty(prefix) ? seg : prefix * " " * seg
         if v isa Dict
-            merge!(result, _flatten_tol_dict(v; names = names, prefix = label))
+            merge!(result, flatten_tol_dict(v; names = names, prefix = label))
         else
             result[label] = v
         end
@@ -438,7 +438,7 @@ end
 
 function annotate_tol_diff!(annotate_diff_input, container)
     if length(container) > 1
-        flat_tols = [_flatten_tol_dict(d[:tol]) for d in container]
+        flat_tols = [flatten_tol_dict(d[:tol]) for d in container]
         shared_tol_keys = reduce(intersect, keys.(flat_tols))
         for fk in sort(collect(shared_tol_keys))
             fvals = [ft[fk] for ft in flat_tols]
@@ -731,7 +731,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -852,9 +852,9 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
     x_axis = axiskeys(data,2)
@@ -1383,7 +1383,7 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 ```
 """
 function plot_model_estimates!(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1493,9 +1493,9 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
     x_axis = axiskeys(data,2)
@@ -4053,7 +4053,7 @@ function plot_solution(𝓂::ℳ,
     # Generate plots from container
     if !use_workspaces 𝓂.workspaces = orig_ws end
 
-    return _plot_solution_from_container(;
+    return plot_solution_from_container(;
                                          show_plots = show_plots,
                                          save_plots = save_plots,
                                          save_plots_format = save_plots_format,
@@ -4065,7 +4065,7 @@ end
 
 
 # Helper function to generate plots from the solution container
-function _plot_solution_from_container(;
+function plot_solution_from_container(;
                                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -4630,7 +4630,7 @@ function plot_solution!(𝓂::ℳ,
     if !use_workspaces 𝓂.workspaces = orig_ws end
 
     # Generate plots from container
-    return _plot_solution_from_container(;
+    return plot_solution_from_container(;
                                          show_plots = show_plots,
                                          save_plots = save_plots,
                                          save_plots_format = save_plots_format,

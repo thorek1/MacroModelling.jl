@@ -87,7 +87,7 @@ macro model(𝓂, ex...)
     # equation-modification reprocess pipeline. Keeping a single source of
     # truth avoids drift between the two callers.
     return quote
-        local _T, _eqs, _ℂ, _𝓦 = MacroModelling.process_model_equations(
+        local T_macro, eqs, ℂ_set, 𝓦_set = MacroModelling.process_model_equations(
             $(QuoteNode(model_block)),
             $max_obc_horizon,
             $precompile,
@@ -96,7 +96,7 @@ macro model(𝓂, ex...)
         global $𝓂 = ℳ(
             $model_name,
             Float64[],            # parameter_values, populated by @parameters
-            _eqs,
+            eqs,
             caches(
                 valid_for_caches(),
                 zeros(0,0), # jacobian
@@ -127,8 +127,8 @@ macro model(𝓂, ex...)
                 zeros(0,0), # covariance_third_order_autocorr
                 false,      # has_unit_roots
             ),
-            _ℂ,
-            _𝓦,
+            ℂ_set,
+            𝓦_set,
             model_functions(
                 x->x, # NSSS_check_func
                 nothing, # NSSS_custom_function
@@ -278,67 +278,67 @@ macro parameters(𝓂, ex...)
     return quote
         mod = @__MODULE__
 
-        local _parsed = MacroModelling.process_parameter_definitions(
+        local parsed = MacroModelling.process_parameter_definitions(
             $(QuoteNode(parameter_block)),
             mod.$𝓂.constants.post_model_macro,
         )
 
         # Merge guess option with any guess already on the model.
-        local _guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
+        local guess_dict = mod.$𝓂.constants.post_parameters_macro.guess
         if isa($guess, Dict{String, <:Real})
-            _guess_dict = Dict{Symbol, Float64}()
+            guess_dict = Dict{Symbol, Float64}()
             for (key, value) in $guess
                 if key isa String
                     key = replace_indices(key)
                 end
-                _guess_dict[replace_indices(key)] = value
+                guess_dict[replace_indices(key)] = value
             end
         elseif isa($guess, Dict{Symbol, <:Real})
-            _guess_dict = $guess
+            guess_dict = $guess
         end
 
         # Merge bounds returned by the parser with bounds already on the model.
-        local _bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
-        for (k, v) in _parsed.bounds
-            _bounds_dict[k] = haskey(_bounds_dict, k) ?
-                (max(_bounds_dict[k][1], v[1]), min(_bounds_dict[k][2], v[2])) :
+        local bounds_dict = copy(mod.$𝓂.constants.post_parameters_macro.bounds)
+        for (k, v) in parsed.bounds
+            bounds_dict[k] = haskey(bounds_dict, k) ?
+                (max(bounds_dict[k][1], v[1]), min(bounds_dict[k][2], v[2])) :
                 (v[1], v[2])
         end
 
-        local _invalid_bounds = Symbol[]
-        for (k, v) in _bounds_dict
+        local invalid_bounds = Symbol[]
+        for (k, v) in bounds_dict
             if v[1] >= v[2]
-                push!(_invalid_bounds, k)
+                push!(invalid_bounds, k)
             end
         end
-        @assert isempty(_invalid_bounds) "Invalid bounds: " * repr(_invalid_bounds)
+        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
 
         mod.$𝓂.constants.post_parameters_macro = post_parameters_macro(
-            _parsed.calib_parameters_no_var,
+            parsed.calib_parameters_no_var,
             $precompile,
             $(QuoteNode(ss_symbolic_mode)),
             $(QuoteNode(ss_solver_parameters_algorithm)),
             $ss_solver_parameters_maxtime,
-            _guess_dict,
-            _parsed.ss_calib_list,
-            _parsed.par_calib_list,
-            _bounds_dict,
+            guess_dict,
+            parsed.ss_calib_list,
+            parsed.par_calib_list,
+            bounds_dict,
         )
 
-        mod.$𝓂.equations.calibration            = _parsed.equations.calibration
-        mod.$𝓂.equations.calibration_no_var     = _parsed.equations.calibration_no_var
-        mod.$𝓂.equations.calibration_parameters = _parsed.equations.calibration_parameters
-        mod.$𝓂.equations.calibration_original   = _parsed.equations.calibration_original
+        mod.$𝓂.equations.calibration            = parsed.equations.calibration
+        mod.$𝓂.equations.calibration_no_var     = parsed.equations.calibration_no_var
+        mod.$𝓂.equations.calibration_parameters = parsed.equations.calibration_parameters
+        mod.$𝓂.equations.calibration_original   = parsed.equations.calibration_original
 
         mod.$𝓂.constants.post_complete_parameters = update_post_complete_parameters(
             mod.$𝓂.constants.post_complete_parameters;
-            parameters         = _parsed.parameters,
-            missing_parameters = _parsed.missing_parameters,
+            parameters         = parsed.parameters,
+            missing_parameters = parsed.missing_parameters,
         )
-        mod.$𝓂.parameter_values = _parsed.parameter_values
+        mod.$𝓂.parameter_values = parsed.parameter_values
 
-        local _missing_params = _parsed.missing_parameters
-        local _has_missing_parameters = !isempty(_missing_params)
+        local missing_params = parsed.missing_parameters
+        local has_missing_parameters = !isempty(missing_params)
 
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
 
@@ -347,12 +347,12 @@ macro parameters(𝓂, ex...)
         if !isnothing($steady_state_function)
             write_ss_check_function!(mod.$𝓂)
         else
-            if !_has_missing_parameters
+            if !has_missing_parameters
                 set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, ss_symbolic_mode = $(QuoteNode(ss_symbolic_mode)))
             end
         end
 
-        if !_has_missing_parameters
+        if !has_missing_parameters
             opts = merge_calculation_options(verbose = $verbose)
 
             SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
@@ -362,8 +362,8 @@ macro parameters(𝓂, ex...)
             mod.$𝓂.functions.functions_written = true
         end
 
-        if _has_missing_parameters && $report_missing_parameters
-            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(_missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
+        if has_missing_parameters && $report_missing_parameters
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_steady_state`, `simulate`, etc."
         end
 
         if !$silent && $report_missing_parameters

@@ -1192,10 +1192,10 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
         push!(calib_values, 0)
     end
 
-    _pars_and_vars = [pmm.parameters_in_equations; pmm.var]
-    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, _pars_and_vars)
-    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, _pars_and_vars)
-    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, _pars_and_vars)
+    pars_and_vars = [pmm.parameters_in_equations; pmm.var]
+    calib_parameters, calib_values = expand_indices(calib_parameters, calib_values, pars_and_vars)
+    calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations(calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list, pars_and_vars)
+    calib_parameters_no_var, calib_equations_no_var_list = expand_indices(calib_parameters_no_var, calib_equations_no_var_list, pars_and_vars)
 
     all_required_params = union(
         reduce(union, par_calib_list, init = Set{Symbol}()),
@@ -1228,11 +1228,11 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
 
     # Rebuild calibration_original (original "lhs = rhs | param" form) from the raw user-facing
     # calibration equation pairs captured during parsing. Use the parameter-at-end form.
-    _calib_original = Expr[]
+    calib_original = Expr[]
     for (_eq, _par) in zip(calib_equations, calib_eq_parameters)
         if _eq isa Expr && _eq.head == :(=) && length(_eq.args) == 2
             _lhs, _rhs = _eq.args[1], _eq.args[2]
-            push!(_calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
+            push!(calib_original, Expr(:(=), _lhs, Expr(:call, :|, _rhs, _par)))
         end
     end
 
@@ -1248,7 +1248,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
         calibration = Expr[e for e in calib_equations_list],
         calibration_no_var = Expr[e for e in calib_equations_no_var_list],
         calibration_parameters = Symbol[s for s in calib_eq_parameters],
-        calibration_original = _calib_original,
+        calibration_original = calib_original,
     )
 
     return (

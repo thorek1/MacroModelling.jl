@@ -1134,6 +1134,10 @@ mutable struct inversion_workspace{T <: Real}
     y_obs::Vector{T}                 # n_cond_var - observation prediction
     x_shocks::Vector{T}              # n_exo - recovered shocks
     state_concat::Vector{T}          # n_past + n_exo - for vcat-free concatenation in 1st order
+    # Missing-data variant scratch buffers
+    JJt_buf::Matrix{T}               # (n_cond_var, n_cond_var) - scratch for non-square sub-LU
+    obs_sub_buf::Vector{T}           # n_cond_var - compact sub-observation buffer
+    jacc_v_buf::Matrix{T}            # (n_cond_var, n_exo) - per-period sub-Jacobian scratch
     # Pruned third-order augmented state buffers
     aug_state₃::Vector{T}            # n_past+1+n_exo - third state component
     aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
@@ -1152,6 +1156,23 @@ mutable struct inversion_workspace{T <: Real}
     ∂𝐒ⁱ²ᵉtmp2::Matrix{T}             # (n_obs, n_exo^2)
     kronSλ::Vector{T}                # n_obs * n_exo
     kronxS::Vector{T}                # n_exo * n_obs
+
+    # Per-period sequence buffers captured by rrule pullbacks (allocated lazily via
+    # ensure_inversion_rrule_buffers!).  Each holds one inner array per time period.
+    state_seq_rrule::Vector{Vector{T}}        # n_past+1 (first_order: full state copy) or n_past
+    state₂_seq_rrule::Vector{Vector{T}}       # n_past   (pruned 2nd / 3rd component)
+    state₃_seq_rrule::Vector{Vector{T}}       # n_past   (pruned 3rd component)
+    x_seq_rrule::Vector{Vector{T}}            # n_exo
+    state¹⁻_vol_seq_rrule::Vector{Vector{T}}  # n_past+1
+    aug_state_seq_rrule::Vector{Vector{T}}    # n_past+1+n_exo
+    aug_state₁_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₂_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₃_seq_rrule::Vector{Vector{T}}   # n_past+1+n_exo
+    aug_state₁̂_seq_rrule::Vector{Vector{T}}  # n_past+1+n_exo
+    𝐒ⁱ_full_seq_rrule::Vector{Matrix{T}}     # (n_cond, n_exo)
+    𝐒ⁱ²ᵉ_full_seq_rrule::Vector{Matrix{T}}   # (n_cond, n_exo^2)
+    invjac_v_seq_rrule::Vector{Matrix{T}}     # (m_t, m_t) per period — variable size, undef ok
+    G_seq_rrule::Vector{Matrix{T}}            # (m_t, m_t) per period — variable size, undef ok
 end
 
 
@@ -1183,6 +1204,15 @@ mutable struct kalman_workspace{T <: Real}
     fast_lu_ws_f::FastLapackInterface.LUWs
     fast_lu_dims_f::NTuple{2, Int}
     fast_lu_rhs_t_k::Matrix{T} # (n_obs, n_states) scratch for right solves
+
+    # Per-period sequence buffers captured by the kalman rrule pullback (allocated
+    # lazily via ensure_kalman_rrule_buffers!).  Each holds Tt inner arrays.
+    u_seq_rrule::Vector{Vector{T}}      # n_states
+    P_seq_rrule::Vector{Matrix{T}}      # (n_states, n_states)
+    CP_seq_rrule::Vector{Matrix{T}}     # (n_obs, n_states)
+    K_seq_rrule::Vector{Matrix{T}}      # (n_states, n_obs)
+    invF_seq_rrule::Vector{Matrix{T}}   # (n_obs, n_obs)
+    v_seq_rrule::Vector{Vector{T}}      # n_obs
 end
 
 

@@ -486,7 +486,7 @@ end
     ∇₂ = ∇₂ * M₂.𝐔∇₂
 
     # Expand compressed second-order solution to full space
-    𝐒₂ = (sparse(𝐒₂) * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
+    𝐒₂ = (dense_to_sparse(𝐒₂) * M₂.𝐔₂)::SparseMatrixCSC{S, Int}
 
     # inspired by Levintal
 

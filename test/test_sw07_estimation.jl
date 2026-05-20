@@ -199,3 +199,85 @@ println("Mean variable values (nonlinear): $(collect(values(FlexiChains.mean(sam
         end
     end
 end
+
+
+# ---------------------------------------------------------------------------
+# Replicate the estimation problems on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data(observables))
+
+# Linear model under missing observations
+SW07_loglikelihood_linear_missing = SW07_loglikelihood_function(data_missing, Smets_Wouters_2007_linear, observables, fixed_parameters, :kalman)
+
+samps_missing_linear = @time Turing.sample(SW07_loglikelihood_linear_missing, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples,
+                            progress = true)
+
+posterior_summary_missing_linear = FlexiChains.summarystats(samps_missing_linear)
+show(stdout, MIME"text/plain"(), posterior_summary_missing_linear)
+println()
+println("Mean variable values (linear, missing data): $(collect(values(FlexiChains.mean(samps_missing_linear); parameters_only = true)))")
+
+sample_nuts_linear_missing = collect(values(FlexiChains.mean(samps_missing_linear); parameters_only = true))
+
+@testset "SW07 linear estimation results (missing data)" begin
+    @test all(isfinite, sample_nuts_linear_missing)
+    @test length(sample_nuts_linear_missing) == length(dists)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (SW07 linear, missing data)" begin
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values,
+        DifferentiationInterface.Constant(Smets_Wouters_2007_linear),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(Smets_Wouters_2007_linear, data_missing, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007_linear.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
+# Nonlinear model under missing observations
+SW07_loglikelihood_nonlinear_missing = SW07_loglikelihood_function(data_missing, Smets_Wouters_2007, observables, fixed_parameters, :kalman)
+
+samps_missing_nonlinear = @time Turing.sample(SW07_loglikelihood_nonlinear_missing, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples,
+                            progress = true)
+
+posterior_summary_missing_nonlinear = FlexiChains.summarystats(samps_missing_nonlinear)
+show(stdout, MIME"text/plain"(), posterior_summary_missing_nonlinear)
+println()
+println("Mean variable values (nonlinear, missing data): $(collect(values(FlexiChains.mean(samps_missing_nonlinear); parameters_only = true)))")
+
+sample_nuts_nonlinear_missing = collect(values(FlexiChains.mean(samps_missing_nonlinear); parameters_only = true))
+
+@testset "SW07 nonlinear estimation results (missing data)" begin
+    @test all(isfinite, sample_nuts_nonlinear_missing)
+    @test length(sample_nuts_nonlinear_missing) == length(dists)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (SW07 nonlinear, missing data)" begin
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007.parameter_values,
+        DifferentiationInterface.Constant(Smets_Wouters_2007),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), x -> get_loglikelihood(Smets_Wouters_2007, data_missing, x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), Smets_Wouters_2007.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
