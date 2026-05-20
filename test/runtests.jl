@@ -62,6 +62,7 @@ elseif test_set == "system_prior_estimation"
 elseif test_set == "missing_data"
     include("test_missing_data.jl")
 elseif test_set == "gradient_checks"
+    include("test_missing_data.jl")
     include("test_rrule_robustness.jl")
     include("test_inversion_filter_gradients.jl")
 elseif test_set == "update_equations"
