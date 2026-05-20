@@ -37,14 +37,14 @@ include("models/Caldara_et_al_2012_estim.jl")
 dists = [
     Normal(0, 1),                           # dȳ
     Normal(0, 1),                           # dc̄
-    Beta(0.95, 0.005, μσ = true),           # β
-    Beta(0.33, 0.05, μσ = true),            # ζ
-    Beta(0.02, 0.01, μσ = true),            # δ
-    Beta(0.75, 0.01, μσ = true),            # λ
+    Beta(0.95, 0.005, eps(Float64), 1 - eps(Float64), μσ = true),           # β
+    Beta(0.33, 0.05, eps(Float64), 1 - eps(Float64), μσ = true),            # ζ
+    Beta(0.02, 0.01, eps(Float64), 1 - eps(Float64), μσ = true),            # δ
+    Beta(0.75, 0.01, eps(Float64), 1 - eps(Float64), μσ = true),            # λ
     Normal(1, .25),                         # ψ
-    InverseGamma(0.021, Inf, μσ = true),    # σ̄
-    InverseGamma(0.1, Inf, μσ = true),      # η
-    Beta(0.75, 0.02, μσ = true)             # ρ
+    InverseGamma(0.021, Inf, eps(Float64), Inf, μσ = true),                 # σ̄
+    InverseGamma(0.1, Inf, eps(Float64), Inf, μσ = true),                   # η
+    Beta(0.75, 0.02, eps(Float64), 1 - eps(Float64), μσ = true)             # ρ
 ]
 
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
