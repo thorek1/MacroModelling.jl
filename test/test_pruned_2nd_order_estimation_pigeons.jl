@@ -62,8 +62,12 @@ LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second
 
 if isfinite(LLH)
     function Pigeons.initialization(target::FS2000_pruned2nd_LP, rng::AbstractRNG, _::Int64)
-        vi = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
-        return DynamicPPL.link(vi, target.model)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+        result = DynamicPPL.link!!(result, target.model)
+
+        # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
+
+        return result
     end
 
     pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED)
@@ -99,8 +103,12 @@ FS2000_pruned2nd_lp_missing = Pigeons.TuringLogPotential(FS2000_loglikelihood_fu
 const FS2000_pruned2nd_LP_MISSING = typeof(FS2000_pruned2nd_lp_missing)
 
 function Pigeons.initialization(target::FS2000_pruned2nd_LP_MISSING, rng::AbstractRNG, _::Int64)
-    vi = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromPrior())
-    return DynamicPPL.link(vi, target.model)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.InitFromParams((; all_params = init_params)))
+    result = DynamicPPL.link!!(result, target.model)
+
+    # result = DynamicPPL.initialize_parameters(result, init_params, target.model)
+
+    return result
 end
 
 pt_missing = Pigeons.pigeons(target = FS2000_pruned2nd_lp_missing, n_rounds = 0, n_chains = 1, seed = PIGEONS_SEED + 1)
