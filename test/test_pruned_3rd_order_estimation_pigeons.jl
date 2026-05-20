@@ -65,30 +65,16 @@ Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorith
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
     shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext()
-        shocks  = reshape(shocks_vec, nExo, nT)
-        Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
-                                                          algorithm = algorithm,
-                                                          on_failure_loglikelihood = on_failure_loglikelihood)
-    end
+    shocks  = reshape(shocks_vec, nExo, nT)
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 Caldara_ff_lp = Pigeons.TuringLogPotential(
     Caldara_et_al_2012_filter_free_function(data_ff_p3, Caldara_et_al_2012_estim,
                                              :pruned_third_order, nExo_ff_p3, T_ff_p3,
                                              -floatmax(Float64)+1e10))
-
-init_ff_params = (; all_params = Caldara_et_al_2012_estim.parameter_values,
-                    me_std     = 0.05,
-                    shocks_vec = zeros(nExo_ff_p3 * T_ff_p3))
-
-const Caldara_FF_LP = typeof(Caldara_ff_lp)
-
-function Pigeons.initialization(target::Caldara_FF_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    result = DynamicPPL.initialize_parameters!!(result, init_ff_params, target.model)
-    return result
-end
 
 pt_ff = @time Pigeons.pigeons(target = Caldara_ff_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],

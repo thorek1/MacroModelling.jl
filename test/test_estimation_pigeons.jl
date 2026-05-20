@@ -53,28 +53,14 @@ Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo,
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
     shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext()
-        shocks  = reshape(shocks_vec, nExo, nT)
-        Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
-                                                          algorithm = algorithm,
-                                                          on_failure_loglikelihood = on_failure_loglikelihood)
-    end
+    shocks  = reshape(shocks_vec, nExo, nT)
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 FS2000_ff_lp = Pigeons.TuringLogPotential(
     FS2000_filter_free_function_1st(data_ff_1st, FS2000, :first_order, nExo_ff_1st, T_ff_1st, -floatmax(Float64)+1e10))
-
-init_ff_params = (; all_params = FS2000.parameter_values,
-                    me_std     = 0.05,
-                    shocks_vec = zeros(nExo_ff_1st * T_ff_1st))
-
-const FS2000_FF_LP = typeof(FS2000_ff_lp)
-
-function Pigeons.initialization(target::FS2000_FF_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    result = DynamicPPL.initialize_parameters!!(result, init_ff_params, target.model)
-    return result
-end
 
 pt_ff = @time Pigeons.pigeons(target = FS2000_ff_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
