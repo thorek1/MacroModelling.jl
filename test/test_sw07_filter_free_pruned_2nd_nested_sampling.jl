@@ -104,7 +104,7 @@ structural_dists = [
     Normal(1.38, 0.50, 0.25, 5.0),           # csigma
     bounded_beta(0.74,  0.10, 0.30, 0.95),   # cprobw
 ]
-me_std_dist = InverseGamma(0.05, Inf, μσ = true)
+me_std_dist = InverseGamma(0.05, 2.0, 1e-4, 1.0, μσ = true)
 shock_dist  = Normal(0.0, 1.0, -5.0, 5.0)
 
 dists_ff = vcat(structural_dists, [me_std_dist], fill(shock_dist, N_SHOCKS_FF))
