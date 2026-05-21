@@ -4468,7 +4468,7 @@ Supported solution algorithms: `:second_order`, `:pruned_second_order`, `:third_
                             data::KeyedArray{Float64},
                             parameter_values::Vector{S},
                             shocks::AbstractMatrix{T},
-                            measurement_error_std::Union{T, AbstractVector{T}};
+                            measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = :second_order,
                             on_failure_loglikelihood::U = -Inf,
@@ -4510,10 +4510,19 @@ Supported solution algorithms: `:second_order`, `:pruned_second_order`, `:third_
         return convert(R, on_failure_loglikelihood)
     end
 
-    me_std_vec = measurement_error_std isa AbstractVector ? measurement_error_std : nothing
-    if me_std_vec !== nothing
-        @assert length(me_std_vec) == length(observables) "`measurement_error_std` vector must have one entry per observable."
-        if any(x -> !isfinite(x) || x <= zero(T), me_std_vec)
+    me_std_is_vec = measurement_error_std isa AbstractVector
+    me_std_is_mat = measurement_error_std isa AbstractMatrix
+    n_obs = length(observables)
+    nT_data = size(data, 2)
+    if me_std_is_vec
+        @assert length(measurement_error_std) == n_obs "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs)."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    elseif me_std_is_mat
+        @assert size(measurement_error_std) == (n_obs, nT_data) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs, $nT_data); got $(size(measurement_error_std))."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return convert(R, on_failure_loglikelihood)
         end
@@ -4596,6 +4605,13 @@ end
     return ll
 end
 
+# Slice the user-supplied measurement_error_std down to the entry/entries
+# applicable at time `t`. Scalars and per-observable vectors are time-invariant
+# and returned as-is; a matrix is sliced column-wise.
+@inline _per_period_me_std(me_std::Real, ::Int) = me_std
+@inline _per_period_me_std(me_std::AbstractVector, ::Int) = me_std
+@inline _per_period_me_std(me_std::AbstractMatrix, t::Int) = view(me_std, :, t)
+
 
 @unstable function filter_free_loglikelihood_loop(::Val{:first_order},
                                         𝐒::AbstractMatrix,
@@ -4619,7 +4635,7 @@ end
         new_state = 𝐒₁ * aug
         obs_dev = new_state[obs_indices]
         residual = data_in_deviations[:, t] - obs_dev
-        llh += filter_free_obs_logpdf(residual, me_std)
+        llh += filter_free_obs_logpdf(residual, _per_period_me_std(me_std, t))
         cur_state = new_state
     end
 
@@ -4650,7 +4666,7 @@ end
         new_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
         obs_dev = new_state[obs_indices]
         residual = data_in_deviations[:, t] - obs_dev
-        llh += filter_free_obs_logpdf(residual, me_std)
+        llh += filter_free_obs_logpdf(residual, _per_period_me_std(me_std, t))
         cur_state = new_state
     end
 
@@ -4683,7 +4699,7 @@ end
         new_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
         obs_dev = new_state[obs_indices]
         residual = data_in_deviations[:, t] - obs_dev
-        llh += filter_free_obs_logpdf(residual, me_std)
+        llh += filter_free_obs_logpdf(residual, _per_period_me_std(me_std, t))
         cur_state = new_state
     end
 
@@ -4714,7 +4730,7 @@ end
         new_state = pruned_second_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂)
         obs_dev = new_state[1][obs_indices] + new_state[2][obs_indices]
         residual = data_in_deviations[:, t] - obs_dev
-        llh += filter_free_obs_logpdf(residual, me_std)
+        llh += filter_free_obs_logpdf(residual, _per_period_me_std(me_std, t))
         cur_state = new_state
     end
 
@@ -4746,7 +4762,7 @@ end
         new_state = pruned_third_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
         obs_dev = new_state[1][obs_indices] + new_state[2][obs_indices] + new_state[3][obs_indices]
         residual = data_in_deviations[:, t] - obs_dev
-        llh += filter_free_obs_logpdf(residual, me_std)
+        llh += filter_free_obs_logpdf(residual, _per_period_me_std(me_std, t))
         cur_state = new_state
     end
 

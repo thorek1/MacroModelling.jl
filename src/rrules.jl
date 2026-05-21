@@ -14833,34 +14833,63 @@ end
     return d_past, d_shock
 end
 
+# Per-period adjoint of the Gaussian observation log-density wrt the residual
+# and the (possibly vector-valued) per-period me_std.
+@inline function _me_logpdf_grad(me_std::Real, residual::AbstractVector, Δllh::Real)
+    n  = length(residual)
+    σ² = me_std^2
+    d_residual = (-residual ./ σ²) .* Δllh
+    d_σ        = (-n / me_std + sum(abs2, residual) / me_std^3) * Δllh
+    return d_residual, d_σ
+end
+
+@inline function _me_logpdf_grad(me_std::AbstractVector, residual::AbstractVector, Δllh::Real)
+    σ² = me_std .^ 2
+    d_residual = (.-residual ./ σ²) .* Δllh
+    d_σ        = ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
+    return d_residual, d_σ
+end
+
+# Scatter the per-period me_std cotangent back into the accumulator that matches
+# the input shape (scalar / per-observable vector / per-observable × time matrix).
+@inline _scatter_me_std(d_me_std::Real, d_σ::Real, ::Int) = d_me_std + d_σ
+@inline function _scatter_me_std(d_me_std::AbstractVector, d_σ::AbstractVector, ::Int)
+    d_me_std .+= d_σ
+    return d_me_std
+end
+@inline function _scatter_me_std(d_me_std::AbstractMatrix, d_σ::AbstractVector, t::Int)
+    @inbounds @views d_me_std[:, t] .+= d_σ
+    return d_me_std
+end
+
+@inline function _per_period_me_adjoint(me_std, d_me_std, residual::AbstractVector, Δllh::Real, t::Int)
+    σ_t            = _per_period_me_std(me_std, t)
+    d_residual, d_σ = _me_logpdf_grad(σ_t, residual, Δllh)
+    d_me_std        = _scatter_me_std(d_me_std, d_σ, t)
+    return d_residual, d_me_std
+end
+
+# Zero cotangent with the same shape/type as the input me_std.
+@inline _zero_me_std(me_std::Real) = zero(me_std)
+@inline _zero_me_std(me_std::AbstractArray) = zero(me_std)
+
 function filter_free_pullback_2nd(
         Δllh::Real, intermediates, 𝐒₁, 𝐒₂, past_idx, obs_indices,
         nVars::Int, npast::Int, nExo::Int, nT::Int,
         me_std,
     )
-    me_std_is_vec = me_std isa AbstractVector
     d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
     d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
     d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
     d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
-    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_me_std = _zero_me_std(me_std)
     d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
 
     @inbounds for t in nT:-1:1
         it       = intermediates[t]
         residual = it.residual
         aug      = it.aug
-        n        = length(residual)
-        # Logpdf adjoints
-        if me_std_is_vec
-            σ²       = me_std .^ 2
-            d_residual = (.-residual ./ σ²) .* Δllh
-            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
-        else
-            σ²         = me_std^2
-            d_residual = (-residual ./ σ²) .* Δllh
-            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
-        end
+        d_residual, d_me_std = _per_period_me_adjoint(me_std, d_me_std, residual, Δllh, t)
         # residual = data_dev - new_state[obs_indices]
         d_obs_dev   = -d_residual
         # data_dev = data - SS_and_pars[obs_indices]
@@ -14893,12 +14922,11 @@ function filter_free_pullback_pruned2nd(
         nVars::Int, npast::Int, nExo::Int, nT::Int,
         me_std,
     )
-    me_std_is_vec = me_std isa AbstractVector
     d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
     d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
     d_shocks = zeros(eltype(intermediates[1].aug₁), nExo, nT)
     d_SS_obs = zeros(eltype(intermediates[1].aug₁), length(obs_indices))
-    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_me_std = _zero_me_std(me_std)
     d_cur_state_next = [zeros(eltype(intermediates[1].aug₁), nVars),
                         zeros(eltype(intermediates[1].aug₁), nVars)]
 
@@ -14907,16 +14935,7 @@ function filter_free_pullback_pruned2nd(
         residual = it.residual
         aug₁     = it.aug₁
         aug₂     = it.aug₂
-        n        = length(residual)
-        if me_std_is_vec
-            σ²       = me_std .^ 2
-            d_residual = (.-residual ./ σ²) .* Δllh
-            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
-        else
-            σ²         = me_std^2
-            d_residual = (-residual ./ σ²) .* Δllh
-            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
-        end
+        d_residual, d_me_std = _per_period_me_adjoint(me_std, d_me_std, residual, Δllh, t)
         d_obs_dev = -d_residual
         d_SS_obs .-= d_residual    # obs_dev = new[1][obs] + new[2][obs]
         # Scatter into d_new[1] and d_new[2]
@@ -14953,27 +14972,17 @@ function filter_free_pullback_1st(
         nVars::Int, npast::Int, nExo::Int, nT::Int,
         me_std,
     )
-    me_std_is_vec = me_std isa AbstractVector
     d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
     d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
     d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
-    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_me_std = _zero_me_std(me_std)
     d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
 
     @inbounds for t in nT:-1:1
         it       = intermediates[t]
         residual = it.residual
         aug      = it.aug
-        n        = length(residual)
-        if me_std_is_vec
-            σ²       = me_std .^ 2
-            d_residual = (.-residual ./ σ²) .* Δllh
-            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
-        else
-            σ²         = me_std^2
-            d_residual = (-residual ./ σ²) .* Δllh
-            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
-        end
+        d_residual, d_me_std = _per_period_me_adjoint(me_std, d_me_std, residual, Δllh, t)
         d_obs_dev   = -d_residual
         d_SS_obs  .-= d_residual
         d_new_state = copy(d_cur_state_next)
@@ -14999,14 +15008,13 @@ function filter_free_pullback_3rd(
         nVars::Int, npast::Int, nExo::Int, nT::Int,
         me_std,
     )
-    me_std_is_vec = me_std isa AbstractVector
     d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
     d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
     d_𝐒₃  = zeros(eltype(𝐒₃), size(𝐒₃))
     n_aug = npast + 1 + nExo
     d_shocks = zeros(eltype(intermediates[1].aug), nExo, nT)
     d_SS_obs = zeros(eltype(intermediates[1].aug), length(obs_indices))
-    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_me_std = _zero_me_std(me_std)
     d_cur_state_next = zeros(eltype(intermediates[1].aug), nVars)
 
     @inbounds for t in nT:-1:1
@@ -15014,16 +15022,7 @@ function filter_free_pullback_3rd(
         residual = it.residual
         aug      = it.aug
         kaug     = it.kaug
-        n        = length(residual)
-        if me_std_is_vec
-            σ²       = me_std .^ 2
-            d_residual = (.-residual ./ σ²) .* Δllh
-            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
-        else
-            σ²         = me_std^2
-            d_residual = (-residual ./ σ²) .* Δllh
-            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
-        end
+        d_residual, d_me_std = _per_period_me_adjoint(me_std, d_me_std, residual, Δllh, t)
         d_obs_dev   = -d_residual
         d_SS_obs  .-= d_residual
         d_new_state = copy(d_cur_state_next)
@@ -15064,14 +15063,13 @@ function filter_free_pullback_pruned3rd(
         nVars::Int, npast::Int, nExo::Int, nT::Int,
         me_std,
     )
-    me_std_is_vec = me_std isa AbstractVector
     d_𝐒₁  = zeros(eltype(𝐒₁), size(𝐒₁))
     d_𝐒₂  = zeros(eltype(𝐒₂), size(𝐒₂))
     d_𝐒₃  = zeros(eltype(𝐒₃), size(𝐒₃))
     n_aug = npast + 1 + nExo
     d_shocks = zeros(eltype(intermediates[1].aug₁), nExo, nT)
     d_SS_obs = zeros(eltype(intermediates[1].aug₁), length(obs_indices))
-    d_me_std = me_std_is_vec ? zero(me_std) : zero(eltype(me_std))
+    d_me_std = _zero_me_std(me_std)
     d_cur_state_next = [zeros(eltype(intermediates[1].aug₁), nVars),
                         zeros(eltype(intermediates[1].aug₁), nVars),
                         zeros(eltype(intermediates[1].aug₁), nVars)]
@@ -15084,16 +15082,7 @@ function filter_free_pullback_pruned3rd(
         aug₂     = it.aug₂
         aug₃     = it.aug₃
         kaug₁    = it.kaug₁
-        n        = length(residual)
-        if me_std_is_vec
-            σ²       = me_std .^ 2
-            d_residual = (.-residual ./ σ²) .* Δllh
-            d_me_std .+= ((.-one(eltype(me_std)) ./ me_std) .+ (residual .^ 2) ./ (me_std .^ 3)) .* Δllh
-        else
-            σ²         = me_std^2
-            d_residual = (-residual ./ σ²) .* Δllh
-            d_me_std  += (-n/me_std + sum(abs2, residual) / me_std^3) * Δllh
-        end
+        d_residual, d_me_std = _per_period_me_adjoint(me_std, d_me_std, residual, Δllh, t)
         d_obs_dev = -d_residual
         d_SS_obs .-= d_residual
         d_new_1 = copy(d_cur_state_next[1])
@@ -15162,7 +15151,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 data::KeyedArray{Float64},
                 parameter_values::Vector{S},
                 shocks::AbstractMatrix{T},
-                measurement_error_std::Union{T, AbstractVector{T}};
+                measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = :second_order,
                 on_failure_loglikelihood::U = -Inf,
@@ -15179,10 +15168,11 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     R = promote_type(S, T)
 
     nP = length(parameter_values)
+    me_std_zero_tan = measurement_error_std isa AbstractArray ? zero(measurement_error_std) : zero(T)
     on_failure = (
         convert(R, on_failure_loglikelihood),
         _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-              measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T))
+              me_std_zero_tan)
     )
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -15204,9 +15194,19 @@ function rrule(::typeof(get_filter_free_loglikelihood),
         return on_failure
     end
 
-    me_std_vec = measurement_error_std isa AbstractVector ? measurement_error_std : nothing
-    if me_std_vec !== nothing
-        if any(x -> !isfinite(x) || x <= zero(T), me_std_vec)
+    me_std_is_vec = measurement_error_std isa AbstractVector
+    me_std_is_mat = measurement_error_std isa AbstractMatrix
+    n_obs_check = length(observables)
+    nT_check    = size(data, 2)
+    if me_std_is_vec
+        @assert length(measurement_error_std) == n_obs_check "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs_check)."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return on_failure
+        end
+    elseif me_std_is_mat
+        @assert size(measurement_error_std) == (n_obs_check, nT_check) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs_check, $nT_check); got $(size(measurement_error_std))."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return on_failure
         end
@@ -15269,7 +15269,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             aug = vcat(cur_state[past_in_needed], Vector{R}(shocks[:, t]))
             new_state = 𝐒₁_mat * aug
             residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
-            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            llh += filter_free_obs_logpdf(residual, _per_period_me_std(measurement_error_std, t))
             intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
             cur_state = new_state
         end
@@ -15280,7 +15280,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+                       me_std_zero_tan
             end
             d_𝐒₁_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_1st(Δllh, intermediates, 𝐒₁_mat,
@@ -15315,7 +15315,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             aug = vcat(cur_state[past_in_needed], one(R), Vector{R}(shocks[:, t]))
             new_state = 𝐒₁ * aug + (𝐒₂ * kron(aug, aug)) ./ R(2)
             residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
-            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            llh += filter_free_obs_logpdf(residual, _per_period_me_std(measurement_error_std, t))
             intermediates[t] = (; aug = aug, new_state = new_state, residual = residual)
             cur_state = new_state
         end
@@ -15326,7 +15326,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+                       me_std_zero_tan
             end
             d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
@@ -15365,7 +15365,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             new2 = 𝐒₁ * aug₂ + (𝐒₂ * kron(aug₁, aug₁)) ./ R(2)
             new_state = [new1, new2]
             residual  = data_in_deviations[:, t] - (new1[obs_in_needed] + new2[obs_in_needed])
-            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            llh += filter_free_obs_logpdf(residual, _per_period_me_std(measurement_error_std, t))
             intermediates[t] = (; aug₁ = aug₁, aug₂ = aug₂, new_state = new_state, residual = residual)
             cur_state = new_state
         end
@@ -15376,7 +15376,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+                       me_std_zero_tan
             end
             d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
@@ -15418,7 +15418,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             kaug = kron(aug, aug)
             new_state = 𝐒₁ * aug + (𝐒₂ * kaug) ./ R(2) + (𝐒₃ * kron(kaug, aug)) ./ R(6)
             residual  = data_in_deviations[:, t] - new_state[obs_in_needed]
-            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            llh += filter_free_obs_logpdf(residual, _per_period_me_std(measurement_error_std, t))
             intermediates[t] = (; aug = aug, kaug = kaug, new_state = new_state, residual = residual)
             cur_state = new_state
         end
@@ -15429,7 +15429,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+                       me_std_zero_tan
             end
             d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
@@ -15478,7 +15478,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             new3 = 𝐒₁ * aug₃ + 𝐒₂ * kron(aug₁̂, aug₂) + (𝐒₃ * kron(kaug₁, aug₁)) ./ R(6)
             new_state = [new1, new2, new3]
             residual  = data_in_deviations[:, t] - (new1[obs_in_needed] + new2[obs_in_needed] + new3[obs_in_needed])
-            llh += filter_free_obs_logpdf(residual, measurement_error_std)
+            llh += filter_free_obs_logpdf(residual, _per_period_me_std(measurement_error_std, t))
             intermediates[t] = (; aug₁ = aug₁, aug₁̂ = aug₁̂, aug₂ = aug₂, aug₃ = aug₃,
                                   kaug₁ = kaug₁, new_state = new_state, residual = residual)
             cur_state = new_state
@@ -15490,7 +15490,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       measurement_error_std isa AbstractVector ? zero(measurement_error_std) : zero(T)
+                       me_std_zero_tan
             end
             d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
