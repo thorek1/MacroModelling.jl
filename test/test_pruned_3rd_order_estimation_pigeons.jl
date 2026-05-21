@@ -55,7 +55,7 @@ const PIGEONS_SEED = 30
 # of rounds as the inversion-filter run above.
 # ---------------------------------------------------------------------------
 import Turing: MvNormal
-import LinearAlgebra: I as LinearAlgebraI
+import LinearAlgebra as LA
 
 const T_ff_p3       = size(data, 2)
 const data_ff_p3    = data
@@ -64,7 +64,7 @@ const nExo_ff_p3    = length(get_shocks(Caldara_et_al_2012_estim))
 Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LinearAlgebraI)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), LA.I)
     shocks  = reshape(shocks_vec, nExo, nT)
     Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
                                                       algorithm = algorithm,
