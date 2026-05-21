@@ -1,9 +1,10 @@
 using MacroModelling
 using Test
 import Turing
+import Turing: MvNormal
 import Pigeons
+import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
-import DynamicPPL
 
 include("test_helpers.jl")
 
@@ -54,9 +55,6 @@ const PIGEONS_SEED = 30
 # parameters + latent shocks + me_std).  Same sampler (Pigeons) and number
 # of rounds as the inversion-filter run above.
 # ---------------------------------------------------------------------------
-import Turing: MvNormal
-import LinearAlgebra as LA
-
 const T_ff_p3       = size(data, 2)
 const data_ff_p3    = data
 const nExo_ff_p3    = length(get_shocks(Caldara_et_al_2012_estim))
@@ -64,7 +62,7 @@ const nExo_ff_p3    = length(get_shocks(Caldara_et_al_2012_estim))
 Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LA.I)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
     shocks  = reshape(shocks_vec, nExo, nT)
     Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
                                                       algorithm = algorithm,

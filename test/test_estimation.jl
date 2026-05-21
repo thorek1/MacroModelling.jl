@@ -6,11 +6,10 @@ import ADTypes
 import ADTypes: AutoMooncake
 import DifferentiationInterface
 import FiniteDifferences
-import Turing: NUTS, sample
+import Turing: NUTS, sample, MvNormal
 import Optim, LineSearches
 import LinearAlgebra as ℒ
 using Random, DelimitedFiles, AxisKeys
-import StatsPlots
 
 using FlexiChains
 include("test_helpers.jl")
@@ -50,10 +49,6 @@ n_samples = 1000
 # Filter-free estimation (joint sampling of parameters and latent shocks)
 # First-order — analytical rrule + Mooncake AD
 # ---------------------------------------------------------------------------
-import ADTypes: AutoForwardDiff
-import Turing: MvNormal
-import LinearAlgebra as LA
-
 const T_ff_1st = size(data, 2)
 const data_ff_1st = data
 const nExo_ff_1st = length(get_shocks(FS2000))
@@ -61,7 +56,7 @@ const nExo_ff_1st = length(get_shocks(FS2000))
 Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LA.I)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
     shocks      = collect(reshape(shocks_vec, nExo, nT))
     Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
                                                       algorithm = algorithm,
