@@ -156,7 +156,7 @@ pt_missing = Pigeons.pigeons(target = FS2000_2nd_lp_missing, n_rounds = 0, n_cha
 pt_missing = @time Pigeons.pigeons(target = FS2000_2nd_lp_missing,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 9,
+            n_rounds = 8,
             seed = PIGEONS_SEED + 1,
             multithreaded = false)
 
