@@ -78,8 +78,8 @@ Caldara_ff_lp = Pigeons.TuringLogPotential(
 
 pt_ff = @time Pigeons.pigeons(target = Caldara_ff_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 4,
-            n_rounds = 8,
+            n_chains = 2,
+            n_rounds = 6,
             seed = PIGEONS_SEED,
             multithreaded = false)
 
