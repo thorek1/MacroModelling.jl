@@ -10,6 +10,7 @@ import Turing: NUTS, sample, MvNormal
 import Optim, LineSearches
 import LinearAlgebra as ℒ
 using Random, DelimitedFiles, AxisKeys
+import StatsPlots
 
 using FlexiChains
 include("test_helpers.jl")

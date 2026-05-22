@@ -4,6 +4,7 @@ import Turing, Pigeons
 import Turing: MvNormal
 import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
+import StatsPlots
 
 include("test_helpers.jl")
 
