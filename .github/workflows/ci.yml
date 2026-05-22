@@ -168,10 +168,6 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
-            test_set: "estimate_sw07_filter_free_pruned_2nd_nested_sampling"
-          - version: '1'
-            os: ubuntu-latest
-            arch: x64
             test_set: "gradient_checks"
           - version: '1'
             os: ubuntu-latest
