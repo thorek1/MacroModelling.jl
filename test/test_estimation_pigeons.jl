@@ -1,9 +1,9 @@
 using MacroModelling
 using Test
 import Turing, Pigeons
+import Turing: MvNormal
+import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
-import DynamicPPL
-import StatsPlots
 
 include("test_helpers.jl")
 
@@ -42,9 +42,6 @@ const PIGEONS_SEED = 30
 # Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
 # parameters + latent shocks).  First order.
 # ---------------------------------------------------------------------------
-import Turing: MvNormal
-import LinearAlgebra as LA
-
 const T_ff_1st = size(data, 2)
 const data_ff_1st = data
 const nExo_ff_1st = length(get_shocks(FS2000))
@@ -52,7 +49,7 @@ const nExo_ff_1st = length(get_shocks(FS2000))
 Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
-    shocks_vec  ~ MvNormal(zeros(nExo * nT), LA.I)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
     shocks  = reshape(shocks_vec, nExo, nT)
     Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
                                                       algorithm = algorithm,

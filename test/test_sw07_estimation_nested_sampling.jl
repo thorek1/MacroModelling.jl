@@ -2,6 +2,7 @@ using Test
 using MacroModelling
 import Turing
 using PythonCall
+using CondaPkg
 using DelimitedFiles, AxisKeys
 using FlexiChains
 using FlexiChains: Parameter, FlexiChain
@@ -64,7 +65,6 @@ ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 # Install nested-sampling Python packages into PythonCall's Python environment
 # ──────────────────────────────────────────────────────────────────────────────
 println("Installing nested-sampling Python packages...")
-using CondaPkg
 USE_NESSAI    && CondaPkg.add_pip("nessai")
 USE_DYNESTY   && CondaPkg.add_pip("dynesty")
 USE_ULTRANEST && CondaPkg.add_pip("ultranest")
