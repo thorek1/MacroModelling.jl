@@ -6,7 +6,7 @@ import ADTypes: AutoMooncake
 import DifferentiationInterface
 import FiniteDifferences
 import Turing
-import Turing: NUTS
+import Turing: NUTS, MvNormal
 import LinearAlgebra as ℒ
 using Random, DelimitedFiles, AxisKeys
 
@@ -76,6 +76,8 @@ Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
 Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
 ]
 
+me_std_dists = fill(InverseGamma(1e-4, Inf, 1e-6, 10.0, μσ = true), length(observables))
+
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, filter)
     all_params ~ Turing.product_distribution(dists)
 
@@ -88,6 +90,23 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
 
     Turing.@addlogprob! llh
+end
+
+Turing.@model function SW07_filter_free_function_1st(data, m, algorithm, fixed_parameters, n_exo, n_t, on_failure_loglikelihood)
+    all_params ~ Turing.product_distribution(dists)
+    me_std     ~ Turing.product_distribution(me_std_dists)
+    shocks_vec ~ MvNormal(zeros(n_exo * n_t), ℒ.I)
+    shocks     = collect(reshape(shocks_vec, n_exo, n_t))
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
+
+    ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, parameters_combined, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 # estimate linear model
@@ -130,6 +149,33 @@ posterior_summary = FlexiChains.summarystats(samps)
 show(stdout, MIME"text/plain"(), posterior_summary)
 println()
 println("Mean variable values (linear): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
+
+par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+init_params = Smets_Wouters_2007_linear.parameter_values[Int.(indexin(par_names, Smets_Wouters_2007_linear.constants.post_complete_parameters.parameters))]
+
+# @testset "SW07 filter-free NUTS (first order, linear)" begin
+    n_exo = length(get_shocks(Smets_Wouters_2007_linear))
+    n_t = size(data, 2)
+    init_ff = (; all_params = init_params,
+                 me_std = fill(0.001, length(observables)),
+                 shocks_vec = zeros(n_exo * n_t))
+
+    ff_samps = @time Turing.sample(
+        SW07_filter_free_function_1st(data, Smets_Wouters_2007_linear, :first_order, fixed_parameters, n_exo, n_t, -1e12),
+        NUTS(adtype = AutoMooncake(; config = nothing)),
+        n_samples,
+        progress = true,
+        initial_params = Turing.InitFromParams(init_ff))
+
+    posterior_summary_filter_free = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary_filter_free)
+    open(joinpath("tasks", "sw07_filter_free_1st_order_linear_posterior_summary.txt"), "w") do io
+        show(io, MIME"text/plain"(), posterior_summary_filter_free)
+    end
+    println()
+    println("Mean variable values (filter-free, first order, linear): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
+#     @test size(ff_samps, 1) == n_filter_free_samples
+# end
 
 @testset "Mooncake vs FiniteDifferences gradient (SW07 linear)" begin
     back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Smets_Wouters_2007_linear, data(observables), x, presample_periods = 4, initial_covariance = :diagonal, filter = :kalman), ADTypes.AutoMooncake(config = nothing), Smets_Wouters_2007_linear.parameter_values)
