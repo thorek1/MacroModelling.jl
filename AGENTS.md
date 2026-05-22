@@ -1,7 +1,23 @@
 # Agent Guide for MacroModelling.jl
 
 This file is the concise default guide for AI coding agents (GitHub Copilot, Claude, etc.).
-Read this file first. Read the companion files only when needed.
+Read this file first. Read companion guides only when needed.
+
+## Governing Behavior Contract (11 Rules)
+
+1. Think before coding. State your assumptions. Surface tradeoffs. Ask before guessing. Push back when a simpler approach exists.
+2. Simplicity first. Minimum code that solves the problem. No speculative features. No abstractions for single-use code.
+3. Surgical changes. Touch only what is asked. Do not "improve" adjacent code, comments, or formatting. Match existing style.
+4. Goal-driven execution. Define success criteria. Loop until verified. Do not narrate steps; tell me what success looks like.
+5. Do not make the model do non-language work. Retry policies, routing, escalation thresholds belong in deterministic code.
+6. Surface conflicts, do not average them. If two parts of the codebase disagree, flag the disagreement and ask which to follow.
+7. Read before you write. Understand adjacent code (the file and nearby siblings) before adding new code.
+8. Tests are required but are not the goal. A passing test that tests nothing useful is a failure. Tests must check behavior.
+9. Long-running operations require checkpoints. After every significant step, summarize what was done and confirm before proceeding.
+10. Convention beats novelty. In an established codebase, match the existing pattern even if a "better" one exists.
+11. Fail visibly, not silently. Surface every skipped record, every rolled-back transaction, every constraint violation. Never report success when something was bypassed.
+
+If any project-specific instruction below conflicts with the 11 rules above, follow the 11 rules above.
 
 ## Mandatory Workflow (Always Follow)
 
