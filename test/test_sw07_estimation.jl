@@ -165,7 +165,8 @@ init_params = Smets_Wouters_2007_linear.parameter_values[Int.(indexin(par_names,
         NUTS(adtype = AutoMooncake(; config = nothing)),
         n_samples,
         progress = true,
-        initial_params = Turing.InitFromParams(init_ff))
+        # initial_params = Turing.InitFromParams(init_ff)
+        )
 
     posterior_summary_filter_free = FlexiChains.summarystats(ff_samps)
     show(stdout, MIME"text/plain"(), posterior_summary_filter_free)
