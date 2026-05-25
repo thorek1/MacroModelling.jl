@@ -130,7 +130,44 @@ informative_dists = [
 ]
 
 dists = if USE_FLAT_PRIOR
-    [Turing.Uniform(minimum(d), maximum(d)) for d in informative_dists]
+    [
+        Uniform(0.0001, 10.0),      # z_ea
+        Uniform(0.0001, 10.0),      # z_eb
+        Uniform(0.0001, 10.0),      # z_eg
+        Uniform(0.0001, 10.0),      # z_eqs
+        Uniform(0.0001, 10.0),      # z_em
+        Uniform(0.0001, 10.0),      # z_epinf
+        Uniform(0.0001, 10.0),      # z_ew
+        Uniform(0.0001, 0.9999),    # crhoa
+        Uniform(0.0001, 0.9999),    # crhob
+        Uniform(0.0001, 0.9999),    # crhog
+        Uniform(0.0001, 0.9999),    # crhoqs
+        Uniform(0.0001, 0.9999),    # crhoms
+        Uniform(0.0001, 0.9999),    # crhopinf
+        Uniform(0.0001, 0.9999),    # crhow
+        Uniform(0.0001, 0.9999),    # cmap
+        Uniform(0.0001, 0.9999),    # cmaw
+        Uniform(0.0001, 100.0),     # csadjcost
+        Uniform(0.0001, 30.0),      # csigma
+        Uniform(0.0001, 0.9999),    # chabb
+        Uniform(0.0001, 0.9999),    # cprobw
+        Uniform(0.0001, 100.0),     # csigl
+        Uniform(0.0001, 0.9999),    # cprobp
+        Uniform(0.0001, 0.9999),    # cindw
+        Uniform(0.0001, 0.9999),    # cindp
+        Uniform(0.0001, 0.9999),    # czcap
+        Uniform(0.0001, 10.0),      # cfc
+        Uniform(0.0001, 10.0),      # crpi
+        Uniform(0.0001, 0.9999),    # crr
+        Uniform(0.0001, 1.5),       # cry
+        Uniform(0.0001, 1.5),       # crdy
+        Uniform(0.0001, 5.0),       # constepinf
+        Uniform(0.0001, 5.0),       # constebeta
+        Uniform(-10.0, 10.0),       # constelab
+        Uniform(0.0001, 5.0),       # ctrend
+        Uniform(0.0001, 5.0),       # cgy
+        Uniform(0.0001, 0.9999),    # calfa
+    ]
 else
     informative_dists
 end
