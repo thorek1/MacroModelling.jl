@@ -4,6 +4,7 @@ import LinearAlgebra as ℒ
 import StatsPlots
 using Random
 Random.seed!(1234)
+include("test_helpers.jl")
 
 # Diagnostic wrapper: prints achieved atol/rtol when isapprox fails
 function check_isapprox(a, b; kwargs...)
@@ -1491,6 +1492,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.caches.non_stochastic_steady_state[var_idxs]
+        boundary_cov = boundary_coverage_data(data_in_levels; n_periods = min(size(data_in_levels, 2), 12))
+        ff_boundary_cov = boundary_coverage_data(data_in_levels; n_periods = min(size(data_in_levels, 2), 8))
+
+        if isempty(m.equations.obc_violation)
+            clear_solution_caches!(m, algorithm)
+            check_filter_free_boundary_cases(m, ff_boundary_cov, old_params;
+                                             algorithm = algorithm,
+                                             warmup_iterations = 2)
+        end
 
 
         if !(algorithm ∈ [:second_order, :third_order])
@@ -1718,6 +1728,40 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
         end
 
+        for filter in (algorithm == :first_order ? filters : [:inversion])
+            for smooth in [true, false]
+                output_kwargs = (; algorithm = algorithm,
+                                 data_in_levels = true,
+                                 filter = filter,
+                                 smooth = smooth,
+                                 verbose = false)
+
+                for (outer_data, trimmed_data) in ((boundary_cov.leading, boundary_cov.trimmed_leading),
+                                                   (boundary_cov.trailing, boundary_cov.trimmed_trailing),
+                                                   (boundary_cov.boundary, boundary_cov.trimmed_boundary))
+                    clear_solution_caches!(m, algorithm)
+                    shocks_outer = get_estimated_shocks(m, outer_data; output_kwargs...)
+                    clear_solution_caches!(m, algorithm)
+                    shocks_trimmed = get_estimated_shocks(m, trimmed_data; output_kwargs...)
+                    @test check_isapprox(collect(shocks_outer), collect(shocks_trimmed), rtol = 1e-8)
+
+                    clear_solution_caches!(m, algorithm)
+                    vars_outer = get_estimated_variables(m, outer_data; output_kwargs...)
+                    clear_solution_caches!(m, algorithm)
+                    vars_trimmed = get_estimated_variables(m, trimmed_data; output_kwargs...)
+                    @test check_isapprox(collect(vars_outer), collect(vars_trimmed), rtol = 1e-8)
+
+                    if !(algorithm ∈ [:second_order, :third_order])
+                        clear_solution_caches!(m, algorithm)
+                        decomp_outer = get_shock_decomposition(m, outer_data; output_kwargs...)
+                        clear_solution_caches!(m, algorithm)
+                        decomp_trimmed = get_shock_decomposition(m, trimmed_data; output_kwargs...)
+                        @test check_isapprox(collect(decomp_outer), collect(decomp_trimmed), rtol = 1e-8)
+                    end
+                end
+            end
+        end
+
         
 
         if algorithm == :first_order
@@ -1768,6 +1812,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         for filter in (algorithm == :first_order ? filters : [:inversion])
             for presample_periods in [0, 3]
                 for initial_covariance in [:diagonal, :theoretical]
+                    clear_solution_caches!(m, algorithm)
+                    check_loglikelihood_boundary_cases(m, boundary_cov, old_params;
+                                                      algorithm = algorithm,
+                                                      filter = filter,
+                                                      presample_periods = presample_periods,
+                                                      initial_covariance = initial_covariance,
+                                                      verbose = false)
+
                     for verbose in [false] # [true, false]
                         for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]

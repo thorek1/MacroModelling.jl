@@ -17,6 +17,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
     lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
@@ -60,6 +61,7 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
     lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
@@ -125,6 +127,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     # @timeit_debug timer "Calculate Kalman filter" begin
 
     # Use workspaces
@@ -222,7 +225,7 @@ function run_kalman_iterations(A::Matrix{S},
     # end # timeit_debug
     # end # timeit_debug
 
-    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2π)) / 2 
 end
 
 
@@ -244,6 +247,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
     n_obs   = size(C, 1)
     n_state = size(C, 2)
     n_steps = size(data_in_deviations, 2)
+    presample_periods = normalize_presample_periods(presample_periods, n_steps)
 
     u    = ws.u
     z    = ws.z
@@ -350,7 +354,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         u .= utmp
     end
 
-    return -(loglik + n_obs_total * log(2 * 3.141592653589793)) / 2
+    return -(loglik + n_obs_total * log(2π)) / 2
 end
 
 

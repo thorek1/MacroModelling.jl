@@ -3,6 +3,7 @@ using MacroModelling
 using Random
 using AxisKeys
 import LinearAlgebra as ℒ
+import ChainRulesCore as CRC
 import ForwardDiff
 import Zygote
 import FiniteDifferences
@@ -36,8 +37,19 @@ function ss_perturbed_data_ff(model, observables; periods = 6, σ = 1e-4, seed =
     return KeyedArray(dat; Variables = observables, Time = 1:periods)
 end
 
+function boundary_missing_data_ff(data; n_leading = 2, n_trailing = 1)
+    dat = Matrix{Union{Missing,Float64}}(collect(data))
+    n_leading > 0 && (dat[:, 1:n_leading] .= missing)
+    n_trailing > 0 && (dat[:, end - n_trailing + 1:end] .= missing)
+    dat[min(2, size(dat, 1)), 4] = missing
+    return KeyedArray(dat; Variables = collect(axiskeys(data, 1)), Time = axes(dat, 2))
+end
+
+trim_visible_shocks_ff(shocks, first_t, last_t, n_warm) = shocks[:, vcat(collect(1:n_warm), n_warm .+ collect(first_t:last_t))]
+manual_centered_diff_ff(f, x; h = 1e-6) = (f(x + h) - f(x - h)) / (2h)
+
 # Closure that varies a subset of parameters; shocks / me_std are captured.
-function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, algorithm)
+function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, algorithm; kwargs...)
     n   = length(base_params)
     pos = zeros(Int, n)
     @inbounds for (k, j) in enumerate(idx)
@@ -48,7 +60,8 @@ function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, al
         full = map(j -> pos[j] == 0 ? T(base_params[j]) : θ_subset[pos[j]], 1:n)
         return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
                                               algorithm = algorithm,
-                                              on_failure_loglikelihood = -Inf)
+                                              on_failure_loglikelihood = -Inf,
+                                              kwargs...)
     end
 end
 
@@ -56,7 +69,7 @@ end
 # layout of z is: [θ_subset; vec(shocks); me_std_part], where me_std_part is
 # either a length-1 view (scalar) or length-n_obs view (vector).
 function make_ff_joint_closure(model, data, base_params, idx,
-                                nExo, nT, nObs, algorithm; vec_me::Bool)
+                                nExo, nT, nObs, algorithm; vec_me::Bool, kwargs...)
     n   = length(base_params)
     pos = zeros(Int, n)
     @inbounds for (k, j) in enumerate(idx)
@@ -77,7 +90,8 @@ function make_ff_joint_closure(model, data, base_params, idx,
             me_std  = vec_me ? me_part : me_part[1]
             return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
                                                   algorithm = algorithm,
-                                                  on_failure_loglikelihood = -Inf)
+                                                  on_failure_loglikelihood = -Inf,
+                                                  kwargs...)
         end,
     )
 end
@@ -189,6 +203,118 @@ end
         compare_ff_gradients("Gali :$algo  (joint params+shocks+me, vector me_std)",
                               joint_v.f, z0_v)
     end
+
+    @testset "Gali filter-free warmup gradients" begin
+        warmup_iterations = 3
+        n_warm = max(warmup_iterations - 1, 0)
+        data_warm = ss_perturbed_data_ff(GALI_FF, GALI_FF_OBS; periods = nT, σ = 1e-4, seed = 92)
+
+        Random.seed!(102)
+        shocks_warm = 1e-3 .* randn(nExo, nT + n_warm)
+
+        for algo in algorithms
+            joint_warm = make_ff_joint_closure(GALI_FF, data_warm, base_params, p_subset,
+                                               nExo, nT + n_warm, nObs, algo;
+                                               vec_me = false,
+                                               warmup_iterations = warmup_iterations)
+            z0_warm = vcat(base_params[p_subset], vec(shocks_warm), [me_scalar])
+            compare_ff_gradients("Gali :$algo  (joint params+shocks+me, scalar me_std, warmup_iterations=3)",
+                                  joint_warm.f, z0_warm)
+        end
+    end
+
+    @testset "Gali filter-free boundary trimming" begin
+        nT_boundary = 8
+        data_boundary = boundary_missing_data_ff(ss_perturbed_data_ff(GALI_FF, GALI_FF_OBS; periods = nT_boundary, σ = 1e-4, seed = 93))
+        data_trimmed = data_boundary[:, 3:7]
+
+        Random.seed!(103)
+        shocks_full = 1e-3 .* randn(nExo, nT_boundary)
+        shocks_trimmed = trim_visible_shocks_ff(shocks_full, 3, 7, 0)
+
+        me_matrix = [0.025 + 0.01 * (i - 1) + 0.0025 * (t - 1) for i in 1:nObs, t in 1:nT_boundary]
+        me_trimmed = me_matrix[:, 3:7]
+        me_scalar_boundary = 0.05
+
+        for algo in algorithms
+            ll_full = get_filter_free_loglikelihood(GALI_FF,
+                                                    data_boundary,
+                                                    base_params,
+                                                    shocks_full,
+                                                    me_matrix;
+                                                    algorithm = algo,
+                                                    on_failure_loglikelihood = -Inf)
+            ll_trimmed = get_filter_free_loglikelihood(GALI_FF,
+                                                       data_trimmed,
+                                                       base_params,
+                                                       shocks_trimmed,
+                                                       me_trimmed;
+                                                       algorithm = algo,
+                                                       on_failure_loglikelihood = -Inf)
+
+            @test isfinite(ll_full)
+            @test isapprox(ll_full, ll_trimmed; rtol = 1e-12, atol = 1e-12)
+
+            ll_rrule, pb = CRC.rrule(get_filter_free_loglikelihood,
+                                     GALI_FF,
+                                     data_boundary,
+                                     base_params,
+                                     shocks_full,
+                                     me_scalar_boundary;
+                                     algorithm = algo,
+                                     on_failure_loglikelihood = -Inf)
+            @test isapprox(ll_rrule,
+                           get_filter_free_loglikelihood(GALI_FF,
+                                                         data_boundary,
+                                                         base_params,
+                                                         shocks_full,
+                                                         me_scalar_boundary;
+                                                         algorithm = algo,
+                                                         on_failure_loglikelihood = -Inf);
+                           rtol = 1e-12,
+                           atol = 1e-12)
+
+            _, _, _, _, dshocks, dme = pb(1.0)
+
+            dropped_shock_fd = manual_centered_diff_ff(x -> begin
+                shocks_local = copy(shocks_full)
+                shocks_local[1, 1] = x
+                get_filter_free_loglikelihood(GALI_FF,
+                                              data_boundary,
+                                              base_params,
+                                              shocks_local,
+                                              me_scalar_boundary;
+                                              algorithm = algo,
+                                              on_failure_loglikelihood = -Inf)
+            end, shocks_full[1, 1])
+
+            kept_shock_fd = manual_centered_diff_ff(x -> begin
+                shocks_local = copy(shocks_full)
+                shocks_local[1, 3] = x
+                get_filter_free_loglikelihood(GALI_FF,
+                                              data_boundary,
+                                              base_params,
+                                              shocks_local,
+                                              me_scalar_boundary;
+                                              algorithm = algo,
+                                              on_failure_loglikelihood = -Inf)
+            end, shocks_full[1, 3])
+
+            me_fd = manual_centered_diff_ff(x -> get_filter_free_loglikelihood(GALI_FF,
+                                                                                data_boundary,
+                                                                                base_params,
+                                                                                shocks_full,
+                                                                                x;
+                                                                                algorithm = algo,
+                                                                                on_failure_loglikelihood = -Inf),
+                                            me_scalar_boundary)
+
+            @test isapprox(dshocks[1, 1], dropped_shock_fd; atol = 1e-10, rtol = 1e-8)
+            @test isapprox(dshocks[1, 1], 0.0; atol = 1e-10, rtol = 0.0)
+            @test isapprox(dshocks[1, 3], kept_shock_fd; atol = 1e-8, rtol = RTOL_FF)
+            @test isapprox(dme, me_fd; atol = 1e-8, rtol = RTOL_FF)
+        end
+    end
 end
 
 # =============================================================================
@@ -201,7 +327,6 @@ end
 # it is consolidated here so the estimation scripts only contain end-to-end
 # sampler runs.
 # =============================================================================
-import ChainRulesCore as CRC
 import DifferentiationInterface
 import ADTypes: AutoMooncake
 import Mooncake

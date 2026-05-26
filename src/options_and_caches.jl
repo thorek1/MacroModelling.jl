@@ -27,7 +27,7 @@ natively. Subsequent writes to the same slot reuse the existing parent buffer
 (zero allocation after the first write). Sparse matrices are still materialised
 as `SparseMatrixCSC(M')` since CSC format is required for efficient sparse ops.
 """
-@inline function cache_set!(vec::Vector{<:AbstractMatrix}, k::Int, M::AbstractMatrix, transposed::Bool = false)
+function cache_set!(vec::Vector{<:AbstractMatrix}, k::Int, M::AbstractMatrix, transposed::Bool = false)
     if transposed
         if M isa AbstractSparseMatrix
             Mt = SparseMatrixCSC(M')
@@ -85,7 +85,6 @@ See [`second_order_indices`](@ref) for field documentation.
 """
 function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
-    empty_sparse_bool = spzeros(Bool, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return second_order_indices(
@@ -126,6 +125,9 @@ function Second_order_indices()
         Int[],               # shock_idxs2
         Int[],               # shock²_idxs
         Int[],               # var_vol²_idxs
+        empty_matrix_float,  # I_exo
+        empty_matrix_float,  # I_state_vol
+        empty_matrix_float,  # I_aug
         # Conditional forecast indices
         Int[],               # var²_idxs
         Int[],               # shockvar²_idxs
@@ -151,6 +153,7 @@ See [`third_order_indices`](@ref) for field documentation.
 """
 function Third_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
     return third_order_indices(
         # Auxiliary matrices (𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏𝐂₃, 𝐏₁ₗ, 𝐏₁ᵣ, ...)
@@ -191,6 +194,7 @@ function Third_order_indices()
         Int[],               # shockvar3_idxs
         Int[],               # shockvar³2_idxs
         Int[],               # shockvar³_idxs
+        empty_sparse_float,  # I_exo2
         # Moment computation caches
         Float64[],           # e6
         BitVector(),         # kron_e_v
@@ -943,6 +947,9 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # aug_state₁̂ (n_past+1+n_exo)
         zeros(TT, 0),            # state²⁻_vol (n_past+1)
         zeros(TT, 0),            # kronstate_vol³ ((n_past+1)^3)
+        zeros(TT, 0),            # kron_buffer2ss (n_past^2)
+        zeros(TT, 0, 0),         # kron_buffer3sv (n_exo*(n_past+1)^2 × n_exo)
+        zeros(TT, 0, 0),         # kron_buffer4sv (n_exo^2*(n_past+1) × n_exo^2)
         # Pullback buffers (for reverse-mode AD)
         zeros(TT, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
         zeros(TT, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
@@ -1062,6 +1069,15 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
         if length(ws.kronstate_vol³) != n_state_vol^3
             ws.kronstate_vol³ = zeros(T, n_state_vol^3)
         end
+        if length(ws.kron_buffer2ss) != n_past^2
+            ws.kron_buffer2ss = zeros(T, n_past^2)
+        end
+        if size(ws.kron_buffer3sv, 1) != n_exo * n_state_vol^2 || size(ws.kron_buffer3sv, 2) != n_exo
+            ws.kron_buffer3sv = zeros(T, n_exo * n_state_vol^2, n_exo)
+        end
+        if size(ws.kron_buffer4sv, 1) != n_exo² * n_state_vol || size(ws.kron_buffer4sv, 2) != n_exo²
+            ws.kron_buffer4sv = zeros(T, n_exo² * n_state_vol, n_exo²)
+        end
     end
     
     return ws
@@ -1141,41 +1157,41 @@ function ensure_inversion_rrule_buffers!(ws::inversion_workspace{T},
     n_vol = n_past + 1
     n_exo² = n_exo^2
 
-    _grow_vec_seq!(ws.x_seq_rrule, Tt, n_exo, T)
+    grow_vec_seq!(ws.x_seq_rrule, Tt, n_exo, T)
 
     if order === :first_order
         # first_order: state_seq stores full state copies (length n_past via state[1] copy).
         # We resize the outer vector and let the rrule control inner size.
-        _grow_vec_seq_undef!(ws.state_seq_rrule, Tt + 1)
-        _grow_mat_seq_undef!(ws.invjac_v_seq_rrule, Tt)
-        _grow_mat_seq_undef!(ws.G_seq_rrule, Tt)
+        grow_vec_seq_undef!(ws.state_seq_rrule, Tt + 1)
+        grow_mat_seq_undef!(ws.invjac_v_seq_rrule, Tt)
+        grow_mat_seq_undef!(ws.G_seq_rrule, Tt)
         return ws
     end
 
-    _grow_vec_seq!(ws.state¹⁻_vol_seq_rrule, Tt, n_vol, T)
-    _grow_mat_seq!(ws.𝐒ⁱ_full_seq_rrule, Tt, n_cond, n_exo, T)
+    grow_vec_seq!(ws.state¹⁻_vol_seq_rrule, Tt, n_vol, T)
+    grow_mat_seq!(ws.𝐒ⁱ_full_seq_rrule, Tt, n_cond, n_exo, T)
 
     if order === :pruned_second_order
-        _grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
-        _grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
-        _grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
-        _grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
+        grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
+        grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
     elseif order === :second_order
-        _grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
-        _grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
+        grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
     elseif order === :pruned_third_order
-        _grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
-        _grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
-        _grow_vec_seq!(ws.state₃_seq_rrule, Tt + 1, n_past, T)
-        _grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
-        _grow_vec_seq!(ws.aug_state₁̂_seq_rrule, Tt, n_aug, T)
-        _grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
-        _grow_vec_seq!(ws.aug_state₃_seq_rrule, Tt, n_aug, T)
-        _grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
+        grow_vec_seq!(ws.state_seq_rrule,  Tt + 1, n_past, T)   # state₁
+        grow_vec_seq!(ws.state₂_seq_rrule, Tt + 1, n_past, T)
+        grow_vec_seq!(ws.state₃_seq_rrule, Tt + 1, n_past, T)
+        grow_vec_seq!(ws.aug_state₁_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.aug_state₁̂_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.aug_state₂_seq_rrule, Tt, n_aug, T)
+        grow_vec_seq!(ws.aug_state₃_seq_rrule, Tt, n_aug, T)
+        grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
     elseif order === :third_order
-        _grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
-        _grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
-        _grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
+        grow_vec_seq!(ws.state_seq_rrule, Tt + 1, n_past, T)
+        grow_vec_seq!(ws.aug_state_seq_rrule, Tt, n_aug, T)
+        grow_mat_seq!(ws.𝐒ⁱ²ᵉ_full_seq_rrule, Tt, n_cond, n_exo², T)
     else
         error("ensure_inversion_rrule_buffers!: unknown order $order")
     end
@@ -1183,7 +1199,7 @@ function ensure_inversion_rrule_buffers!(ws::inversion_workspace{T},
     return ws
 end
 
-@inline function _grow_vec_seq!(seq::Vector{Vector{T}}, Tt::Int, n::Int, ::Type{T}) where T
+function grow_vec_seq!(seq::Vector{Vector{T}}, Tt::Int, n::Int, ::Type{T}) where T
     if length(seq) < Tt
         sizehint!(seq, Tt)
         while length(seq) < Tt
@@ -1200,14 +1216,14 @@ end
     return seq
 end
 
-@inline function _grow_vec_seq_undef!(seq::Vector{Vector{T}}, Tt::Int) where T
+function grow_vec_seq_undef!(seq::Vector{Vector{T}}, Tt::Int) where T
     if length(seq) != Tt
         resize!(seq, Tt)
     end
     return seq
 end
 
-@inline function _grow_mat_seq!(seq::Vector{Matrix{T}}, Tt::Int, m::Int, n::Int, ::Type{T}) where T
+function grow_mat_seq!(seq::Vector{Matrix{T}}, Tt::Int, m::Int, n::Int, ::Type{T}) where T
     if length(seq) < Tt
         sizehint!(seq, Tt)
         while length(seq) < Tt
@@ -1224,7 +1240,7 @@ end
     return seq
 end
 
-@inline function _grow_mat_seq_undef!(seq::Vector{Matrix{T}}, Tt::Int) where T
+function grow_mat_seq_undef!(seq::Vector{Matrix{T}}, Tt::Int) where T
     if length(seq) != Tt
         resize!(seq, Tt)
     end
@@ -1331,12 +1347,12 @@ Ensure the per-period sequence buffers captured by the kalman-filter rrule
 pullback are sized for `Tt` time periods.  Mirrors `ensure_inversion_rrule_buffers!`.
 """
 function ensure_kalman_rrule_buffers!(ws::kalman_workspace{T}, n_obs::Int, n_states::Int, Tt::Int) where T
-    _grow_vec_seq!(ws.u_seq_rrule,    Tt, n_states, T)
-    _grow_mat_seq!(ws.P_seq_rrule,    Tt, n_states, n_states, T)
-    _grow_mat_seq!(ws.CP_seq_rrule,   Tt, n_obs,    n_states, T)
-    _grow_mat_seq!(ws.K_seq_rrule,    Tt, n_states, n_obs,    T)
-    _grow_mat_seq!(ws.invF_seq_rrule, Tt, n_obs,    n_obs,    T)
-    _grow_vec_seq!(ws.v_seq_rrule,    Tt, n_obs,    T)
+    grow_vec_seq!(ws.u_seq_rrule,    Tt, n_states, T)
+    grow_mat_seq!(ws.P_seq_rrule,    Tt, n_states, n_states, T)
+    grow_mat_seq!(ws.CP_seq_rrule,   Tt, n_obs,    n_states, T)
+    grow_mat_seq!(ws.K_seq_rrule,    Tt, n_states, n_obs,    T)
+    grow_mat_seq!(ws.invF_seq_rrule, Tt, n_obs,    n_obs,    T)
+    grow_vec_seq!(ws.v_seq_rrule,    Tt, n_obs,    T)
     return ws
 end
 
@@ -1709,6 +1725,9 @@ function ensure_computational_constants!(constants::constants)
         shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
         shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
         var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+        I_exo = Matrix{Float64}(ℒ.I, nᵉ, nᵉ)
+        I_state_vol = Matrix{Float64}(ℒ.I, nˢ + 1, nˢ + 1)
+        I_aug = Matrix{Float64}(ℒ.I, nˢ + 1 + nᵉ, nˢ + 1 + nᵉ)
 
         so.s_in_s⁺ = s_in_s⁺
         so.s_in_s = s_in_s
@@ -1727,6 +1746,9 @@ function ensure_computational_constants!(constants::constants)
         so.shock_idxs2 = shock_idxs2
         so.shock²_idxs = shock²_idxs
         so.var_vol²_idxs = var_vol²_idxs
+        so.I_exo = I_exo
+        so.I_state_vol = I_state_vol
+        so.I_aug = I_aug
     end
 
     return constants.second_order
@@ -1777,6 +1799,10 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
             to.shockvar3_idxs = shockvar3_idxs
             to.shockvar³2_idxs = shockvar³2_idxs
             to.shockvar³_idxs = shockvar³_idxs
+        end
+
+        if size(to.I_exo2, 1) != constants.post_model_macro.nExo^2
+            to.I_exo2 = sparse(ℒ.I(constants.post_model_macro.nExo^2))
         end
     end
 

@@ -28,7 +28,7 @@ import MacroModelling:
     ensure_sylvester_doubling_buffers!, ensure_qme_doubling_workspace!,
     ensure_lyapunov_workspace!, evaluate_custom_steady_state_function,
     solve_nsss_wrapper, update_ss_counter!, factorize_lu!, solve_lu_left!,
-    get_initial_covariance, find_shocks,
+    get_initial_covariance, find_shocks, normalize_presample_periods,
     # Constants
     DEFAULT_SOLVER_PARAMETERS, DEFAULT_QME_ALGORITHM
 
@@ -1010,6 +1010,7 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 on_failure_loglikelihood::U = -Inf,
                                 opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
                                                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
@@ -1104,7 +1105,7 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
         ℒ.mul!(z, C, u)
     end
 
-    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2π)) / 2
 end
 
 

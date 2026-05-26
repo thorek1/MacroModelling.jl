@@ -334,6 +334,9 @@ mutable struct second_order_indices
     shock_idxs2::Vector{Int}             # Shock² indices in kron state
     shock²_idxs::Vector{Int}             # Pure shock² product indices
     var_vol²_idxs::Vector{Int}           # Variable × volatility² indices
+    I_exo::Matrix{Float64}               # I(nExo) reused by inversion warmup helpers
+    I_state_vol::Matrix{Float64}         # I(nPast+1) reused by inversion warmup helpers
+    I_aug::Matrix{Float64}               # I(nPast+1+nExo) reused by inversion warmup helpers
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -427,6 +430,7 @@ mutable struct third_order_indices
     shockvar3_idxs::Vector{Int}          # Shock × var indices (position 3)
     shockvar³2_idxs::Vector{Int}         # Shock × var³ indices (2nd variant)
     shockvar³_idxs::Vector{Int}          # Shock × var³ indices
+    I_exo2::SparseMatrixCSC{Float64, Int} # I(nExo^2) reused by inversion warmup helpers
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS
@@ -1144,6 +1148,9 @@ mutable struct inversion_workspace{T <: Real}
     state²⁻_vol::Vector{T}           # n_past+1 - second-order state with volatility slot
     # Third-order state kron buffers
     kronstate_vol³::Vector{T}        # (n_past+1)^3 - triple kron of state_vol
+    kron_buffer2ss::Vector{T}        # n_past^2 - ℒ.kron(state₁, state₂) for pruned 3rd order
+    kron_buffer3sv::Matrix{T}        # (n_exo * (n_past+1)^2, n_exo) - ℒ.kron(kron(J, state_vol), state_vol)
+    kron_buffer4sv::Matrix{T}        # (n_exo^2 * (n_past+1), n_exo^2) - x_kron_II! scratch
     
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
