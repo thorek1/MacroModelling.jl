@@ -9437,12 +9437,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             view(𝐒²ᵉ, warmup_idx0, :),
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose
@@ -9853,11 +9852,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
             ∂𝐒ⁱ²ᵉ .+= 2 .* ∂𝐒²ᵉ_warmup
             copyto!(∂state₁_next, ∂warmup_state10)
             copyto!(∂state₂_next, ∂warmup_state20)
@@ -10128,10 +10127,9 @@ function second_order_warmup_observation_and_jacobian_pullback!(
     𝐒⁻²::AbstractMatrix{Float64},
     ∂y_pred::AbstractVector{Float64},
     ∂jac_seed::AbstractMatrix{Float64},
-    ;
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64}
 )
     n_past = length(state0)
     n_exo = size(𝐒¹ᵉ, 2)
@@ -10147,9 +10145,6 @@ function second_order_warmup_observation_and_jacobian_pullback!(
     state_hist = Vector{Vector{Float64}}(undef, n_warm)
     ds_hist = n_warm > 1 ? Vector{Matrix{Float64}}(undef, n_warm - 1) : Matrix{Float64}[]
 
-    I_aug === nothing && (I_aug = Matrix{Float64}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{Float64}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{Float64}(ℒ.I, n_exo, n_exo))
 
     st = copy(state0)
     state_hist[1] = copy(st)
@@ -10302,13 +10297,12 @@ function second_order_joint_warmup_solver_pullback!(
     warmup_jac::AbstractMatrix{Float64},
     warmup_iterations::Int,
     ∂warmup_x::AbstractVector{Float64},
-    ∂warmup_jac::AbstractMatrix{Float64};
+    ∂warmup_jac::AbstractMatrix{Float64},
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64};
     max_iter::Int = 60,
-    tol::Float64 = 1e-10,
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-)
+    tol::Float64 = 1e-10)
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
@@ -10343,10 +10337,10 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒⁻¹,
             𝐒⁻²,
             zeros(Float64, length(target)),
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         ∂z_total = copy(∂warmup_x)
@@ -10375,10 +10369,10 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒⁻¹,
             𝐒⁻²,
             ∂y_seed,
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         return nothing
@@ -10405,8 +10399,11 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²;
-            ws = ws,
+            𝐒⁻²,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -10446,8 +10443,11 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²;
-            ws = ws,
+            𝐒⁻²,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -10504,11 +10504,11 @@ function second_order_joint_warmup_solver_pullback!(
                 𝐒⁻¹,
                 𝐒⁻²,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state0_eval, ∂state0)
             ℒ.axpy!(1, ∂warmup_x_eval, ∂z_prev)
@@ -10536,11 +10536,11 @@ function second_order_joint_warmup_solver_pullback!(
                 𝐒⁻¹,
                 𝐒⁻²,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state0_eval, ∂state0)
             ℒ.axpy!(1, ∂warmup_x_eval, ∂z)
@@ -10655,10 +10655,9 @@ function pruned_second_order_warmup_observation_and_jacobian_pullback!(
     𝐒⁻²::AbstractMatrix{Float64},
     ∂y_pred::AbstractVector{Float64},
     ∂jac_seed::AbstractMatrix{Float64},
-    ;
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64}
 )
     n_past = length(state10)
     n_exo = size(𝐒¹ᵉ, 2)
@@ -10676,9 +10675,6 @@ function pruned_second_order_warmup_observation_and_jacobian_pullback!(
     ds1_hist = n_warm > 1 ? Vector{Matrix{Float64}}(undef, n_warm - 1) : Matrix{Float64}[]
     ds2_hist = n_warm > 1 ? Vector{Matrix{Float64}}(undef, n_warm - 1) : Matrix{Float64}[]
 
-    I_aug === nothing && (I_aug = Matrix{Float64}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{Float64}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{Float64}(ℒ.I, n_exo, n_exo))
 
     state1 = copy(state10)
     state2 = copy(state20)
@@ -10893,13 +10889,12 @@ function pruned_second_order_joint_warmup_solver_pullback!(
     warmup_jac::AbstractMatrix{Float64},
     warmup_iterations::Int,
     ∂warmup_x::AbstractVector{Float64},
-    ∂warmup_jac::AbstractMatrix{Float64};
+    ∂warmup_jac::AbstractMatrix{Float64},
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64};
     max_iter::Int = 60,
-    tol::Float64 = 1e-10,
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-)
+    tol::Float64 = 1e-10)
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
@@ -10938,10 +10933,10 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒⁻¹,
             𝐒⁻²,
             zeros(Float64, length(target)),
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         ∂z_total = copy(∂warmup_x)
@@ -10974,10 +10969,10 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒⁻¹,
             𝐒⁻²,
             ∂y_seed,
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         return nothing
@@ -11006,8 +11001,11 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²;
-            ws = ws,
+            𝐒⁻²,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -11049,8 +11047,11 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²;
-            ws = ws,
+            𝐒⁻²,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -11112,11 +11113,11 @@ function pruned_second_order_joint_warmup_solver_pullback!(
                 𝐒⁻¹,
                 𝐒⁻²,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state10_eval, ∂state10)
             ℒ.axpy!(1, ∂state20_eval, ∂state20)
@@ -11150,11 +11151,11 @@ function pruned_second_order_joint_warmup_solver_pullback!(
                 𝐒⁻¹,
                 𝐒⁻²,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state10_eval, ∂state10)
             ℒ.axpy!(1, ∂state20_eval, ∂state20)
@@ -11381,12 +11382,11 @@ function rrule(::typeof(calculate_loglikelihood),
             𝐒²ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (pruned 2nd) failed during warmup") end
@@ -11889,11 +11889,11 @@ function rrule(::typeof(calculate_loglikelihood),
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
             ∂𝐒ⁱ²ᵉ .+= 2 .* ∂𝐒²ᵉ_warmup
             copyto!(∂state[1], ∂warmup_state10)
             copyto!(∂state[2], ∂warmup_state20)
@@ -12031,12 +12031,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             𝐒²ᵉ[warmup_idx0, :],
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
         if !matched
             if opts.verbose println("Inversion filter rrule (2nd, missing) failed during warmup") end
             return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -12490,12 +12489,11 @@ function rrule(::typeof(calculate_loglikelihood),
             𝐒²ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (2nd) failed during warmup") end
@@ -12975,11 +12973,11 @@ function rrule(::typeof(calculate_loglikelihood),
                 warmup_jac_full,
                 warmup_iterations,
                 ∂warmup_x,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
 
             copyto!(∂state, ∂warmup_state0)
         end
@@ -13146,12 +13144,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
         if !matched
             if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed during warmup") end
                 𝐒¹⁻ᵛ[warmup_idx0, :],
@@ -13763,11 +13760,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
 
             ∂𝐒¹⁻ᵛ[warmup_idx0, :] .+= ∂𝐒¹⁻ᵛ_w
             ∂𝐒¹ᵉ[warmup_idx0, :] .+= ∂𝐒¹ᵉ_w
@@ -13991,12 +13988,11 @@ function rrule(::typeof(calculate_loglikelihood),
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
                 𝐒¹⁻ᵛ,
@@ -14558,11 +14554,11 @@ function rrule(::typeof(calculate_loglikelihood),
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
             ∂𝐒²ᵉ .+= ∂𝐒²ᵉ_warmup
             ∂𝐒ⁱ³ᵉ .+= 6 .* ∂𝐒³ᵉ_warmup
             copyto!(∂state[1], ∂warmup_state10)
@@ -14725,12 +14721,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
                 𝐒¹⁻ᵛ[warmup_idx0, :],
@@ -15183,11 +15178,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
 
             ∂𝐒¹⁻ᵛ[warmup_idx0, :] .+= ∂𝐒¹⁻ᵛ_w
             ∂𝐒¹ᵉ[warmup_idx0, :] .+= ∂𝐒¹ᵉ_w
@@ -15373,10 +15368,9 @@ function third_order_warmup_observation_and_jacobian_pullback!(
     𝐒⁻³::AbstractMatrix{Float64},
     ∂y_pred::AbstractVector{Float64},
     ∂jac_seed::AbstractMatrix{Float64},
-    ;
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64}
 )
     n_past = length(state0)
     n_exo = size(𝐒¹ᵉ, 2)
@@ -15392,9 +15386,6 @@ function third_order_warmup_observation_and_jacobian_pullback!(
     state_hist = Vector{Vector{Float64}}(undef, n_warm)
     ds_hist = n_warm > 1 ? Vector{Matrix{Float64}}(undef, n_warm - 1) : Matrix{Float64}[]
 
-    I_aug === nothing && (I_aug = Matrix{Float64}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{Float64}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{Float64}(ℒ.I, n_exo, n_exo))
 
     st = copy(state0)
     state_hist[1] = copy(st)
@@ -15671,13 +15662,12 @@ function third_order_joint_warmup_solver_pullback!(
     warmup_jac::AbstractMatrix{Float64},
     warmup_iterations::Int,
     ∂warmup_x::AbstractVector{Float64},
-    ∂warmup_jac::AbstractMatrix{Float64};
+    ∂warmup_jac::AbstractMatrix{Float64},
+    I_aug::AbstractMatrix{Float64},
+    I_state_vol::AbstractMatrix{Float64},
+    I_exo::AbstractMatrix{Float64};
     max_iter::Int = 80,
-    tol::Float64 = 1e-10,
-    I_aug::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_state_vol::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-    I_exo::Union{Nothing, AbstractMatrix{Float64}} = nothing,
-)
+    tol::Float64 = 1e-10)
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
@@ -15722,10 +15712,10 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒⁻²,
             𝐒⁻³,
             zeros(Float64, length(target)),
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         ∂z_total = copy(∂warmup_x)
@@ -15763,10 +15753,10 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒⁻²,
             𝐒⁻³,
             ∂y_seed,
-            ∂warmup_jac;
-            I_aug = I_aug,
-            I_state_vol = I_state_vol,
-            I_exo = I_exo,
+            ∂warmup_jac,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
 
         return nothing
@@ -15798,8 +15788,11 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒³ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            𝐒⁻³;
-            ws = ws,
+            𝐒⁻³,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -15844,8 +15837,11 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒³ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            𝐒⁻³;
-            ws = ws,
+            𝐒⁻³,
+            ws,
+            I_aug,
+            I_state_vol,
+            I_exo,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -15912,11 +15908,11 @@ function third_order_joint_warmup_solver_pullback!(
                 𝐒⁻²,
                 𝐒⁻³,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state_eval, ∂state0)
             ℒ.axpy!(1, ∂warmup_x_eval, ∂z_prev)
@@ -15954,11 +15950,11 @@ function third_order_joint_warmup_solver_pullback!(
                 𝐒⁻²,
                 𝐒⁻³,
                 ∂y,
-                ∂jac;
-                I_aug = I_aug,
-                I_state_vol = I_state_vol,
-                I_exo = I_exo,
-            )
+                ∂jac,
+                I_aug,
+                I_state_vol,
+                I_exo,
+        )
 
             ℒ.axpy!(1, ∂state_eval, ∂state0)
             ℒ.axpy!(1, ∂warmup_x_eval, ∂z)
@@ -16119,12 +16115,11 @@ function rrule(::typeof(calculate_loglikelihood),
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (3rd) failed during warmup") end
@@ -16571,11 +16566,11 @@ function rrule(::typeof(calculate_loglikelihood),
                 warmup_jac,
                 warmup_iterations,
                 ∂x_warmup,
-                ∂warmup_jac;
-                I_aug = cc.I_aug,
-                I_state_vol = cc.I_state_vol,
-                I_exo = cc.I_exo,
-            )
+                ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
+        )
             ∂𝐒²ᵉ .+= ∂𝐒²ᵉ_warmup
             ∂𝐒ⁱ³ᵉ .+= 6 .* ∂𝐒³ᵉ_warmup
             copyto!(∂state, ∂warmup_state0)

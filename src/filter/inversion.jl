@@ -962,12 +962,11 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒²ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter failed during pruned second-order warmup") end
@@ -1256,12 +1255,11 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒²ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter failed during second-order warmup") end
@@ -1581,12 +1579,11 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter failed during pruned third-order warmup") end
@@ -2058,12 +2055,11 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter failed during third-order warmup") end
@@ -2618,12 +2614,11 @@ end
             𝐒²ᵉ[idx0, :],
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = computational_constants.I_aug,
-            I_state_vol = computational_constants.I_state_vol,
-            I_exo = computational_constants.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            computational_constants.I_aug,
+            computational_constants.I_state_vol,
+            computational_constants.I_exo)
 
         if !matched
             @error "Inversion filter (2nd) failed during joint warmup"
@@ -2926,12 +2921,11 @@ end
             𝐒²ᵉ[idx0, :],
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = computational_constants.I_aug,
-            I_state_vol = computational_constants.I_state_vol,
-            I_exo = computational_constants.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            computational_constants.I_aug,
+            computational_constants.I_state_vol,
+            computational_constants.I_exo)
 
         if !matched
             @error "Inversion filter (pruned 2nd) failed during joint warmup"
@@ -3329,12 +3323,11 @@ end
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = computational_constants.I_aug,
-            I_state_vol = computational_constants.I_state_vol,
-            I_exo = computational_constants.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            computational_constants.I_aug,
+            computational_constants.I_state_vol,
+            computational_constants.I_exo)
 
         if !matched
             @error "Inversion filter (3rd) failed during joint warmup"
@@ -3738,12 +3731,11 @@ end
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = computational_constants.I_aug,
-            I_state_vol = computational_constants.I_state_vol,
-            I_exo = computational_constants.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            computational_constants.I_aug,
+            computational_constants.I_state_vol,
+            computational_constants.I_exo)
 
         if !matched
             @error "Inversion filter (pruned 3rd) failed during joint warmup"
@@ -4203,11 +4195,11 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
                                                        𝐒²⁻ᵉ::AbstractMatrix{R},
                                                        𝐒²ᵉ::AbstractMatrix{R},
                                                        𝐒⁻¹::AbstractMatrix{R},
-                                                       𝐒⁻²::AbstractMatrix{R};
+                                                       𝐒⁻²::AbstractMatrix{R},
                                                        ws::inversion_workspace{R},
-                                                       I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                       I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                       I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                       I_aug::AbstractMatrix{<:Real},
+                                                       I_state_vol::AbstractMatrix{<:Real},
+                                                       I_exo::AbstractMatrix{<:Real}) where R <: Real
     n_past = length(state0)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4230,9 +4222,6 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     y_pred = ws.y_obs
     jac_x = ws.jacc_v_buf
 
-    I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{R}(ℒ.I, n_exo, n_exo))
 
     @inbounds for i in 1:n_warm-1
         copyto!(aug_state, 1, state, 1, n_past)
@@ -4295,13 +4284,13 @@ function solve_second_order_joint_warmup_shocks_with_jacobian(state0::AbstractVe
                                                               𝐒²ᵉ::AbstractMatrix{R},
                                                               𝐒⁻¹::AbstractMatrix{R},
                                                               𝐒⁻²::AbstractMatrix{R},
-                                                              warmup_iterations::Int;
-                                                              max_iter::Int = 60,
-                                                              tol::Real = 1e-10,
+                                                              warmup_iterations::Int,
                                                               ws::inversion_workspace{R},
-                                                              I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                              I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                              I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                              I_aug::AbstractMatrix{<:Real},
+                                                              I_state_vol::AbstractMatrix{<:Real},
+                                                              I_exo::AbstractMatrix{<:Real};
+                                                              max_iter::Int = 60,
+                                                              tol::Real = 1e-10) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -4326,11 +4315,11 @@ function solve_second_order_joint_warmup_shocks_with_jacobian(state0::AbstractVe
                                                                        𝐒²⁻ᵉ,
                                                                        𝐒²ᵉ,
                                                                        𝐒⁻¹,
-                                                                       𝐒⁻²;
-                                                                       ws = ws,
-                                                                       I_aug = I_aug,
-                                                                       I_state_vol = I_state_vol,
-                                                                       I_exo = I_exo)
+                                                                       𝐒⁻²,
+                                                                       ws,
+                                                                       I_aug,
+                                                                       I_state_vol,
+                                                                       I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -4362,11 +4351,11 @@ function solve_second_order_joint_warmup_shocks_with_jacobian(state0::AbstractVe
                                                                        𝐒²⁻ᵉ,
                                                                        𝐒²ᵉ,
                                                                        𝐒⁻¹,
-                                                                       𝐒⁻²;
-                                                                       ws = ws,
-                                                                       I_aug = I_aug,
-                                                                       I_state_vol = I_state_vol,
-                                                                       I_exo = I_exo)
+                                                                       𝐒⁻²,
+                                                                       ws,
+                                                                       I_aug,
+                                                                       I_state_vol,
+                                                                       I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -4390,11 +4379,11 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
                                                               𝐒²⁻ᵉ::AbstractMatrix{R},
                                                               𝐒²ᵉ::AbstractMatrix{R},
                                                               𝐒⁻¹::AbstractMatrix{R},
-                                                              𝐒⁻²::AbstractMatrix{R};
+                                                              𝐒⁻²::AbstractMatrix{R},
                                                               ws::inversion_workspace{R},
-                                                              I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                              I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                              I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                              I_aug::AbstractMatrix{<:Real},
+                                                              I_state_vol::AbstractMatrix{<:Real},
+                                                              I_exo::AbstractMatrix{<:Real}) where R <: Real
     n_past = length(state10)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4424,9 +4413,6 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
     y_pred = ws.y_obs
     jac_x = ws.jacc_v_buf
 
-    I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{R}(ℒ.I, n_exo, n_exo))
 
     @inbounds for i in 1:n_warm-1
         copyto!(aug_state₁, 1, state₁, 1, n_past)
@@ -4511,13 +4497,13 @@ function solve_pruned_second_order_joint_warmup_shocks_with_jacobian(state10::Ab
                                                                      𝐒²ᵉ::AbstractMatrix{R},
                                                                      𝐒⁻¹::AbstractMatrix{R},
                                                                      𝐒⁻²::AbstractMatrix{R},
-                                                                     warmup_iterations::Int;
-                                                                     max_iter::Int = 60,
-                                                                     tol::Real = 1e-10,
+                                                                     warmup_iterations::Int,
                                                                      ws::inversion_workspace{R},
-                                                                     I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                                     I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                                     I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                                     I_aug::AbstractMatrix{<:Real},
+                                                                     I_state_vol::AbstractMatrix{<:Real},
+                                                                     I_exo::AbstractMatrix{<:Real};
+                                                                     max_iter::Int = 60,
+                                                                     tol::Real = 1e-10) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -4544,11 +4530,11 @@ function solve_pruned_second_order_joint_warmup_shocks_with_jacobian(state10::Ab
                                                                               𝐒²⁻ᵉ,
                                                                               𝐒²ᵉ,
                                                                               𝐒⁻¹,
-                                                                              𝐒⁻²;
-                                                                              ws = ws,
-                                                                              I_aug = I_aug,
-                                                                              I_state_vol = I_state_vol,
-                                                                              I_exo = I_exo)
+                                                                              𝐒⁻²,
+                                                                              ws,
+                                                                              I_aug,
+                                                                              I_state_vol,
+                                                                              I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -4582,11 +4568,11 @@ function solve_pruned_second_order_joint_warmup_shocks_with_jacobian(state10::Ab
                                                                               𝐒²⁻ᵉ,
                                                                               𝐒²ᵉ,
                                                                               𝐒⁻¹,
-                                                                              𝐒⁻²;
-                                                                              ws = ws,
-                                                                              I_aug = I_aug,
-                                                                              I_state_vol = I_state_vol,
-                                                                              I_exo = I_exo)
+                                                                              𝐒⁻²,
+                                                                              ws,
+                                                                              I_aug,
+                                                                              I_state_vol,
+                                                                              I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -4609,11 +4595,11 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
                                                       𝐒³ᵉ::AbstractMatrix{R},
                                                       𝐒⁻¹::AbstractMatrix{R},
                                                       𝐒⁻²::AbstractMatrix{R},
-                                                      𝐒⁻³::AbstractMatrix{R};
+                                                      𝐒⁻³::AbstractMatrix{R},
                                                       ws::inversion_workspace{R},
-                                                      I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                      I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                      I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                      I_aug::AbstractMatrix{<:Real},
+                                                      I_state_vol::AbstractMatrix{<:Real},
+                                                      I_exo::AbstractMatrix{<:Real}) where R <: Real
     n_past = length(state0)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4642,9 +4628,6 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     y_pred = ws.y_obs
     jac_x = ws.jacc_v_buf
 
-    I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
-    I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
-    I_exo === nothing && (I_exo = Matrix{R}(ℒ.I, n_exo, n_exo))
 
     @inbounds for i in 1:n_warm-1
         copyto!(aug_state, 1, state, 1, n_past)
@@ -4741,13 +4724,13 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                              𝐒⁻¹::AbstractMatrix{R},
                                                              𝐒⁻²::AbstractMatrix{R},
                                                              𝐒⁻³::AbstractMatrix{R},
-                                                             warmup_iterations::Int;
-                                                             max_iter::Int = 80,
-                                                             tol::Real = 1e-10,
+                                                             warmup_iterations::Int,
                                                              ws::inversion_workspace{R},
-                                                             I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                             I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-                                                             I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
+                                                             I_aug::AbstractMatrix{<:Real},
+                                                             I_state_vol::AbstractMatrix{<:Real},
+                                                             I_exo::AbstractMatrix{<:Real};
+                                                             max_iter::Int = 80,
+                                                             tol::Real = 1e-10) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -4777,11 +4760,11 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                                       𝐒³ᵉ,
                                                                       𝐒⁻¹,
                                                                       𝐒⁻²,
-                                                                      𝐒⁻³;
-                                                                      ws = ws,
-                                                                      I_aug = I_aug,
-                                                                      I_state_vol = I_state_vol,
-                                                                      I_exo = I_exo)
+                                                                      𝐒⁻³,
+                                                                      ws,
+                                                                      I_aug,
+                                                                      I_state_vol,
+                                                                      I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -4818,11 +4801,11 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                                       𝐒³ᵉ,
                                                                       𝐒⁻¹,
                                                                       𝐒⁻²,
-                                                                      𝐒⁻³;
-                                                                      ws = ws,
-                                                                      I_aug = I_aug,
-                                                                      I_state_vol = I_state_vol,
-                                                                      I_exo = I_exo)
+                                                                      𝐒⁻³,
+                                                                      ws,
+                                                                      I_aug,
+                                                                      I_state_vol,
+                                                                      I_exo)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
@@ -5070,12 +5053,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
             𝐒²ᵉ[idx0, :],
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter (pruned 2nd) failed during warmup") end
@@ -5254,12 +5236,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
             𝐒²ᵉ[idx0, :],
             𝐒⁻¹,
             𝐒⁻²,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter (2nd) failed during warmup") end
@@ -5471,12 +5452,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter (pruned 3rd, missing) failed during warmup") end
@@ -5724,12 +5704,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
             𝐒⁻¹,
             𝐒⁻²,
             𝐒⁻³,
-            warmup_iterations;
-            ws = ws,
-            I_aug = cc.I_aug,
-            I_state_vol = cc.I_state_vol,
-            I_exo = cc.I_exo,
-        )
+            warmup_iterations,
+            ws,
+            cc.I_aug,
+            cc.I_state_vol,
+            cc.I_exo)
 
         if !matched
             if opts.verbose println("Inversion filter (3rd, missing) failed during warmup") end
