@@ -698,18 +698,13 @@ function calculate_loglikelihood(::Val{:inversion},
     logabsdets = zero(R)
     jac = zeros(R, 0, 0)
 
-    if warmup_iterations > 0
-        if warmup_iterations >= 1
-            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
-            if warmup_iterations >= 2
-                jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
-                if warmup_iterations >= 3
-                    Sᵉ = 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-                    for e in 1:warmup_iterations-2
-                        jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
-                        Sᵉ *= 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-                    end
-                end
+    if warmup_iterations > 1
+        jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], 𝐒[cond_var_idx,end-T.nExo+1:end])
+        if warmup_iterations >= 3
+            Sᵉ = 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+            for e in 1:warmup_iterations-2
+                jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                Sᵉ *= 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
             end
         end
 
@@ -856,7 +851,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(n_exo, warmup_iterations) : 0
     cond_var_idx = observables_index
@@ -1175,7 +1170,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(n_exo, warmup_iterations) : 0
 
@@ -1455,7 +1450,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(n_exo, warmup_iterations) : 0
 
@@ -1961,7 +1956,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(n_exo, warmup_iterations) : 0
 
@@ -4888,7 +4883,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
     JJt_buf   = ws.JJt_buf
     fill!(x_buf, zero(R))
 
-    if warmup_iterations > 0
+    if warmup_iterations > 1
         idx = obs_idx_per_t[1]
         warmup_jac_full = build_first_order_warmup_jacobian(𝐒obs,
                                                             𝐒past_state,
@@ -4999,7 +4994,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -5191,7 +5186,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -5365,7 +5360,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
@@ -5632,7 +5627,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: Real, U <: AbstractFloat}
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed

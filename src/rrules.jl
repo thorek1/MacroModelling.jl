@@ -8558,7 +8558,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     state_start = copy(state_initial)
 
-    if warmup_iterations > 0
+    if warmup_iterations > 1
         warmup_idx0 = idx_seq[1]
         warmup_rows = obs_idx_full[warmup_idx0]
         warmup_data_first = collect(data_in_deviations[warmup_idx0, 1])
@@ -8829,7 +8829,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             # and x = 0
         end
 
-        if warmup_iterations > 0 && length(warmup_x) > 0
+        if warmup_iterations > 1 && length(warmup_x) > 0
             N = warmup_iterations
             ∂x_warmup = zeros(size(warmup_x))
             if n_hidden_warmup_shock_dims > 0
@@ -9029,7 +9029,7 @@ function rrule(::typeof(calculate_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    # Warmup forward pass.  When `warmup_iterations > 0` we build a
+    # Warmup forward pass.  When `warmup_iterations > 1` we build a
     # block-concatenated jacobian, solve a min-norm linear system to recover
     # `warmup_iterations` worth of shocks, and propagate the hidden warmup
     # shocks through the state transition. Only the genuinely hidden warmup
@@ -9042,7 +9042,7 @@ function rrule(::typeof(calculate_loglikelihood),
     warmup_Sᵉ_powers     = Matrix{Float64}[]     # [I, Sᵉ, Sᵉ², …, Sᵉ^(N-2)]
     warmup_data_first    = zeros(length(obs_idx))
 
-    if warmup_iterations > 0
+    if warmup_iterations > 1
         warmup_data_first = collect(data_in_deviations[:,1])
 
         warmup_jac = 𝐒[obs_idx, end-T.nExo+1:end]
@@ -9275,7 +9275,7 @@ function rrule(::typeof(calculate_loglikelihood),
         # We propagate it back through (i) state propagation across the warmup
         # window, (ii) the linear-solve recovery of the warmup shocks, and
         # (iii) the block-concatenated jacobian construction.
-        if warmup_iterations > 0
+        if warmup_iterations > 1
             N    = warmup_iterations
             nExo = T.nExo
             n_pnf = T.nPast_not_future_and_mixed
@@ -9362,7 +9362,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     Tt = size(data_in_deviations, 2)
     presample_periods = normalize_presample_periods(presample_periods, Tt)
 
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
@@ -11308,7 +11308,7 @@ function rrule(::typeof(calculate_loglikelihood),
                     
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
@@ -11962,7 +11962,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     Tt = size(data_in_deviations, 2)
     presample_periods = normalize_presample_periods(presample_periods, Tt)
 
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond)
@@ -12418,7 +12418,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
@@ -13036,7 +13036,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     Tt = size(data_in_deviations, 2)
     presample_periods = normalize_presample_periods(presample_periods, Tt)
 
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond; third_order = true)
@@ -13842,7 +13842,7 @@ function rrule(::typeof(calculate_loglikelihood),
     # @timeit_debug timer "Inversion filter - forward" begin
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
@@ -14631,7 +14631,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     Tt = size(data_in_deviations, 2)
     presample_periods = normalize_presample_periods(presample_periods, Tt)
 
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     ws = workspaces.inversion
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, n_cond; third_order = true)
@@ -15993,7 +15993,7 @@ function rrule(::typeof(calculate_loglikelihood),
 
     n_obs = size(data_in_deviations,2)
     presample_periods = normalize_presample_periods(presample_periods, n_obs)
-    use_joint_warmup = warmup_iterations > 0
+    use_joint_warmup = warmup_iterations > 1
     n_effective_obs = n_obs - presample_periods
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 

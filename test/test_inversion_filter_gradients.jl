@@ -299,11 +299,11 @@ end
         end
     end
 
-    # --- (d1b) warmup_iterations > 0: higher-order missing-data paths ------
-    @testset "Gali higher-order warmup gradients (missing, warmup_iterations=2)" begin
+    # --- (d1b) warmup_iterations > 0: missing-data paths -------------------
+    @testset "Gali warmup gradients (missing, warmup_iterations=2)" begin
         data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 141)
         data_missing = data_with_missing_observations(data)
-        for algo in algorithms[2:end]
+        for algo in algorithms
             compare_gradients("Gali :$algo (missing warmup_iterations=2)",
                               GALI, data_missing, base_params, p_subset, algo;
                               warmup_iterations = 2)
