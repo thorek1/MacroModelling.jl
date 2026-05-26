@@ -420,13 +420,26 @@ function normalize_filtering_options(filter::Symbol,
         if filter == :kalman
             @info "`warmup_iterations` is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
             warmup_iterations = 0
-        elseif algorithm != :first_order
-            @info "Warmup iterations are currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
-            warmup_iterations = 0
         end
     end
 
     return filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations
+end
+
+
+function normalize_presample_periods(presample_periods::Int,
+                                     data_length::Integer;
+                                     maxlog::Int = DEFAULT_MAXLOG)
+    @assert presample_periods >= 0 "`presample_periods` must be non-negative."
+    @assert data_length >= 0 "`data_length` must be non-negative."
+
+    normalized_presample_periods = min(presample_periods, Int(data_length))
+
+    if normalized_presample_periods != presample_periods
+        @info "`presample_periods = $(presample_periods)` exceeds the available data length ($(data_length)). Setting `presample_periods = $(normalized_presample_periods)`." maxlog = maxlog
+    end
+
+    return normalized_presample_periods
 end
 
 
@@ -630,7 +643,7 @@ const CACHE_VALIDITY_FIELDS = (
 )
 
 
-@inline function cache_valid_for_parameters(valid_for::Vector{Float64}, parameters::AbstractVector{<:Real})::Bool
+function cache_valid_for_parameters(valid_for::Vector{Float64}, parameters::AbstractVector{<:Real})::Bool
     length(valid_for) == length(parameters) || return false
     @inbounds for i in eachindex(parameters)
         if valid_for[i] != parameters[i]
