@@ -4227,8 +4227,8 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     aug_state = ws.aug_state₁
     kronaug_state = ws.kronaug_state
     kronstate_vol = ws.kronstate_vol
-    kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
-    kron_shock_shock = Vector{R}(undef, n_exo^2)
+    kron_shock_state = ws.kron_shock_state
+    kron_shock_shock = ws.kron_buffer
     kron_I_state = ws.kron_buffer_state
     ds_dz = zeros(R, n_past, n_z)
     ds_tmp = zeros(R, n_past, n_z)
@@ -4418,8 +4418,8 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
     aug_state₂ = ws.aug_state₂
     kronaug_state₁ = ws.kronaug_state
     kronstate₁_vol = ws.kronstate_vol
-    kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
-    kron_shock_shock = Vector{R}(undef, n_exo^2)
+    kron_shock_state = ws.kron_shock_state
+    kron_shock_shock = ws.kron_buffer
     kron_I_state = ws.kron_buffer_state
 
     ds1_dz = zeros(R, n_past, n_z)
@@ -4635,11 +4635,11 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     kronstate_vol = ws.kronstate_vol
     kronstate_vol3 = ws.kronstate_vol³
     kron_aug3 = ws.kron_kron_aug_state
-    kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
-    kron_shock_shock = Vector{R}(undef, n_exo^2)
-    kron_shock_state2 = Vector{R}(undef, n_exo * n_state_vol^2)
-    kron_shock2_state = Vector{R}(undef, n_exo^2 * n_state_vol)
-    kron_shock3 = Vector{R}(undef, n_exo^3)
+    kron_shock_state = ws.kron_shock_state
+    kron_shock_shock = ws.kron_buffer
+    kron_shock_state2 = ws.kron_shock_state2
+    kron_shock2_state = ws.kron_shock2_state
+    kron_shock3 = ws.kron_buffer²
     kron_I_state = ws.kron_buffer_state
 
     ds_dz = zeros(R, n_past, n_z)
