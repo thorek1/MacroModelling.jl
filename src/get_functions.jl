@@ -4574,7 +4574,7 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
 # Returns
 - `<:AbstractFloat` loglikelihood
 """
-@unstable function get_filter_free_loglikelihood(𝓂::ℳ,
+function get_filter_free_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{D},
                             parameter_values::Vector{S},
                             shocks::AbstractMatrix{T},
@@ -4589,13 +4589,13 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
 
     @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_filter_free_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
 
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
 
-    R = promote_type(S, T)
+    R = promote_type(S, T, Float64)
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -4692,17 +4692,25 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
     if algorithm == :first_order
         𝐒_red     = 𝐒[needed, :]
         state_red = [state[1][needed]]
-    elseif algorithm ∈ (:second_order, :third_order)
-        𝐒_red     = [m[needed, :] for m in 𝐒]
+    elseif algorithm == :second_order
+        𝐒_red     = (𝐒[1][needed, :], 𝐒[2][needed, :])
         state_red = state[needed]
-    else  # :pruned_second_order, :pruned_third_order
-        𝐒_red     = [m[needed, :] for m in 𝐒]
+    elseif algorithm == :third_order
+        𝐒_red     = (𝐒[1][needed, :], 𝐒[2][needed, :], 𝐒[3][needed, :])
+        state_red = state[needed]
+    elseif algorithm == :pruned_second_order
+        𝐒_red     = (𝐒[1][needed, :], 𝐒[2][needed, :])
+        state_red = [s[needed] for s in state]
+    else  # :pruned_third_order
+        𝐒_red     = (𝐒[1][needed, :], 𝐒[2][needed, :], 𝐒[3][needed, :])
         state_red = [s[needed] for s in state]
     end
 
-    llh = filter_free_loglikelihood_loop(Val(algorithm), 𝐒_red, state_red, aligned_shocks, data_in_deviations, obs_in_needed, past_in_needed, obs_idx_per_t, aligned_me_std, n_warm)
+    llh_raw = filter_free_loglikelihood_loop(Val(algorithm), 𝐒_red, state_red, aligned_shocks, data_in_deviations, obs_in_needed, past_in_needed, obs_idx_per_t, aligned_me_std, n_warm)
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+    llh = convert(R, llh_raw)
 
     if !isfinite(llh)
         return convert(R, on_failure_loglikelihood)
@@ -4735,7 +4743,7 @@ period_me_std(me_std::AbstractVector, idx::AbstractVector{Int}, ::Int) = view(me
 period_me_std(me_std::AbstractMatrix, idx::AbstractVector{Int}, t::Int) = view(me_std, idx, t)
 
 
-@unstable function filter_free_loglikelihood_loop(::Val{:first_order},
+function filter_free_loglikelihood_loop(::Val{:first_order},
                                         𝐒::AbstractMatrix,
                                         state::AbstractVector{<:AbstractVector{<:Real}},
                                         shocks::AbstractMatrix{T},
@@ -4776,8 +4784,8 @@ period_me_std(me_std::AbstractMatrix, idx::AbstractVector{Int}, t::Int) = view(m
 end
 
 
-@unstable function filter_free_loglikelihood_loop(::Val{:second_order},
-                                        𝐒::Vector{<:AbstractMatrix},
+function filter_free_loglikelihood_loop(::Val{:second_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
                                         state::AbstractVector{<:Real},
                                         shocks::AbstractMatrix{T},
                                         data_in_deviations::AbstractMatrix{<:Real},
@@ -4818,8 +4826,8 @@ end
 end
 
 
-@unstable function filter_free_loglikelihood_loop(::Val{:third_order},
-                                        𝐒::Vector{<:AbstractMatrix},
+function filter_free_loglikelihood_loop(::Val{:third_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
                                         state::AbstractVector{<:Real},
                                         shocks::AbstractMatrix{T},
                                         data_in_deviations::AbstractMatrix{<:Real},
@@ -4863,8 +4871,8 @@ end
 end
 
 
-@unstable function filter_free_loglikelihood_loop(::Val{:pruned_second_order},
-                                        𝐒::Vector{<:AbstractMatrix},
+function filter_free_loglikelihood_loop(::Val{:pruned_second_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
                                         state::AbstractVector{<:AbstractVector{<:Real}},
                                         shocks::AbstractMatrix{T},
                                         data_in_deviations::AbstractMatrix{<:Real},
@@ -4904,8 +4912,8 @@ end
 end
 
 
-@unstable function filter_free_loglikelihood_loop(::Val{:pruned_third_order},
-                                        𝐒::Vector{<:AbstractMatrix},
+function filter_free_loglikelihood_loop(::Val{:pruned_third_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
                                         state::AbstractVector{<:AbstractVector{<:Real}},
                                         shocks::AbstractMatrix{T},
                                         data_in_deviations::AbstractMatrix{<:Real},
