@@ -969,9 +969,9 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻²,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -1263,9 +1263,9 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻²,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -1588,9 +1588,9 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻³,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -2065,9 +2065,9 @@ function calculate_loglikelihood(::Val{:inversion},
             𝐒⁻³,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -3133,10 +3133,12 @@ end
     end
 
     states = [deepcopy(initial_state) for _ in 1:nE + 1]
-    next_state₁ = zeros(T.nVars)
-    next_state₂ = zeros(T.nVars)
-    zero_shocks = zeros(nE)
-    single_shock = zeros(nE)
+    next_state₁ = state[1]
+    next_state₂ = state[2]
+    zero_shocks = init_guess
+    single_shock = ws.x_shocks
+    fill!(zero_shocks, 0.0)
+    fill!(single_shock, 0.0)
 
     for w in 1:n_warm
         for ii in 1:nE
@@ -3706,6 +3708,7 @@ end
     𝐒ⁱ²ᵉ = ws.Si2e_buffer
     kron_aug_state₁ = ws.kronaug_state
     kron_kron_aug_state₁ = ws.kron_kron_aug_state
+    kron_aug_state_aux = ws.kronaug_state_aux
     aug_state₁ = ws.aug_state₁
     aug_state₁̂ = ws.aug_state₁̂
     aug_state₂ = ws.aug_state₂
@@ -4065,19 +4068,20 @@ end
     end
 
     states = [deepcopy(initial_state) for _ in 1:nE + 1]
-    next_state₁ = zeros(T.nVars)
-    next_state₂ = zeros(T.nVars)
-    next_state₃ = zeros(T.nVars)
-    zero_shocks = zeros(nE)
-    single_shock = zeros(nE)
-    n_aug = length(T.past_not_future_and_mixed_idx) + 1 + nE
-    decomp_aug_state₁ = zeros(n_aug)
-    decomp_aug_state₁̂ = zeros(n_aug)
-    decomp_aug_state₂ = zeros(n_aug)
-    decomp_aug_state₃ = zeros(n_aug)
-    decomp_k11 = zeros(n_aug^2)
-    decomp_k12̂ = zeros(n_aug^2)
-    decomp_k111 = zeros(n_aug^3)
+    next_state₁ = state[1]
+    next_state₂ = state[2]
+    next_state₃ = state[3]
+    zero_shocks = init_guess
+    single_shock = ws.x_shocks
+    fill!(zero_shocks, 0.0)
+    fill!(single_shock, 0.0)
+    decomp_aug_state₁ = aug_state₁
+    decomp_aug_state₁̂ = aug_state₁̂
+    decomp_aug_state₂ = aug_state₂
+    decomp_aug_state₃ = aug_state₃
+    decomp_k11 = kron_aug_state₁
+    decomp_k12̂ = kron_aug_state_aux
+    decomp_k111 = kron_kron_aug_state₁
 
     for w in 1:n_warm
         for ii in 1:nE
@@ -4180,10 +4184,6 @@ function hidden_warmup_shock_norm(x_warmup::AbstractVector{R}, n_exo::Int, warmu
     return sum(abs2, @view x_warmup[1:n_hidden])
 end
 
-# Keep the surrounding dense-vs-sparse choice when warmup paths only need an element-type cast.
-convert_warmup_matrix(::Type{R}, A::AbstractMatrix{R}) where R <: Real = A
-convert_warmup_matrix(::Type{R}, A::AbstractMatrix{S}) where {R <: Real, S <: Real} = R.(A)
-
 function solve_first_order_warmup_shocks(jac::AbstractMatrix{R}, rhs::AbstractVector{R}) where R <: Real
     size(jac, 2) == 0 && return zeros(R, 0), true
     size(jac, 1) == 0 && return zeros(R, size(jac, 2)), true
@@ -4209,10 +4209,10 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
                                                        𝐒²ᵉ::AbstractMatrix{R},
                                                        𝐒⁻¹::AbstractMatrix{R},
                                                        𝐒⁻²::AbstractMatrix{R};
-                                                       ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                       I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                       I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                       I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                       ws::inversion_workspace{R},
+                                                       I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                       I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                       I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_past = length(state0)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4223,17 +4223,17 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
 
     state = copy(state0)
     state_next = similar(state0)
-    state_vol = ws === nothing ? Vector{R}(undef, n_state_vol) : ws.state_vol
-    aug_state = ws === nothing ? Vector{R}(undef, n_aug) : ws.aug_state₁
-    kronaug_state = ws === nothing ? Vector{R}(undef, n_aug^2) : ws.kronaug_state
-    kronstate_vol = ws === nothing ? Vector{R}(undef, n_state_vol^2) : ws.kronstate_vol
+    state_vol = ws.state_vol
+    aug_state = ws.aug_state₁
+    kronaug_state = ws.kronaug_state
+    kronstate_vol = ws.kronstate_vol
     kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
     kron_shock_shock = Vector{R}(undef, n_exo^2)
-    kron_I_state = ws === nothing ? zeros(R, n_exo * n_state_vol, n_exo) : ws.kron_buffer_state
+    kron_I_state = ws.kron_buffer_state
     ds_dz = zeros(R, n_past, n_z)
     ds_tmp = zeros(R, n_past, n_z)
-    y_pred = ws === nothing ? zeros(R, n_obs) : ws.y_obs
-    jac_x = ws === nothing ? Matrix{R}(undef, n_obs, n_exo) : ws.jacc_v_buf
+    y_pred = ws.y_obs
+    jac_x = ws.jacc_v_buf
 
     I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
     I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
@@ -4303,10 +4303,10 @@ function solve_second_order_joint_warmup_shocks_with_jacobian(state0::AbstractVe
                                                               warmup_iterations::Int;
                                                               max_iter::Int = 60,
                                                               tol::Real = 1e-10,
-                                                              ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                              I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                              I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                              I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                              ws::inversion_workspace{R},
+                                                              I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                              I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                              I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -4396,10 +4396,10 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
                                                               𝐒²ᵉ::AbstractMatrix{R},
                                                               𝐒⁻¹::AbstractMatrix{R},
                                                               𝐒⁻²::AbstractMatrix{R};
-                                                              ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                              I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                              I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                              I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                              ws::inversion_workspace{R},
+                                                              I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                              I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                              I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_past = length(state10)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4412,22 +4412,22 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
     state₂ = copy(state20)
     state₁_next = similar(state10)
     state₂_next = similar(state20)
-    state₁_vol = ws === nothing ? Vector{R}(undef, n_state_vol) : ws.state_vol
+    state₁_vol = ws.state_vol
     state₂_vol = Vector{R}(undef, n_state_vol)
-    aug_state₁ = ws === nothing ? Vector{R}(undef, n_aug) : ws.aug_state₁
-    aug_state₂ = ws === nothing ? Vector{R}(undef, n_aug) : ws.aug_state₂
-    kronaug_state₁ = ws === nothing ? Vector{R}(undef, n_aug^2) : ws.kronaug_state
-    kronstate₁_vol = ws === nothing ? Vector{R}(undef, n_state_vol^2) : ws.kronstate_vol
+    aug_state₁ = ws.aug_state₁
+    aug_state₂ = ws.aug_state₂
+    kronaug_state₁ = ws.kronaug_state
+    kronstate₁_vol = ws.kronstate_vol
     kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
     kron_shock_shock = Vector{R}(undef, n_exo^2)
-    kron_I_state = ws === nothing ? zeros(R, n_exo * n_state_vol, n_exo) : ws.kron_buffer_state
+    kron_I_state = ws.kron_buffer_state
 
     ds1_dz = zeros(R, n_past, n_z)
     ds2_dz = zeros(R, n_past, n_z)
     ds1_tmp = zeros(R, n_past, n_z)
     ds2_tmp = zeros(R, n_past, n_z)
-    y_pred = ws === nothing ? zeros(R, n_obs) : ws.y_obs
-    jac_x = ws === nothing ? Matrix{R}(undef, n_obs, n_exo) : ws.jacc_v_buf
+    y_pred = ws.y_obs
+    jac_x = ws.jacc_v_buf
 
     I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
     I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
@@ -4519,10 +4519,10 @@ function solve_pruned_second_order_joint_warmup_shocks_with_jacobian(state10::Ab
                                                                      warmup_iterations::Int;
                                                                      max_iter::Int = 60,
                                                                      tol::Real = 1e-10,
-                                                                     ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                                     I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                                     I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                                     I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                                     ws::inversion_workspace{R},
+                                                                     I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                                     I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                                     I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -4615,10 +4615,10 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
                                                       𝐒⁻¹::AbstractMatrix{R},
                                                       𝐒⁻²::AbstractMatrix{R},
                                                       𝐒⁻³::AbstractMatrix{R};
-                                                      ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                      I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                      I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                      I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                      ws::inversion_workspace{R},
+                                                      I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                      I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                      I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_past = length(state0)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4629,23 +4629,23 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
 
     state = copy(state0)
     state_next = similar(state0)
-    state_vol = ws === nothing ? Vector{R}(undef, n_state_vol) : ws.state_vol
-    aug_state = ws === nothing ? Vector{R}(undef, n_aug) : ws.aug_state₁
-    kronaug_state = ws === nothing ? Vector{R}(undef, n_aug^2) : ws.kronaug_state
-    kronstate_vol = ws === nothing ? Vector{R}(undef, n_state_vol^2) : ws.kronstate_vol
-    kronstate_vol3 = ws === nothing ? Vector{R}(undef, n_state_vol^3) : ws.kronstate_vol³
-    kron_aug3 = ws === nothing ? Vector{R}(undef, n_aug^3) : ws.kron_kron_aug_state
+    state_vol = ws.state_vol
+    aug_state = ws.aug_state₁
+    kronaug_state = ws.kronaug_state
+    kronstate_vol = ws.kronstate_vol
+    kronstate_vol3 = ws.kronstate_vol³
+    kron_aug3 = ws.kron_kron_aug_state
     kron_shock_state = Vector{R}(undef, n_exo * n_state_vol)
     kron_shock_shock = Vector{R}(undef, n_exo^2)
     kron_shock_state2 = Vector{R}(undef, n_exo * n_state_vol^2)
     kron_shock2_state = Vector{R}(undef, n_exo^2 * n_state_vol)
     kron_shock3 = Vector{R}(undef, n_exo^3)
-    kron_I_state = ws === nothing ? zeros(R, n_exo * n_state_vol, n_exo) : ws.kron_buffer_state
+    kron_I_state = ws.kron_buffer_state
 
     ds_dz = zeros(R, n_past, n_z)
     ds_tmp = zeros(R, n_past, n_z)
-    y_pred = ws === nothing ? zeros(R, n_obs) : ws.y_obs
-    jac_x = ws === nothing ? Matrix{R}(undef, n_obs, n_exo) : ws.jacc_v_buf
+    y_pred = ws.y_obs
+    jac_x = ws.jacc_v_buf
 
     I_aug === nothing && (I_aug = Matrix{R}(ℒ.I, n_aug, n_aug))
     I_state_vol === nothing && (I_state_vol = Matrix{R}(ℒ.I, n_state_vol, n_state_vol))
@@ -4749,10 +4749,10 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                              warmup_iterations::Int;
                                                              max_iter::Int = 80,
                                                              tol::Real = 1e-10,
-                                                             ws::Union{Nothing, inversion_workspace{R}} = nothing,
-                                                             I_aug::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                             I_state_vol::Union{Nothing, AbstractMatrix{R}} = nothing,
-                                                             I_exo::Union{Nothing, AbstractMatrix{R}} = nothing) where R <: Real
+                                                             ws::inversion_workspace{R},
+                                                             I_aug::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                             I_state_vol::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                                                             I_exo::Union{Nothing, AbstractMatrix{<:Real}} = nothing) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
     n_obs = length(target)
 
@@ -5077,9 +5077,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
             𝐒⁻²,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -5261,9 +5261,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
             𝐒⁻²,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -5478,9 +5478,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
             𝐒⁻³,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched
@@ -5731,9 +5731,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
             𝐒⁻³,
             warmup_iterations;
             ws = ws,
-            I_aug = convert_warmup_matrix(R, cc.I_aug),
-            I_state_vol = convert_warmup_matrix(R, cc.I_state_vol),
-            I_exo = convert_warmup_matrix(R, cc.I_exo),
+            I_aug = cc.I_aug,
+            I_state_vol = cc.I_state_vol,
+            I_exo = cc.I_exo,
         )
 
         if !matched

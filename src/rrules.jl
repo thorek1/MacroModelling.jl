@@ -10312,6 +10312,13 @@ function second_order_joint_warmup_solver_pullback!(
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
+    n_exo = size(𝐒¹ᵉ, 2)
+    n_past = length(state0)
+    n_obs = length(target)
+    ws = Inversion_workspace(Float64)
+    ensure_inversion_buffers!(ws, n_exo, n_past)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_obs)
+
     if size(warmup_jac, 1) == size(warmup_jac, 2)
         n_z = length(warmup_x)
         ∂warmup_x_from_jac = zeros(Float64, n_z)
@@ -10377,7 +10384,6 @@ function second_order_joint_warmup_solver_pullback!(
         return nothing
     end
 
-    n_exo = size(𝐒¹ᵉ, 2)
     n_z = n_exo * warmup_iterations
     sqrt_tol = sqrt(tol)
 
@@ -10399,7 +10405,8 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²,
+            𝐒⁻²;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -10439,7 +10446,8 @@ function second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²,
+            𝐒⁻²;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -10895,6 +10903,13 @@ function pruned_second_order_joint_warmup_solver_pullback!(
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
+    n_exo = size(𝐒¹ᵉ, 2)
+    n_past = length(state10)
+    n_obs = length(target)
+    ws = Inversion_workspace(Float64)
+    ensure_inversion_buffers!(ws, n_exo, n_past)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_obs)
+
     if size(warmup_jac, 1) == size(warmup_jac, 2)
         n_z = length(warmup_x)
         ∂warmup_x_from_jac = zeros(Float64, n_z)
@@ -10968,7 +10983,6 @@ function pruned_second_order_joint_warmup_solver_pullback!(
         return nothing
     end
 
-    n_exo = size(𝐒¹ᵉ, 2)
     n_z = n_exo * warmup_iterations
     sqrt_tol = sqrt(tol)
 
@@ -10992,7 +11006,8 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²,
+            𝐒⁻²;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -11034,7 +11049,8 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             𝐒²⁻ᵉ,
             𝐒²ᵉ,
             𝐒⁻¹,
-            𝐒⁻²,
+            𝐒⁻²;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -15665,6 +15681,13 @@ function third_order_joint_warmup_solver_pullback!(
     warmup_iterations == 0 && return nothing
     isempty(warmup_x) && return nothing
 
+    n_exo = size(𝐒¹ᵉ, 2)
+    n_past = length(state0)
+    n_obs = length(target)
+    ws = Inversion_workspace(Float64)
+    ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, n_exo, n_obs; third_order = true)
+
     if size(warmup_jac, 1) == size(warmup_jac, 2)
         n_z = length(warmup_x)
         ∂warmup_x_from_jac = zeros(Float64, n_z)
@@ -15749,7 +15772,6 @@ function third_order_joint_warmup_solver_pullback!(
         return nothing
     end
 
-    n_exo = size(𝐒¹ᵉ, 2)
     n_z = n_exo * warmup_iterations
     sqrt_tol = sqrt(tol)
 
@@ -15776,7 +15798,8 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒³ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            𝐒⁻³,
+            𝐒⁻³;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)
@@ -15821,7 +15844,8 @@ function third_order_joint_warmup_solver_pullback!(
             𝐒³ᵉ,
             𝐒⁻¹,
             𝐒⁻²,
-            𝐒⁻³,
+            𝐒⁻³;
+            ws = ws,
         )
         push!(z_hist, z_now)
         push!(y_hist, y_now)

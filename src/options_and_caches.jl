@@ -950,6 +950,7 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # kron_buffer2ss (n_past^2)
         zeros(TT, 0, 0),         # kron_buffer3sv (n_exo*(n_past+1)^2 × n_exo)
         zeros(TT, 0, 0),         # kron_buffer4sv (n_exo^2*(n_past+1) × n_exo^2)
+        zeros(TT, 0),            # kronaug_state_aux ((n_past+1+n_exo)^2)
         # Pullback buffers (for reverse-mode AD)
         zeros(TT, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
         zeros(TT, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
@@ -1077,6 +1078,9 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
         end
         if size(ws.kron_buffer4sv, 1) != n_exo² * n_state_vol || size(ws.kron_buffer4sv, 2) != n_exo²
             ws.kron_buffer4sv = zeros(T, n_exo² * n_state_vol, n_exo²)
+        end
+        if length(ws.kronaug_state_aux) != n_aug^2
+            ws.kronaug_state_aux = zeros(T, n_aug^2)
         end
     end
     

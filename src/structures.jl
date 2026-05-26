@@ -1151,6 +1151,7 @@ mutable struct inversion_workspace{T <: Real}
     kron_buffer2ss::Vector{T}        # n_past^2 - ℒ.kron(state₁, state₂) for pruned 3rd order
     kron_buffer3sv::Matrix{T}        # (n_exo * (n_past+1)^2, n_exo) - ℒ.kron(kron(J, state_vol), state_vol)
     kron_buffer4sv::Matrix{T}        # (n_exo^2 * (n_past+1), n_exo^2) - x_kron_II! scratch
+    kronaug_state_aux::Vector{T}     # (n_past+1+n_exo)^2 - auxiliary augmented-state kron scratch
     
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
