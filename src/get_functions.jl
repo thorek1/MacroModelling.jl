@@ -4348,7 +4348,7 @@ end
 $(SIGNATURES)
 Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-The primal path supports both the Kalman and inversion likelihoods. Analytical reverse-mode support is implemented for both through custom `rrule` definitions. Committed test coverage is narrower than that blanket statement; see the filter-likelihood support matrix in the README for the exact dense, missing-data, and warmup combinations currently exercised. Interior missing observations are ignored on a per-period basis, and fully unobserved leading or trailing periods are discarded before the likelihood is evaluated.
+This function is differentiable and supports both the Kalman and inversion likelihoods.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4550,7 +4550,7 @@ Return the *filter-free* loglikelihood of the model given the data, parameters, 
 
 Only the *measurement* part of the joint loglikelihood is returned. The prior on the shocks (typically standard Normal) and the prior on `measurement_error_std` are expected to be declared by the user in their probabilistic-programming model.
 
-The filter-free primal path and its analytical reverse-mode `rrule` are implemented for `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`. Committed test coverage is combination-specific; see the filter-likelihood support matrix in the README for the exact dense, missing-data, and warmup combinations currently exercised.
+The filter-free primal path and its analytical reverse-mode `rrule` are implemented for `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`.
 
 # Arguments
 - $MODEL®
