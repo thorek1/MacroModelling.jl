@@ -3674,13 +3674,13 @@ function rrule(::typeof(calculate_third_order_moments),
         # ── Standard Lyapunov solve (compressed) ──
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
-        C_dense = Matrix{Float64}(sparse_ABAt(ê_to_ŝ₃, Γ₃)) + A_cross + A_cross'
+        A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
 
         N_total = N_upper + N_lower
         lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
+                                    ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
                                     tol = opts.tol.third_order.ad.lyapunov,
                                     verbose = opts.verbose)
@@ -4531,12 +4531,12 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         # ── Standard Lyapunov solve (compressed) ──
         N_total = N_upper + N_lower
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
-        A_cross = Matrix{Float64}(ê_to_ŝ₃ * Eᴸᶻ) * ŝ_to_ŝ₃'
-        C_dense = Matrix{Float64}(sparse_ABAt(ê_to_ŝ₃, Γ₃)) + A_cross + A_cross'
+        A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
 
         lyap_ws_3rd = Lyapunov_workspace(N_total)
         lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                       ŝ_to_ŝ₃, C_dense, lyap_ws_3rd,
+                                       ŝ_to_ŝ₃, C, lyap_ws_3rd,
                                        lyapunov_algorithm = opts.lyapunov_algorithm,
                                        tol = opts.tol.third_order.ad.lyapunov,
                                        verbose = opts.verbose)
@@ -8375,7 +8375,7 @@ function rrule(::typeof(solve_lyapunov_equation),
             workspace.pow_iters = pow_iters_captured
             workspace.pow_capture = false
         end
-        ∂C, slvd = solve_lyapunov_equation(At, Matrix{Float64}(∂P₁), workspace,
+        ∂C, slvd = solve_lyapunov_equation(At, ∂P₁, workspace,
                                            lyapunov_algorithm = lyapunov_algorithm,
                                            tol = tol,
                                            verbose = verbose)
