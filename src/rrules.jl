@@ -12365,6 +12365,9 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 warmup_iterations,
                 ∂warmup_x,
                 ∂warmup_jac,
+                cc.I_aug,
+                cc.I_state_vol,
+                cc.I_exo,
             )
             @views ∂𝐒ⁱ²ᵉ[warmup_idx0, :] .+= 2 .* ∂𝐒²ᵉ_warmup
             copyto!(∂st_next, ∂warmup_state0)
