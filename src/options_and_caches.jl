@@ -2453,7 +2453,7 @@ when it is called inside a ForwardDiff dual-number overload or a ChainRulesCore 
 - `sylvester::SolverTolerances`: tolerances for the Sylvester equation derivative solve.
     Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation derivative solve.
-    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 
 Construct via `AdTolerances(; qme, sylvester, lyapunov)`.
 """
@@ -2466,7 +2466,7 @@ end
 function AdTolerances(; qme = (;), sylvester = (;), lyapunov = (;))
     base_qme  = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-6)
     base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
     return AdTolerances(
         resolve_tol(qme, base_qme),
         resolve_tol(sylvester, base_sylv),
@@ -2543,7 +2543,7 @@ Tolerance settings for second- and third-order perturbation solutions and their 
     Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `lyapunov::SolverTolerances`: tolerances for the Lyapunov equation solver used to
   compute higher-order covariance matrices.
-    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-12`, `acceptance_tol=1e-12`.
+    Default: `atol=1e-14`, `rtol=1e-14`, `initial_guess_acceptance_tol=1e-10`, `acceptance_tol=1e-10`.
 - `droptol::Float64` [Default: `1e-14`]: entries smaller than this threshold in solution
   matrices are dropped (set to zero) to reduce sparsity fill-in.
 - `dependencies_tol::Float64` [Default: `1e-12`]: threshold for determining variable
@@ -2566,7 +2566,7 @@ function HigherOrderTolerances(; sylvester = (;),
                                dependencies_tol::Float64 = 1e-12,
                                ad = (;))
     base_sylv = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
-    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-12, 1e-12)
+    base_lyap = SolverTolerances(1e-14, 1e-14, 1e-10, 1e-10)
     base_ad   = AdTolerances()
     return HigherOrderTolerances(
         resolve_tol(sylvester, base_sylv),
