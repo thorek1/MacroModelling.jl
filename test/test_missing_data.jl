@@ -185,6 +185,14 @@ end
     n_warm = warmup_iterations - 1
     higher_order_algos = (:pruned_second_order, :second_order, :pruned_third_order, :third_order)
 
+    dat_nan = Matrix{Float64}(collect(data))
+    dat_nan[1, 25]  = NaN
+    dat_nan[2, 47]  = NaN
+    dat_nan[:, 30] .= NaN
+    dat_nan[:, 31] .= NaN
+    dat_nan[:, 60] .= NaN
+    data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
+
     for (label, dataset) in (("dense", data), ("missing", data_nan))
         dataset_prepended = prepend_initial_periods(dataset, n_warm)
 
