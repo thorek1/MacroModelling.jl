@@ -90,7 +90,7 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
         end
 
         # Sort for sequential A-column access (cache-friendly advancing pointers)
-        sort!(view(w_nz, 1:w_cnt))
+        sort!(w_nz, 1, w_cnt, QuickSort, Base.Order.Forward)
 
         # Phase B: c[i] += (A * w)[i] for i ≥ j  (lower triangle only)
         for idx in 1:w_cnt
