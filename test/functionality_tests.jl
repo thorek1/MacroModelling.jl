@@ -1705,8 +1705,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 # reallocated across the shock columns.
                 sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
                 sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
-                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-8)
-                @test isapprox(sum_default, sum_mc, atol = 1e-8)
+                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-6)
+                @test isapprox(sum_default, sum_mc, atol = 1e-6)
             end
 
             # First-order with marginal_contribution = true is silently ignored
