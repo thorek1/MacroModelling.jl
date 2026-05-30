@@ -170,9 +170,9 @@ init_params = Smets_Wouters_2007_linear.parameter_values[Int.(indexin(par_names,
 
     posterior_summary_filter_free = FlexiChains.summarystats(ff_samps)
     show(stdout, MIME"text/plain"(), posterior_summary_filter_free)
-    open(joinpath("tasks", "sw07_filter_free_1st_order_linear_posterior_summary.txt"), "w") do io
-        show(io, MIME"text/plain"(), posterior_summary_filter_free)
-    end
+    # open(joinpath("tasks", "sw07_filter_free_1st_order_linear_posterior_summary.txt"), "w") do io
+    #     show(io, MIME"text/plain"(), posterior_summary_filter_free)
+    # end
     println()
     println("Mean variable values (filter-free, first order, linear): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
 #     @test size(ff_samps, 1) == n_filter_free_samples
