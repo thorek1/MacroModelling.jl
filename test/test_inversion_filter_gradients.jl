@@ -254,39 +254,35 @@ end
     end
 
     # --- (b) FULL parameter vector — first_order only, under-identified ------
-    let algo = :first_order
-        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
-        compare_gradients("Gali :$algo (under-identified, FULL param vector)",
-                          GALI, data, base_params, collect(eachindex(base_params)), algo)
-    end
+    algo = :first_order
+    data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
+    compare_gradients("Gali :$algo (under-identified, FULL param vector)",
+                      GALI, data, base_params, collect(eachindex(base_params)), algo)
 
     # --- (c) square observables (n_obs == n_shocks): first_order only -------
     #   (higher-order inversion does not converge for square systems on this
     #    model — exercising it would test the failure path, not the gradient.)
-    let algo = :first_order
-        # Use a tighter σ so that finite-difference perturbations keep the
-        # square-system inversion inside its convergence basin.
-        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
-        compare_gradients("Gali :$algo (square obs)",
-                          GALI, data, base_params, p_subset, algo)
-    end
+    algo = :first_order
+    # Use a tighter σ so that finite-difference perturbations keep the
+    # square-system inversion inside its convergence basin.
+    data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
+    compare_gradients("Gali :$algo (square obs)",
+                      GALI, data, base_params, p_subset, algo)
 
     # --- (c2) square observables + missing periods: first_order only -------
-    let algo = :first_order
-        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 8, σ = 1e-6, seed = 17)
-        data_missing = data_with_missing_observations(data)
-        compare_gradients("Gali :$algo (square obs + missing periods)",
-                          GALI, data_missing, base_params, p_subset, algo)
-    end
+    algo = :first_order
+    data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 8, σ = 1e-6, seed = 17)
+    data_missing = data_with_missing_observations(data)
+    compare_gradients("Gali :$algo (square obs + missing periods)",
+                      GALI, data_missing, base_params, p_subset, algo)
 
     # --- (d) warmup_iterations > 0: dense first-order gradient path ---------
     @testset "Gali :first_order (warmup_iterations=2)" begin
-        let algo = :first_order
-            data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
-            compare_gradients("Gali :$algo (warmup_iterations=2)",
-                              GALI, data, base_params, p_subset, algo;
-                              warmup_iterations = 2)
-        end
+        algo = :first_order
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
+        compare_gradients("Gali :$algo (warmup_iterations=2)",
+                          GALI, data, base_params, p_subset, algo;
+                          warmup_iterations = 2)
     end
 
     # --- (d1) warmup_iterations > 0: higher-order dense gradient paths -----
@@ -377,20 +373,18 @@ end
     base_params = copy(SW07.parameter_values)
 
     # First-order: FULL parameter vector
-    let algo = :first_order
-        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 21)
-        compare_gradients("SW07 :$algo (under-identified, FULL param vector, $(length(base_params)) params)",
-                          SW07, data, base_params,
-                          collect(eachindex(base_params)), algo)
-    end
+    algo = :first_order
+    data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 21)
+    compare_gradients("SW07 :$algo (under-identified, FULL param vector, $(length(base_params)) params)",
+                      SW07, data, base_params,
+                      collect(eachindex(base_params)), algo)
 
     # Pruned-2nd: subset only
-    let algo = :pruned_second_order
-        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 22)
-        p_subset = sw07_subset_indices()
-        compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
-                          SW07, data, base_params, p_subset, algo)
-    end
+    algo = :pruned_second_order
+    data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 22)
+    p_subset = sw07_subset_indices()
+    compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
+                      SW07, data, base_params, p_subset, algo)
 
     # Missing-data coverage on the SW07 paths already present in this file.
     for algo in (:first_order, :pruned_second_order)

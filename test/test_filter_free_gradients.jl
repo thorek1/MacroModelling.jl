@@ -332,65 +332,59 @@ import ADTypes: AutoMooncake
 import Mooncake
 import DelimitedFiles
 
-let
-    dat, header = DelimitedFiles.readdlm(joinpath(@__DIR__, "data", "usmodel.csv"), ',', header = true)
-    dat   = Float64.(dat)
-    names = vec(Symbol.(strip.(header)))
-    full_data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
-    obs_caldara = [:dy]
-    data_caldara = full_data(obs_caldara, 75:230)
+dat, header = DelimitedFiles.readdlm(joinpath(@__DIR__, "data", "usmodel.csv"), ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
+full_data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
+data_caldara = full_data([:dy], 75:230)
 
-    include(joinpath(@__DIR__, "models", "Caldara_et_al_2012_estim.jl"))
+include(joinpath(@__DIR__, "models", "Caldara_et_al_2012_estim.jl"))
 
-    nT_caldara   = 10
-    data_ff      = data_caldara[:, 1:nT_caldara]
-    nExo_caldara = length(get_shocks(Caldara_et_al_2012_estim))
+const CALDARA_FF = Caldara_et_al_2012_estim
+const CALDARA_FF_T = 10
+const CALDARA_FF_DATA = data_caldara[:, 1:CALDARA_FF_T]
+const CALDARA_FF_NEXO = length(get_shocks(CALDARA_FF))
 
-    function caldara_rrule_check(algo, me)
-        Random.seed!(42)
-        pars   = copy(Caldara_et_al_2012_estim.parameter_values)
-        shocks = 0.01 .* randn(nExo_caldara, nT_caldara)
+@testset "Filter-free rrule consistency (Caldara_et_al_2012, $algo, $melabel)" for
+        (algo, melabel, me) in [
+            (:third_order,         "scalar me_std", 0.05),
+            (:third_order,         "vector me_std", [0.05]),
+            (:pruned_third_order,  "scalar me_std", 0.05),
+            (:pruned_third_order,  "vector me_std", [0.05]),
+        ]
+    Random.seed!(42)
+    pars = copy(CALDARA_FF.parameter_values)
+    shocks = 0.01 .* randn(CALDARA_FF_NEXO, CALDARA_FF_T)
 
-        llh_fwd = get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff,
-                                                pars, shocks, me;
-                                                algorithm = algo)
-        @test isfinite(llh_fwd)
+    llh_fwd = get_filter_free_loglikelihood(CALDARA_FF, CALDARA_FF_DATA,
+                                            pars, shocks, me;
+                                            algorithm = algo)
+    @test isfinite(llh_fwd)
 
-        llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, Caldara_et_al_2012_estim,
-                              data_ff, pars, shocks, me; algorithm = algo)
-        @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
-        _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
+    llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, CALDARA_FF,
+                          CALDARA_FF_DATA, pars, shocks, me; algorithm = algo)
+    @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
+    _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
 
-        nP  = length(pars)
-        nSh = nExo_caldara * nT_caldara
-        nMe = me isa AbstractVector ? length(me) : 1
-        z0  = vcat(pars, vec(shocks), me isa AbstractVector ? me : [me])
-        obj = function (z)
-            p     = z[1:nP]
-            s     = reshape(z[nP+1:nP+nSh], nExo_caldara, nT_caldara)
-            mpart = z[nP+nSh+1:nP+nSh+nMe]
-            mloc  = me isa AbstractVector ? mpart : mpart[1]
-            get_filter_free_loglikelihood(Caldara_et_al_2012_estim, data_ff, p, s, mloc;
-                                           algorithm = algo)
-        end
-        g_mc       = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)
-        dpars_mc   = g_mc[1:nP]
-        dshk_mc    = reshape(g_mc[nP+1:nP+nSh], nExo_caldara, nT_caldara)
-        dme_mc_raw = g_mc[nP+nSh+1:nP+nSh+nMe]
-        dme_mc     = me isa AbstractVector ? dme_mc_raw : dme_mc_raw[1]
-
-        @test isapprox(dpars_mc, dpars_a; rtol = 1e-8)
-        @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
-        @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
+    nP  = length(pars)
+    nSh = CALDARA_FF_NEXO * CALDARA_FF_T
+    nMe = me isa AbstractVector ? length(me) : 1
+    z0  = vcat(pars, vec(shocks), me isa AbstractVector ? me : [me])
+    obj = function(z)
+        p     = z[1:nP]
+        s     = reshape(z[nP+1:nP+nSh], CALDARA_FF_NEXO, CALDARA_FF_T)
+        mpart = z[nP+nSh+1:nP+nSh+nMe]
+        mloc  = me isa AbstractVector ? mpart : mpart[1]
+        get_filter_free_loglikelihood(CALDARA_FF, CALDARA_FF_DATA, p, s, mloc;
+                                      algorithm = algo)
     end
+    g_mc       = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)
+    dpars_mc   = g_mc[1:nP]
+    dshk_mc    = reshape(g_mc[nP+1:nP+nSh], CALDARA_FF_NEXO, CALDARA_FF_T)
+    dme_mc_raw = g_mc[nP+nSh+1:nP+nSh+nMe]
+    dme_mc     = me isa AbstractVector ? dme_mc_raw : dme_mc_raw[1]
 
-    @testset "Filter-free rrule consistency (Caldara_et_al_2012, $algo, $melabel)" for
-            (algo, melabel, me) in [
-                (:third_order,         "scalar me_std", 0.05),
-                (:third_order,         "vector me_std", [0.05]),
-                (:pruned_third_order,  "scalar me_std", 0.05),
-                (:pruned_third_order,  "vector me_std", [0.05]),
-            ]
-        caldara_rrule_check(algo, me)
-    end
+    @test isapprox(dpars_mc, dpars_a; rtol = 1e-8)
+    @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
+    @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
 end
