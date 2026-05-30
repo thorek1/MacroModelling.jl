@@ -86,6 +86,7 @@ function informative_period_range(obs_idx_per_t::Vector{Vector{Int}})
     first_t = findfirst(idx -> !isempty(idx), obs_idx_per_t)
     first_t === nothing && return 1:0
     last_t = findlast(idx -> !isempty(idx), obs_idx_per_t)
+    last_t === nothing && return 1:0
     return first_t:last_t
 end
 
@@ -116,7 +117,7 @@ function trim_informative_sample(data::AbstractMatrix{<:Real};
                                          warn_on_trim::Bool = true,
                                          maxlog::Int = DEFAULT_MAXLOG,
                                          presample_periods::Int = 0,
-                                         require_informative_periods::Bool = false)
+                                         require_informative_periods::Bool = false)::Tuple{AbstractMatrix{<:Real}, Vector{Vector{Int}}, Bool, UnitRange{Int}}
     obs_idx_per_t, _ = build_obs_index(data)
     period_range = informative_period_range(obs_idx_per_t)
     warn_on_trim && warn_informative_trim(period_range, size(data, 2); maxlog = maxlog)
@@ -126,25 +127,26 @@ function trim_informative_sample(data::AbstractMatrix{<:Real};
     end
     trimmed_data = data[:, period_range]
     if isempty(period_range)
-        return trimmed_data, Vector{Vector{Int}}(), false, period_range
+        return (trimmed_data, Vector{Vector{Int}}(), false, period_range)
     end
     trimmed_obs_idx = obs_idx_per_t[period_range]
     has_missing = any(length(idx) < size(data, 1) for idx in trimmed_obs_idx)
-    return trimmed_data, trimmed_obs_idx, has_missing, period_range
+    return (trimmed_data, trimmed_obs_idx, has_missing, period_range)
 end
 
 function trim_informative_sample(data::KeyedArray;
                                          warn_on_trim::Bool = true,
                                          maxlog::Int = DEFAULT_MAXLOG,
                                          presample_periods::Int = 0,
-                                         require_informative_periods::Bool = false)
+                                         require_informative_periods::Bool = false)::Tuple{KeyedArray, Vector{Vector{Int}}, Bool, UnitRange{Int}}
     raw = collect(data)
     _, trimmed_obs_idx, has_missing, period_range = trim_informative_sample(raw;
                                                                             warn_on_trim = warn_on_trim,
                                                                             maxlog = maxlog,
                                                                             presample_periods = presample_periods,
                                                                             require_informative_periods = require_informative_periods)
-    return data[:, period_range], trimmed_obs_idx, has_missing, period_range
+    trimmed_data = data[:, period_range]
+    return (trimmed_data, trimmed_obs_idx, has_missing, period_range)
 end
 
 

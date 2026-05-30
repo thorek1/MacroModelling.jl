@@ -16700,7 +16700,8 @@ function rrule(::typeof(calculate_loglikelihood),
     # observed rows/columns.  Because every product in the analytical
     # pullback that touches a "missing" row of v[t]/invF[t]/K[t]/CP[t] then
     # sees a zero, the existing pullback math is correct unchanged.
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
+    obs_idx_per_t, has_missing_raw = build_obs_index(data_in_deviations)
+    has_missing = has_missing_raw::Bool
     n_obs_full = size(C, 1)
     n_obs_total = 0  # observed scalars contributing to the loglik normaliser
 
