@@ -95,34 +95,26 @@ end
         periods = 1,
     ) |> vec
 
+    clear_solution_caches!(m, :first_order)
+    @test length(m.caches.solver) == 1
+    @test all(isinf, m.caches.solver[end][end])
+
+    irf_endpoint = x -> get_irf(m, x, verbose = true, initial_state = initial_state)[:, end, 1]
+    deriv_reference = ForwardDiff.jacobian(irf_endpoint, parameters)
+
     get_irf(m, parameters)
     for i in 1:(m.caches.solver.capacity + 5)
         push!(m.caches.solver, [fill(float(i), 1), fill(float(i), 1), fill(float(i), length(parameters))])
     end
+    @test !all(isinf, m.caches.solver[end][end])
 
     clear_solution_caches!(m, :first_order)
     @test length(m.caches.solver) == 1
     @test all(isinf, m.caches.solver[end][end])
 
-    deriv_for = ForwardDiff.jacobian(x -> get_irf(m, x, verbose = true, initial_state = initial_state)[:, end, 1], parameters)
-    deriv_fin = FiniteDifferences.jacobian(
-        FiniteDifferences.central_fdm(5, 1, max_range = 1e-4),
-        x -> begin
-            clear_solution_caches!(m, :first_order)
-            get_irf(m, x, initial_state = initial_state)[:, end, 1]
-        end,
-        parameters,
-    )[1]
-
-    # FiniteDifferences clears the NSSS solver cache on every probe, forcing the
-    # solver to restart from the declared `guess` each time. The resulting solution
-    # depends on the perturbed parameter at the level of the solver tolerance
-    # (~1e-12), which the central-difference stencil amplifies to a ~1e-6 noise
-    # floor relative to the largest IRF magnitude. The analytic forward-mode
-    # derivative correctly reports zero (or near-zero) for those entries, so we
-    # compare with a tolerance band that respects this irreducible FD noise.
-    fd_atol = 1e-5 * maximum(abs, deriv_for)
-    @test isapprox(deriv_for, deriv_fin, rtol = 1e-4, atol = fd_atol)
+    deriv_after_eviction = ForwardDiff.jacobian(irf_endpoint, parameters)
+    derivative_atol = 1e-9 * max(1, maximum(abs, deriv_reference))
+    @test isapprox(deriv_after_eviction, deriv_reference, rtol = 1e-9, atol = derivative_atol)
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
