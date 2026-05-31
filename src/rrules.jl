@@ -1837,20 +1837,21 @@ end
 function rrule(::typeof(get_loglikelihood),
                 𝓂::ℳ,
                 data::KeyedArray,
-                parameter_values::Vector{S};
+                parameter_values::Vector{S},
+                initial_state::Union{Vector{V},Vector{Vector{V}}} = DEFAULT_INITIAL_STATE;
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                 on_failure_loglikelihood::U = -Inf,
                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                verbose::Bool = DEFAULT_VERBOSE) where {S <: Real, U <: AbstractFloat}
+                verbose::Bool = DEFAULT_VERBOSE) where {S <: Real, V <: Real, U <: AbstractFloat}
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1870,7 +1871,7 @@ function rrule(::typeof(get_loglikelihood),
 
     if bounds_violated
         llh = S(on_failure_loglikelihood)
-        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
     obs_indices = convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.SS_and_pars_names))
@@ -1891,8 +1892,15 @@ function rrule(::typeof(get_loglikelihood),
 
     if !solved
         llh = S(on_failure_loglikelihood)
-        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
+
+    # Apply user-supplied initial state directly to `state` (vector of vectors
+    # for first/pruned; flat vector for second/third order). The inner filter
+    # rrules consume the modified `state` transparently and have no
+    # `initial_state` kwarg.
+    nVars = 𝓂.constants.post_model_macro.nVars
+    state_overridden = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, nVars)
 
     # ── step 2: data_in_deviations = dt .- SS_and_pars[obs_indices] ──
     dt = if collect(axiskeys(data, 1)) isa Vector{String}
@@ -1909,14 +1917,14 @@ function rrule(::typeof(get_loglikelihood),
 
     if size(data_in_deviations, 2) == 0
         llh = zero(S)
-        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
     # ── step 3: calculate_loglikelihood ──
     llh_rrule = if has_missing
         rrule(calculate_loglikelihood_with_missing,
               Val(filter), Val(algorithm), obs_indices,
-              𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces, obs_idx_per_t;
+              𝐒, data_in_deviations, constants_obj, state_overridden, 𝓂.workspaces, obs_idx_per_t;
               warmup_iterations = warmup_iterations,
               presample_periods = presample_periods,
               initial_covariance = initial_covariance,
@@ -1926,7 +1934,7 @@ function rrule(::typeof(get_loglikelihood),
     else
         rrule(calculate_loglikelihood,
               Val(filter), Val(algorithm), obs_indices,
-              𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces;
+              𝐒, data_in_deviations, constants_obj, state_overridden, 𝓂.workspaces;
               warmup_iterations = warmup_iterations,
               presample_periods = presample_periods,
               initial_covariance = initial_covariance,
@@ -1938,7 +1946,7 @@ function rrule(::typeof(get_loglikelihood),
     if llh_rrule === nothing
         # When the inner rrule cannot run, we cannot supply a gradient anyway, so
         # short-circuit to the failure path instead of recomputing the primal.
-        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
     llh, llh_pb = llh_rrule
@@ -1959,7 +1967,7 @@ function rrule(::typeof(get_loglikelihood),
         # an all-NoTangent pullback.  The loglikelihood is then a constant, so
         # the parameter gradient is exactly zero.
         if ∂𝐒 isa Union{NoTangent, AbstractZero}
-            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
 
         # backprop through data_in_deviations = dt .- SS_and_pars[obs_indices]
@@ -1968,23 +1976,86 @@ function rrule(::typeof(get_loglikelihood),
             ∂SS_and_pars[obs_indices] .-= vec(sum(∂data_in_devs, dims = 2))
         end
 
+        # Route ∂state through the apply_initial_state_override transformation.
+        # Components the user overrode no longer depend on the solver-produced
+        # `state`, so their cotangent must NOT be forwarded to ss_pb. For levels
+        # input we also route ∂dev[1:nVars] to ∂SS_and_pars[1:nVars] (Jacobian
+        # of initial_state - SS_and_pars[1:nVars] w.r.t. SS_and_pars[1:nVars] = -I).
+        # `∂initial_state` accumulates the tangent for the (positional) user
+        # `initial_state` so that AD can chain a closure that depends on params.
+        ∂state_for_ss = ∂state
+        ∂initial_state = NoTangent()
+        if !(∂state isa Union{NoTangent, AbstractZero}) && initial_state != DEFAULT_INITIAL_STATE
+            if initial_state isa Vector{Float64}
+                # Levels: only the first/physical component is overridden.
+                # ∂(state[1] = initial_state - SS_and_pars[1:nVars]) / ∂initial_state = +I,
+                # so the user-facing tangent is the first nVars entries of ∂dev.
+                ∂dev = ∂state isa AbstractVector{<:AbstractVector} ? ∂state[1] : ∂state
+                ∂initial_state_full = zeros(S, length(initial_state))
+                @views ∂initial_state_full[1:nVars] .+= ∂dev[1:nVars]
+                ∂initial_state = ∂initial_state_full
+                @views ∂SS_and_pars[1:nVars] .-= ∂dev[1:nVars]
+                # Zero overridden component before forwarding to ss_pb.
+                if ∂state isa AbstractVector{<:AbstractVector}
+                    ∂state_for_ss = [i == 1 ? zero(∂state[1]) : ∂state[i] for i in 1:length(∂state)]
+                else
+                    ∂state_for_ss = zero(∂state)
+                end
+            elseif !isempty(initial_state)
+                # Deviations: components 1..length(initial_state) overridden.
+                # ∂state[i] = ∂initial_state[i] for i in 1..n_overridden.
+                n_overridden = length(initial_state)
+                ∂is_vec = Vector{Vector{S}}(undef, n_overridden)
+                if ∂state isa AbstractVector{<:AbstractVector}
+                    for i in 1:n_overridden
+                        ∂is_vec[i] = collect(S, ∂state[i])
+                    end
+                    ∂state_for_ss = [i <= n_overridden ? zero(∂state[i]) : ∂state[i] for i in 1:length(∂state)]
+                else
+                    ∂is_vec[1] = collect(S, ∂state)
+                    for i in 2:n_overridden
+                        ∂is_vec[i] = zeros(S, length(initial_state[i]))
+                    end
+                    ∂state_for_ss = zero(∂state)
+                end
+                ∂initial_state = ∂is_vec
+            end
+        end
+
         if ss_pb === nothing
-            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values))
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), ∂initial_state
         end
 
         # backprop through get_relevant_steady_state_and_state_update
         # cotangent: (Δconstants, ΔSS_and_pars, Δ𝐒, Δstate, Δsolved)
-        ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒, ∂state, NoTangent()))
+        ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒, ∂state_for_ss, NoTangent()))
         ∂parameter_values = ss_grads[3]
 
-        return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values
+        return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values, ∂initial_state
     end
 
     if !isfinite(llh)
-        return S(on_failure_loglikelihood), _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)))
+        return S(on_failure_loglikelihood), _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
     return llh, pullback
+end
+
+# 3-arg shim: preserves the original (no AD through initial_state) contract so
+# that the 3-arg @from_rrule wrapper (and any caller dispatching on the 3-arg
+# form) sees a pullback returning exactly 4 tangents. Delegates to the 4-arg
+# rrule with the default initial_state and drops the trailing ∂initial_state.
+function rrule(::typeof(get_loglikelihood),
+                𝓂::ℳ,
+                data::KeyedArray,
+                parameter_values::Vector{S};
+                kwargs...) where {S <: Real}
+    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, DEFAULT_INITIAL_STATE; kwargs...)
+    pb_short(Δy) = begin
+        t = pb(Δy)
+        return (t[1], t[2], t[3], t[4])
+    end
+    return y, pb_short
 end
 
 
@@ -8553,7 +8624,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                               warmup_iterations::Int = 0,
                                               on_failure_loglikelihood = -Inf,
                                               presample_periods::Int = 0,
-                                              initial_covariance::Symbol = :theoretical,
+                                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                               opts::CalculationOptions = merge_calculation_options(),
                                               filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -8572,6 +8643,15 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     idx_seq = obs_idx_per_t
     state_initial = copy(state[1])
+
+    state_seq = ws.state_seq_rrule
+    @inbounds for t in 1:Tt+1
+        if !isassigned(state_seq, t) || length(state_seq[t]) != length(state_initial)
+            state_seq[t] = copy(state_initial)
+        else
+            copyto!(state_seq[t], state_initial)
+        end
+    end
 
     # full observation Jacobian (constant across periods)
     jac_full = 𝐒[obs_idx_full, end-n_exo+1:end]
@@ -9038,7 +9118,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 warmup_iterations::Int = 0, 
                 on_failure_loglikelihood = -Inf,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
@@ -9381,7 +9461,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                                      warmup_iterations::Int = 0,
                                                      on_failure_loglikelihood = -Inf,
                                                      presample_periods::Int = 0,
-                                                     initial_covariance::Symbol = :theoretical,
+                                                     initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                                      opts::CalculationOptions = merge_calculation_options(),
                                                      filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -11328,7 +11408,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
@@ -11981,7 +12061,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                               warmup_iterations::Int = 0,
                                               on_failure_loglikelihood = -Inf,
                                               presample_periods::Int = 0,
-                                              initial_covariance::Symbol = :theoretical,
+                                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                               opts::CalculationOptions = merge_calculation_options(),
                                               filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -12438,7 +12518,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     T = constants.post_model_macro
@@ -12495,6 +12575,7 @@ function rrule(::typeof(calculate_loglikelihood),
     x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
     
     state¹⁻ = state[T.past_not_future_and_mixed_idx]
+
     warmup_state0 = copy(state¹⁻)
     warmup_x = zeros(Float64, 0)
     warmup_jac_full = zeros(Float64, 0, 0)
@@ -13056,7 +13137,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood = -Inf,
                                                     presample_periods::Int = 0,
-                                                    initial_covariance::Symbol = :theoretical,
+                                                    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -13863,7 +13944,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
@@ -13934,10 +14015,8 @@ function rrule(::typeof(calculate_loglikelihood),
     state₃ = state[3][T.past_not_future_and_mixed_idx]
 
     kronxx = [zeros(T.nExo^2) for _ in 1:size(data_in_deviations,2)]
-    
+
     J = ℒ.I(T.nExo)
-    
-    II = sparse(ℒ.I(T.nExo^2))
 
     kronxxx = [zeros(T.nExo^3) for _ in 1:size(data_in_deviations,2)]
 
@@ -14649,7 +14728,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                              warmup_iterations::Int = 0,
                                              on_failure_loglikelihood = -Inf,
                                              presample_periods::Int = 0,
-                                             initial_covariance::Symbol = :theoretical,
+                                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                              opts::CalculationOptions = merge_calculation_options(),
                                              filter_algorithm::Symbol = :LagrangeNewton)
     Tcc = constants.post_model_macro
@@ -16011,7 +16090,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     T = constants.post_model_macro
@@ -16655,7 +16734,7 @@ function rrule(::typeof(calculate_loglikelihood),
                 workspaces::workspaces;
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                initial_covariance::Symbol = :theoretical,
+                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
                 lyapunov_algorithm::Symbol = :doubling,
                 on_failure_loglikelihood::U = -Inf,
@@ -16682,7 +16761,9 @@ function rrule(::typeof(calculate_loglikelihood),
 
     lyap_pullback = nothing
     lyap_solved = true
-    P = if initial_covariance == :theoretical
+    P = if initial_covariance isa AbstractMatrix
+        copy(convert(Matrix{Float64}, initial_covariance))
+    elseif initial_covariance == :theoretical
         lyap_rrule_result, lyap_pullback_local = rrule(solve_lyapunov_equation,
                                                         A,
                                                         𝐁,
@@ -16705,7 +16786,11 @@ function rrule(::typeof(calculate_loglikelihood),
     Tt = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
-    ū = zeros(size(C,2))
+    # Initial mean for the Kalman recursion. `state` was overridden upstream by
+    # apply_initial_state_override when the user supplied `initial_state`;
+    # default (state[1] = zeros(nVars)) reproduces the historical ū = 0 behavior.
+    ū = collect(Float64, state[1][observables_and_states])
+    ℒ.mul!(z, C, ū)
     P̄ = deepcopy(P)
 
     temp_N_N = similar(P)
@@ -16924,6 +17009,7 @@ function rrule(::typeof(calculate_loglikelihood),
     ∂Faccum = zero(F)
     ∂P = zero(P̄)
     ∂ū = zero(ū)
+    ∂state_full = zeros(T.nVars)
     ∂v = zero(v[1])
     ∂data_in_deviations = zero(data_in_deviations)
     vtmp = zero(v[1])
@@ -17013,6 +17099,7 @@ function rrule(::typeof(calculate_loglikelihood),
         ℒ.rmul!(∂A_kf, -∂llh/2)
         ℒ.rmul!(∂𝐁_kf, -∂llh/2)
         ℒ.rmul!(∂data_in_deviations, -∂llh/2)
+        ℒ.rmul!(∂ū, -∂llh/2)
 
         ∂A = ∂A_buf; copyto!(∂A, ∂A_kf)
         ∂𝐁 = ∂𝐁_buf; copyto!(∂𝐁, ∂𝐁_kf)
@@ -17033,7 +17120,14 @@ function rrule(::typeof(calculate_loglikelihood),
         @views ∂𝐒[observables_and_states, 1:T.nPast_not_future_and_mixed] .+= ∂A * A_map'
         @views ∂𝐒[observables_and_states, T.nPast_not_future_and_mixed+1:end] .+= ∂B
 
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent(), NoTangent()
+        # Scatter ∂ū back into the full nVars state cotangent. The outer
+        # get_loglikelihood rrule routes this gradient to either ∂SS_and_pars
+        # (when initial_state was given in levels) or to ss_pb (default path,
+        # where state[1] = zeros and the contribution is benign).
+        ∂state_full[observables_and_states] .= ∂ū
+        ∂state_ret = [∂state_full]
+
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒, ∂data_in_deviations, NoTangent(), ∂state_ret, NoTangent()
     end
 
     return llh, calculate_loglikelihood_pullback
@@ -18773,7 +18867,8 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 data::KeyedArray{D},
                 parameter_values::Vector{S},
                 shocks::AbstractMatrix{T},
-                measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
+                measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}},
+                initial_state::Union{Vector{V},Vector{Vector{V}}} = DEFAULT_INITIAL_STATE;
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = :second_order,
                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -18784,7 +18879,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                 verbose::Bool = DEFAULT_VERBOSE,
                 caching::Bool = DEFAULT_CACHING,
-                use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
+                use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, V <: Real, U <: AbstractFloat}
 
     @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "rrule for `get_filter_free_loglikelihood` supports `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`."
 
@@ -18795,7 +18890,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     on_failure = (
         convert(R, on_failure_loglikelihood),
         _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-              me_std_zero_tan)
+              me_std_zero_tan, NoTangent())
     )
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -18899,6 +18994,25 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     obs_in_needed  = convert(Vector{Int}, indexin(obs_indices, needed))
     nNeeded = length(needed)
 
+    # Apply user-supplied initial state directly to `state` once; the per-algorithm
+    # branches below then consume `state[1]` (or `state` for non-pruned 2nd/3rd
+    # order) as the recursion seed without any further override logic.
+    nVars_full_for_init = 𝓂.constants.post_model_macro.nVars
+    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, nVars_full_for_init)
+
+    # Track whether the user supplied a *levels* `initial_state`: only that case
+    # introduces an SS_and_pars[1:nVars] cotangent contribution
+    # (override = initial_state - SS_and_pars[1:nVars], Jacobian = -I).
+    initial_state_is_levels = initial_state isa Vector{Float64} && initial_state != DEFAULT_INITIAL_STATE
+    has_override = (initial_state isa Vector{Float64} && initial_state != DEFAULT_INITIAL_STATE) || (initial_state isa Vector{<:Vector} && !isempty(initial_state))
+    n_overridden_components = if !has_override
+        0
+    elseif initial_state isa Vector{Float64}
+        1
+    else
+        length(initial_state)
+    end
+
     llh = zero(R)
 
     if algorithm == :first_order
@@ -18931,7 +19045,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       me_std_zero_tan
+                       me_std_zero_tan, NoTangent()
             end
             d_𝐒₁_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_1st(Δllh, intermediates, 𝐒₁_mat,
@@ -18956,10 +19070,29 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
+            # backprop through initial_state_deviations = initial_state - SS_and_pars[1:nVars]
+            # AND compute d_initial_state (positional tangent for the user-facing
+            # `initial_state` argument).
+            d_initial_state = NoTangent()
+            if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
+                d_state_full_init = zeros(eltype(d_state_red), nVars_full_for_init)
+                @inbounds d_state_full_init[needed] .= d_state_red
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full_init
+                    d_initial_state = d_state_full_init
+                else
+                    d_is_vec = Vector{Vector{eltype(d_state_red)}}(undef, n_overridden_components)
+                    d_is_vec[1] = d_state_full_init
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state_red), length(initial_state[k]))
+                    end
+                    d_initial_state = d_is_vec
+                end
+            end
             # first_order ss rrule expects bare 𝐒₁ cotangent and ignores Δstate
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁_full_cot, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -18996,7 +19129,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       me_std_zero_tan
+                       me_std_zero_tan, NoTangent()
             end
             d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
@@ -19023,9 +19156,28 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state, NoTangent()))
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                    d_initial_state = d_is
+                else
+                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                    d_is_vec[1] = collect(d_state)
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+                    end
+                    d_initial_state = d_is_vec
+                end
+                d_state_for_ss = zeros(eltype(d_state), nVars_full)
+            else
+                d_state_for_ss = d_state
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19068,7 +19220,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       me_std_zero_tan
+                       me_std_zero_tan, NoTangent()
             end
             d_𝐒₁_red, d_𝐒₂_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned2nd(Δllh, intermediates, 𝐒₁, 𝐒₂,
@@ -19098,9 +19250,25 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state, NoTangent()))
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    # Only first-order component depends on SS (higher-order initialized to zero)
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state[1]), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                    d_initial_state = d_is
+                else
+                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
+                end
+                # Zero only the components the user overrode; preserve others.
+                d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
+            else
+                d_state_for_ss = d_state
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19142,7 +19310,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       me_std_zero_tan
+                       me_std_zero_tan, NoTangent()
             end
             d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
@@ -19171,9 +19339,28 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state, NoTangent()))
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                    d_initial_state = d_is
+                else
+                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                    d_is_vec[1] = collect(d_state)
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+                    end
+                    d_initial_state = d_is_vec
+                end
+                d_state_for_ss = zeros(eltype(d_state), nVars_full)
+            else
+                d_state_for_ss = d_state
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19231,7 +19418,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
-                       me_std_zero_tan
+                       me_std_zero_tan, NoTangent()
             end
             d_𝐒₁_red, d_𝐒₂_red, d_𝐒₃_red, d_state_red, d_SS_obs, d_shocks, d_me_std =
                 filter_free_pullback_pruned3rd(Δllh, intermediates, 𝐒₁, 𝐒₂, 𝐒₃,
@@ -19265,10 +19452,44 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             @inbounds for k in eachindex(obs_indices)
                 d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state, NoTangent()))
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state[1]), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                    d_initial_state = d_is
+                else
+                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
+                end
+                # Zero only the components the user overrode; preserve others.
+                d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
+            else
+                d_state_for_ss = d_state
+            end
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
     end
+end
+
+# 5-arg shim: preserves the original (no AD through initial_state) contract so
+# that the 5-arg @from_rrule wrapper sees a 6-element pullback. Delegates to
+# the 6-arg rrule with default initial_state and drops the trailing
+# ∂initial_state.
+function rrule(::typeof(get_filter_free_loglikelihood),
+                𝓂::ℳ,
+                data::KeyedArray{D},
+                parameter_values::Vector{S},
+                shocks::AbstractMatrix{T},
+                measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
+                kwargs...) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real}
+    y, pb = rrule(get_filter_free_loglikelihood, 𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE; kwargs...)
+    pb_short(Δy) = begin
+        t = pb(Δy)
+        return (t[1], t[2], t[3], t[4], t[5], t[6])
+    end
+    return y, pb_short
 end

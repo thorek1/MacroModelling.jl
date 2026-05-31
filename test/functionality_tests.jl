@@ -1928,6 +1928,83 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         end
     end
 
+    @testset "initial_state — value equivalence (no derivatives)" begin
+        nVars_local = m.constants.post_model_macro.nVars
+        ss_vec_local = copy(m.caches.non_stochastic_steady_state)
+        state_idx_local = m.constants.post_model_macro.past_not_future_and_mixed_idx
+
+        filters_for_algo = algorithm == :first_order ? [:kalman, :inversion] : [:inversion]
+        is_first_or_pruned = algorithm in (:first_order, :pruned_second_order, :pruned_third_order)
+
+        for filt in filters_for_algo
+            clear_solution_caches!(m, algorithm)
+            ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = filt, algorithm = algorithm)
+
+            ll_lev = get_loglikelihood(m, data_in_levels, old_params, ss_vec_local; filter = filt, algorithm = algorithm)
+            if is_first_or_pruned
+                @test ll_lev == ll_base
+                ll_vv = get_loglikelihood(m, data_in_levels, old_params, [zeros(nVars_local)]; filter = filt, algorithm = algorithm)
+                @test ll_vv == ll_base
+            else
+                # Non-pruned higher order: default initial state is SSS levels
+                _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
+                    Val(algorithm), old_params, m;
+                    opts = MacroModelling.merge_calculation_options(), estimation = true)
+                sss_levels = sd .+ sap[1:nVars_local]
+                ll_sss = get_loglikelihood(m, data_in_levels, old_params, sss_levels; filter = filt, algorithm = algorithm)
+                @test ll_sss == ll_base
+            end
+
+            # Perturbed initial state should produce a different loglikelihood
+            perturbed_local = copy(ss_vec_local)
+            perturbed_local[state_idx_local[1]] += 0.5
+            ll_pert = get_loglikelihood(m, data_in_levels, old_params, perturbed_local; filter = filt, algorithm = algorithm)
+            @test isfinite(ll_pert)
+            @test ll_pert != ll_base
+
+            # Length validation
+            @test_throws AssertionError get_loglikelihood(m, data_in_levels, old_params, [1.0, 2.0]; filter = filt, algorithm = algorithm)
+        end
+
+        # Vector{Vector{Float64}} input for pruned algorithms
+        if algorithm in (:pruned_second_order, :pruned_third_order)
+            n_levels = algorithm == :pruned_second_order ? 2 : 3
+            pert_vv = [zeros(nVars_local) for _ in 1:n_levels]
+            pert_vv[1][state_idx_local[1]] = 0.5
+            ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = :inversion, algorithm = algorithm)
+            ll_vv   = get_loglikelihood(m, data_in_levels, old_params, pert_vv; filter = :inversion, algorithm = algorithm)
+            @test isfinite(ll_vv)
+            @test ll_vv != ll_base
+        end
+
+        # Filter-free loglikelihood
+        Random.seed!(123)
+        nExo_ff = length(m.constants.post_model_macro.exo)
+        nT_ff   = size(data_in_levels, 2)
+        shks_ff = 1e-3 .* randn(nExo_ff, nT_ff)
+        me_ff   = 0.05
+
+        clear_solution_caches!(m, algorithm)
+        ll_ff_base = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff; algorithm = algorithm)
+        @test isfinite(ll_ff_base)
+
+        ll_ff_lev = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, ss_vec_local; algorithm = algorithm)
+        if is_first_or_pruned
+            @test ll_ff_lev == ll_ff_base
+            ll_ff_vv = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [zeros(nVars_local)]; algorithm = algorithm)
+            @test ll_ff_vv == ll_ff_base
+        else
+            _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
+                Val(algorithm), old_params, m;
+                opts = MacroModelling.merge_calculation_options(), estimation = true)
+            sss_levels = sd .+ sap[1:nVars_local]
+            ll_ff_sss = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, sss_levels; algorithm = algorithm)
+            @test ll_ff_sss == ll_ff_base
+        end
+
+        @test_throws AssertionError get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [1.0, 2.0]; algorithm = algorithm)
+    end
+
     @testset "get_conditional_forecast" begin
         # test conditional forecasting
         new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)

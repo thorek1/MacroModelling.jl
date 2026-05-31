@@ -1038,12 +1038,16 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
         end
     end
 
-    u = zeros(eltype(A), size(C, 2))
+    # Initial mean: honour `state[1]` (set by the get_loglikelihood
+    # `initial_state` override). Pre-edit this was unconditionally zero, which
+    # silently dropped ForwardDiff Duals supplied via `initial_state`.
+    DT = eltype(A)
+    u_raw = state[1][observables_and_states]
+    u = u_raw isa Vector{DT} ? copy(u_raw) : convert(Vector{DT}, u_raw)
     z = C * u
     loglik = zero(eltype(A))
 
     # Pre-allocate Dual-typed loop buffers
-    DT = eltype(A)
     ns = size(A, 1)
     no = size(C, 1)
     v = zeros(DT, no)

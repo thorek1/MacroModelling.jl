@@ -388,3 +388,51 @@ const CALDARA_FF_NEXO = length(get_shocks(CALDARA_FF))
     @test isapprox(dshk_mc,  dshk_a;  rtol = 1e-8)
     @test isapprox(dme_mc,   dme_a;   rtol = 1e-8)
 end
+
+@testset "Filter-free initial_state AD gradients (Gali_2015)" begin
+    MacroModelling.solve!(GALI_FF, silent = true)
+    ss_vec_gali = copy(GALI_FF.caches.non_stochastic_steady_state)
+    state_idx_gali = GALI_FF.constants.post_model_macro.past_not_future_and_mixed_idx
+    nVars_gali = GALI_FF.constants.post_model_macro.nVars
+
+    base_params_gali = copy(GALI_FF.parameter_values)
+    p_subset_gali    = gali_ff_subset_indices()
+    nObs_gali        = length(GALI_FF_OBS)
+    nExo_gali        = length(get_shocks(GALI_FF))
+    nT_gali          = 6
+    data_gali        = ss_perturbed_data_ff(GALI_FF, GALI_FF_OBS; periods = nT_gali, σ = 1e-4, seed = 91)
+
+    Random.seed!(101)
+    shocks_gali = 1e-3 .* randn(nExo_gali, nT_gali)
+    me_scalar_gali = 0.05
+
+    # Perturbed initial state (levels)
+    init_state_levels = copy(ss_vec_gali)
+    init_state_levels[state_idx_gali[1]] += 0.1
+
+    # Vector-of-vectors initial state (deviations) for pruned variants
+    init_state_vv = [zeros(nVars_gali), zeros(nVars_gali)]
+    init_state_vv[1][state_idx_gali[1]] = 0.1
+
+    init_state_vv3 = [zeros(nVars_gali), zeros(nVars_gali), zeros(nVars_gali)]
+    init_state_vv3[1][state_idx_gali[1]] = 0.1
+
+    for algo in [:first_order, :pruned_second_order, :second_order,
+                 :pruned_third_order, :third_order]
+        f_lvl = make_ff_param_closure(GALI_FF, data_gali, base_params_gali, p_subset_gali,
+                                      shocks_gali, me_scalar_gali, algo;
+                                      initial_state = init_state_levels)
+        compare_ff_gradients("Gali :$algo  (initial_state levels)",
+                              f_lvl, base_params_gali[p_subset_gali])
+    end
+
+    # Vector{Vector{Float64}} (deviations) input for pruned variants
+    for (algo, init_vv) in [(:pruned_second_order, init_state_vv),
+                             (:pruned_third_order, init_state_vv3)]
+        f_vv = make_ff_param_closure(GALI_FF, data_gali, base_params_gali, p_subset_gali,
+                                     shocks_gali, me_scalar_gali, algo;
+                                     initial_state = init_vv)
+        compare_ff_gradients("Gali :$algo  (initial_state Vector{Vector}, deviations)",
+                              f_vv, base_params_gali[p_subset_gali])
+    end
+end

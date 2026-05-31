@@ -4324,7 +4324,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $FILTER®
 - $WARMUP_ITERATIONS®
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the retained data sample for which the loglikelihood is discarded. Values above the retained sample length are clamped down automatically with an informational message.
-- `initial_covariance` [Default: `:theoretical`, Type: `Symbol`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`).
+- `initial_covariance` [Default: `:theoretical`, Type: `Union{Symbol,AbstractMatrix{<:Real}}`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix of appropriate size (number of observables and states).
+- $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
 - $QME®
 - $SYLVESTER®
@@ -4372,7 +4373,7 @@ function get_loglikelihood(𝓂::ℳ,
                             on_failure_loglikelihood::U = -Inf,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
-                            initial_covariance::Symbol = :theoretical,
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             tol::Tolerances = Tolerances(), 
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂), 
@@ -4381,7 +4382,46 @@ function get_loglikelihood(𝓂::ℳ,
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
-                            # timer::TimerOutput = TimerOutput(),
+    # Convenience method: no `initial_state` argument; uses the internal default.
+    # To override the initial state (and get AD tangents through it), call the
+    # positional method `get_loglikelihood(𝓂, data, p, initial_state; ...)`.
+    return get_loglikelihood(𝓂, data, parameter_values, DEFAULT_INITIAL_STATE;
+                             steady_state_function = steady_state_function,
+                             algorithm = algorithm,
+                             filter = filter,
+                             on_failure_loglikelihood = on_failure_loglikelihood,
+                             warmup_iterations = warmup_iterations,
+                             presample_periods = presample_periods,
+                             initial_covariance = initial_covariance,
+                             filter_algorithm = filter_algorithm,
+                             tol = tol,
+                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                             lyapunov_algorithm = lyapunov_algorithm,
+                             sylvester_algorithm = sylvester_algorithm,
+                             verbose = verbose,
+                             caching = caching,
+                             use_workspaces = use_workspaces)
+end
+
+function get_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{T},
+                            parameter_values::Vector{S},
+                            initial_state::Union{AbstractVector{<:Real}, AbstractVector{<:AbstractVector{<:Real}}};
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = DEFAULT_ALGORITHM,
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                            on_failure_loglikelihood::U = -Inf,
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                            filter_algorithm::Symbol = :LagrangeNewton,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -4407,8 +4447,18 @@ function get_loglikelihood(𝓂::ℳ,
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
-    @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
+    @assert initial_covariance isa AbstractMatrix || initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix."
 
+    if initial_state != DEFAULT_INITIAL_STATE
+        nVars = 𝓂.constants.post_model_macro.nVars
+        if eltype(initial_state) <: Real
+            @assert length(initial_state) == nVars "initial_state must have length equal to the total number of variables ($nVars, see `show(model)`), got $(length(initial_state))."
+        else
+            @assert length(initial_state[1]) == nVars "Each vector in initial_state must have length equal to the total number of variables ($nVars, see `show(model)`), got $(length(initial_state[1]))."
+            @assert all(v -> length(v) == length(initial_state[1]), initial_state) "All vectors in initial_state must have the same length, got lengths $(length.(initial_state))."
+        end
+    end
+    
     filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
@@ -4443,6 +4493,12 @@ function get_loglikelihood(𝓂::ℳ,
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return on_failure_loglikelihood 
     end
+
+    # Overwrite the solver-produced `state` with the user-supplied `initial_state`
+    # (semantics match get_irf: Vector{Float64} = levels, Vector{Vector{Float64}} =
+    # deviations from NSSS). The downstream filter recursions consume `state`
+    # directly, so this is the only place initial_state needs to be applied.
+    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, 𝓂.constants.post_model_macro.nVars)
  
     data_keyed::KeyedArray = collect(axiskeys(data, 1)) isa Vector{String} ?
         rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
@@ -4456,6 +4512,20 @@ function get_loglikelihood(𝓂::ℳ,
     dt::Matrix{Float64} = missing_data_to_nan(collect(data_keyed(observables)))
 
     data_in_deviations, obs_idx_per_t, has_missing, _ = trim_informative_sample(dt .- SS_and_pars[obs_indices])
+
+    # Promote 𝐒 and data_in_deviations to the common eltype with `state` so the
+    # downstream kernels — which infer their working numeric type from `𝐒` /
+    # `data_in_deviations` — propagate ForwardDiff Duals introduced solely via
+    # a Dual-typed `initial_state`. When `state` is Float64 (typical path) this
+    # is a no-op.
+    state_eltype = eltype(eltype(state))
+    RR = promote_type(eltype(𝐒), eltype(data_in_deviations), state_eltype)
+    if RR !== eltype(𝐒)
+        𝐒 = convert(Matrix{RR}, 𝐒)
+    end
+    if RR !== eltype(data_in_deviations)
+        data_in_deviations = convert(Matrix{RR}, data_in_deviations)
+    end
 
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
 
@@ -4526,6 +4596,7 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
 - $STEADY_STATE_FUNCTION®
 - `algorithm` [Default: `:second_order`, Type: `Symbol`]: solution algorithm. Supported perturbation algorithms are `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`.
 - `warmup_iterations` [Default: `DEFAULT_WARMUP_ITERATIONS`, Type: `Int`]: Number of filter-style warmup iterations. In the filter-free case this prepends `max(warmup_iterations - 1, 0)` latent-shock periods before the first scored observation.
+- $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails (e.g. solution did not converge or measurement-error std-dev is non-positive).
 - $QME®
 - $SYLVESTER®
@@ -4552,12 +4623,57 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
+    # Convenience method: no `initial_state` argument; uses the internal default.
+    # To override the initial state (and get AD tangents through it), call the
+    # positional method `get_filter_free_loglikelihood(𝓂, data, p, shocks, me_std, initial_state; ...)`.
+    return get_filter_free_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE;
+                            steady_state_function = steady_state_function,
+                            algorithm = algorithm,
+                            warmup_iterations = warmup_iterations,
+                            on_failure_loglikelihood = on_failure_loglikelihood,
+                            tol = tol,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
+end
+
+function get_filter_free_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{D},
+                            parameter_values::Vector{S},
+                            shocks::AbstractMatrix{T},
+                            measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}},
+                            initial_state::Union{AbstractVector{<:Real}, AbstractVector{<:AbstractVector{<:Real}}};
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = :second_order,
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            on_failure_loglikelihood::U = -Inf,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
 
     @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_filter_free_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
 
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
 
-    R = promote_type(S, T, Float64)
+    if initial_state != DEFAULT_INITIAL_STATE
+        nVars_check = 𝓂.constants.post_model_macro.nVars
+        if eltype(initial_state) <: Real
+            @assert length(initial_state) == nVars_check "initial_state must have length equal to the total number of variables ($nVars_check, see `show(model)`), got $(length(initial_state))."
+        else
+            @assert length(initial_state[1]) == nVars_check "Each vector in initial_state must have length equal to the total number of variables ($nVars_check, see `show(model)`), got $(length(initial_state[1]))."
+            @assert all(v -> length(v) == length(initial_state[1]), initial_state) "All vectors in initial_state must have the same length, got lengths $(length.(initial_state))."
+        end    
+    end
+    
+    init_eltype = eltype(initial_state) <: Real ? eltype(initial_state) : eltype(eltype(initial_state))
+    R = promote_type(S, T, Float64, init_eltype)
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -4618,6 +4734,11 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return convert(R, on_failure_loglikelihood)
     end
+
+    # Overwrite the solver-produced `state` with any user-supplied `initial_state`
+    # before any kept_rows reduction; the existing reduce_filter_free_surface then
+    # handles slicing transparently.
+    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, 𝓂.constants.post_model_macro.nVars)
 
     if collect(axiskeys(data,1)) isa Vector{String}
         data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
@@ -4766,6 +4887,93 @@ function reduce_filter_free_surface(::Val{:pruned_third_order},
 end
 
 
+# Apply a user-supplied `initial_state` directly to the solver-produced `state`
+# (the deviation-from-steady-state vector used to seed the filter recursion).
+#
+# `initial_state` semantics (matching get_irf):
+#   - Vector{Float64}: in *levels*. Subtract SS_and_pars[1:nVars] to get deviations.
+#     Overrides only the first-order/physical component; higher-order pruning
+#     offsets are preserved.
+#   - Vector{Vector{Float64}}: each entry is already in *deviations*. Component i
+#     overrides state[i]; components not supplied are preserved.
+#
+# Returns a fresh `state` (no in-place mutation of the input).
+apply_initial_state_override(state, initial_state, ::Val, SS_and_pars, nVars) = state  # fallback no-op
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:Real},
+                                       ::Val{:first_order},
+                                       SS_and_pars, nVars::Int)
+    initial_state == DEFAULT_INITIAL_STATE && return state
+    return [initial_state - SS_and_pars[1:nVars]]
+end
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+                                       ::Val{:first_order},
+                                       SS_and_pars, nVars::Int)
+    isempty(initial_state) && return state
+    return [copy(initial_state[1])]
+end
+
+function apply_initial_state_override(state::AbstractVector{<:Real},
+                                       initial_state::AbstractVector{<:Real},
+                                       ::Val{algo},
+                                       SS_and_pars, nVars::Int) where algo
+    @assert algo in (:second_order, :third_order)
+    initial_state == DEFAULT_INITIAL_STATE && return state
+    return initial_state - SS_and_pars[1:nVars]
+end
+
+function apply_initial_state_override(state::AbstractVector{<:Real},
+                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+                                       ::Val{algo},
+                                       SS_and_pars, nVars::Int) where algo
+    @assert algo in (:second_order, :third_order)
+    isempty(initial_state) && return state
+    return copy(initial_state[1])
+end
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:Real},
+                                       ::Val{:pruned_second_order},
+                                       SS_and_pars, nVars::Int)
+    initial_state == DEFAULT_INITIAL_STATE && return state
+    return [initial_state - SS_and_pars[1:nVars], state[2]]
+end
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+                                       ::Val{:pruned_second_order},
+                                       SS_and_pars, nVars::Int)
+    isempty(initial_state) && return state
+    new_state = [copy(state[1]), copy(state[2])]
+    new_state[1] = copy(initial_state[1])
+    length(initial_state) >= 2 && (new_state[2] = copy(initial_state[2]))
+    return new_state
+end
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:Real},
+                                       ::Val{:pruned_third_order},
+                                       SS_and_pars, nVars::Int)
+    initial_state == DEFAULT_INITIAL_STATE && return state
+    return [initial_state - SS_and_pars[1:nVars], state[2], state[3]]
+end
+
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
+                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+                                       ::Val{:pruned_third_order},
+                                       SS_and_pars, nVars::Int)
+    isempty(initial_state) && return state
+    new_state = [copy(state[1]), copy(state[2]), copy(state[3])]
+    new_state[1] = copy(initial_state[1])
+    length(initial_state) >= 2 && (new_state[2] = copy(initial_state[2]))
+    length(initial_state) >= 3 && (new_state[3] = copy(initial_state[3]))
+    return new_state
+end
+
+
 function filter_free_loglikelihood_loop(::Val{:first_order},
                                         𝐒::AbstractMatrix,
                                         state::AbstractVector{<:AbstractVector{<:Real}},
@@ -4777,7 +4985,7 @@ function filter_free_loglikelihood_loop(::Val{:first_order},
                                         me_std,
                                         n_warm::Int) where {T <: Real}
     𝐒₁ = 𝐒
-    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations))
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
     nT = size(data_in_deviations, 2)
 
     cur_state = convert(Vector{R}, state[1])
@@ -4818,7 +5026,7 @@ function filter_free_loglikelihood_loop(::Val{:second_order},
                                         n_warm::Int) where {T <: Real}
     𝐒₁ = 𝐒[1]
     𝐒₂ = 𝐒[2]
-    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations))
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
     nT = size(data_in_deviations, 2)
 
     cur_state = convert(Vector{R}, state)
@@ -4860,7 +5068,7 @@ function filter_free_loglikelihood_loop(::Val{:third_order},
     𝐒₁ = 𝐒[1]
     𝐒₂ = 𝐒[2]
     𝐒₃ = 𝐒[3]
-    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations))
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
     nT = size(data_in_deviations, 2)
 
     cur_state = convert(Vector{R}, state)
@@ -4903,7 +5111,7 @@ function filter_free_loglikelihood_loop(::Val{:pruned_second_order},
                                         n_warm::Int) where {T <: Real}
     𝐒₁ = 𝐒[1]
     𝐒₂ = 𝐒[2]
-    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations))
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
     nVars = length(state[1])
     nT = size(data_in_deviations, 2)
 
@@ -4944,7 +5152,7 @@ function filter_free_loglikelihood_loop(::Val{:pruned_third_order},
     𝐒₁ = 𝐒[1]
     𝐒₂ = 𝐒[2]
     𝐒₃ = 𝐒[3]
-    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations))
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
     nVars = length(state[1])
     nT = size(data_in_deviations, 2)
 
