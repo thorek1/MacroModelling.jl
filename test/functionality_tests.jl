@@ -7,19 +7,57 @@ Random.seed!(1234)
 include("test_helpers.jl")
 
 # Diagnostic wrapper: prints achieved atol/rtol when isapprox fails
-function check_isapprox(a, b; kwargs...)
-    result = isapprox(a, b; kwargs...)
+function has_nested_arrays(value)
+    value isa AbstractArray || return false
+    eltype(value) <: AbstractArray && return true
+    isconcretetype(eltype(value)) && return false
+    return any(element -> element isa AbstractArray, value)
+end
+
+function recursive_isapprox(left, right; kwargs...)
+    if left isa AbstractArray && right isa AbstractArray && (has_nested_arrays(left) || has_nested_arrays(right))
+        size(left) == size(right) || return false
+        return all(recursive_isapprox(left_element, right_element; kwargs...) for (left_element, right_element) in zip(left, right))
+    end
+
+    return isapprox(left, right; kwargs...)
+end
+
+function flatten_numeric_values(value)
+    if value isa Number
+        return Number[value]
+    elseif value isa AbstractArray
+        values = Number[]
+        for element in value
+            append!(values, flatten_numeric_values(element))
+        end
+        return values
+    else
+        return Number[]
+    end
+end
+
+function check_isapprox(left, right; kwargs...)
+    result = recursive_isapprox(left, right; kwargs...)
     if !result
-        d = a .- b
-        frobenius_diff = ℒ.norm(d)
-        maxnorm = max(ℒ.norm(a), ℒ.norm(b))
+        left_values = flatten_numeric_values(left)
+        right_values = flatten_numeric_values(right)
+
+        if isempty(left_values) || length(left_values) != length(right_values)
+            printstyled("  ⚠ APPROX FAIL: unable to summarize numeric leaves, left_size=$(size(left)), right_size=$(size(right))\n", color=:yellow)
+            return result
+        end
+
+        difference = left_values .- right_values
+        frobenius_diff = ℒ.norm(difference)
+        maxnorm = max(ℒ.norm(left_values), ℒ.norm(right_values))
         eff_rtol = maxnorm > 0 ? frobenius_diff / maxnorm : Inf
-        max_abs = maximum(abs.(d))
-        safe_denom = max.(abs.(a), abs.(b), eps())
-        max_rel = maximum(abs.(d) ./ safe_denom)
-        has_nan = any(isnan, a) || any(isnan, b)
-        has_inf = any(isinf, a) || any(isinf, b)
-        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(a))\n", color=:yellow)
+        max_abs = maximum(abs.(difference))
+        safe_denom = max.(abs.(left_values), abs.(right_values), eps())
+        max_rel = maximum(abs.(difference) ./ safe_denom)
+        has_nan = any(isnan, left_values) || any(isnan, right_values)
+        has_inf = any(isinf, left_values) || any(isinf, right_values)
+        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(left))\n", color=:yellow)
     end
     return result
 end
