@@ -10436,7 +10436,7 @@ function second_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
 
         r = target .- y_now
@@ -10480,7 +10480,7 @@ function second_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
         push!(updated_hist, false)
     end
@@ -11038,7 +11038,7 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
 
         r = target .- y_now
@@ -11084,7 +11084,7 @@ function pruned_second_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
         push!(updated_hist, false)
     end
@@ -11344,11 +11344,14 @@ function rrule(::typeof(calculate_loglikelihood),
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
 
     shocks² = 0.0
     logabsdets = 0.0
 
     cc = ensure_conditional_forecast_constants!(constants)
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed)
+    ensure_inversion_estimation_buffers!(ws, T.nExo, n_cond)
     shock_idxs = cc.shock_idxs
     shock²_idxs = cc.shock²_idxs
     shockvar²_idxs = cc.shockvar²_idxs
@@ -12455,11 +12458,14 @@ function rrule(::typeof(calculate_loglikelihood),
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
 
     shocks² = 0.0
     logabsdets = 0.0
 
     cc = ensure_conditional_forecast_constants!(constants)
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed)
+    ensure_inversion_estimation_buffers!(ws, T.nExo, n_cond)
     shock_idxs = cc.shock_idxs
     shock²_idxs = cc.shock²_idxs
     shockvar²_idxs = cc.shockvar²_idxs
@@ -13877,11 +13883,14 @@ function rrule(::typeof(calculate_loglikelihood),
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
 
     shocks² = 0.0
     logabsdets = 0.0
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, T.nExo, n_cond; third_order = true)
     tc = constants.third_order
     shockvar_idxs = cc.shockvar_idxs
     shock_idxs = cc.shock_idxs
@@ -14761,18 +14770,18 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             cc.I_exo)
 
         if !matched
-                𝐒¹⁻ᵛ[warmup_idx0, :],
-                𝐒¹ᵉ[warmup_idx0, :],
-                𝐒²⁻ᵛ[warmup_idx0, :],
-                𝐒²⁻ᵉ[warmup_idx0, :],
-                𝐒²ᵉ[warmup_idx0, :],
-                𝐒³⁻ᵛ[warmup_idx0, :],
-                𝐒³⁻ᵉ²[warmup_idx0, :],
-                𝐒³⁻ᵉ[warmup_idx0, :],
-                𝐒³ᵉ[warmup_idx0, :],
-                𝐒⁻¹,
-                𝐒⁻²,
-                𝐒⁻³,
+            if opts.verbose println("Inversion filter rrule (3rd, missing) failed during warmup") end
+            return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        end
+
+        warmup_shocks = reshape(x_warmup, n_exo, warmup_iterations)
+        @inbounds for w in 1:warmup_iterations-1
+            copyto!(aug_state, 1, st, 1, n_past)
+            aug_state[n_past + 1] = 1.0
+            copyto!(aug_state, n_past + 2, view(warmup_shocks, :, w), 1, n_exo)
+
+            ℒ.kron!(kron_aug_state, aug_state, aug_state)
+            ℒ.kron!(kron_kron_aug_state, kron_aug_state, aug_state)
             ℒ.mul!(st, 𝐒⁻¹, aug_state)
             ℒ.mul!(st, 𝐒⁻², kron_aug_state, 1/2, 1)
             ℒ.mul!(st, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
@@ -15828,7 +15837,7 @@ function third_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
 
         r = target .- y_now
@@ -15877,7 +15886,7 @@ function third_order_joint_warmup_solver_pullback!(
             I_exo,
         )
         push!(z_hist, z_now)
-        push!(y_hist, y_now)
+        push!(y_hist, copy(y_now))
         push!(jac_hist, jac_now)
         push!(updated_hist, false)
     end
@@ -16027,11 +16036,14 @@ function rrule(::typeof(calculate_loglikelihood),
     n_hidden_warmup_shock_dims = use_joint_warmup ? hidden_warmup_shock_dimension(T.nExo, warmup_iterations) : 0
 
     cond_var_idx = observables_index
+    n_cond = length(cond_var_idx)
 
     shocks² = 0.0
     logabsdets = 0.0
 
     cc = ensure_conditional_forecast_constants!(constants; third_order = true)
+    ensure_inversion_buffers!(ws, T.nExo, T.nPast_not_future_and_mixed; third_order = true)
+    ensure_inversion_estimation_buffers!(ws, T.nExo, n_cond; third_order = true)
     tc = constants.third_order
     shock_idxs = cc.shock_idxs
     shock²_idxs = cc.shock²_idxs
