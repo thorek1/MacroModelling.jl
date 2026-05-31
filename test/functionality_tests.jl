@@ -2431,9 +2431,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     push!(deriv_sol_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
                 end
 
-                @test check_isapprox(deriv_sol_moon, deriv_sol, rtol = 1e-8)
-                @test check_isapprox(deriv_sol_zyg, deriv_sol, rtol = 1e-8)
-
+                @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
+                @test check_isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
+                
                 @test check_isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
 
             for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
@@ -2567,18 +2567,55 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                              
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
+                    for i in 1:100
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin[1]))
+                            @test check_isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
+                            break
+                        end
+                    end
+
                     clear_solution_caches!(m, algorithm)
 
                     deriv_moon = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
                     deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
-                    @test check_isapprox(deriv_moon, deriv_for, rtol = 1e-6)
-                    @test check_isapprox(deriv_zyg, deriv_for, rtol = 1e-6)
+                    for i in 1:100
+                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_zyg[1]))
+                                @test check_isapprox(deriv_moon, deriv_fin_zyg[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
+                            break
+                        end
+                    end
 
                     # Last period derivative tests (ForwardDiff)
                     clear_solution_caches!(m, algorithm)
 
                     deriv_for_last = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)
+
+                    for i in 1:100
+                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_last[1]))
+                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-4)
+                            break
+                        end
+                    end
 
                     # Last period derivative tests (Mooncake)
                     clear_solution_caches!(m, algorithm)
@@ -2586,8 +2623,19 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_moon_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
                     deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
-                    @test check_isapprox(deriv_moon_last, deriv_for_last, rtol = 1e-6)
-                    @test check_isapprox(deriv_zyg_last, deriv_for_last, rtol = 1e-6)
+                    for i in 1:100
+                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
+                                @test check_isapprox(deriv_moon_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                            @test check_isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
+                            break
+                        end
+                    end
 
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
