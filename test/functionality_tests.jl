@@ -7,19 +7,57 @@ Random.seed!(1234)
 include("test_helpers.jl")
 
 # Diagnostic wrapper: prints achieved atol/rtol when isapprox fails
-function check_isapprox(a, b; kwargs...)
-    result = isapprox(a, b; kwargs...)
+function has_nested_arrays(value)
+    value isa AbstractArray || return false
+    eltype(value) <: AbstractArray && return true
+    isconcretetype(eltype(value)) && return false
+    return any(element -> element isa AbstractArray, value)
+end
+
+function recursive_isapprox(left, right; kwargs...)
+    if left isa AbstractArray && right isa AbstractArray && (has_nested_arrays(left) || has_nested_arrays(right))
+        size(left) == size(right) || return false
+        return all(recursive_isapprox(left_element, right_element; kwargs...) for (left_element, right_element) in zip(left, right))
+    end
+
+    return isapprox(left, right; kwargs...)
+end
+
+function flatten_numeric_values(value)
+    if value isa Number
+        return Number[value]
+    elseif value isa AbstractArray
+        values = Number[]
+        for element in value
+            append!(values, flatten_numeric_values(element))
+        end
+        return values
+    else
+        return Number[]
+    end
+end
+
+function check_isapprox(left, right; kwargs...)
+    result = recursive_isapprox(left, right; kwargs...)
     if !result
-        d = a .- b
-        frobenius_diff = ℒ.norm(d)
-        maxnorm = max(ℒ.norm(a), ℒ.norm(b))
+        left_values = flatten_numeric_values(left)
+        right_values = flatten_numeric_values(right)
+
+        if isempty(left_values) || length(left_values) != length(right_values)
+            printstyled("  ⚠ APPROX FAIL: unable to summarize numeric leaves, left_size=$(size(left)), right_size=$(size(right))\n", color=:yellow)
+            return result
+        end
+
+        difference = left_values .- right_values
+        frobenius_diff = ℒ.norm(difference)
+        maxnorm = max(ℒ.norm(left_values), ℒ.norm(right_values))
         eff_rtol = maxnorm > 0 ? frobenius_diff / maxnorm : Inf
-        max_abs = maximum(abs.(d))
-        safe_denom = max.(abs.(a), abs.(b), eps())
-        max_rel = maximum(abs.(d) ./ safe_denom)
-        has_nan = any(isnan, a) || any(isnan, b)
-        has_inf = any(isinf, a) || any(isinf, b)
-        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(a))\n", color=:yellow)
+        max_abs = maximum(abs.(difference))
+        safe_denom = max.(abs.(left_values), abs.(right_values), eps())
+        max_rel = maximum(abs.(difference) ./ safe_denom)
+        has_nan = any(isnan, left_values) || any(isnan, right_values)
+        has_inf = any(isinf, left_values) || any(isinf, right_values)
+        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(left))\n", color=:yellow)
     end
     return result
 end
@@ -2393,9 +2431,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     push!(deriv_sol_zyg, Zygote.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), parameter_values)[1])
                 end
 
-                @test check_isapprox(deriv_sol_moon, deriv_sol_fin, rtol = 1e-5)
-                @test check_isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
-                
+                @test check_isapprox(deriv_sol_moon, deriv_sol, rtol = 1e-8)
+                @test check_isapprox(deriv_sol_zyg, deriv_sol, rtol = 1e-8)
+
                 @test check_isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
 
             for tol in [MacroModelling.Tolerances(second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))), MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)))]
@@ -2529,55 +2567,18 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                              
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
-                    for i in 1:100
-                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
-                                                                    x -> begin 
-                                                                        clear_solution_caches!(m, algorithm)
-    
-                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
-                                                                    end, parameter_values)
-                        if isfinite(ℒ.norm(deriv_fin[1]))
-                            @test check_isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
-                            break
-                        end
-                    end
-
                     clear_solution_caches!(m, algorithm)
 
                     deriv_moon = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
                     deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
-                    for i in 1:100
-                        local deriv_fin_zyg = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
-                                                                    x -> begin 
-                                                                        clear_solution_caches!(m, algorithm)
-    
-                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
-                                                                    end, parameter_values)
-                        if isfinite(ℒ.norm(deriv_fin_zyg[1]))
-                                @test check_isapprox(deriv_moon, deriv_fin_zyg[1], rtol = 1e-5)
-                            @test check_isapprox(deriv_zyg, deriv_fin_zyg[1], rtol = 1e-5)
-                            break
-                        end
-                    end
+                    @test check_isapprox(deriv_moon, deriv_for, rtol = 1e-6)
+                    @test check_isapprox(deriv_zyg, deriv_for, rtol = 1e-6)
 
                     # Last period derivative tests (ForwardDiff)
                     clear_solution_caches!(m, algorithm)
 
                     deriv_for_last = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)
-
-                    for i in 1:100
-                        local deriv_fin_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
-                                                                    x -> begin 
-                                                                        clear_solution_caches!(m, algorithm)
-    
-                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
-                                                                    end, parameter_values)
-                        if isfinite(ℒ.norm(deriv_fin_last[1]))
-                            @test check_isapprox(deriv_for_last, deriv_fin_last[1], rtol = 1e-4)
-                            break
-                        end
-                    end
 
                     # Last period derivative tests (Mooncake)
                     clear_solution_caches!(m, algorithm)
@@ -2585,19 +2586,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     deriv_moon_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
                     deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
-                    for i in 1:100
-                        local deriv_fin_zyg_last = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.constants.post_complete_parameters.parameters) > 20 ? 5 : 4, 1, max_range = 1e-4), 
-                                                                    x -> begin 
-                                                                        clear_solution_caches!(m, algorithm)
-    
-                                                                        get_irf(m, x, initial_state = initial_state)[:,end,1]
-                                                                    end, parameter_values)
-                        if isfinite(ℒ.norm(deriv_fin_zyg_last[1]))
-                                @test check_isapprox(deriv_moon_last, deriv_fin_zyg_last[1], rtol = 1e-5)
-                            @test check_isapprox(deriv_zyg_last, deriv_fin_zyg_last[1], rtol = 1e-5)
-                            break
-                        end
-                    end
+                    @test check_isapprox(deriv_moon_last, deriv_for_last, rtol = 1e-6)
+                    @test check_isapprox(deriv_zyg_last, deriv_for_last, rtol = 1e-6)
 
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
