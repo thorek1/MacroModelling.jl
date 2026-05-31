@@ -1834,11 +1834,14 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     return y, pullback
 end
 
+initial_state_pullback_tangent(initial_state::AbstractVector{<:AbstractVector}, tangent) = NoTangent()
+initial_state_pullback_tangent(initial_state, tangent) = tangent
+
 function rrule(::typeof(get_loglikelihood),
                 𝓂::ℳ,
                 data::KeyedArray,
                 parameter_values::Vector{S},
-                initial_state::Union{Vector{V},Vector{Vector{V}}} = DEFAULT_INITIAL_STATE;
+                initial_state::Union{Vector{V},Vector{Vector{V}}};
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
@@ -2023,7 +2026,7 @@ function rrule(::typeof(get_loglikelihood),
         end
 
         if ss_pb === nothing
-            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), ∂initial_state
+            return NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), initial_state_pullback_tangent(initial_state, ∂initial_state)
         end
 
         # backprop through get_relevant_steady_state_and_state_update
@@ -2031,7 +2034,7 @@ function rrule(::typeof(get_loglikelihood),
         ss_grads = ss_pb((NoTangent(), ∂SS_and_pars, ∂𝐒, ∂state_for_ss, NoTangent()))
         ∂parameter_values = ss_grads[3]
 
-        return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values, ∂initial_state
+        return NoTangent(), NoTangent(), NoTangent(), ∂parameter_values, initial_state_pullback_tangent(initial_state, ∂initial_state)
     end
 
     if !isfinite(llh)
@@ -18888,7 +18891,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 parameter_values::Vector{S},
                 shocks::AbstractMatrix{T},
                 measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}},
-                initial_state::Union{Vector{V},Vector{Vector{V}}} = DEFAULT_INITIAL_STATE;
+                initial_state::Union{Vector{V},Vector{Vector{V}}};
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = :second_order,
                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -19112,7 +19115,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             # first_order ss rrule expects bare 𝐒₁ cotangent and ignores Δstate
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁_full_cot, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19197,7 +19200,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             end
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19288,7 +19291,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             end
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19380,7 +19383,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             end
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19489,7 +19492,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
             end
             ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
             d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
     end

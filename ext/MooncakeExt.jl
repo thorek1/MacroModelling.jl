@@ -102,6 +102,76 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Any}
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_irf), MacroModelling.ℳ, Any}
 
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_relevant_steady_state_and_state_update), Any, Any, MacroModelling.ℳ}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_relevant_steady_state_and_state_update), Any, Any, MacroModelling.ℳ}
+
+relevant_component_to_cr(::Mooncake.NoTangent) = ChainRulesCore.NoTangent()
+relevant_component_to_cr(tangent) = Mooncake.to_cr_tangent(tangent)
+
+function relevant_state_update_output_to_cr(tangent)
+    tangent isa Mooncake.NoTangent && return ChainRulesCore.NoTangent()
+    return (ChainRulesCore.NoTangent(),
+            relevant_component_to_cr(tangent[2]),
+            ChainRulesCore.NoTangent(),
+            relevant_component_to_cr(tangent[4]),
+            ChainRulesCore.NoTangent())
+end
+
+function Mooncake.rrule!!(
+    f_cd::CoDual{typeof(MacroModelling.get_relevant_steady_state_and_state_update)},
+    algorithm_cd::CoDual{<:Val},
+    params_cd::CoDual{Vector{T}},
+    model_cd::CoDual{MacroModelling.ℳ},
+) where {T<:Base.IEEEFloat}
+    fargs = (f_cd, algorithm_cd, params_cd, model_cd)
+    primals = map(Mooncake.primal, fargs)
+    lazy_rdata = map(Mooncake.lazy_zero_rdata, primals)
+    y_primal, cr_pb = ChainRulesCore.rrule(primals...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    function pb!!(y_rdata)
+        cr_tangent = relevant_state_update_output_to_cr(Mooncake.tangent(y_fdata, y_rdata))
+        cr_dfargs = cr_pb(cr_tangent)
+        return map(fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
+            Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
+        end
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+function Mooncake.rrule!!(
+    kwcall_cd::CoDual{typeof(Core.kwcall)},
+    kwargs_cd::CoDual{<:NamedTuple},
+    f_cd::CoDual{typeof(MacroModelling.get_relevant_steady_state_and_state_update)},
+    algorithm_cd::CoDual{<:Val},
+    params_cd::CoDual{Vector{T}},
+    model_cd::CoDual{MacroModelling.ℳ},
+) where {T<:Base.IEEEFloat}
+    kwargs = Mooncake.primal(kwargs_cd)
+    algorithm = Mooncake.primal(algorithm_cd)
+    params = Mooncake.primal(params_cd)
+    model = Mooncake.primal(model_cd)
+    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_relevant_steady_state_and_state_update,
+                                           algorithm, params, model; kwargs...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    kwargs_lazy_rdata = Mooncake.lazy_zero_rdata(kwargs)
+    inner_fargs = (f_cd, algorithm_cd, params_cd, model_cd)
+    lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
+    function pb!!(y_rdata)
+        cr_tangent = relevant_state_update_output_to_cr(Mooncake.tangent(y_fdata, y_rdata))
+        cr_dfargs = cr_pb(cr_tangent)
+        kwargs_rdata = Mooncake.increment_and_get_rdata!(
+            Mooncake.tangent(kwargs_cd),
+            Mooncake.instantiate(kwargs_lazy_rdata),
+            ChainRulesCore.NoTangent(),
+        )
+        inner_rdata = map(inner_fargs, lazy_rdata, cr_dfargs) do x, lr, cr_dx
+            Mooncake.increment_and_get_rdata!(Mooncake.tangent(x), Mooncake.instantiate(lr), cr_dx)
+        end
+        return (NoRData(), kwargs_rdata, inner_rdata...)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
 # Wide primitive declarations for get_filter_free_loglikelihood so that the
 # Turing/DynamicPPL call site (which widens argument types to Any) still
 # matches the registered Mooncake primitive.
