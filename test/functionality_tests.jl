@@ -1967,6 +1967,32 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     end
 
     @testset "initial_state — value equivalence (no derivatives)" begin
+        sol = get_solution(m)
+
+        if length(m.constants.post_model_macro.exo) > 3
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.equations.obc_violation) > 0 ? 2 : end]]
+        elseif length(m.constants.post_model_macro.var) == 17
+            var_idxs = [5]
+        else
+            var_idxs = [1]
+        end
+
+        Random.seed!(418023)
+
+        simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
+
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
+
         nVars_local = m.constants.post_model_macro.nVars
         ss_vec_local = copy(m.caches.non_stochastic_steady_state)
         state_idx_local = m.constants.post_model_macro.past_not_future_and_mixed_idx

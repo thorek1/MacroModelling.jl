@@ -4635,6 +4635,9 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             use_workspaces = use_workspaces)
 end
 
+filter_free_init_eltype(::AbstractVector{T}) where {T <: Real} = T
+filter_free_init_eltype(::AbstractVector{<:AbstractVector{T}}) where {T <: Real} = T
+
 function get_filter_free_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{D},
                             parameter_values::Vector{S},
@@ -4667,7 +4670,7 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
         end    
     end
     
-    init_eltype = eltype(initial_state) <: Real ? eltype(initial_state) : eltype(eltype(initial_state))
+    init_eltype = filter_free_init_eltype(initial_state)
     R = promote_type(S, T, Float64, init_eltype)
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -4895,11 +4898,19 @@ end
 # Returns a fresh `state` (no in-place mutation of the input).
 apply_initial_state_override(state, initial_state, ::Val, SS_and_pars, nVars) = state  # fallback no-op
 
+# A user-supplied flat `initial_state` must have length equal to `nVars` (it is
+# the full level vector). Any other length is the default sentinel
+# (`DEFAULT_INITIAL_STATE = [0.0]`) or an empty placeholder, so the solver-
+# produced `state` is returned unchanged. The length check is safer than a
+# value comparison with the mutable global `DEFAULT_INITIAL_STATE`, which can
+# fail under AD when the sentinel is copied or wrapped along the way.
+is_default_initial_state(initial_state::AbstractVector{<:Real}, nVars::Int) = length(initial_state) != nVars
+
 function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
                                        initial_state::AbstractVector{<:Real},
                                        ::Val{:first_order},
                                        SS_and_pars, nVars::Int)
-    initial_state == DEFAULT_INITIAL_STATE && return state
+    is_default_initial_state(initial_state, nVars) && return state
     return [initial_state - SS_and_pars[1:nVars]]
 end
 
@@ -4916,7 +4927,7 @@ function apply_initial_state_override(state::AbstractVector{<:Real},
                                        ::Val{algo},
                                        SS_and_pars, nVars::Int) where algo
     @assert algo in (:second_order, :third_order)
-    initial_state == DEFAULT_INITIAL_STATE && return state
+    is_default_initial_state(initial_state, nVars) && return state
     return initial_state - SS_and_pars[1:nVars]
 end
 
@@ -4933,7 +4944,7 @@ function apply_initial_state_override(state::AbstractVector{<:AbstractVector{Sta
                                        initial_state::AbstractVector{InitialT},
                                        ::Val{:pruned_second_order},
                                        SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    initial_state == DEFAULT_INITIAL_STATE && return state
+    is_default_initial_state(initial_state, nVars) && return state
     R = promote_type(StateT, InitialT)
     return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2])]
 end
@@ -4953,7 +4964,7 @@ function apply_initial_state_override(state::AbstractVector{<:AbstractVector{Sta
                                        initial_state::AbstractVector{InitialT},
                                        ::Val{:pruned_third_order},
                                        SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    initial_state == DEFAULT_INITIAL_STATE && return state
+    is_default_initial_state(initial_state, nVars) && return state
     R = promote_type(StateT, InitialT)
     return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
 end

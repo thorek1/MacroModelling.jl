@@ -1988,7 +1988,7 @@ function rrule(::typeof(get_loglikelihood),
         # `initial_state` so that AD can chain a closure that depends on params.
         ∂state_for_ss = ∂state
         ∂initial_state = NoTangent()
-        if !(∂state isa Union{NoTangent, AbstractZero}) && initial_state != DEFAULT_INITIAL_STATE
+        if !(∂state isa Union{NoTangent, AbstractZero}) && ((initial_state isa Vector{Float64} && length(initial_state) == nVars) || (initial_state isa Vector{<:Vector} && !isempty(initial_state)))
             if initial_state isa Vector{Float64}
                 # Levels: only the first/physical component is overridden.
                 # ∂(state[1] = initial_state - SS_and_pars[1:nVars]) / ∂initial_state = +I,
@@ -19026,8 +19026,8 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     # Track whether the user supplied a *levels* `initial_state`: only that case
     # introduces an SS_and_pars[1:nVars] cotangent contribution
     # (override = initial_state - SS_and_pars[1:nVars], Jacobian = -I).
-    initial_state_is_levels = initial_state isa Vector{Float64} && initial_state != DEFAULT_INITIAL_STATE
-    has_override = (initial_state isa Vector{Float64} && initial_state != DEFAULT_INITIAL_STATE) || (initial_state isa Vector{<:Vector} && !isempty(initial_state))
+    initial_state_is_levels = initial_state isa Vector{Float64} && length(initial_state) == nVars_full_for_init
+    has_override = (initial_state isa Vector{Float64} && length(initial_state) == nVars_full_for_init) || (initial_state isa Vector{<:Vector} && !isempty(initial_state))
     n_overridden_components = if !has_override
         0
     elseif initial_state isa Vector{Float64}
