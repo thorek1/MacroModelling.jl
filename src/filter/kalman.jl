@@ -227,6 +227,20 @@ function run_kalman_iterations(A::Matrix{S},
                 logabsdetF += log(abs(di))
                 signF *= sign(di)
             end
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if verbose println("KF factorisation failed step $t") end
+                return T(on_failure_loglikelihood)
+            end
+
+            if t > presample_periods
+                copyto!(ztmp, z)
+                solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)   # ztmp = F \ z
+                loglik += logabsdetF + ℒ.dot(z, ztmp)
+            end
+
+            # K = P * C' / F
+            ℒ.mul!(K, Pwork, C')
+            solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
         else
             Flu = ℒ.lu(F, check = false)
             if !ℒ.issuccess(Flu)
@@ -234,28 +248,19 @@ function run_kalman_iterations(A::Matrix{S},
                 return T(on_failure_loglikelihood)
             end
             logabsdetF, signF = ℒ.logabsdet(Flu)
-        end
 
-        if signF <= 0 || logabsdetF < log(eps(Float64))
-            if verbose println("KF factorisation failed step $t") end
-            return T(on_failure_loglikelihood)
-        end
-
-        if t > presample_periods
-            if T === Float64
-                copyto!(ztmp, z)
-                solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)   # ztmp = F \ z
-            else
-                ztmp = Flu \ z
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if verbose println("KF factorisation failed step $t") end
+                return T(on_failure_loglikelihood)
             end
-            loglik += logabsdetF + ℒ.dot(z, ztmp)
-        end
 
-        # K = P * C' / F
-        ℒ.mul!(K, Pwork, C')
-        if T === Float64
-            solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
-        else
+            if t > presample_periods
+                ztmp = Flu \ z
+                loglik += logabsdetF + ℒ.dot(z, ztmp)
+            end
+
+            # K = P * C' / F
+            ℒ.mul!(K, Pwork, C')
             K = K * inv(Flu)
         end
 
