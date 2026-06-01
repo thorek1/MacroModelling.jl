@@ -1903,7 +1903,25 @@ function rrule(::typeof(get_loglikelihood),
     # rrules consume the modified `state` transparently and have no
     # `initial_state` kwarg.
     nVars = 𝓂.constants.post_model_macro.nVars
-    state_overridden = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, nVars)
+    state_overridden = state
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state_overridden = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state_overridden = [state_overridden]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state_overridden = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state_overridden = convert(Vector{R_state}, initial_state[1])
+        end
+    end
+    level_override_zeroes_third_state = initial_state isa AbstractVector{<:Real} && length(initial_state) == nVars && algorithm == :pruned_third_order
 
     # ── step 2: data_in_deviations = dt .- SS_and_pars[obs_indices] ──
     dt = if collect(axiskeys(data, 1)) isa Vector{String}
@@ -1998,9 +2016,9 @@ function rrule(::typeof(get_loglikelihood),
                 @views ∂initial_state_full[1:nVars] .+= ∂dev[1:nVars]
                 ∂initial_state = ∂initial_state_full
                 @views ∂SS_and_pars[1:nVars] .-= ∂dev[1:nVars]
-                # Zero overridden component before forwarding to ss_pb.
+                # Zero overridden components before forwarding to ss_pb.
                 if ∂state isa AbstractVector{<:AbstractVector}
-                    ∂state_for_ss = [i == 1 ? zero(∂state[1]) : ∂state[i] for i in 1:length(∂state)]
+                    ∂state_for_ss = [i == 1 || (level_override_zeroes_third_state && i == 3) ? zero(∂state[i]) : ∂state[i] for i in 1:length(∂state)]
                 else
                     ∂state_for_ss = zero(∂state)
                 end
@@ -19021,13 +19039,30 @@ function rrule(::typeof(get_filter_free_loglikelihood),
     # branches below then consume `state[1]` (or `state` for non-pruned 2nd/3rd
     # order) as the recursion seed without any further override logic.
     nVars_full_for_init = 𝓂.constants.post_model_macro.nVars
-    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, nVars_full_for_init)
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars_full_for_init
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars_full_for_init, state_shift, SS_and_pars[1:nVars_full_for_init])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
 
     # Track whether the user supplied a *levels* `initial_state`: only that case
     # introduces an SS_and_pars[1:nVars] cotangent contribution
     # (override = initial_state - SS_and_pars[1:nVars], Jacobian = -I).
-    initial_state_is_levels = initial_state isa Vector{Float64} && length(initial_state) == nVars_full_for_init
-    has_override = (initial_state isa Vector{Float64} && length(initial_state) == nVars_full_for_init) || (initial_state isa Vector{<:Vector} && !isempty(initial_state))
+    initial_state_is_levels = initial_state isa AbstractVector{<:Real} && length(initial_state) == nVars_full_for_init
+    level_override_zeroes_third_state = initial_state_is_levels && algorithm == :pruned_third_order
+    has_override = (initial_state isa AbstractVector{<:Real} && length(initial_state) == nVars_full_for_init) || (initial_state isa Vector{<:Vector} && !isempty(initial_state))
     n_overridden_components = if !has_override
         0
     elseif initial_state isa Vector{Float64}
@@ -19482,11 +19517,11 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                     d_is = zeros(eltype(d_state[1]), length(initial_state))
                     @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
                     d_initial_state = d_is
+                    d_state_for_ss = [zeros(eltype(d_state[1]), nVars_full), d_state[2], level_override_zeroes_third_state ? zeros(eltype(d_state[3]), nVars_full) : d_state[3]]
                 else
                     d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
+                    d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
                 end
-                # Zero only the components the user overrode; preserve others.
-                d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
             else
                 d_state_for_ss = d_state
             end

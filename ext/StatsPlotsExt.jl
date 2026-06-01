@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, SteadyStateFunctionType
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
 import MacroModelling: DEFAULT_CACHING, DEFAULT_USE_WORKSPACES, DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -453,36 +453,6 @@ function should_use_label_switch(annotate_diff_input, container)
     ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(container)))) && length(container) > 1
 end
 
-function adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
-    nVars = 𝓂.constants.post_model_macro.nVars
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            return [zeros(nVars), zeros(nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            return [zeros(nVars), zeros(nVars) - SSS_delta, zeros(nVars)]
-        else
-            return zeros(nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                return [initial_state - reference_steady_state[1:nVars], zeros(nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                return [initial_state - reference_steady_state[1:nVars], zeros(nVars) - SSS_delta, zeros(nVars)]
-            else
-                return initial_state - reference_steady_state[1:nVars]
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-            return initial_state
-        end
-    end
-end
-
 function push_if_no_duplicate!(container, args_and_kwargs, specific_keys; collect_compare_keys = Symbol[])
     no_duplicate = all(
         !(all((
@@ -799,7 +769,7 @@ function plot_model_estimates(𝓂::ℳ,
             opts = opts, 
             dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -2850,7 +2820,7 @@ function plot_irf!(𝓂::ℳ;
             algorithm = algorithm, 
             obc = occasionally_binding_constraints || obc_shocks_included)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     initial_state_input = copy(initial_state)
 

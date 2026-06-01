@@ -97,6 +97,48 @@ end
 
 informative_period_range(data::KeyedArray) = informative_period_range(collect(data))
 
+function adjust_initial_state(initial_state,
+                              algorithm::Symbol,
+                              nVars::Int,
+                              SSS_delta::AbstractVector{<:Real},
+                              reference_steady_state::AbstractVector{<:Real})
+    R = promote_type(eltype(SSS_delta), eltype(reference_steady_state))
+
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) != nVars
+            if algorithm == :pruned_second_order
+                return [zeros(R, nVars), zeros(R, nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                return [zeros(R, nVars), zeros(R, nVars) - SSS_delta, zeros(R, nVars)]
+            else
+                return zeros(R, nVars) - SSS_delta
+            end
+        end
+
+        if algorithm == :pruned_second_order
+            return [initial_state - reference_steady_state[1:nVars], zeros(R, nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            return [initial_state - reference_steady_state[1:nVars], zeros(R, nVars) - SSS_delta, zeros(R, nVars)]
+        else
+            return initial_state - reference_steady_state[1:nVars]
+        end
+    end
+
+    if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+        @assert initial_state isa AbstractVector{<:Real} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+    end
+
+    return initial_state
+end
+
+function adjust_initial_state(initial_state,
+                              algorithm::Symbol,
+                              𝓂::ℳ,
+                              SSS_delta::AbstractVector{<:Real},
+                              reference_steady_state::AbstractVector{<:Real})
+    return adjust_initial_state(initial_state, algorithm, 𝓂.constants.post_model_macro.nVars, SSS_delta, reference_steady_state)
+end
+
 function report_informative_trim(period_range::UnitRange{Int}, n_periods::Int; maxlog::Int = DEFAULT_MAXLOG)
     n_leading = isempty(period_range) ? n_periods : first(period_range) - 1
     n_trailing = isempty(period_range) ? 0 : n_periods - last(period_range)
@@ -322,7 +364,7 @@ And data, 4×2×40 Array{Float64, 3}:
         if marginal_contribution
             decomposition[:, end - 1, :] .+= SSS_delta
         else
-            decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+            decomposition[:,end - 1,:]                  .+= SSS_delta * (size(decomposition,2) - 3)
             decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
         end
     end
@@ -1021,33 +1063,8 @@ The same can be achieved with the other input formats:
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
-
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
@@ -1640,35 +1657,11 @@ And data, 4×40×1 Array{Float64, 3}:
 
     # @timeit_debug timer "Get relevant steady state" begin
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     # end # timeit_debug
 
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
@@ -4495,7 +4488,24 @@ function get_loglikelihood(𝓂::ℳ,
     # (semantics match get_irf: Vector{Float64} = levels, Vector{Vector{Float64}} =
     # deviations from NSSS). The downstream filter recursions consume `state`
     # directly, so this is the only place initial_state needs to be applied.
-    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, 𝓂.constants.post_model_macro.nVars)
+    nVars = 𝓂.constants.post_model_macro.nVars
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
  
     data_keyed::KeyedArray = collect(axiskeys(data, 1)) isa Vector{String} ?
         rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
@@ -4734,7 +4744,24 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
     # Overwrite the solver-produced `state` with any user-supplied `initial_state`
     # before any kept_rows reduction; the existing reduce_filter_free_surface then
     # handles slicing transparently.
-    state = apply_initial_state_override(state, initial_state, Val(algorithm), SS_and_pars, 𝓂.constants.post_model_macro.nVars)
+    nVars = 𝓂.constants.post_model_macro.nVars
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
 
     if collect(axiskeys(data,1)) isa Vector{String}
         data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
@@ -4880,103 +4907,6 @@ function reduce_filter_free_surface(::Val{:pruned_third_order},
     𝐒̂₂ = reduce_filter_free_block(𝐒[2], kept_rows)
     𝐒̂₃ = reduce_filter_free_block(𝐒[3], kept_rows)
     return (𝐒̂₁, 𝐒̂₂, 𝐒̂₃), [s[kept_rows] for s in state]
-end
-
-
-# Apply a user-supplied `initial_state` directly to the solver-produced `state`
-# (the deviation-from-steady-state vector used to seed the filter recursion).
-#
-# `initial_state` semantics (matching get_irf):
-#   - Vector{Float64}: in *levels*. Subtract SS_and_pars[1:nVars] to get deviations.
-#     Overrides only the first-order/physical component; higher-order pruning
-#     offsets are preserved.
-#   - Vector{Vector{Float64}}: each entry is already in *deviations*. Component i
-#     overrides state[i]; components not supplied are preserved.
-#
-# Returns a fresh `state` (no in-place mutation of the input).
-apply_initial_state_override(state, initial_state, ::Val, SS_and_pars, nVars) = state  # fallback no-op
-
-# A user-supplied flat `initial_state` must have length equal to `nVars` (it is
-# the full level vector). Any other length is the default sentinel
-# (`DEFAULT_INITIAL_STATE = [0.0]`) or an empty placeholder, so the solver-
-# produced `state` is returned unchanged. The length check is safer than a
-# value comparison with the mutable global `DEFAULT_INITIAL_STATE`, which can
-# fail under AD when the sentinel is copied or wrapped along the way.
-is_default_initial_state(initial_state::AbstractVector{<:Real}, nVars::Int) = length(initial_state) != nVars
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:Real},
-                                       ::Val{:first_order},
-                                       SS_and_pars, nVars::Int)
-    is_default_initial_state(initial_state, nVars) && return state
-    return [initial_state - SS_and_pars[1:nVars]]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
-                                       ::Val{:first_order},
-                                       SS_and_pars, nVars::Int)
-    isempty(initial_state) && return state
-    return [copy(initial_state[1])]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:Real},
-                                       initial_state::AbstractVector{<:Real},
-                                       ::Val{algo},
-                                       SS_and_pars, nVars::Int) where algo
-    @assert algo in (:second_order, :third_order)
-    is_default_initial_state(initial_state, nVars) && return state
-    return initial_state - SS_and_pars[1:nVars]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:Real},
-                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
-                                       ::Val{algo},
-                                       SS_and_pars, nVars::Int) where algo
-    @assert algo in (:second_order, :third_order)
-    isempty(initial_state) && return state
-    return copy(initial_state[1])
-end
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
-                                       initial_state::AbstractVector{InitialT},
-                                       ::Val{:pruned_second_order},
-                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    is_default_initial_state(initial_state, nVars) && return state
-    R = promote_type(StateT, InitialT)
-    return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2])]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
-                                       initial_state::AbstractVector{<:AbstractVector{InitialT}},
-                                       ::Val{:pruned_second_order},
-                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    isempty(initial_state) && return state
-    R = promote_type(StateT, InitialT)
-    state₁ = convert(Vector{R}, initial_state[1])
-    state₂ = length(initial_state) >= 2 ? convert(Vector{R}, initial_state[2]) : convert(Vector{R}, state[2])
-    return [state₁, state₂]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
-                                       initial_state::AbstractVector{InitialT},
-                                       ::Val{:pruned_third_order},
-                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    is_default_initial_state(initial_state, nVars) && return state
-    R = promote_type(StateT, InitialT)
-    return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
-end
-
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
-                                       initial_state::AbstractVector{<:AbstractVector{InitialT}},
-                                       ::Val{:pruned_third_order},
-                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
-    isempty(initial_state) && return state
-    R = promote_type(StateT, InitialT)
-    state₁ = convert(Vector{R}, initial_state[1])
-    state₂ = length(initial_state) >= 2 ? convert(Vector{R}, initial_state[2]) : convert(Vector{R}, state[2])
-    state₃ = length(initial_state) >= 3 ? convert(Vector{R}, initial_state[3]) : convert(Vector{R}, state[3])
-    return [state₁, state₂, state₃]
 end
 
 
