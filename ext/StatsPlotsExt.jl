@@ -769,7 +769,7 @@ function plot_model_estimates(𝓂::ℳ,
             opts = opts, 
             dynamics = true)
 
-    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -2820,7 +2820,7 @@ function plot_irf!(𝓂::ℳ;
             algorithm = algorithm, 
             obc = occasionally_binding_constraints || obc_shocks_included)
 
-    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     initial_state_input = copy(initial_state)
 
