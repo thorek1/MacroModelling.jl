@@ -1834,7 +1834,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     return y, pullback
 end
 
-initial_state_pullback_tangent(initial_state::AbstractVector{<:AbstractVector}, tangent) = NoTangent()
+initial_state_pullback_tangent(initial_state::AbstractVector{<:AbstractVector}, tangent) = tangent
 initial_state_pullback_tangent(initial_state, tangent) = tangent
 
 function rrule(::typeof(get_loglikelihood),

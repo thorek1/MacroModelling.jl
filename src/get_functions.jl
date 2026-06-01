@@ -4303,9 +4303,6 @@ function get_statistics(𝓂::ℳ,
     return ret
 end
 
-
-
-
 """
 $(SIGNATURES)
 Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
@@ -4406,7 +4403,7 @@ end
 function get_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{T},
                             parameter_values::Vector{S},
-                            initial_state::Union{AbstractVector{<:Real}, AbstractVector{<:AbstractVector{<:Real}}};
+                            initial_state::InitialState;
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM,
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
@@ -4421,7 +4418,7 @@ function get_loglikelihood(𝓂::ℳ,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, InitialStateScalar) where {T <: Union{Float64,Missing,Nothing}, S <: Real, InitialStateScalar <: Real, InitialState <: Union{AbstractVector{InitialStateScalar}, AbstractVector{<:AbstractVector{InitialStateScalar}}}, U <: AbstractFloat}
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -4513,19 +4510,16 @@ function get_loglikelihood(𝓂::ℳ,
 
     data_in_deviations, obs_idx_per_t, has_missing, _ = trim_informative_sample(dt .- SS_and_pars[obs_indices])
 
-    # Promote 𝐒 and data_in_deviations to the common eltype with `state` so the
-    # downstream kernels — which infer their working numeric type from `𝐒` /
-    # `data_in_deviations` — propagate ForwardDiff Duals introduced solely via
-    # a Dual-typed `initial_state`. When `state` is Float64 (typical path) this
-    # is a no-op.
-    state_eltype = state isa AbstractVector{<:AbstractVector} ? mapreduce(eltype, promote_type, state) : eltype(state)
-    solution_eltype = 𝐒 isa AbstractVector{<:AbstractMatrix} ? mapreduce(eltype, promote_type, 𝐒) : eltype(𝐒)
-    RR = promote_type(solution_eltype, eltype(data_in_deviations), state_eltype)
-    if RR !== solution_eltype
-        𝐒 = 𝐒 isa AbstractVector{<:AbstractMatrix} ? [convert(Matrix{RR}, Sᵢ) for Sᵢ in 𝐒] : convert(Matrix{RR}, 𝐒)
+    # Keep the solution, data, and user-supplied state on one scalar type so
+    # Dual numbers introduced solely through `initial_state` reach the filter.
+    R = promote_type(S, InitialStateScalar)
+    if 𝐒 isa AbstractVector{<:AbstractMatrix} && R !== eltype(eltype(𝐒))
+        𝐒 = AbstractMatrix{R}[R.(Sᵢ) for Sᵢ in 𝐒]
+    elseif 𝐒 isa AbstractMatrix && R !== eltype(𝐒)
+        𝐒 = convert(Matrix{R}, 𝐒)
     end
-    if RR !== eltype(data_in_deviations)
-        data_in_deviations = convert(Matrix{RR}, data_in_deviations)
+    if R !== eltype(data_in_deviations)
+        data_in_deviations = convert(Matrix{R}, data_in_deviations)
     end
 
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -4935,43 +4929,45 @@ function apply_initial_state_override(state::AbstractVector{<:Real},
     return copy(initial_state[1])
 end
 
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:Real},
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
+                                       initial_state::AbstractVector{InitialT},
                                        ::Val{:pruned_second_order},
-                                       SS_and_pars, nVars::Int)
+                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
     initial_state == DEFAULT_INITIAL_STATE && return state
-    return [initial_state - SS_and_pars[1:nVars], state[2]]
+    R = promote_type(StateT, InitialT)
+    return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2])]
 end
 
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
+                                       initial_state::AbstractVector{<:AbstractVector{InitialT}},
                                        ::Val{:pruned_second_order},
-                                       SS_and_pars, nVars::Int)
+                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
     isempty(initial_state) && return state
-    new_state = [copy(state[1]), copy(state[2])]
-    new_state[1] = copy(initial_state[1])
-    length(initial_state) >= 2 && (new_state[2] = copy(initial_state[2]))
-    return new_state
+    R = promote_type(StateT, InitialT)
+    state₁ = convert(Vector{R}, initial_state[1])
+    state₂ = length(initial_state) >= 2 ? convert(Vector{R}, initial_state[2]) : convert(Vector{R}, state[2])
+    return [state₁, state₂]
 end
 
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:Real},
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
+                                       initial_state::AbstractVector{InitialT},
                                        ::Val{:pruned_third_order},
-                                       SS_and_pars, nVars::Int)
+                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
     initial_state == DEFAULT_INITIAL_STATE && return state
-    return [initial_state - SS_and_pars[1:nVars], state[2], state[3]]
+    R = promote_type(StateT, InitialT)
+    return [convert(Vector{R}, initial_state - SS_and_pars[1:nVars]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
 end
 
-function apply_initial_state_override(state::AbstractVector{<:AbstractVector{<:Real}},
-                                       initial_state::AbstractVector{<:AbstractVector{<:Real}},
+function apply_initial_state_override(state::AbstractVector{<:AbstractVector{StateT}},
+                                       initial_state::AbstractVector{<:AbstractVector{InitialT}},
                                        ::Val{:pruned_third_order},
-                                       SS_and_pars, nVars::Int)
+                                       SS_and_pars, nVars::Int) where {StateT <: Real, InitialT <: Real}
     isempty(initial_state) && return state
-    new_state = [copy(state[1]), copy(state[2]), copy(state[3])]
-    new_state[1] = copy(initial_state[1])
-    length(initial_state) >= 2 && (new_state[2] = copy(initial_state[2]))
-    length(initial_state) >= 3 && (new_state[3] = copy(initial_state[3]))
-    return new_state
+    R = promote_type(StateT, InitialT)
+    state₁ = convert(Vector{R}, initial_state[1])
+    state₂ = length(initial_state) >= 2 ? convert(Vector{R}, initial_state[2]) : convert(Vector{R}, state[2])
+    state₃ = length(initial_state) >= 3 ? convert(Vector{R}, initial_state[3]) : convert(Vector{R}, state[3])
+    return [state₁, state₂, state₃]
 end
 
 
