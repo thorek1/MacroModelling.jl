@@ -66,7 +66,8 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_solutio
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}} where {T<:Base.IEEEFloat} true
 # 4-arg positional path (AD through initial_state)
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Vector{Vector{Float64}}} where {T<:Base.IEEEFloat} true
+# Nested Vector{Vector} initial_state needs a manual rrule!! below because Mooncake
+# cannot increment rdata for Vector{Vector{Float64}} through @from_rrule.
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat} true
 
@@ -79,8 +80,7 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_
 # 6-arg positional path (AD through initial_state)
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T, Vector{Float64}} where {T<:Base.IEEEFloat} true
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T, Vector{Vector{Float64}}} where {T<:Base.IEEEFloat} true
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}, Vector{Vector{Float64}}} where {T<:Base.IEEEFloat} true
+# Nested Vector{Vector} initial_state forms are implemented manually below.
 
 # ── DynamicPPL compatibility: wider @is_primitive declarations ──
 # Inside a Turing @model evaluated through DynamicPPL.logdensity_at,
@@ -179,6 +179,142 @@ end
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
 @is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
+
+function increment_nested_initial_state_rdata!(
+    initial_state_cd::CoDual{<:Vector{<:AbstractVector}},
+    cr_tangent,
+)
+    cr_tangent isa ChainRulesCore.AbstractZero && return NoRData()
+    initial_state_fdata = Mooncake.tangent(initial_state_cd)
+    @inbounds for i in eachindex(cr_tangent)
+        component_tangent = cr_tangent[i]
+        component_tangent isa ChainRulesCore.AbstractZero && continue
+        Mooncake.increment_and_get_rdata!(initial_state_fdata[i], NoRData(), component_tangent)
+    end
+    return NoRData()
+end
+
+function increment_rrule_args_with_nested_initial_state(fargs::Tuple, lazy_rdata::Tuple, cr_dfargs::Tuple)
+    regular_rdata = ntuple(i -> Mooncake.increment_and_get_rdata!(
+        Mooncake.tangent(fargs[i]),
+        Mooncake.instantiate(lazy_rdata[i]),
+        cr_dfargs[i],
+    ), length(fargs) - 1)
+    initial_state_rdata = increment_nested_initial_state_rdata!(fargs[end], cr_dfargs[end])
+    return (regular_rdata..., initial_state_rdata)
+end
+
+scalar_output_to_cr(y_fdata, y_rdata) = Mooncake.to_cr_tangent(Mooncake.tangent(y_fdata, y_rdata))
+
+function Mooncake.rrule!!(
+    f_cd::CoDual{typeof(MacroModelling.get_loglikelihood)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    data_cd::CoDual{<:KeyedArray{Float64}},
+    params_cd::CoDual{Vector{T}},
+    initial_state_cd::CoDual{Vector{Vector{I}}},
+) where {T<:Base.IEEEFloat,I<:Base.IEEEFloat}
+    fargs = (f_cd, model_cd, data_cd, params_cd, initial_state_cd)
+    primals = map(Mooncake.primal, fargs)
+    lazy_rdata = map(Mooncake.lazy_zero_rdata, primals)
+    y_primal, cr_pb = ChainRulesCore.rrule(primals...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    function pb!!(y_rdata)
+        cr_dfargs = cr_pb(scalar_output_to_cr(y_fdata, y_rdata))
+        return increment_rrule_args_with_nested_initial_state(fargs, lazy_rdata, cr_dfargs)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+function Mooncake.rrule!!(
+    kwcall_cd::CoDual{typeof(Core.kwcall)},
+    kwargs_cd::CoDual{<:NamedTuple},
+    f_cd::CoDual{typeof(MacroModelling.get_loglikelihood)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    data_cd::CoDual{<:KeyedArray{Float64}},
+    params_cd::CoDual{Vector{T}},
+    initial_state_cd::CoDual{Vector{Vector{I}}},
+) where {T<:Base.IEEEFloat,I<:Base.IEEEFloat}
+    kwargs = Mooncake.primal(kwargs_cd)
+    model = Mooncake.primal(model_cd)
+    data = Mooncake.primal(data_cd)
+    params = Mooncake.primal(params_cd)
+    initial_state = Mooncake.primal(initial_state_cd)
+    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_loglikelihood,
+                                           model, data, params, initial_state; kwargs...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    kwargs_lazy_rdata = Mooncake.lazy_zero_rdata(kwargs)
+    inner_fargs = (f_cd, model_cd, data_cd, params_cd, initial_state_cd)
+    lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
+    function pb!!(y_rdata)
+        cr_dfargs = cr_pb(scalar_output_to_cr(y_fdata, y_rdata))
+        kwargs_rdata = Mooncake.increment_and_get_rdata!(
+            Mooncake.tangent(kwargs_cd),
+            Mooncake.instantiate(kwargs_lazy_rdata),
+            ChainRulesCore.NoTangent(),
+        )
+        inner_rdata = increment_rrule_args_with_nested_initial_state(inner_fargs, lazy_rdata, cr_dfargs)
+        return (NoRData(), kwargs_rdata, inner_rdata...)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+function Mooncake.rrule!!(
+    f_cd::CoDual{typeof(MacroModelling.get_filter_free_loglikelihood)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    data_cd::CoDual{<:KeyedArray{Float64}},
+    params_cd::CoDual{Vector{T}},
+    shocks_cd::CoDual{Matrix{T}},
+    measurement_error_std_cd::CoDual{M},
+    initial_state_cd::CoDual{Vector{Vector{I}}},
+) where {T<:Base.IEEEFloat,I<:Base.IEEEFloat,M<:Union{T,Vector{T},Matrix{T}}}
+    fargs = (f_cd, model_cd, data_cd, params_cd, shocks_cd, measurement_error_std_cd, initial_state_cd)
+    primals = map(Mooncake.primal, fargs)
+    lazy_rdata = map(Mooncake.lazy_zero_rdata, primals)
+    y_primal, cr_pb = ChainRulesCore.rrule(primals...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    function pb!!(y_rdata)
+        cr_dfargs = cr_pb(scalar_output_to_cr(y_fdata, y_rdata))
+        return increment_rrule_args_with_nested_initial_state(fargs, lazy_rdata, cr_dfargs)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
+
+function Mooncake.rrule!!(
+    kwcall_cd::CoDual{typeof(Core.kwcall)},
+    kwargs_cd::CoDual{<:NamedTuple},
+    f_cd::CoDual{typeof(MacroModelling.get_filter_free_loglikelihood)},
+    model_cd::CoDual{MacroModelling.ℳ},
+    data_cd::CoDual{<:KeyedArray{Float64}},
+    params_cd::CoDual{Vector{T}},
+    shocks_cd::CoDual{Matrix{T}},
+    measurement_error_std_cd::CoDual{M},
+    initial_state_cd::CoDual{Vector{Vector{I}}},
+) where {T<:Base.IEEEFloat,I<:Base.IEEEFloat,M<:Union{T,Vector{T},Matrix{T}}}
+    kwargs = Mooncake.primal(kwargs_cd)
+    model = Mooncake.primal(model_cd)
+    data = Mooncake.primal(data_cd)
+    params = Mooncake.primal(params_cd)
+    shocks = Mooncake.primal(shocks_cd)
+    measurement_error_std = Mooncake.primal(measurement_error_std_cd)
+    initial_state = Mooncake.primal(initial_state_cd)
+    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_filter_free_loglikelihood,
+                                           model, data, params, shocks, measurement_error_std, initial_state; kwargs...)
+    y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
+    kwargs_lazy_rdata = Mooncake.lazy_zero_rdata(kwargs)
+    inner_fargs = (f_cd, model_cd, data_cd, params_cd, shocks_cd, measurement_error_std_cd, initial_state_cd)
+    lazy_rdata = map(cd -> Mooncake.lazy_zero_rdata(Mooncake.primal(cd)), inner_fargs)
+    function pb!!(y_rdata)
+        cr_dfargs = cr_pb(scalar_output_to_cr(y_fdata, y_rdata))
+        kwargs_rdata = Mooncake.increment_and_get_rdata!(
+            Mooncake.tangent(kwargs_cd),
+            Mooncake.instantiate(kwargs_lazy_rdata),
+            ChainRulesCore.NoTangent(),
+        )
+        inner_rdata = increment_rrule_args_with_nested_initial_state(inner_fargs, lazy_rdata, cr_dfargs)
+        return (NoRData(), kwargs_rdata, inner_rdata...)
+    end
+    return CoDual(y_primal, y_fdata), pb!!
+end
 
 # ── get_statistics: manual rrule!! ──
 # Returns Dict{Symbol,...} whose MutableTangent cannot be converted by to_cr_tangent.

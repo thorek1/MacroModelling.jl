@@ -4518,10 +4518,11 @@ function get_loglikelihood(𝓂::ℳ,
     # `data_in_deviations` — propagate ForwardDiff Duals introduced solely via
     # a Dual-typed `initial_state`. When `state` is Float64 (typical path) this
     # is a no-op.
-    state_eltype = eltype(eltype(state))
-    RR = promote_type(eltype(𝐒), eltype(data_in_deviations), state_eltype)
-    if RR !== eltype(𝐒)
-        𝐒 = convert(Matrix{RR}, 𝐒)
+    state_eltype = state isa AbstractVector{<:AbstractVector} ? mapreduce(eltype, promote_type, state) : eltype(state)
+    solution_eltype = 𝐒 isa AbstractVector{<:AbstractMatrix} ? mapreduce(eltype, promote_type, 𝐒) : eltype(𝐒)
+    RR = promote_type(solution_eltype, eltype(data_in_deviations), state_eltype)
+    if RR !== solution_eltype
+        𝐒 = 𝐒 isa AbstractVector{<:AbstractMatrix} ? [convert(Matrix{RR}, Sᵢ) for Sᵢ in 𝐒] : convert(Matrix{RR}, 𝐒)
     end
     if RR !== eltype(data_in_deviations)
         data_in_deviations = convert(Matrix{RR}, data_in_deviations)

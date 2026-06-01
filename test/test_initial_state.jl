@@ -72,6 +72,18 @@ end
     fdm = FiniteDifferences.central_fdm(4, 1)
     backend_mc = ADTypes.AutoMooncake(config = nothing)
 
+    flatten_nested_initial_state(vv) = reduce(vcat, vv)
+    function rebuild_nested_initial_state(v, template)
+        rebuilt = Vector{Vector{eltype(v)}}(undef, length(template))
+        offset = 0
+        for i in eachindex(template)
+            n = length(template[i])
+            rebuilt[i] = collect(@view v[offset + 1:offset + n])
+            offset += n
+        end
+        return rebuilt
+    end
+
     @testset "kalman / first_order — d/dinit" begin
         f = y -> get_loglikelihood(FS2000, data, params, y; filter = :kalman, algorithm = :first_order)
         g_fin = FiniteDifferences.grad(fdm, f, init)[1]
@@ -99,6 +111,37 @@ end
         @test isapprox(g_mc, g_fin, rtol = 1e-5)
     end
 
+    @testset "inversion / first_order — d/dnested init" begin
+        nested_init = [init .- ss_vec]
+        flat_init = flatten_nested_initial_state(nested_init)
+        f = y -> get_loglikelihood(FS2000, data, params, y; filter = :inversion, algorithm = :first_order)
+        f_flat = y -> f(rebuild_nested_initial_state(y, nested_init))
+        g_fin = FiniteDifferences.grad(fdm, f_flat, flat_init)[1]
+        g_mc = DifferentiationInterface.gradient(f, backend_mc, nested_init)
+        @test length(g_mc) == length(nested_init)
+        @test isapprox(flatten_nested_initial_state(g_mc), g_fin, rtol = 1e-5)
+    end
+
+    @testset "inversion / pruned_second_order — d/dnested init" begin
+        nested_init = [init .- ss_vec, zeros(nVars)]
+        flat_init = flatten_nested_initial_state(nested_init)
+        f = y -> get_loglikelihood(FS2000, data, params, y; filter = :inversion, algorithm = :pruned_second_order)
+        f_flat = y -> f(rebuild_nested_initial_state(y, nested_init))
+        h = 1e-5
+        check_idxs = (1, nVars + 1, 2nVars)
+        g_dir_fin = map(check_idxs) do idx
+            direction = zeros(length(flat_init))
+            direction[idx] = 1
+            (f_flat(flat_init .+ h .* direction) - f_flat(flat_init .- h .* direction)) / (2h)
+        end
+        g_mc = DifferentiationInterface.gradient(f, backend_mc, nested_init)
+        @test length(g_mc) == length(nested_init)
+        g_mc_flat = flatten_nested_initial_state(g_mc)
+        for (idx, g_fin) in zip(check_idxs, g_dir_fin)
+            @test isapprox(g_mc_flat[idx], g_fin, rtol = 1e-4, atol = 1e-5)
+        end
+    end
+
     nExo_fw = length(get_shocks(FS2000))
     nT_fw   = size(data, 2)
     shks_fw = 1e-3 .* randn(nExo_fw, nT_fw)
@@ -110,6 +153,17 @@ end
         g_mc  = DifferentiationInterface.gradient(f, backend_mc, init)
         @test isapprox(g_fd, g_fin, rtol = 1e-5)
         @test isapprox(g_mc, g_fin, rtol = 1e-5)
+    end
+
+    @testset "filter-free / first_order — d/dnested init" begin
+        nested_init = [init .- ss_vec]
+        flat_init = flatten_nested_initial_state(nested_init)
+        f = y -> get_filter_free_loglikelihood(FS2000, data, params, shks_fw, me_fw, y; algorithm = :first_order)
+        f_flat = y -> f(rebuild_nested_initial_state(y, nested_init))
+        g_fin = FiniteDifferences.grad(fdm, f_flat, flat_init)[1]
+        g_mc = DifferentiationInterface.gradient(f, backend_mc, nested_init)
+        @test length(g_mc) == length(nested_init)
+        @test isapprox(flatten_nested_initial_state(g_mc), g_fin, rtol = 1e-5)
     end
 end
 
