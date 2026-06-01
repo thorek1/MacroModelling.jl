@@ -4635,15 +4635,14 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             use_workspaces = use_workspaces)
 end
 
-filter_free_init_eltype(::AbstractVector{T}) where {T <: Real} = T
-filter_free_init_eltype(::AbstractVector{<:AbstractVector{T}}) where {T <: Real} = T
+
 
 function get_filter_free_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{D},
                             parameter_values::Vector{S},
                             shocks::AbstractMatrix{T},
                             measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}},
-                            initial_state::Union{AbstractVector{<:Real}, AbstractVector{<:AbstractVector{<:Real}}};
+                            initial_state::Union{AbstractVector{IT}, AbstractVector{<:AbstractVector{IT}}};
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = :second_order,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -4654,7 +4653,7 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64, IT) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat, IT <: Real}
 
     @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_filter_free_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
 
@@ -4670,8 +4669,7 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
         end    
     end
     
-    init_eltype = filter_free_init_eltype(initial_state)
-    R = promote_type(S, T, Float64, init_eltype)
+    R = promote_type(S, T, Float64, IT)
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
