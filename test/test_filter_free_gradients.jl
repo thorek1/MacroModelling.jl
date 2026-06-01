@@ -49,7 +49,8 @@ trim_visible_shocks_ff(shocks, first_t, last_t, n_warm) = shocks[:, vcat(collect
 manual_centered_diff_ff(f, x; h = 1e-6) = (f(x + h) - f(x - h)) / (2h)
 
 # Closure that varies a subset of parameters; shocks / me_std are captured.
-function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, algorithm; kwargs...)
+function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, algorithm;
+                               initial_state = nothing, kwargs...)
     n   = length(base_params)
     pos = zeros(Int, n)
     @inbounds for (k, j) in enumerate(idx)
@@ -58,7 +59,13 @@ function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, al
     return function(θ_subset)
         T    = eltype(θ_subset)
         full = map(j -> pos[j] == 0 ? T(base_params[j]) : θ_subset[pos[j]], 1:n)
-        return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+        if isnothing(initial_state)
+            return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+                                                  algorithm = algorithm,
+                                                  on_failure_loglikelihood = -Inf,
+                                                  kwargs...)
+        end
+        return get_filter_free_loglikelihood(model, data, full, shocks, me_std, initial_state;
                                               algorithm = algorithm,
                                               on_failure_loglikelihood = -Inf,
                                               kwargs...)
@@ -69,7 +76,8 @@ end
 # layout of z is: [θ_subset; vec(shocks); me_std_part], where me_std_part is
 # either a length-1 view (scalar) or length-n_obs view (vector).
 function make_ff_joint_closure(model, data, base_params, idx,
-                                nExo, nT, nObs, algorithm; vec_me::Bool, kwargs...)
+                                nExo, nT, nObs, algorithm; vec_me::Bool,
+                                initial_state = nothing, kwargs...)
     n   = length(base_params)
     pos = zeros(Int, n)
     @inbounds for (k, j) in enumerate(idx)
@@ -88,7 +96,13 @@ function make_ff_joint_closure(model, data, base_params, idx,
             full    = map(j -> pos[j] == 0 ? T(base_params[j]) : θ[pos[j]], 1:n)
             shocks  = reshape(sh_vec, nExo, nT)
             me_std  = vec_me ? me_part : me_part[1]
-            return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+            if isnothing(initial_state)
+                return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = -Inf,
+                                                      kwargs...)
+            end
+            return get_filter_free_loglikelihood(model, data, full, shocks, me_std, initial_state;
                                                   algorithm = algorithm,
                                                   on_failure_loglikelihood = -Inf,
                                                   kwargs...)
