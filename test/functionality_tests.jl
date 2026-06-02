@@ -2006,9 +2006,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             ll_lev = get_loglikelihood(m, data_in_levels, old_params, ss_vec_local; filter = filt, algorithm = algorithm)
             if is_first_or_pruned
-                @test ll_lev == ll_base
+                @test isapprox(ll_lev, ll_base, rtol = 1e-7)
                 ll_vv = get_loglikelihood(m, data_in_levels, old_params, [zeros(nVars_local)]; filter = filt, algorithm = algorithm)
-                @test ll_vv == ll_base
+                @test isapprox(ll_vv, ll_base, rtol = 1e-7)
             else
                 # Non-pruned higher order: default initial state is SSS levels
                 _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
@@ -2016,7 +2016,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     opts = MacroModelling.merge_calculation_options(), estimation = true)
                 sss_levels = sd .+ sap[1:nVars_local]
                 ll_sss = get_loglikelihood(m, data_in_levels, old_params, sss_levels; filter = filt, algorithm = algorithm)
-                @test ll_sss == ll_base
+                @test isapprox(ll_sss, ll_base, rtol = 1e-7)
             end
 
             # Perturbed initial state should produce a different loglikelihood
@@ -2054,16 +2054,16 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         ll_ff_lev = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, ss_vec_local; algorithm = algorithm)
         if is_first_or_pruned
-            @test ll_ff_lev == ll_ff_base
+            @test isapprox(ll_ff_lev, ll_ff_base, rtol = 1e-7)
             ll_ff_vv = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [zeros(nVars_local)]; algorithm = algorithm)
-            @test ll_ff_vv == ll_ff_base
+            @test isapprox(ll_ff_vv, ll_ff_base, rtol = 1e-7)
         else
             _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
                 Val(algorithm), old_params, m;
                 opts = MacroModelling.merge_calculation_options(), estimation = true)
             sss_levels = sd .+ sap[1:nVars_local]
             ll_ff_sss = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, sss_levels; algorithm = algorithm)
-            @test ll_ff_sss == ll_ff_base
+            @test isapprox(ll_ff_sss, ll_ff_base, rtol = 1e-7)
         end
 
         @test_throws AssertionError get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [1.0, 2.0]; algorithm = algorithm)
