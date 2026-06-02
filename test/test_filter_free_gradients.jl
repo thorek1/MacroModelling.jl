@@ -46,7 +46,6 @@ function boundary_missing_data_ff(data; n_leading = 2, n_trailing = 1)
 end
 
 trim_visible_shocks_ff(shocks, first_t, last_t, n_warm) = shocks[:, vcat(collect(1:n_warm), n_warm .+ collect(first_t:last_t))]
-manual_centered_diff_ff(f, x; h = 1e-6) = (f(x + h) - f(x - h)) / (2h)
 
 # Closure that varies a subset of parameters; shocks / me_std are captured.
 function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, algorithm;
@@ -290,7 +289,7 @@ end
 
             _, _, _, _, dshocks, dme = pb(1.0)
 
-            dropped_shock_fd = manual_centered_diff_ff(x -> begin
+            dropped_shock_fd = FiniteDifferences.central_fdm(5, 1)(x -> begin
                 shocks_local = copy(shocks_full)
                 shocks_local[1, 1] = x
                 get_loglikelihood(GALI_FF,
@@ -302,7 +301,7 @@ end
                                               on_failure_loglikelihood = -Inf)
             end, shocks_full[1, 1])
 
-            kept_shock_fd = manual_centered_diff_ff(x -> begin
+            kept_shock_fd = FiniteDifferences.central_fdm(5, 1)(x -> begin
                 shocks_local = copy(shocks_full)
                 shocks_local[1, 3] = x
                 get_loglikelihood(GALI_FF,
@@ -314,7 +313,7 @@ end
                                               on_failure_loglikelihood = -Inf)
             end, shocks_full[1, 3])
 
-            me_fd = manual_centered_diff_ff(x -> get_loglikelihood(GALI_FF,
+            me_fd = FiniteDifferences.central_fdm(5, 1)(x -> get_loglikelihood(GALI_FF,
                                                                                 data_boundary,
                                                                                 base_params,
                                                                                 shocks_full,
